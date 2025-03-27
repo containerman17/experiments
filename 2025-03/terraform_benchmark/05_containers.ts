@@ -31,4 +31,4 @@ sudo docker run -it -d \\
     -e AVAGO_HTTP_ALLOWED_HOSTS="*" \\
     -e AVAGO_PROPOSERVM_MIN_BLOCK_DELAY=${delay} \\
     martineck/subsecond-blocktime
-`, true);
+`, false);

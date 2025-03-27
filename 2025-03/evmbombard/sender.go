@@ -5,12 +5,15 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 	"time"
 
 	"log"
 
+	"strings"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -30,45 +33,16 @@ func init() {
 			time.Sleep(3 * time.Second)
 		}
 	}()
-	go startGasLoop()
 }
 
 const GWEI = 1000000000
 
-// const increaseAmount = GWEI * 1
-// const decreaseAmount = GWEI / 100
-
-// const minGasPrice = GWEI * 2
-// const maxGasPrice = GWEI * 50
-
 var gasPrice = int64(GWEI * 1)
 
-var hadTransactionUnderpricedErrors = false
-
-func startGasLoop() {
-	//	for {
-	//		time.Sleep(1 * time.Second)
-	//		if hadTransactionUnderpricedErrors {
-	//			gasPrice += increaseAmount
-	//			if gasPrice > maxGasPrice {
-	//				gasPrice = maxGasPrice
-	//			}
-	//			hadTransactionUnderpricedErrors = false
-	//			fmt.Printf("Increasing gas price to %f gwei\n", float64(gasPrice)/float64(GWEI))
-	//		} else {
-	//			gasPrice -= decreaseAmount
-	//			if gasPrice < minGasPrice {
-	//				gasPrice = minGasPrice
-	//			}
-	//			fmt.Printf("Decreasing gas price to %f gwei\n", float64(gasPrice)/float64(GWEI))
-	//		}
-	//	}
-}
-
-func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, listener *TxListener) {
+func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, listener *TxListener, data []byte, receiver common.Address) {
 	fromAddress := crypto.PubkeyToAddress(key.PublicKey)
 
-	gasLimit := uint64(21000)
+	gasLimit := uint64(10_000_000)
 	chainID, err := client.NetworkID(context.Background())
 	if err != nil {
 		log.Printf("failed to get chain ID: %v", err)
@@ -78,8 +52,6 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 	shouldRefetchNonce := true
 
 	nonce := uint64(0)
-
-	to := crypto.PubkeyToAddress(key.PublicKey) // Send to self
 
 	for {
 		// Re-fetch nonce if previous transactions had errors
@@ -96,8 +68,17 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 
 		signedTxs := make([]*types.Transaction, 0, batchSize)
 		for i := 0; i < batchSize; i++ {
-			var data []byte
-			tx := types.NewTransaction(nonce, to, big.NewInt(123), gasLimit, big.NewInt(gasPrice), data)
+			// Pack the function call to simulateTransfer with recipient and amount
+			// consumeCPUAbi, _ := abi.JSON(strings.NewReader(`[{"inputs":[{"internalType":"uint64","name":"intensity","type":"uint64"}],"name":"consumeCPU","outputs":[],"stateMutability":"nonpayable","type":"function"}]`))
+			// data, _ := consumeCPUAbi.Pack("consumeCPU", uint64(22))
+
+			// consumeCPUAbi, _ := abi.JSON(strings.NewReader(`[{"inputs":[{"internalType":"uint64","name":"intensity","type":"uint64"}],"name":"consumeCPU","outputs":[],"stateMutability":"nonpayable","type":"function"}]`))
+			// data, _ := consumeCPUAbi.Pack("consumeCPU", uint64(22))
+
+			simulateTransferAbi, _ := abi.JSON(strings.NewReader(`[{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"simulateTransfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"}]`))
+			data, _ := simulateTransferAbi.Pack("simulateTransfer", receiver, big.NewInt(1000))
+
+			tx := types.NewTransaction(nonce, receiver, big.NewInt(0), gasLimit, big.NewInt(gasPrice), data)
 
 			signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), key)
 			if err != nil {
@@ -140,9 +121,6 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 				lastError = err.Error()
 				errorCount++
 				hasError = true
-				if isTransactionUnderpriced(err) {
-					hadTransactionUnderpricedErrors = true
-				}
 			}
 		}
 
@@ -159,25 +137,20 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 				lastError = err.Error()
 				errorCount++
 				shouldRefetchNonce = true
-				if isTransactionUnderpriced(err) {
-					hadTransactionUnderpricedErrors = true
-				}
 				time.Sleep(1 * time.Second)
 			}
 		}
-
-		// fmt.Printf("Batch of %d transactions sent and mined\n", batchSize)
 	}
 }
 
-func isTransactionUnderpriced(err error) bool {
-	if strings.HasSuffix(err.Error(), ": transaction underpriced") {
-		return true
-	}
+// func isTransactionUnderpriced(err error) bool {
+// 	if strings.HasSuffix(err.Error(), ": transaction underpriced") {
+// 		return true
+// 	}
 
-	if strings.Contains(err.Error(), "< pool minimum fee cap") {
-		return true
-	}
+// 	if strings.Contains(err.Error(), "< pool minimum fee cap") {
+// 		return true
+// 	}
 
-	return false
-}
+// 	return false
+// }

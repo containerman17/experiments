@@ -149,7 +149,10 @@ func (l *TxListener) Start(ctx context.Context) {
 			}
 			l.mu.Unlock()
 
-			log.Printf("New block: %v, tx count: %v\n", block.Number(), len(block.Transactions()))
+			totalgas := block.GasUsed()
+			avgGas := totalgas / uint64(len(block.Transactions()))
+
+			log.Printf("New block: %v, tx count: %v, avg gas per tx: %v\n", block.Number(), len(block.Transactions()), avgGas)
 		}
 	}
 }

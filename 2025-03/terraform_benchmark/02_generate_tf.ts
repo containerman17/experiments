@@ -1,6 +1,6 @@
 #! /usr/bin/env bun
 
-import { regions, instancesPerRegion, githubUsername } from "./00_values.ts";
+import { regions, instancesPerRegion, githubUsername, instanceType } from "./00_values.ts";
 
 const shared = `
 locals {
@@ -40,7 +40,10 @@ provider "aws" {
   alias  = "${regionName}"
   region = "${region}"
 }
+`;
 
+  if (instancesPerRegion > 0) {
+    config += `
 
 resource "aws_security_group" "allow_ssh_${regionName}" {
   provider    = aws.${regionName}
@@ -91,7 +94,7 @@ resource "aws_security_group" "allow_ssh_${regionName}" {
 }
 
 `;
-
+  }
   // Generate multiple instances based on instancesPerRegion
   for (let i = 0; i < instancesPerRegion; i++) {
     const instanceSuffix = i > 0 ? `-${i + 1}` : "";
@@ -101,7 +104,7 @@ resource "aws_security_group" "allow_ssh_${regionName}" {
 resource "aws_instance" "${regionName}-ec2${instanceSuffix}" {
   provider                    = aws.${regionName}
   ami                         = "${ami}"
-  instance_type               = "m7i.4xlarge"
+  instance_type               = "${instanceType}"
   vpc_security_group_ids      = [aws_security_group.allow_ssh_${regionName}.id]
   associate_public_ip_address = true
 
@@ -132,7 +135,8 @@ import fs from "fs";
 
 let outFile = shared;
 for (const region of regions) {
-  outFile += regionConfig(region.region, region.regionName, region.ami, instancesPerRegion);
+  const instancesCount = region.enabled ? instancesPerRegion : 0;
+  outFile += regionConfig(region.region, region.regionName, region.ami, instancesCount);
 }
 
 

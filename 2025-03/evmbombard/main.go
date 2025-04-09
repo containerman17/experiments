@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -89,11 +90,15 @@ func main() {
 		log.Fatalf("failed to fund: %v", err)
 	}
 
+	var data []byte
+
 	clientNumber := 0
 	for _, key := range keys {
+		to := crypto.PubkeyToAddress(key.PublicKey) // Send to self
+
 		go func(key *ecdsa.PrivateKey) {
 			clientNumber++
-			bombardWithTransactions(clients[clientNumber%len(clients)], key, txListener)
+			bombardWithTransactions(clients[clientNumber%len(clients)], key, txListener, data, to)
 		}(key)
 		pause := 20000 / keyCount
 		time.Sleep(time.Duration(pause) * time.Millisecond)

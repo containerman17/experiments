@@ -11,6 +11,7 @@ import (
 
 	"log"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -28,44 +29,21 @@ func init() {
 				lastError = ""
 			}
 			time.Sleep(3 * time.Second)
+			if hadTransactionUnderpricedErrors {
+				fmt.Println("Had transaction underpriced errors!")
+				hadTransactionUnderpricedErrors = false
+			}
 		}
 	}()
-	go startGasLoop()
 }
 
 const GWEI = 1000000000
-
-// const increaseAmount = GWEI * 1
-// const decreaseAmount = GWEI / 100
-
-// const minGasPrice = GWEI * 2
-// const maxGasPrice = GWEI * 50
 
 var gasPrice = int64(GWEI * 1)
 
 var hadTransactionUnderpricedErrors = false
 
-func startGasLoop() {
-	//	for {
-	//		time.Sleep(1 * time.Second)
-	//		if hadTransactionUnderpricedErrors {
-	//			gasPrice += increaseAmount
-	//			if gasPrice > maxGasPrice {
-	//				gasPrice = maxGasPrice
-	//			}
-	//			hadTransactionUnderpricedErrors = false
-	//			fmt.Printf("Increasing gas price to %f gwei\n", float64(gasPrice)/float64(GWEI))
-	//		} else {
-	//			gasPrice -= decreaseAmount
-	//			if gasPrice < minGasPrice {
-	//				gasPrice = minGasPrice
-	//			}
-	//			fmt.Printf("Decreasing gas price to %f gwei\n", float64(gasPrice)/float64(GWEI))
-	//		}
-	//	}
-}
-
-func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, listener *TxListener) {
+func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, listener *TxListener, data []byte, to common.Address) {
 	fromAddress := crypto.PubkeyToAddress(key.PublicKey)
 
 	gasLimit := uint64(21000)
@@ -78,8 +56,6 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 	shouldRefetchNonce := true
 
 	nonce := uint64(0)
-
-	to := crypto.PubkeyToAddress(key.PublicKey) // Send to self
 
 	for {
 		// Re-fetch nonce if previous transactions had errors
@@ -96,7 +72,6 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 
 		signedTxs := make([]*types.Transaction, 0, batchSize)
 		for i := 0; i < batchSize; i++ {
-			var data []byte
 			tx := types.NewTransaction(nonce, to, big.NewInt(123), gasLimit, big.NewInt(gasPrice), data)
 
 			signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), key)

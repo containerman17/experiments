@@ -10,6 +10,8 @@ github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156 h1:eMwmnE/GDgah
 github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156/go.mod h1:Cb/ax3seSYIx7SuZdm2G2xzfwmv3TPSk2ucNfQESPXM=
 github.com/ava-labs/avalanchego v1.13.1-0.20250328202636-14dea8025061 h1:QWwih4reEtT65zvSAhki7ey8kVOSXNiTmVRB7dnEZ/c=
 github.com/ava-labs/avalanchego v1.13.1-0.20250328202636-14dea8025061/go.mod h1:fpV/GmbfIB3P53gkq6zFpyeQtyAsJIuZCCKnm7TJ4sQ=
+github.com/ava-labs/icm-contracts v1.0.9-0.20250307173936-f6a36b902f4f h1:VdYGud8dYi8OOca2IeTjGI9o0S+sjYO0e/DrWw0p6RA=
+github.com/ava-labs/icm-contracts v1.0.9-0.20250307173936-f6a36b902f4f/go.mod h1:tCo57ymvTmFJK7+fqotE8ye70UqqHb0RI0o9/NRuBhM=
 github.com/ava-labs/subnet-evm v0.7.2 h1:AxmXT9tmuxmUi+hDqtoS0OVi0zi8fPqPcoQ7yjZ6FZQ=
 github.com/ava-labs/subnet-evm v0.7.2/go.mod h1:4ZWBSj9JALAtaUOPrI1P78C6vBMUpK0iiD6zaA9K2VA=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

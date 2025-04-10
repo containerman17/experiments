@@ -12,7 +12,9 @@ import (
 	"time"
 
 	// AvalancheGo dependencies
+	"github.com/ava-labs/avalanchego/ids"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload" // Import for AddressedCall
 
 	// Go-Ethereum dependencies
 	"github.com/ethereum/go-ethereum/common"
@@ -22,6 +24,10 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/interfaces"
 	subnetWarp "github.com/ava-labs/subnet-evm/precompile/contracts/warp" // Use subnetWarp alias
+
+	// ICM Contracts dependencies
+	teleportermessenger "github.com/ava-labs/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger" // Import for Teleporter details
+	// Import the encoding package
 )
 
 // --- Replicated necessary parts from icm-services/types/types.go ---
@@ -146,6 +152,41 @@ func parseBlockWarps(ctx context.Context, rpcURL string, blockNum uint64) error 
 			sourceAddr = common.BytesToAddress(l.Topics[1][:])
 		}
 
+		// --- Attempt to parse destination from payload ---
+		destChainIDStr := "(N/A)"
+		destAddrHex := "(N/A)"
+		payloadHex := hex.EncodeToString(unsignedMsg.Payload) // Default to showing raw payload
+
+		addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMsg.Payload)
+		if err == nil {
+			// Successfully parsed AddressedCall, now try Teleporter
+			var teleporterMessage teleportermessenger.TeleporterMessage
+			err = teleporterMessage.Unpack(addressedPayload.Payload)
+			if err == nil {
+				// Successfully parsed Teleporter message
+				chainID, err := ids.ToID(teleporterMessage.DestinationBlockchainID[:])
+				if err != nil {
+					log.Printf("ERROR: Failed to convert destination blockchain ID to ID: %v", err)
+				}
+				destChainIDStr = chainID.String()
+				destAddrHex = teleporterMessage.DestinationAddress.Hex()
+				payloadHex = "(Parsed as Teleporter)" // Don't show raw payload if parsed
+			} else {
+				log.Printf("DEBUG: Message %d: Payload is AddressedCall but not Teleporter: %v", foundCount+1, err)
+				payloadHex = fmt.Sprintf("0x%s (AddressedCall, Inner Payload: 0x%s)",
+					hex.EncodeToString(unsignedMsg.Payload),
+					hex.EncodeToString(addressedPayload.Payload)) // Show inner payload on failure
+				destChainIDStr = "(N/A - Not Teleporter)"
+				destAddrHex = "(N/A - Not Teleporter)"
+			}
+		} else {
+			log.Printf("DEBUG: Message %d: Payload is not AddressedCall: %v", foundCount+1, err)
+			destChainIDStr = "(N/A - Not AddressedCall)"
+			destAddrHex = "(N/A - Not AddressedCall)"
+			// Keep payloadHex as the raw payload
+		}
+		// --- End Payload Parsing ---
+
 		fmt.Printf("Message %d:\n", foundCount+1)
 		fmt.Printf("  Log Index:        %d\n", l.Index)
 		fmt.Printf("  Tx Hash:          %s\n", l.TxHash.Hex())
@@ -155,8 +196,9 @@ func parseBlockWarps(ctx context.Context, rpcURL string, blockNum uint64) error 
 		fmt.Printf("  Warp Message ID:  %s\n", unsignedMsg.ID().String())
 		fmt.Printf("  Network ID:       %d\n", unsignedMsg.NetworkID)
 		fmt.Printf("  Source Chain ID:  %s\n", unsignedMsg.SourceChainID.String())
-		// Consider further parsing payload if needed, e.g., AddressedCall
-		fmt.Printf("  Payload (Hex):    0x%s\n", hex.EncodeToString(unsignedMsg.Payload))
+		fmt.Printf("  Dest Chain ID:    %s\n", destChainIDStr) // Added
+		fmt.Printf("  Dest Address:     %s\n", destAddrHex)    // Added
+		fmt.Printf("  Payload (Hex):    0x%s\n", payloadHex)
 		fmt.Println("  ------------------------------------")
 		fmt.Println() // Blank line for separation
 

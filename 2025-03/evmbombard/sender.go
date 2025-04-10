@@ -47,6 +47,11 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 	fromAddress := crypto.PubkeyToAddress(key.PublicKey)
 
 	gasLimit := uint64(21000)
+
+	if len(data) > 0 {
+		gasLimit = 1000000
+	}
+
 	chainID, err := client.NetworkID(context.Background())
 	if err != nil {
 		log.Printf("failed to get chain ID: %v", err)
@@ -56,6 +61,11 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 	shouldRefetchNonce := true
 
 	nonce := uint64(0)
+
+	value := big.NewInt(123)
+	if len(data) > 0 {
+		value = big.NewInt(0)
+	}
 
 	for {
 		// Re-fetch nonce if previous transactions had errors
@@ -72,7 +82,7 @@ func bombardWithTransactions(client *ethclient.Client, key *ecdsa.PrivateKey, li
 
 		signedTxs := make([]*types.Transaction, 0, batchSize)
 		for i := 0; i < batchSize; i++ {
-			tx := types.NewTransaction(nonce, to, big.NewInt(123), gasLimit, big.NewInt(gasPrice), data)
+			tx := types.NewTransaction(nonce, to, value, gasLimit, big.NewInt(gasPrice), data)
 
 			signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), key)
 			if err != nil {

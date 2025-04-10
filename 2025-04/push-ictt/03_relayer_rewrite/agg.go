@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"net/netip"
 	"os"
 	"time"
 
@@ -27,24 +26,19 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
 
-	// Renamed to avoid conflict
 	// Prometheus (for metrics boilerplate)
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
-	// Hardcoded local endpoints
-	localNodeURL = "http://localhost:9650"
-
-	// Default quorum values for the example
+	localNodeURL                    = "http://localhost:9650"
 	defaultRequiredQuorumPercentage = 67
 	defaultQuorumPercentageBuffer   = 3
-	defaultAppTimeout               = 15 * time.Second // Generous timeout for local test
-	defaultConnectTimeout           = 10 * time.Second
+	defaultAppTimeout               = 15 * time.Second // Timeout for each aggregation call
+	defaultConnectTimeout           = 10 * time.Second // Timeout for initial node info calls
 )
 
 // --- Minimal Config Implementation for Peers ---
-// This struct satisfies the peers.Config interface just enough for this example.
 type minimalPeerConfig struct {
 	infoAPI   *basecfg.APIConfig
 	pchainAPI *basecfg.APIConfig
@@ -52,72 +46,66 @@ type minimalPeerConfig struct {
 
 func (m *minimalPeerConfig) GetInfoAPI() *basecfg.APIConfig     { return m.infoAPI }
 func (m *minimalPeerConfig) GetPChainAPI() *basecfg.APIConfig   { return m.pchainAPI }
-func (m *minimalPeerConfig) GetAllowPrivateIPs() bool           { return true }                  // Allow local connection
+func (m *minimalPeerConfig) GetAllowPrivateIPs() bool           { return true }
 func (m *minimalPeerConfig) GetTrackedSubnets() set.Set[ids.ID] { return set.NewSet[ids.ID](1) } // Minimal
-func (m *minimalPeerConfig) GetTLSCert() *tls.Certificate       { return nil }                   // No TLS for local example
+func (m *minimalPeerConfig) GetTLSCert() *tls.Certificate       { return nil }
 
-// --- Main Aggregation Logic ---
+// --- Aggregator Wrapper ---
 
-func aggregateSignature(
-	ctx context.Context,
-	unsignedMsg *avalancheWarp.UnsignedMessage,
-	signingSubnetID ids.ID,
-) (*avalancheWarp.Message, error) {
+type AggregatorWrapper struct {
+	sigAgg          *aggregator.SignatureAggregator
+	signingSubnetID ids.ID
+}
+
+// NewAggregatorWrapper creates and initializes the necessary components
+// for signature aggregation, returning a wrapper.
+func NewAggregatorWrapper(signingSubnetID ids.ID) (*AggregatorWrapper, error) {
+	// Use Background context for long-running network setup/info calls
+	setupCtx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
+	defer cancel()
+
 	// --- Basic Setup ---
-	logLevel := logging.Info
-
+	logLevel := logging.Info // Or configure as needed
 	logger := logging.NewLogger(
-		"aggregator-example",
+		"aggregator-wrapper",
 		logging.NewWrappedCore(logLevel, os.Stdout, logging.JSON.ConsoleEncoder()),
 	)
 	networkLogger := logging.NewLogger(
-		"p2p-network-example",
+		"p2p-network-wrapper",
 		logging.NewWrappedCore(logLevel, os.Stdout, logging.JSON.ConsoleEncoder()),
 	)
 
 	// --- API Clients ---
-	log.Println("Creating info client with URL:", localNodeURL)
 	infoClient := info.NewClient(localNodeURL)
 	pchainClient := platformvm.NewClient(localNodeURL)
-	pchainRPCOptions := peerUtils.InitializeOptions(&basecfg.APIConfig{}) // No extra opts needed for local
+	pchainRPCOptions := peerUtils.InitializeOptions(&basecfg.APIConfig{})
 
-	// --- Get Local Node Info (for manual tracking) ---
-	localNodeID, _, err := infoClient.GetNodeID(ctx)
+	// --- Get Local Node Info ---
+	localNodeID, _, err := infoClient.GetNodeID(setupCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get local node ID: %w", err)
 	}
-	localNodeIP, err := infoClient.GetNodeIP(ctx)
+	localNodeIP, err := infoClient.GetNodeIP(setupCtx)
 	if err != nil {
-		// Try parsing common default if GetNodeIP fails (it might not be configured)
-		log.Printf("WARN: Failed to get node IP via API (%v), attempting default 127.0.0.1:9651", err)
-		localNodeIP, err = netip.ParseAddrPort("127.0.0.1:9651") // Common default staking port
-		if err != nil {
-			return nil, fmt.Errorf("failed to get/parse local node IP: %w", err)
-		}
+		return nil, fmt.Errorf("failed to get local node IP: %w", err)
 	}
-	log.Printf("Attempting to use local node: ID=%s, IP=%s", localNodeID, localNodeIP)
+	log.Printf("Using local node: ID=%s, IP=%s", localNodeID, localNodeIP)
 
-	// --- Minimal Peer Network Setup ---
+	// --- Peer Network Setup ---
 	peerCfg := &minimalPeerConfig{
 		infoAPI:   &basecfg.APIConfig{BaseURL: localNodeURL},
 		pchainAPI: &basecfg.APIConfig{BaseURL: localNodeURL},
 	}
-
-	// Registerer for metrics (can be dummy for example)
-	registry := prometheus.NewRegistry()
-
+	registry := prometheus.NewRegistry() // Dummy registry for example
 	trackedSubnets := set.NewSet[ids.ID](1)
 	trackedSubnets.Add(signingSubnetID)
-	// We will track the specific subnet later via network.TrackSubnet
-
 	manuallyTrackedPeers := []info.Peer{
 		{Info: peer.Info{ID: localNodeID, PublicIP: localNodeIP}},
 	}
 
-	// Message Creator
 	msgCreator, err := message.NewCreator(
-		logger,   // Use the main logger
-		registry, // Can use a dummy registry
+		logger,
+		registry,
 		constants.DefaultNetworkCompressionType,
 		constants.DefaultNetworkMaximumInboundTimeout,
 	)
@@ -125,26 +113,24 @@ func aggregateSignature(
 		return nil, fmt.Errorf("failed to create message creator: %w", err)
 	}
 
-	fmt.Printf("using peerCfg: %+v\n", peerCfg)
+	// Create the network; it will be managed internally by the aggregator
 	network, err := peers.NewNetwork(
 		networkLogger,
-		registry, // Use the same registry
+		registry,
 		trackedSubnets,
 		manuallyTrackedPeers,
-		peerCfg, // Use our minimal config impl
+		peerCfg,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create app request network: %w", err)
 	}
-	defer network.Shutdown()
 
-	// Explicitly track the signing subnet
-	log.Printf("Tracking signing subnet: %s", signingSubnetID)
+	// Explicitly track the signing subnet (might be redundant if in initial set)
 	network.TrackSubnet(signingSubnetID)
 
-	// Allow some time for the network to potentially connect to the manual peer
+	// Allow some time for the network to potentially connect
 	log.Printf("Waiting briefly for network connection...")
-	time.Sleep(3 * time.Second) // Give it a moment
+	time.Sleep(3 * time.Second)
 	log.Printf("Number of connected peers: %d", network.NumConnectedPeers())
 	if network.NumConnectedPeers() == 0 {
 		log.Println("WARN: No peers connected, signature aggregation might fail.")
@@ -152,7 +138,7 @@ func aggregateSignature(
 
 	// --- Signature Aggregator Setup ---
 	sigAgg, err := aggregator.NewSignatureAggregator(
-		network,
+		network, // Pass the created network here
 		logger,
 		msgCreator,
 		1024, // Default cache size
@@ -161,26 +147,38 @@ func aggregateSignature(
 		pchainRPCOptions,
 	)
 	if err != nil {
+		// Even though we don't store the network ref, try to shut it down on error
+		network.Shutdown()
 		return nil, fmt.Errorf("failed to create signature aggregator: %w", err)
 	}
 
-	// --- Perform Aggregation ---
-	log.Printf("Calling CreateSignedMessage for Warp ID: %s, Signing Subnet: %s", unsignedMsg.ID(), signingSubnetID)
-	aggCtx, cancel := context.WithTimeout(ctx, defaultAppTimeout) // Context for the aggregation call itself
+	return &AggregatorWrapper{
+		sigAgg:          sigAgg,
+		signingSubnetID: signingSubnetID,
+	}, nil
+}
+
+// Sign uses the pre-configured aggregator to sign the message.
+func (aw *AggregatorWrapper) Sign(ctx context.Context, unsignedMsg *avalancheWarp.UnsignedMessage) (*avalancheWarp.Message, error) {
+	// Use a timeout specific to this aggregation call
+	aggCtx, cancel := context.WithTimeout(ctx, defaultAppTimeout)
 	defer cancel()
 
-	signedMsg, err := sigAgg.CreateSignedMessage(
+	log.Printf("Calling CreateSignedMessage for Warp ID: %s", unsignedMsg.ID())
+	signedMsg, err := aw.sigAgg.CreateSignedMessage(
 		aggCtx,
 		unsignedMsg,
-		nil, // No justification in this simple example
-		signingSubnetID,
+		nil, // No justification
+		aw.signingSubnetID,
 		defaultRequiredQuorumPercentage,
 		defaultQuorumPercentageBuffer,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("signature aggregation failed: %w", err)
+		return nil, fmt.Errorf("signature aggregation failed for msg %s: %w", unsignedMsg.ID(), err)
 	}
-
-	log.Println("Successfully aggregated signatures.")
+	log.Printf("Successfully aggregated signature for msg %s", unsignedMsg.ID())
 	return signedMsg, nil
 }
+
+// Note: Shutdown method removed as the network reference is no longer stored.
+// The network's lifecycle is implicitly managed by the SignatureAggregator.

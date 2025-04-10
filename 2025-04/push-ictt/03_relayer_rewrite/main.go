@@ -37,7 +37,7 @@ func main() {
 	defer cancel()
 
 	// Parse block for Warp messages
-	messages, err := parseBlockWarps(ctx, *rpcURL, big.NewInt(int64(*blockNum)), *destChainID)
+	messages, err := parseBlockWarps(ctx, *rpcURL, big.NewInt(int64(*blockNum)), big.NewInt(int64(*blockNum+1000)), *destChainID)
 	if err != nil {
 		fmt.Printf("Error parsing block %d: %v\n", *blockNum, err)
 		os.Exit(1)
@@ -49,13 +49,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	aggWrapper, err := NewAggregatorWrapper(sourceSubnetID)
+	if err != nil {
+		fmt.Printf("Error creating aggregator wrapper: %v\n", err)
+		os.Exit(1)
+	}
+
 	for _, msg := range messages {
-		signed, err := aggregateSignature(ctx, msg, sourceSubnetID)
+		timeStart := time.Now()
+		signed, err := aggWrapper.Sign(ctx, msg)
 		if err != nil {
 			fmt.Printf("Error aggregating signature: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("Signed message: %v\n", signed)
+		timeEnd := time.Now()
+		fmt.Printf("Time taken: %v\n", timeEnd.Sub(timeStart))
 	}
 
 	// Print the result count

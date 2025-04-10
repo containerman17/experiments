@@ -19,7 +19,7 @@ import (
 
 var WarpPrecompileLogFilter = subnetWarp.WarpABI.Events["SendWarpMessage"].ID
 
-func parseBlockWarps(ctx context.Context, rpcURL string, blockNum *big.Int, destChainIDStr string) ([]*avalancheWarp.UnsignedMessage, error) {
+func parseBlockWarps(ctx context.Context, rpcURL string, fromBlock *big.Int, toBlock *big.Int, destChainIDStr string) ([]*avalancheWarp.UnsignedMessage, error) {
 	if rpcURL == "" {
 		return nil, errors.New("RPC URL cannot be empty")
 	}
@@ -31,15 +31,15 @@ func parseBlockWarps(ctx context.Context, rpcURL string, blockNum *big.Int, dest
 	defer client.Close()
 
 	query := interfaces.FilterQuery{
-		FromBlock: blockNum,
-		ToBlock:   blockNum,
+		FromBlock: fromBlock,
+		ToBlock:   toBlock,
 		Addresses: []common.Address{subnetWarp.ContractAddress},
 		Topics:    [][]common.Hash{{WarpPrecompileLogFilter}},
 	}
 
 	logs, err := client.FilterLogs(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to filter logs for block %d: %w", blockNum, err)
+		return nil, fmt.Errorf("failed to filter logs for block %d: %w", fromBlock, err)
 	}
 
 	var unsignedMessages []*avalancheWarp.UnsignedMessage

@@ -17,11 +17,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// WarpPrecompileLogFilter is the EVM log topic for SendWarpMessage events.
 var WarpPrecompileLogFilter = subnetWarp.WarpABI.Events["SendWarpMessage"].ID
 
-// parseBlockWarps fetches and filters Warp messages from the specified block.
-// Only messages destined for destChainIDStr (if successfully parsed as Teleporter) are returned.
 func parseBlockWarps(ctx context.Context, rpcURL string, blockNum *big.Int, destChainIDStr string) ([]*avalancheWarp.UnsignedMessage, error) {
 	if rpcURL == "" {
 		return nil, errors.New("RPC URL cannot be empty")

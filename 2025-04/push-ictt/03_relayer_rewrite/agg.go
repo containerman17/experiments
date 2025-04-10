@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/hex"
-	"flag"
 	"fmt"
 	"log"
 	"net/netip"
 	"os"
-	"strings"
 	"time"
 
 	// AvalancheGo
@@ -29,8 +26,8 @@ import (
 	peerUtils "github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
-	saTypes "github.com/ava-labs/icm-services/types" // Renamed to avoid conflict
 
+	// Renamed to avoid conflict
 	// Prometheus (for metrics boilerplate)
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -66,7 +63,6 @@ func aggregateSignature(
 	unsignedMsg *avalancheWarp.UnsignedMessage,
 	signingSubnetID ids.ID,
 ) (*avalancheWarp.Message, error) {
-
 	// --- Basic Setup ---
 	logLevel := logging.Info
 
@@ -187,72 +183,4 @@ func aggregateSignature(
 
 	log.Println("Successfully aggregated signatures.")
 	return signedMsg, nil
-}
-
-// --- Main Execution ---
-
-func main() {
-	// --- Command Line Flags ---
-	unsignedMsgHex := flag.String("unsigned-msg-hex",
-		"0x00000000000532f28c97836382882d7ab3839516affdb55587dc9eb06d7d5cdf1566eee0af4f000001c200000000000100000014253b2784c75e510dd0ff1da844684a1ac0aa5fcf000001a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000369000000000000000000000000789a5fdac2b37fcd290fb2924382297a6ae65860297706a9d583e56aaea89f408c006fd1c8807ce9d2387fa0b0cb801af6cf066200000000000000000000000017ab05351fc94a1a67bf3f56ddbb941ae6c63e2500000000000000000000000000000000000000000000000000000000000186a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000001400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000369",
-		"Hex-encoded UnsignedMessage bytes")
-	signingSubnetStr := flag.String("signing-subnet", "2eob8mVishyekgALVg3g85NDWXHRQ1unYbBrj355MogAd9sUnb", "Subnet ID (CB58) whose validators should sign")
-	timeoutSec := flag.Uint("timeout", 30, "Overall timeout in seconds for the operation")
-
-	flag.Parse()
-
-	if *unsignedMsgHex == "" {
-		fmt.Println("Error: -unsigned-msg-hex flag is required.")
-		fmt.Println("  Provide the raw hex data of an avalanchego/vms/platformvm/warp.UnsignedMessage")
-		fmt.Println("  (Hint: Get this from the 'Raw Data' log line in the previous script's error output, or construct manually)")
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *signingSubnetStr == "" {
-		fmt.Println("Error: -signing-subnet flag cannot be empty.")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	// --- Decode Inputs ---
-	unsignedMsgBytes, err := hex.DecodeString(strings.TrimPrefix(*unsignedMsgHex, "0x"))
-	if err != nil {
-		log.Fatalf("Failed to decode unsigned message hex: %v", err)
-	}
-
-	// Use the standalone parser from avalanchego for the raw bytes provided
-	unsignedMsg, err := avalancheWarp.ParseUnsignedMessage(unsignedMsgBytes)
-	if err != nil {
-		// Also try the types helper just in case the input was from a log's Data field
-		unsignedMsg, err = saTypes.UnpackWarpMessage(unsignedMsgBytes) // Use the helper from types
-		if err != nil {
-			log.Fatalf("Failed to parse unsigned message bytes (tried both standalone and log unpacker): %v", err)
-		}
-	}
-
-	signingSubnetID, err := ids.FromString(*signingSubnetStr)
-	if err != nil {
-		log.Fatalf("Failed to parse signing subnet ID '%s': %v", *signingSubnetStr, err)
-	}
-
-	// --- Context for Overall Operation ---
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutSec)*time.Second)
-	defer cancel()
-
-	// --- Run Aggregation ---
-	signedMsg, err := aggregateSignature(ctx, unsignedMsg, signingSubnetID)
-	if err != nil {
-		log.Fatalf("Error aggregating signature: %v", err)
-	}
-
-	// --- Print Result ---
-	fmt.Println("\n--- Aggregation Successful ---")
-	fmt.Printf("Original Unsigned Message ID: %s\n", unsignedMsg.ID())
-	fmt.Printf("Signed Message ID:            %s\n", signedMsg.ID())
-	fmt.Printf("Signed Message Bytes (Hex):   0x%s\n", hex.EncodeToString(signedMsg.Bytes()))
-	// You could further parse the signature part if needed:
-	// fmt.Printf("Signature Signers (Hex):    0x%s\n", hex.EncodeToString(signedMsg.Signature.Signers))
-	// fmt.Printf("Signature Sig (Hex):        0x%s\n", hex.EncodeToString(signedMsg.Signature.Signature[:]))
-
-	log.Println("Finished.")
 }

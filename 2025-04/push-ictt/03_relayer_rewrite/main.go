@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"os"
 	"time"
+
+	"github.com/ava-labs/avalanchego/ids"
 )
 
 func main() {
@@ -15,6 +17,7 @@ func main() {
 	blockNum := flag.Uint64("block", 1000, "Block number to parse for Warp messages")
 	destChainID := flag.String("dest-chain", "KGAehYuq9J951RHuooVVkiJ3YEMmjpNUKx2SmW5Reb7HdBhNT", "Destination chain ID to filter messages (required)")
 	timeoutSec := flag.Uint("timeout", 10, "Timeout in seconds for RPC calls")
+	sourceSubnetIDStr := flag.String("source-subnet", "2eob8mVishyekgALVg3g85NDWXHRQ1unYbBrj355MogAd9sUnb", "Source subnet ID to filter messages (required)")
 	flag.Parse()
 
 	if *rpcURL == "" {
@@ -38,6 +41,21 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error parsing block %d: %v\n", *blockNum, err)
 		os.Exit(1)
+	}
+
+	sourceSubnetID, err := ids.FromString(*sourceSubnetIDStr)
+	if err != nil {
+		fmt.Printf("Error converting source subnet ID: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, msg := range messages {
+		signed, err := aggregateSignature(ctx, msg, sourceSubnetID)
+		if err != nil {
+			fmt.Printf("Error aggregating signature: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Signed message: %v\n", signed)
 	}
 
 	// Print the result count

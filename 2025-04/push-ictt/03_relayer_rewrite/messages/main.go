@@ -179,6 +179,7 @@ func parseBlockWarps(ctx context.Context, rpcURL string, blockNum uint64) error 
 		fmt.Printf("  Dest Chain ID:    %s\n", destChainIDStr) // Added
 		fmt.Printf("  Dest Address:     %s\n", destAddrHex)    // Added
 		fmt.Printf("  Payload (Hex):    0x%s\n", payloadHex)
+		fmt.Printf("  Raw message:      0x%x\n", unsignedMsg.Bytes())
 		fmt.Println("  ------------------------------------")
 		fmt.Println() // Blank line for separation
 		foundCount++
@@ -194,8 +195,8 @@ func parseBlockWarps(ctx context.Context, rpcURL string, blockNum uint64) error 
 // --- Main Execution ---
 func main() {
 	// --- Command Line Flags ---
-	rpcURL := flag.String("rpc-url", "", "RPC endpoint URL of the source blockchain (e.g., http://localhost:9650/ext/bc/CHAIN_ID/rpc)")
-	blockNum := flag.Uint64("block", 0, "Block number to parse for Warp messages")
+	rpcURL := flag.String("rpc-url", "http://localhost:9650/ext/bc/PSPJDsDstwafoRHMH4ToeADFWm887WJzUe8shf3S8RLMHCMzZ/rpc", "RPC endpoint URL of the source blockchain (e.g., http://localhost:9650/ext/bc/CHAIN_ID/rpc)")
+	blockNum := flag.Uint64("block", 1000, "Block number to parse for Warp messages")
 	timeoutSec := flag.Uint("timeout", 10, "Timeout in seconds for RPC calls")
 	flag.Parse()
 	if *rpcURL == "" {

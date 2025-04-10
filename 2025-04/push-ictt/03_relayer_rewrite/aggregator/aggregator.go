@@ -76,6 +76,12 @@ type SignatureAggregator struct {
 	l1ValidatorsCacheLock   sync.RWMutex
 	getSubnetCache          map[ids.ID]platformvm.GetSubnetClientResponse
 	getSubnetCacheLock      sync.RWMutex
+
+	// New fields to cache validator connections per subnet
+	connectedValidatorsMap        map[ids.ID]*peers.ConnectedCanonicalValidators
+	connectedValidatorsLock       sync.RWMutex
+	defaultQuorumPercentage       uint64
+	defaultQuorumPercentageBuffer uint64
 }
 
 func NewSignatureAggregator(
@@ -95,19 +101,23 @@ func NewSignatureAggregator(
 		)
 	}
 	sa := SignatureAggregator{
-		network:                 network,
-		subnetIDsByBlockchainID: map[ids.ID]ids.ID{},
-		logger:                  logger,
-		metrics:                 metrics,
-		currentRequestID:        atomic.Uint32{},
-		cache:                   cache,
-		messageCreator:          messageCreator,
-		pChainClient:            pChainClient,
-		pChainClientOptions:     pChainClientOptions,
-		l1ValidatorsCache:       make(map[ids.ID][]platformvm.APIL1Validator),
-		l1ValidatorsCacheLock:   sync.RWMutex{},
-		getSubnetCache:          make(map[ids.ID]platformvm.GetSubnetClientResponse),
-		getSubnetCacheLock:      sync.RWMutex{},
+		network:                       network,
+		subnetIDsByBlockchainID:       map[ids.ID]ids.ID{},
+		logger:                        logger,
+		metrics:                       metrics,
+		currentRequestID:              atomic.Uint32{},
+		cache:                         cache,
+		messageCreator:                messageCreator,
+		pChainClient:                  pChainClient,
+		pChainClientOptions:           pChainClientOptions,
+		l1ValidatorsCache:             make(map[ids.ID][]platformvm.APIL1Validator),
+		l1ValidatorsCacheLock:         sync.RWMutex{},
+		getSubnetCache:                make(map[ids.ID]platformvm.GetSubnetClientResponse),
+		getSubnetCacheLock:            sync.RWMutex{},
+		connectedValidatorsMap:        make(map[ids.ID]*peers.ConnectedCanonicalValidators),
+		connectedValidatorsLock:       sync.RWMutex{},
+		defaultQuorumPercentage:       67, // Default value
+		defaultQuorumPercentageBuffer: 3,  // Default value
 	}
 	sa.currentRequestID.Store(rand.Uint32())
 	return &sa, nil
@@ -117,7 +127,69 @@ func (s *SignatureAggregator) Shutdown() {
 	s.network.Shutdown()
 }
 
-func (s *SignatureAggregator) connectToQuorumValidators(
+// InitializeSubnetConnections pre-connects to validators for the specified subnets
+// Call this during startup for any subnet you plan to use with CreateSignedMessage
+func (s *SignatureAggregator) InitializeSubnetConnections(
+	ctx context.Context,
+	subnetIDs []ids.ID,
+	quorumPercentage uint64,
+) error {
+	for _, subnetID := range subnetIDs {
+		s.logger.Info("Pre-connecting to validators for subnet", zap.String("subnetID", subnetID.String()))
+
+		// Track the subnet in the network
+		s.network.TrackSubnet(subnetID)
+
+		// Connect to validators
+		connectedValidators, err := s.connectToQuorumValidatorsInternal(subnetID, quorumPercentage)
+		if err != nil {
+			return fmt.Errorf("failed to connect to validators for subnet %s: %w", subnetID, err)
+		}
+
+		// Cache connected validators
+		s.connectedValidatorsLock.Lock()
+		s.connectedValidatorsMap[subnetID] = connectedValidators
+		s.connectedValidatorsLock.Unlock()
+
+		// Also initialize L1 validators cache if needed
+		if subnetID != constants.PrimaryNetworkID {
+			subnet, err := s.GetSubnetCached(ctx, subnetID, s.pChainClientOptions...)
+			if err != nil {
+				s.logger.Warn(
+					"Failed to cache subnet info during initialization",
+					zap.String("subnetID", subnetID.String()),
+					zap.Error(err),
+				)
+				continue
+			}
+
+			if subnet.ConversionID != ids.Empty {
+				_, err = s.GetCurrentL1ValidatorsCached(ctx, subnetID, s.pChainClientOptions...)
+				if err != nil {
+					s.logger.Warn(
+						"Failed to cache L1 validators during initialization",
+						zap.String("subnetID", subnetID.String()),
+						zap.Error(err),
+					)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// SetDefaultQuorumParameters sets the default quorum parameters to use
+func (s *SignatureAggregator) SetDefaultQuorumParameters(
+	quorumPercentage uint64,
+	quorumPercentageBuffer uint64,
+) {
+	s.defaultQuorumPercentage = quorumPercentage
+	s.defaultQuorumPercentageBuffer = quorumPercentageBuffer
+}
+
+// Internal method that doesn't cache the result
+func (s *SignatureAggregator) connectToQuorumValidatorsInternal(
 	signingSubnet ids.ID,
 	quorumPercentage uint64,
 ) (*peers.ConnectedCanonicalValidators, error) {
@@ -165,6 +237,46 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	return connectedValidators, nil
 }
 
+// Get cached connected validators or connect to them if needed
+func (s *SignatureAggregator) getConnectedValidators(
+	signingSubnet ids.ID,
+	quorumPercentage uint64,
+) (*peers.ConnectedCanonicalValidators, error) {
+	// First try to get from cache
+	s.connectedValidatorsLock.RLock()
+	connectedValidators, ok := s.connectedValidatorsMap[signingSubnet]
+	s.connectedValidatorsLock.RUnlock()
+
+	if ok {
+		// Verify that we still have enough connected stake
+		if utils.CheckStakeWeightExceedsThreshold(
+			big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
+			connectedValidators.ValidatorSet.TotalWeight,
+			quorumPercentage,
+		) {
+			return connectedValidators, nil
+		}
+		// Not enough connected stake, need to refresh
+		s.logger.Info(
+			"Cached validators no longer have sufficient stake, refreshing",
+			zap.String("subnetID", signingSubnet.String()),
+		)
+	}
+
+	// Not in cache or insufficient stake, create new connection
+	newConnectedValidators, err := s.connectToQuorumValidatorsInternal(signingSubnet, quorumPercentage)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update cache
+	s.connectedValidatorsLock.Lock()
+	s.connectedValidatorsMap[signingSubnet] = newConnectedValidators
+	s.connectedValidatorsLock.Unlock()
+
+	return newConnectedValidators, nil
+}
+
 func (s *SignatureAggregator) CreateSignedMessage(
 	ctx context.Context,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -173,6 +285,14 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	requiredQuorumPercentage uint64,
 	quorumPercentageBuffer uint64,
 ) (*avalancheWarp.Message, error) {
+	// Use default quorum parameters if not specified
+	if requiredQuorumPercentage == 0 {
+		requiredQuorumPercentage = s.defaultQuorumPercentage
+	}
+	if quorumPercentageBuffer == 0 {
+		quorumPercentageBuffer = s.defaultQuorumPercentageBuffer
+	}
+
 	if requiredQuorumPercentage == 0 || requiredQuorumPercentage+quorumPercentageBuffer > 100 {
 		s.logger.Error(
 			"Invalid quorum percentages",
@@ -204,7 +324,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
-	connectedValidators, err := s.connectToQuorumValidators(signingSubnet, requiredQuorumPercentage)
+	connectedValidators, err := s.getConnectedValidators(signingSubnet, requiredQuorumPercentage)
 	if err != nil {
 		s.logger.Error(
 			"Failed to fetch quorum of connected canonical validators",

@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"hello/aggregator"
@@ -39,6 +40,10 @@ import (
 
 const (
 	batchSize = 1000
+	// Default number of worker goroutines to use for signature aggregation
+	defaultWorkerCount              = 200
+	defaultRequiredQuorumPercentage = 67
+	defaultQuorumPercentageBuffer   = 3
 )
 
 func main() {
@@ -49,6 +54,7 @@ func main() {
 	destChainID := flag.String("dest-chain", "KGAehYuq9J951RHuooVVkiJ3YEMmjpNUKx2SmW5Reb7HdBhNT", "Destination chain ID to filter messages (required)")
 	timeoutSec := flag.Uint("timeout", 60, "Overall timeout in seconds for the operation")
 	sourceSubnetIDStr := flag.String("source-subnet", "2eob8mVishyekgALVg3g85NDWXHRQ1unYbBrj355MogAd9sUnb", "Signing subnet ID (required)")
+	workerCount := flag.Int("workers", defaultWorkerCount, "Number of concurrent workers for signature aggregation")
 	flag.Parse()
 
 	if *rpcURL == "" {
@@ -91,6 +97,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize connection to validators (done once at startup)
+	fmt.Printf("Pre-connecting to validators for subnet %s...\n", sourceSubnetID)
+	initCtx, initCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer initCancel()
+
+	err = aggWrapper.sigAgg.InitializeSubnetConnections(initCtx, []ids.ID{sourceSubnetID}, defaultRequiredQuorumPercentage)
+	if err != nil {
+		fmt.Printf("Warning: Pre-connection to validators failed: %v\n", err)
+		// Continue anyway, connections will be established on-demand
+	}
+
+	// Set default quorum parameters
+	aggWrapper.sigAgg.SetDefaultQuorumParameters(defaultRequiredQuorumPercentage, defaultQuorumPercentageBuffer)
+
 	// Parse block range for Warp messages
 	parseStart := time.Now()
 	messages, err := parseBlockWarps(ctx, *rpcURL, big.NewInt(int64(*startBlock)), big.NewInt(int64(*endBlock)), *destChainID)
@@ -106,57 +126,118 @@ func main() {
 		return
 	}
 
-	// Aggregate signatures in batches
-	fmt.Printf("Aggregating signatures for %d messages in batches of %d...\n", len(messages), batchSize)
-	overallAggregationStart := time.Now()
-
-	numMessages := len(messages)
-	for i := 0; i < numMessages; i += batchSize {
-		batchStart := time.Now()
-		batchEnd := i + batchSize
-		if batchEnd > numMessages {
-			batchEnd = numMessages
-		}
-		batch := messages[i:batchEnd]
-		batchNum := (i / batchSize) + 1
-		numInBatch := len(batch)
-
-		var wg sync.WaitGroup
-		for j, msg := range batch {
-			currentIndex := i + j // Overall index
-			wg.Add(1)
-			go func(m *avalancheWarp.UnsignedMessage, batchIndex int, overallIndex int) {
-				defer wg.Done()
-				timeStart := time.Now()
-				signed, err := aggWrapper.Sign(ctx, m) // Use the overall context
-				timeEnd := time.Now()
-				if err != nil {
-					fmt.Printf("[Batch %d, Msg %d/%d (Overall %d)] Error signing Warp ID %s: %v (took %v)\n",
-						batchNum, batchIndex+1, numInBatch, overallIndex+1, m.ID(), err, timeEnd.Sub(timeStart))
-					return
-				}
-				_ = signed
-				// fmt.Printf("[Batch %d, Msg %d/%d (Overall %d)] Signed Warp ID %s (took %v)\n",
-				// 	batchNum, batchIndex+1, numInBatch, overallIndex+1, signed.ID(), timeEnd.Sub(timeStart))
-			}(msg, j, currentIndex)
-		}
-
-		// Wait for the current batch to complete
-		wg.Wait()
-		batchTime := time.Since(batchStart)
-		fmt.Printf("--- Finished Batch %d (%d messages) in %v ---\n", batchNum, numInBatch, batchTime)
+	// Use worker pool instead of unlimited goroutines
+	workers := *workerCount
+	if workers <= 0 {
+		workers = defaultWorkerCount
 	}
 
+	// Aggregate signatures using worker pool
+	fmt.Printf("Aggregating signatures for %d messages using %d workers...\n", len(messages), workers)
+	overallAggregationStart := time.Now()
+
+	// Create work channels
+	jobs := make(chan *avalancheWarp.UnsignedMessage, len(messages))
+	results := make(chan signResult, len(messages))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for w := 1; w <= workers; w++ {
+		wg.Add(1)
+		go worker(ctx, w, &wg, aggWrapper, jobs, results)
+	}
+
+	// Add all jobs to the queue
+	for _, msg := range messages {
+		jobs <- msg
+	}
+	close(jobs)
+
+	// Setup progress tracking
+	var (
+		completedCount     atomic.Int64
+		successCount       int
+		failureCount       int
+		progressTicker     = time.NewTicker(1 * time.Second)
+		progressDone       = make(chan struct{})
+		lastCompletedCount int64
+	)
+
+	// Start progress reporter
+	go func() {
+		defer close(progressDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-progressTicker.C:
+				current := completedCount.Load()
+				messagesPerSecond := current - lastCompletedCount
+				lastCompletedCount = current
+				fmt.Printf("Progress: %d/%d messages completed (%d/sec)\n",
+					current, len(messages), messagesPerSecond)
+			}
+		}
+	}()
+
+	// Process results in main goroutine
+	go func() {
+		for result := range results {
+			if result.err == nil {
+				successCount++
+			} else {
+				failureCount++
+			}
+			completedCount.Add(1)
+		}
+		// Signal completion to the progress reporter
+		progressTicker.Stop()
+		close(progressDone)
+	}()
+
+	// Wait for all workers to complete
+	wg.Wait()
+	close(results)
+
+	// Wait for result processing to finish
+	<-progressDone
+
 	overallAggregationEnd := time.Now()
-	fmt.Printf("Finished all signature aggregation batches in %v\n", overallAggregationEnd.Sub(overallAggregationStart))
+	fmt.Printf("Finished all signature aggregation: %d succeeded, %d failed, total time: %v\n",
+		successCount, failureCount, overallAggregationEnd.Sub(overallAggregationStart))
+}
+
+// Result type for signature aggregation
+type signResult struct {
+	messageID string
+	err       error
+}
+
+// Worker function that processes jobs from the channel
+func worker(ctx context.Context, id int, wg *sync.WaitGroup, aggWrapper *AggregatorWrapper, jobs <-chan *avalancheWarp.UnsignedMessage, results chan<- signResult) {
+	defer wg.Done()
+
+	for msg := range jobs {
+		// Process the message
+		signed, err := aggWrapper.Sign(ctx, msg)
+
+		if err != nil {
+			// log.Printf("[Worker %d] Error signing Warp ID %s: %v (took %v)\n",
+			// 	id, msg.ID(), err, timeEnd.Sub(timeStart))
+			results <- signResult{messageID: msg.ID().String(), err: err}
+		} else {
+			_ = signed // We don't need to use the signed message, just want the signature aggregation
+			// log.Printf("[Worker %d] Signed Warp ID %s (took %v)\n",
+			// 	id, signed.ID(), timeEnd.Sub(timeStart))
+			results <- signResult{messageID: msg.ID().String(), err: nil}
+		}
+	}
 }
 
 const (
-	localNodeURL                    = "http://localhost:9650"
-	defaultRequiredQuorumPercentage = 67
-	defaultQuorumPercentageBuffer   = 3
-	defaultAppTimeout               = 15 * time.Second // Timeout for each aggregation call
-	defaultConnectTimeout           = 10 * time.Second // Timeout for initial node info calls
+	localNodeURL          = "http://localhost:9650"
+	defaultAppTimeout     = 15 * time.Second // Timeout for each aggregation call
+	defaultConnectTimeout = 10 * time.Second // Timeout for initial node info calls
 )
 
 // --- Minimal Config Implementation for Peers ---
@@ -288,8 +369,8 @@ func (aw *AggregatorWrapper) Sign(ctx context.Context, unsignedMsg *avalancheWar
 		unsignedMsg,
 		nil, // No justification
 		aw.signingSubnetID,
-		defaultRequiredQuorumPercentage,
-		defaultQuorumPercentageBuffer,
+		0, // Use default quorum percentage
+		0, // Use default quorum buffer
 	)
 	if err != nil {
 		return nil, fmt.Errorf("signature aggregation failed for msg %s: %w", unsignedMsg.ID(), err)

@@ -111,7 +111,6 @@ func aggregateSignature(
 
 	// Registerer for metrics (can be dummy for example)
 	registry := prometheus.NewRegistry()
-	metricsInstance := sigAggMetrics.NewSignatureAggregatorMetrics(registry) // Needed by aggregator
 
 	trackedSubnets := set.NewSet[ids.ID](1)
 	trackedSubnets.Add(signingSubnetID)
@@ -123,8 +122,8 @@ func aggregateSignature(
 
 	// Message Creator
 	msgCreator, err := message.NewCreator(
-		logger,                   // Use the main logger
-		prometheus.NewRegistry(), // Can use a dummy registry
+		logger,   // Use the main logger
+		registry, // Can use a dummy registry
 		constants.DefaultNetworkCompressionType,
 		constants.DefaultNetworkMaximumInboundTimeout,
 	)
@@ -163,7 +162,7 @@ func aggregateSignature(
 		logger,
 		msgCreator,
 		1024, // Default cache size
-		metricsInstance,
+		sigAggMetrics.NewSignatureAggregatorMetrics(registry),
 		pchainClient,
 		pchainRPCOptions,
 	)

@@ -1,29 +1,33 @@
-module hello
+module github.com/containerman17/experiments/2025-04/turborelayer-mvp
 
 go 1.23.8
 
 require (
 	github.com/ava-labs/avalanchego v1.13.1-0.20250328202636-14dea8025061 // branch icm-services-patch-v1.13.0
 	github.com/ava-labs/subnet-evm v0.7.2
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/ethereum/go-ethereum v1.13.14
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
+	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.13.0 // indirect
 	google.golang.org/grpc v1.71.1 // indirect
-	google.golang.org/protobuf v1.36.5 // indirect
+	google.golang.org/protobuf v1.36.5
 )
 
 require (
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250307173936-f6a36b902f4f
 	github.com/ava-labs/icm-services v1.4.1-0.20250409021800-d17814a9d692
+	github.com/tyler-smith/go-bip32 v1.0.0
+	github.com/tyler-smith/go-bip39 v1.1.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/DataDog/zstd v1.5.2 // indirect
+	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect
+	github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/StephenButtolph/canoto v0.15.0 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect

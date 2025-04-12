@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"hello/aggregator"
+	"github.com/containerman17/experiments/2025-04/turborelayer-mvp/aggregator"
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
@@ -48,7 +48,7 @@ const (
 
 func main() {
 	// Command line flags
-	rpcURL := flag.String("rpc-url", "http://localhost:9650/ext/bc/PSPJDsDstwafoRHMH4ToeADFWm887WJzUe8shf3S8RLMHCMzZ/rpc", "RPC endpoint URL of the source blockchain")
+	rpcURL := flag.String("rpc-url", SOURCE_RPC_URL, "RPC endpoint URL of the source blockchain")
 	startBlock := flag.Uint64("start-block", 1, "Start block number to parse for Warp messages")
 	endBlock := flag.Uint64("end-block", 0, "End block number to parse for Warp messages")
 	destChainID := flag.String("dest-chain", "KGAehYuq9J951RHuooVVkiJ3YEMmjpNUKx2SmW5Reb7HdBhNT", "Destination chain ID to filter messages (required)")
@@ -235,7 +235,6 @@ func worker(ctx context.Context, id int, wg *sync.WaitGroup, aggWrapper *Aggrega
 }
 
 const (
-	localNodeURL          = "http://localhost:9650"
 	defaultAppTimeout     = 15 * time.Second // Timeout for each aggregation call
 	defaultConnectTimeout = 10 * time.Second // Timeout for initial node info calls
 )
@@ -278,8 +277,8 @@ func NewAggregatorWrapper(signingSubnetID ids.ID) (*AggregatorWrapper, error) {
 	)
 
 	// --- API Clients ---
-	infoClient := info.NewClient(localNodeURL)
-	pchainClient := platformvm.NewClient(localNodeURL)
+	infoClient := info.NewClient(LOCAL_NODE_URL)
+	pchainClient := platformvm.NewClient(LOCAL_NODE_URL)
 	pchainRPCOptions := peerUtils.InitializeOptions(&basecfg.APIConfig{})
 
 	// --- Get Local Node Info ---
@@ -295,8 +294,8 @@ func NewAggregatorWrapper(signingSubnetID ids.ID) (*AggregatorWrapper, error) {
 
 	// --- Peer Network Setup ---
 	peerCfg := &minimalPeerConfig{
-		infoAPI:   &basecfg.APIConfig{BaseURL: localNodeURL},
-		pchainAPI: &basecfg.APIConfig{BaseURL: localNodeURL},
+		infoAPI:   &basecfg.APIConfig{BaseURL: LOCAL_NODE_URL},
+		pchainAPI: &basecfg.APIConfig{BaseURL: LOCAL_NODE_URL},
 	}
 	registry := prometheus.NewRegistry() // Dummy registry for example
 	trackedSubnets := set.NewSet[ids.ID](1)

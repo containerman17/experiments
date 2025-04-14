@@ -27,44 +27,16 @@ import (
 )
 
 const (
-	batchSize = 1000
-	// Default number of worker goroutines to use for signature aggregation
-	defaultWorkerCount              = 200
-	defaultRequiredQuorumPercentage = 67
-	defaultQuorumPercentageBuffer   = 3
+	workerCount = 200
 )
 
 func main() {
-	// Command line flags
-	rpcURL := flag.String("rpc-url", SOURCE_RPC_URL, "RPC endpoint URL of the source blockchain")
-	startBlock := flag.Uint64("start-block", 1, "Start block number to parse for Warp messages")
-	endBlock := flag.Uint64("end-block", 0, "End block number to parse for Warp messages")
-	destChainID := flag.String("dest-chain", "KGAehYuq9J951RHuooVVkiJ3YEMmjpNUKx2SmW5Reb7HdBhNT", "Destination chain ID to filter messages (required)")
-	timeoutSec := flag.Uint("timeout", 60, "Overall timeout in seconds for the operation")
 	sourceSubnetIDStr := flag.String("source-subnet", "2eob8mVishyekgALVg3g85NDWXHRQ1unYbBrj355MogAd9sUnb", "Signing subnet ID (required)")
-	workerCount := flag.Int("workers", defaultWorkerCount, "Number of concurrent workers for signature aggregation")
 	flag.Parse()
-
-	if *rpcURL == "" {
-		fmt.Println("Error: -rpc-url flag is required.")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *destChainID == "" {
-		fmt.Println("Error: -dest-chain flag is required.")
-		flag.Usage()
-		os.Exit(1)
-	}
 
 	if *sourceSubnetIDStr == "" {
 		fmt.Println("Error: -source-subnet flag is required.")
 		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *endBlock <= *startBlock && *endBlock != 0 {
-		fmt.Println("Error: -end-block must be greater than -start-block.")
 		os.Exit(1)
 	}
 
@@ -75,8 +47,7 @@ func main() {
 	}
 
 	// Create context with overall timeout
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutSec)*time.Second)
-	defer cancel()
+	ctx := context.TODO()
 
 	// Initialize Aggregator Wrapper
 	aggWrapper, err := aggregator.NewAggregatorWrapper(sourceSubnetID)
@@ -90,38 +61,29 @@ func main() {
 	initCtx, initCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer initCancel()
 
-	err = aggWrapper.SigAgg.InitializeSubnetConnections(initCtx, []ids.ID{sourceSubnetID}, defaultRequiredQuorumPercentage)
+	err = aggWrapper.SigAgg.InitializeSubnetConnections(initCtx, []ids.ID{sourceSubnetID}, 67)
 	if err != nil {
 		fmt.Printf("Warning: Pre-connection to validators failed: %v\n", err)
 		// Continue anyway, connections will be established on-demand
 	}
 
-	// Set default quorum parameters
-	aggWrapper.SigAgg.SetDefaultQuorumParameters(defaultRequiredQuorumPercentage, defaultQuorumPercentageBuffer)
-
 	// Parse block range for Warp messages
 	parseStart := time.Now()
-	messages, err := parseBlockWarps(ctx, *rpcURL, big.NewInt(int64(*startBlock)), big.NewInt(int64(*endBlock)), *destChainID)
+	messages, err := parseBlockWarps(ctx, SOURCE_RPC_URL, big.NewInt(int64(START_BLOCK)), big.NewInt(int64(END_BLOCK)), DEST_CHAIN)
 	if err != nil {
-		fmt.Printf("Error parsing block range %d-%d: %v\n", *startBlock, *endBlock, err)
+		fmt.Printf("Error parsing block range %d-%d: %v\n", START_BLOCK, END_BLOCK, err)
 		os.Exit(1)
 	}
 	parseEnd := time.Now()
-	fmt.Printf("Parsed %d messages from blocks %d-%d in %v\n", len(messages), *startBlock, *endBlock, parseEnd.Sub(parseStart))
+	fmt.Printf("Parsed %d messages from blocks %d-%d in %v\n", len(messages), START_BLOCK, END_BLOCK, parseEnd.Sub(parseStart))
 
 	if len(messages) == 0 {
 		fmt.Println("No messages found to sign.")
 		return
 	}
 
-	// Use worker pool instead of unlimited goroutines
-	workers := *workerCount
-	if workers <= 0 {
-		workers = defaultWorkerCount
-	}
-
 	// Aggregate signatures using worker pool
-	fmt.Printf("Aggregating signatures for %d messages using %d workers...\n", len(messages), workers)
+	fmt.Printf("Aggregating signatures for %d messages using %d workers...\n", len(messages), workerCount)
 	overallAggregationStart := time.Now()
 
 	// Create work channels
@@ -130,7 +92,7 @@ func main() {
 
 	// Start workers
 	var wg sync.WaitGroup
-	for w := 1; w <= workers; w++ {
+	for w := 1; w <= workerCount; w++ {
 		wg.Add(1)
 		go worker(ctx, w, &wg, aggWrapper, jobs, results)
 	}

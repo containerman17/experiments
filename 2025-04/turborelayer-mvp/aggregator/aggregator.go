@@ -188,15 +188,6 @@ func (s *SignatureAggregator) InitializeSubnetConnections(
 	return nil
 }
 
-// SetDefaultQuorumParameters sets the default quorum parameters to use
-func (s *SignatureAggregator) SetDefaultQuorumParameters(
-	quorumPercentage uint64,
-	quorumPercentageBuffer uint64,
-) {
-	s.defaultQuorumPercentage = quorumPercentage
-	s.defaultQuorumPercentageBuffer = quorumPercentageBuffer
-}
-
 // Internal method that doesn't cache the result
 func (s *SignatureAggregator) connectToQuorumValidatorsInternal(
 	signingSubnet ids.ID,

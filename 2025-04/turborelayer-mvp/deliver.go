@@ -3,31 +3,28 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
+	"github.com/ava-labs/coreth/precompile/contracts/warp"
 	teleportermessenger "github.com/ava-labs/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterUtils "github.com/ava-labs/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/containerman17/experiments/2025-04/turborelayer-mvp/aggregator"
+	"github.com/ava-labs/subnet-evm/core/types"
+	predicateutils "github.com/ava-labs/subnet-evm/predicate"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// DeliverMessageParams holds all parameters needed for delivering a message
-type DeliverMessageParams struct {
-	UnsignedMsg             *avalancheWarp.UnsignedMessage
-	SourceClient            ethclient.Client
-	DestClient              ethclient.Client
-	DestTeleporterMessenger *teleportermessenger.TeleporterMessenger
-	DestChainIDStr          string
-	AggWrapper              *aggregator.AggregatorWrapper
-}
+const (
+	BaseFeeFactor        = 2
+	MaxPriorityFeePerGas = 2500000000 // 2.5 gwei
+)
 
-func deliverMessage(params DeliverMessageParams) error {
+func (t *TurboRelayerMVP) deliverMessage(unsignedMsg *avalancheWarp.UnsignedMessage) error {
 	//check chain id
-	addressedPayload, err := payload.ParseAddressedCall(params.UnsignedMsg.Payload)
+	addressedPayload, err := payload.ParseAddressedCall(unsignedMsg.Payload)
 	if err != nil {
 		return fmt.Errorf("failed to parse payload: %w", err)
 	}
@@ -44,14 +41,14 @@ func deliverMessage(params DeliverMessageParams) error {
 		return fmt.Errorf("failed to convert chain ID: %w", err)
 	}
 
-	if chainID.String() != params.DestChainIDStr {
+	if chainID.String() != t.destChainIDStr {
 		return fmt.Errorf("destination chain ID does not match: %s", chainID.String())
 	}
 
 	//check for duplicates
 	teleporterMessageID, err := teleporterUtils.CalculateMessageID(
 		common.HexToAddress(TELEPORTER_MESSENGER_ADDRESS),
-		params.UnsignedMsg.SourceChainID,
+		unsignedMsg.SourceChainID,
 		teleporterMessage.DestinationBlockchainID,
 		teleporterMessage.MessageNonce,
 	)
@@ -59,22 +56,80 @@ func deliverMessage(params DeliverMessageParams) error {
 		return fmt.Errorf("failed to calculate message ID: %w", err)
 	}
 
-	delivered, err := params.DestTeleporterMessenger.MessageReceived(&bind.CallOpts{}, teleporterMessageID)
+	delivered, err := t.destTeleporterMessenger.MessageReceived(&bind.CallOpts{}, teleporterMessageID)
 	if err != nil {
 		// Handle error
 		return err
 	}
 
 	if delivered {
+		fmt.Printf("Message already delivered: %s\n", teleporterMessageID.String())
 		return nil //already delivered
 	}
 
 	//deliver message
-	signed, err := params.AggWrapper.Sign(context.TODO(), params.UnsignedMsg)
+	signed, err := t.aggWrapper.Sign(context.TODO(), unsignedMsg)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	_ = signed //TODO:implement tx sending
+	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
+		0,
+		common.Address{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to pack receive cross chain message: %w", err)
+	}
+
+	// Get the current base fee estimation, which is based on the previous blocks gas usage.
+	baseFee, err := t.destEthClient.EstimateBaseFee(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get base fee: %w", err)
+	}
+
+	// Get the suggested gas tip cap of the network
+	// TODO: Add a configurable ceiling to this value
+	gasTipCap, err := t.destEthClient.SuggestGasTipCap(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get gas tip cap: %w", err)
+	}
+
+	to := common.HexToAddress(TELEPORTER_MESSENGER_ADDRESS)
+	gasFeeCap := baseFee.Mul(baseFee, big.NewInt(BaseFeeFactor))
+	gasFeeCap.Add(gasFeeCap, big.NewInt(MaxPriorityFeePerGas))
+
+	gasLimit := uint64(1000000)
+
+	signer, nonce, releaseFunc, err := t.signerCattle.GetNextSigner()
+	defer releaseFunc()
+	if err != nil {
+		return fmt.Errorf("failed to get signer: %w", err)
+	}
+
+	// Construct the actual transaction to broadcast on the destination chain
+	tx := predicateutils.NewPredicateTx(
+		t.destEvmChainID,
+		nonce,
+		&to,
+		gasLimit,
+		gasFeeCap,
+		gasTipCap,
+		big.NewInt(0),
+		callData,
+		types.AccessList{},
+		warp.ContractAddress,
+		signed.Bytes(),
+	)
+
+	// Sign and send the transaction on the destination chain
+	signedTx, err := signer.SignTx(tx, t.destEvmChainID)
+	if err != nil {
+		return fmt.Errorf("failed to sign transaction: %w", err)
+	}
+
+	if err := t.destEthClient.SendTransaction(context.Background(), signedTx); err != nil {
+		return fmt.Errorf("failed to send transaction: %w", err)
+	}
+
 	return nil
 }

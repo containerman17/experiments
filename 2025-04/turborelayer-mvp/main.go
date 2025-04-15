@@ -3,16 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/containerman17/experiments/2025-04/turborelayer-mvp/aggregator"
 )
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
 
 func main() {
 	sourceSubnetID, err := ids.FromString(SOURCE_SUBNET)
@@ -21,85 +25,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create context with overall timeout
-	ctx := context.TODO()
-
-	// Initialize Aggregator Wrapper
-	aggWrapper, err := aggregator.NewAggregatorWrapper(sourceSubnetID)
+	relayer, err := CreateTurboRelayerMVP(sourceSubnetID, SOURCE_RPC_URL, DEST_CHAIN, DEST_RPC_URL)
 	if err != nil {
-		fmt.Printf("Error creating aggregator wrapper: %v\n", err)
+		fmt.Printf("Error creating turbo relayer: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Processing blocks %d to %d...\n", START_BLOCK, END_BLOCK)
-	startTime := time.Now()
+	client := must(ethclient.DialContext(context.TODO(), SOURCE_RPC_URL))
+	defer client.Close()
+	endBlock := must(client.BlockNumber(context.TODO()))
 
 	successCount := 0
 	failureCount := 0
-
-	client, err := ethclient.DialContext(ctx, SOURCE_RPC_URL)
-	if err != nil {
-		fmt.Printf("failed to connect to RPC endpoint: %v\n", err)
-		os.Exit(1)
-	}
-	defer client.Close()
-
-	for blockNum := START_BLOCK; blockNum <= END_BLOCK; blockNum++ {
-		blockNumBig := big.NewInt(int64(blockNum))
-		success, failure := handleBlock(ctx, blockNumBig, aggWrapper, client)
-
+	for blockNum := 1; blockNum <= int(endBlock); blockNum++ {
+		success, failure := relayer.handleBlock(big.NewInt(int64(blockNum)))
 		successCount += success
 		failureCount += failure
 
-		fmt.Printf("Block %d processed: %d succeeded, %d failed\n", blockNum, success, failure)
+		if success+failure > 0 {
+			fmt.Printf("Processed block %d with %d successes and %d failures\n", blockNum, success, failure)
+		}
+
+		if successCount+failureCount > 10 {
+			log.Fatalf("Done for now. Processed %d blocks with %d successes and %d failures", successCount+failureCount, successCount, failureCount)
+		}
 	}
 
-	duration := time.Since(startTime)
-	fmt.Printf("Finished processing all blocks: %d succeeded, %d failed, total time: %v\n",
-		successCount, failureCount, duration)
-}
-
-func handleBlock(ctx context.Context, blockNumber *big.Int, aggWrapper *aggregator.AggregatorWrapper, client ethclient.Client) (int, int) {
-	successCount := 0
-	failureCount := 0
-
-	// Parse Warp messages from the block
-	messages, err := parseBlockWarps(ctx, SOURCE_RPC_URL, blockNumber, DEST_CHAIN, client)
-	if err != nil {
-		fmt.Printf("Error parsing block %s: %v\n", blockNumber.String(), err)
-		return 0, 0
-	}
-
-	if len(messages) == 0 {
-		return 0, 0
-	}
-
-	// Process messages in parallel
-	var wg sync.WaitGroup
-	var mu sync.Mutex // Mutex to protect concurrent access to counters
-
-	for _, msg := range messages {
-		wg.Add(1)
-		go func(message *avalancheWarp.UnsignedMessage) {
-			defer wg.Done()
-
-			// Sign the message
-			signed, err := aggWrapper.Sign(ctx, message)
-
-			mu.Lock()
-			defer mu.Unlock()
-
-			if err != nil {
-				fmt.Printf("Error signing Warp ID %s: %v\n", message.ID(), err)
-				failureCount++
-			} else {
-				_ = signed // We don't need to use the signed message, just want the signature aggregation
-				successCount++
-			}
-		}(msg)
-	}
-
-	wg.Wait() // Wait for all goroutines to complete
-
-	return successCount, failureCount
+	fmt.Printf("Finished processing all blocks: %d succeeded, %d failed\n", successCount, failureCount)
 }

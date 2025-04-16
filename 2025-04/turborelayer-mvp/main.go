@@ -36,7 +36,7 @@ func main() {
 
 	successCount := 0
 	failureCount := 0
-	for blockNum := 1; blockNum <= int(endBlock); blockNum++ {
+	for blockNum := 5279; blockNum <= int(endBlock); blockNum++ {
 		success, failure := relayer.handleBlock(big.NewInt(int64(blockNum)))
 		successCount += success
 		failureCount += failure

@@ -22,6 +22,7 @@ type TurboRelayerMVP struct {
 	destChainIDStr          string
 	destEvmChainID          *big.Int
 	signerCattle            *SignerCattle
+	txTimeout               time.Duration
 }
 
 func CreateTurboRelayerMVP(sourceSubnetID ids.ID, sourceRPCURL string, destChainID string, destRPCURL string, rootPrivateKey string) (*TurboRelayerMVP, error) {
@@ -64,6 +65,7 @@ func CreateTurboRelayerMVP(sourceSubnetID ids.ID, sourceRPCURL string, destChain
 		destChainIDStr:          destChainID,
 		destEvmChainID:          destEvmChainID,
 		signerCattle:            signerCattle,
+		txTimeout:               5 * time.Minute, // Default timeout for transaction confirmation
 	}, nil
 }
 

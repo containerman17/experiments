@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -131,5 +132,20 @@ func (t *TurboRelayerMVP) deliverMessage(unsignedMsg *avalancheWarp.UnsignedMess
 		return fmt.Errorf("failed to send transaction: %w", err)
 	}
 
+	// Wait for the transaction to be mined
+	fmt.Printf("Waiting for transaction %s to be mined...\n", signedTx.Hash().Hex())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	receipt, err := t.destEthClient.TransactionReceipt(ctx, signedTx.Hash())
+	if err != nil {
+		return fmt.Errorf("failed while waiting for transaction: %w", err)
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		return fmt.Errorf("transaction failed: %s", signedTx.Hash().Hex())
+	}
+
+	fmt.Printf("Transaction mined successfully in block %d\n", receipt.BlockNumber.Uint64())
 	return nil
 }

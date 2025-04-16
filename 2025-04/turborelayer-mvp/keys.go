@@ -5,15 +5,21 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ava-labs/icm-services/vms/evm/signer"
+	"github.com/ava-labs/subnet-evm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/tyler-smith/go-bip32"
 )
+
+// 1 AVAX in wei
+var MinBalance = new(big.Int).Mul(big.NewInt(1), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 
 type SignerCattle struct {
 	masterKey *bip32.Key
@@ -94,6 +100,7 @@ func (s *SignerCattle) GetNextSigner() (*signer.TxSigner, uint64, func(), error)
 
 	// No available signer, create a new one
 	index := len(s.signers)
+	fmt.Println("Creating new signer", index)
 	signer, err := s.getSignerByIndex(index)
 	if err != nil {
 		return nil, 0, nil, err
@@ -102,6 +109,22 @@ func (s *SignerCattle) GetNextSigner() (*signer.TxSigner, uint64, func(), error)
 	// Fetch nonce for the new signer
 	if err := s.fetchNonce(index); err != nil {
 		return nil, 0, nil, err
+	}
+
+	// Check the balance of the new signer and fund it if necessary
+	signerAddr := signer.Address()
+	balance, err := s.client.BalanceAt(context.Background(), signerAddr, nil)
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("failed to get balance: %w", err)
+	}
+
+	// If balance is below minimum, transfer funds from seedKey
+	if balance.Cmp(MinBalance) < 0 {
+		// Transfer minBalance*2
+		transferAmount := new(big.Int).Mul(MinBalance, big.NewInt(2))
+		if err := s.transferFunds(signerAddr, transferAmount); err != nil {
+			return nil, 0, nil, fmt.Errorf("failed to fund new signer: %w", err)
+		}
 	}
 
 	s.inUse[index] = true
@@ -158,4 +181,75 @@ func deriveKey(masterKey *bip32.Key, index int) (*ecdsa.PrivateKey, common.Addre
 	ecdaPublicKey := ecdaPrivateKey.Public().(*ecdsa.PublicKey)
 
 	return ecdaPrivateKey, crypto.PubkeyToAddress(*ecdaPublicKey)
+}
+
+// transferFunds sends the specified amount from seedKey to the target address
+func (s *SignerCattle) transferFunds(to common.Address, amount *big.Int) error {
+	ctx := context.Background()
+
+	// Get nonce for seed key
+	seedAddr := crypto.PubkeyToAddress(s.seedKey.PublicKey)
+	nonce, err := s.client.NonceAt(ctx, seedAddr, nil)
+	if err != nil {
+		return err
+	}
+
+	// Get chain ID
+	chainID, err := s.client.ChainID(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get gas price
+	gasPrice, err := s.client.SuggestGasPrice(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create transaction
+	tx := types.NewTransaction(
+		nonce,
+		to,
+		amount,
+		21000, // standard gas limit for transfers
+		gasPrice,
+		nil, // no data for simple transfers
+	)
+
+	// Sign transaction
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), s.seedKey)
+	if err != nil {
+		return err
+	}
+
+	// Send transaction
+	err = s.client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return err
+	}
+
+	return waitForTransaction(s.client, signedTx.Hash())
+}
+
+func waitForTransaction(client ethclient.Client, hash common.Hash) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for {
+		receipt, err := client.TransactionReceipt(ctx, hash)
+		if err != nil {
+			if err.Error() == "not found" {
+				// Transaction not mined yet, continue waiting
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return fmt.Errorf("failed while waiting for transaction: %w", err)
+		}
+		if receipt.Status == types.ReceiptStatusFailed {
+			return fmt.Errorf("transaction failed: %s", hash.Hex())
+		}
+		if receipt.BlockNumber != nil {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
 }

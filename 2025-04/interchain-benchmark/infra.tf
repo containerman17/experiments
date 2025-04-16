@@ -10,8 +10,10 @@ variable "cluster_name" {
   default     = "cluster_1"
 }
 
-locals {
-  instance_count = 5
+variable "instance_count" {
+  description = "Number of EC2 instances to create per cluster"
+  type        = number
+  default     = 5
 }
 
 provider "aws" {
@@ -21,7 +23,7 @@ provider "aws" {
 
 resource "aws_security_group" "allow_ssh_tokyo" {
   provider    = aws.tokyo
-  name        = "benchmark_2025_04_16"
+  name        = "benchmark_2025_04_16_${var.cluster_name}"
   description = "Allow SSH, HTTPS, 9650, 9651 and ping"
 
   ingress {
@@ -67,9 +69,8 @@ resource "aws_security_group" "allow_ssh_tokyo" {
   }
 }
 
-# Create multiple tokyo instances using count
 resource "aws_instance" "tokyo-ec2" {
-  count                       = local.instance_count
+  count                       = var.instance_count
   provider                    = aws.tokyo
   ami                         = "ami-026c39f4021df9abe"
   instance_type               = "m7i.4xlarge"

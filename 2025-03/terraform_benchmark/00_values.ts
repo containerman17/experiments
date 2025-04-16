@@ -9,8 +9,7 @@ export const delay = "700ms"
 export const evmbombardCommit = "b199d0d"
 export const batchSize = 50
 export const keys = 2000
-export const instancesPerRegion = 3
-
+export const instancesPerRegion = 5
 
 export const regions = [
     {
@@ -18,49 +17,49 @@ export const regions = [
         regionName: "tokyo",
         ami: "ami-026c39f4021df9abe"
     },
-    {
-        region: "eu-central-1",
-        regionName: "frankfurt",
-        ami: "ami-03250b0e01c28d196"
-    },
-    {
-        region: "us-east-2",
-        regionName: "ohio",
-        ami: "ami-04f167a56786e4b09"
-    },
-    {
-        region: "us-west-2",
-        regionName: "oregon",
-        ami: "ami-075686beab831bb7f"
-    },
-    {
-        region: "ap-south-1",
-        regionName: "mumbai",
-        ami: "ami-0e35ddab05955cf57"
-    },
-    {
-        region: "ap-southeast-1",
-        regionName: "singapore",
-        ami: "ami-01938df366ac2d954"
-    },
-    {
-        region: "sa-east-1",
-        regionName: "sao_paulo",
-        ami: "ami-0d866da98d63e2b42"
-    },
-    {
-        region: "ap-southeast-2",
-        regionName: "sydney",
-        ami: "ami-0f5d1713c9af4fe30"
-    },
-    {
-        region: "eu-west-2",
-        regionName: "london",
-        ami: "ami-0a94c8e4ca2674d5a"
-    },
-    {
-        region: "eu-north-1",
-        regionName: "stockholm",
-        ami: "ami-0c1ac8a41498c1a9c"
-    }
+    // {
+    //     region: "eu-central-1",
+    //     regionName: "frankfurt",
+    //     ami: "ami-03250b0e01c28d196"
+    // },
+    // {
+    //     region: "us-east-2",
+    //     regionName: "ohio",
+    //     ami: "ami-04f167a56786e4b09"
+    // },
+    // {
+    //     region: "us-west-2",
+    //     regionName: "oregon",
+    //     ami: "ami-075686beab831bb7f"
+    // },
+    // {
+    //     region: "ap-south-1",
+    //     regionName: "mumbai",
+    //     ami: "ami-0e35ddab05955cf57"
+    // },
+    // {
+    //     region: "ap-southeast-1",
+    //     regionName: "singapore",
+    //     ami: "ami-01938df366ac2d954"
+    // },
+    // {
+    //     region: "sa-east-1",
+    //     regionName: "sao_paulo",
+    //     ami: "ami-0d866da98d63e2b42"
+    // },
+    // {
+    //     region: "ap-southeast-2",
+    //     regionName: "sydney",
+    //     ami: "ami-0f5d1713c9af4fe30"
+    // },
+    // {
+    //     region: "eu-west-2",
+    //     regionName: "london",
+    //     ami: "ami-0a94c8e4ca2674d5a"
+    // },
+    // {
+    //     region: "eu-north-1",
+    //     regionName: "stockholm",
+    //     ami: "ami-0c1ac8a41498c1a9c"
+    // }
 ];

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { Context, pvm, secp256k1, utils } from "@avalabs/avalanchejs";
-import { loadPrivateKey, getPChainAddress, addTxSignatures, getNodeIps, RPC_ENDPOINT } from "./lib";
+import { loadPrivateKey, getPChainAddress, addTxSignatures, getNodeIps, RPC_ENDPOINT, addSigToAllCreds } from "./lib";
 
 const privateKey = loadPrivateKey()
 const pChainAddress = getPChainAddress(privateKey)
@@ -51,11 +51,15 @@ async function createChain(subnetId: string) {
     const feeState = await pvmApi.getFeeState()
     const context = await Context.getContextFromURI(RPC_ENDPOINT);
 
+    const testPAddr = utils.bech32ToBytes(pChainAddress);
+
+    console.log('pChainAddress', pChainAddress)
+
     console.log('subnetId', subnetId)
 
-    const tx = pvm.e.newCreateChainTx({
+    const tx = pvm.newCreateChainTx({
         feeState,
-        fromAddressesBytes: [utils.bech32ToBytes(pChainAddress)],
+        fromAddressesBytes: [testPAddr],
         utxos,
         chainName: 'TEST',
         subnetAuth: [0],
@@ -65,16 +69,10 @@ async function createChain(subnetId: string) {
         genesisData: JSON.parse(genGenesis()),
     }, context);
 
-    await addTxSignatures({
-        unsignedTx: tx,
-        privateKeys: [privateKey],
-    });
+    await addSigToAllCreds(tx, privateKey);
     const signedTx = tx.getSignedTx()
-    console.log('signedTx.getAddresses()', signedTx.getAddresses())
-    console.log('signedTx.getSigIndicesForPubKey()', signedTx.getSigIndicesForPubKey(secp256k1.getPublicKey(privateKey)))
-    console.log('signedTx.getCredentials()', signedTx.getCredentials())
 
-    return pvmApi.issueSignedTx(tx.getSignedTx()).then(tx => tx.txID)
+    return pvmApi.issueSignedTx(signedTx).then(tx => tx.txID)
 }
 
 function genGenesis() {

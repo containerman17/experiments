@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 
 import { formatUnits } from 'viem';
-import { loadPrivateKey, pvmApi, getPChainAddress } from './lib';
-
+import { loadPrivateKey, getPChainAddress, RPC_ENDPOINT } from './lib';
+import { Context, pvm } from '@avalabs/avalanchejs';
 const privateKey = loadPrivateKey()
 const pChainAddress = getPChainAddress(privateKey)
 console.log('Your P-Chain Address:', pChainAddress);
 
+const pvmApi = new pvm.PVMApi(RPC_ENDPOINT);
 const balance = await pvmApi.getBalance({
     addresses: [pChainAddress],
 })

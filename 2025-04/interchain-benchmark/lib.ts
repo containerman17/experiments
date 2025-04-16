@@ -60,9 +60,6 @@ export async function applyDockerCompose(ip: string, subnetId: string = ""): Pro
 }
 
 export const RPC_ENDPOINT = "https://api.avax-test.network"
-export const pvmApi = new pvm.PVMApi(RPC_ENDPOINT);
-export const context = await Context.getContextFromURI(RPC_ENDPOINT);
-export const feeState = await pvmApi.getFeeState();
 
 export function loadPrivateKey() {
     const seedPrivateKeyHex = process.env.SEED_PRIVATE_KEY_HEX || ""
@@ -95,8 +92,11 @@ export const addTxSignatures = async ({
             const publicKey = secp256k1.getPublicKey(privateKey);
 
             if (unsignedTx.hasPubkey(publicKey)) {
+                console.log('has pubkey')
                 const signature = await secp256k1.sign(unsignedBytes, privateKey);
                 unsignedTx.addSignature(signature);
+            } else {
+                console.log('no pubkey')
             }
         }),
     );

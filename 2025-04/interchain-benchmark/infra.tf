@@ -114,7 +114,7 @@ resource "aws_instance" "tokyo-ec2" {
   }
 }
 
-output "tokyo_instance_public_ips" {
+output "public_ips" {
   value = {
     for idx, instance in aws_instance.tokyo-ec2 :
     "${var.cluster_name}-${idx + 1}" => instance.public_ip

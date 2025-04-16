@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+  source .env
+fi
+
 # Number of clusters to create or destroy
 NUM_CLUSTERS=${NUM_CLUSTERS:-2}
 

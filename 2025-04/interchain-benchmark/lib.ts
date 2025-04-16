@@ -32,6 +32,7 @@ export function getNodeIps(): Record<string, string[]> {
 
 import { exec } from "child_process";
 import { promisify } from "util";
+import { Context, pvm, secp256k1, UnsignedTx, utils } from '@avalabs/avalanchejs';
 
 const execAsync = promisify(exec);
 
@@ -57,3 +58,46 @@ export async function applyDockerCompose(ip: string, subnetId: string = ""): Pro
         console.error(`Error deploying to ${ip}:`, error);
     }
 }
+
+export const RPC_ENDPOINT = "https://api.avax-test.network"
+export const pvmApi = new pvm.PVMApi(RPC_ENDPOINT);
+export const context = await Context.getContextFromURI(RPC_ENDPOINT);
+export const feeState = await pvmApi.getFeeState();
+
+export function loadPrivateKey() {
+    const seedPrivateKeyHex = process.env.SEED_PRIVATE_KEY_HEX || ""
+    const privateKey = utils.hexToBuffer(seedPrivateKeyHex)
+    return privateKey
+}
+
+export function getPChainAddress(privateKey: Uint8Array) {
+    const publicKey = secp256k1.getPublicKey(privateKey);
+
+    const address = utils.formatBech32(
+        'fuji',
+        secp256k1.publicKeyBytesToAddress(publicKey),
+    );
+
+    return `P-${address}`
+}
+
+export const addTxSignatures = async ({
+    unsignedTx,
+    privateKeys,
+}: {
+    unsignedTx: UnsignedTx;
+    privateKeys: Uint8Array[];
+}) => {
+    const unsignedBytes = unsignedTx.toBytes();
+
+    await Promise.all(
+        privateKeys.map(async (privateKey) => {
+            const publicKey = secp256k1.getPublicKey(privateKey);
+
+            if (unsignedTx.hasPubkey(publicKey)) {
+                const signature = await secp256k1.sign(unsignedBytes, privateKey);
+                unsignedTx.addSignature(signature);
+            }
+        }),
+    );
+};

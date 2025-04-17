@@ -20,14 +20,14 @@ if [ "$mode" == "apply" ]; then
     echo "Creating $NUM_CLUSTERS virtual clusters with $NODES_PER_CLUSTER nodes each (plus benchmark node)"
     echo "Total instances to create: $TOTAL_INSTANCES"
     
-    terraform apply -auto-approve \
+    terraform apply -auto-approve -parallelism=100 \
       -var="instance_count=${TOTAL_INSTANCES}"
     
     echo "All instances created successfully"
 elif [ "$mode" == "destroy" ]; then
     echo "Destroying all instances..."
     
-    terraform destroy -auto-approve \
+    terraform destroy -auto-approve -parallelism=100 \
       -var="instance_count=${TOTAL_INSTANCES}"
       
     echo "All instances destroyed successfully"

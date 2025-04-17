@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Context, pvm, secp256k1, utils } from "@avalabs/avalanchejs";
+import { Context, pvm, utils } from "@avalabs/avalanchejs";
 import { loadPrivateKey, getPChainAddress, addTxSignatures, getNodeIps, RPC_ENDPOINT, addSigToAllCreds } from "./lib";
 
 const privateKey = loadPrivateKey()
@@ -10,18 +10,22 @@ const clusters = getNodeIps();
 
 const clusterNames = Object.keys(clusters)
 
+const chains: Record<string, { subnetId: string, chainId: string }> = {}
+
 for (const clusterName of clusterNames) {
-    const subnetId = "2XANmArs2d4uCMtyRzGCFkX9FxeU9vURoVLM1EjtpZ4qjXo6gt"//await createSubnet(pChainAddress)
-    // console.log(`Created subnet ${subnetId} for cluster ${clusterName}`)
-    // await new Promise(resolve => setTimeout(resolve, 30 * 1000))
+    const subnetId = await createSubnet()
+    console.log(`Created subnet ${subnetId} for cluster ${clusterName}`)
+    await new Promise(resolve => setTimeout(resolve, 5 * 1000))
     const chainId = await createChain(subnetId)
     console.log(`Created chain ${chainId} for subnet ${subnetId}`)
-    await new Promise(resolve => setTimeout(resolve, 30 * 1000))
+    await new Promise(resolve => setTimeout(resolve, 5 * 1000))
+    chains[clusterName] = { subnetId, chainId }
 }
 
-// await createChain('YXrjzuZ5zi2ct7g1eNxFs7rVWxZwadnxmSMXWuoyTYNPyWKph')
+import fs from 'fs'
+fs.writeFileSync('chains.json', JSON.stringify(chains, null, 4))
 
-async function createSubnet(pChainAddress: string) {
+async function createSubnet() {
     const pvmApi = new pvm.PVMApi(RPC_ENDPOINT);
     const { utxos } = await pvmApi.getUTXOs({ addresses: [pChainAddress] });
     const feeState = await pvmApi.getFeeState()

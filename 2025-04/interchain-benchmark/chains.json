@@ -1,0 +1,10 @@
+{
+    "cluster_1": {
+        "subnetId": "Jv3vWPR1HRLN44e573fKTaH5LpnA3D7eW91LvooSxwKhYdEX8",
+        "chainId": "t2vqTWK9yk4i9bG4HHFDuHc9DqmmytksWnk4HEPFbFVgzbb2w"
+    },
+    "cluster_2": {
+        "subnetId": "2Wh61fKJJBwtBtnKSUaAyTuS8iLWVdHZFkk739N3spfWjiRsSW",
+        "chainId": "2eNsYUHqA4iyye32yKce5UsywL7qCdR5iWDJMkSfr5G2yKfhnd"
+    }
+}

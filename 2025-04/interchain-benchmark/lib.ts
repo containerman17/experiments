@@ -92,11 +92,8 @@ export const addTxSignatures = async ({
             const publicKey = secp256k1.getPublicKey(privateKey);
 
             if (unsignedTx.hasPubkey(publicKey)) {
-                console.log('has pubkey')
                 const signature = await secp256k1.sign(unsignedBytes, privateKey);
                 unsignedTx.addSignature(signature);
-            } else {
-                console.log('no pubkey')
             }
         }),
     );

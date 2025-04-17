@@ -7,6 +7,7 @@ const subnetId = process.env.SUBNET_ID || "";
 console.log(`Using subnetId: ${subnetId || "(empty)"}`);
 
 const clusters = getNodeIps();
+
 console.log("Found clusters:", Object.keys(clusters));
 
 let totalNodeCount = 0;

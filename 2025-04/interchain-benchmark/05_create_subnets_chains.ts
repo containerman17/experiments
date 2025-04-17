@@ -107,7 +107,7 @@ function genGenesis() {
                 "baseFeeChangeDenominator": 9223372036854775807,
                 "minBlockGasCost": 0,
                 "maxBlockGasCost": 10000000,
-                "targetBlockRate": 100,
+                "targetBlockRate": 1,
                 "blockGasCostStep": 0
             },
             "homesteadBlock": 0,

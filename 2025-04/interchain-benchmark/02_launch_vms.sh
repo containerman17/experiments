@@ -1,8 +1,15 @@
 #!/bin/bash
 
+set -eu
 
-NUM_CLUSTERS=30
-INSTANCE_COUNT=4
+source .env
+
+# Add 1 for benchmarking node per cluster
+TOTAL_INSTANCES=$((NUM_CLUSTERS * (NODES_PER_CLUSTER + 1)))
+
+echo "NUM_CLUSTERS: $NUM_CLUSTERS"
+echo "NODES_PER_CLUSTER: $NODES_PER_CLUSTER"
+echo "TOTAL_INSTANCES: $TOTAL_INSTANCES"
 
 terraform init
 
@@ -10,46 +17,18 @@ terraform init
 mode=${1:-apply}
 
 if [ "$mode" == "apply" ]; then
-  for i in $(seq 1 $NUM_CLUSTERS); do
-    if [ $i -lt 10 ]; then
-      cluster="cluster_0$i"
-    else
-      cluster="cluster_$i"
-    fi
+    echo "Creating $NUM_CLUSTERS virtual clusters with $NODES_PER_CLUSTER nodes each (plus benchmark node)"
+    echo "Total instances to create: $TOTAL_INSTANCES"
     
-    # Create or select workspace
-    terraform workspace new $cluster 2>/dev/null || terraform workspace select $cluster
-
-    # Run apply sequentially
-    echo "Applying for ${cluster}..."
     terraform apply -auto-approve \
-      -var="cluster_name=${cluster}" \
-      -var="instance_count=${INSTANCE_COUNT}"
+      -var="instance_count=${TOTAL_INSTANCES}"
     
-    echo "Completed apply for ${cluster}"
-  done
-  
-  echo "All apply operations finished"
+    echo "All instances created successfully"
 elif [ "$mode" == "destroy" ]; then
-  for i in $(seq 1 $NUM_CLUSTERS); do
-    if [ $i -lt 10 ]; then
-      cluster="cluster_0$i"
-    else
-      cluster="cluster_$i"
-    fi
+    echo "Destroying all instances..."
     
-    # Select workspace
-    terraform workspace select $cluster
-    terraform refresh
-
-    # Run destroy sequentially
-    echo "Destroying ${cluster}..."
     terraform destroy -auto-approve \
-      -var="cluster_name=${cluster}" \
-      -var="instance_count=${INSTANCE_COUNT}"
-    
-    echo "Completed destroy for ${cluster}"
-  done
-  
-  echo "All destroy operations finished"
+      -var="instance_count=${TOTAL_INSTANCES}"
+      
+    echo "All instances destroyed successfully"
 fi

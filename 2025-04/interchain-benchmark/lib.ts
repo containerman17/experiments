@@ -1,30 +1,37 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+const NODES_PER_CLUSTER = parseInt(process.env.NODES_PER_CLUSTER || "0")
+if (isNaN(NODES_PER_CLUSTER) || NODES_PER_CLUSTER < 1) {
+    throw new Error("NODES_PER_CLUSTER is not set")
+}
+
 export function getNodeIps(): Record<string, string[]> {
     const nodes: Record<string, string[]> = {};
-    const stateDir = 'terraform.tfstate.d';
+    const stateFilePath = 'terraform.tfstate';
 
-    // Get all cluster directories
-    const clusters = fs.readdirSync(stateDir)
-        .filter(dir => fs.statSync(path.join(stateDir, dir)).isDirectory()).sort();
+    try {
+        if (fs.existsSync(stateFilePath)) {
+            const stateFile = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
 
-    for (const cluster of clusters) {
-        const stateFilePath = path.join(stateDir, cluster, 'terraform.tfstate');
+            if (stateFile.outputs && stateFile.outputs.public_ips && stateFile.outputs.public_ips.value) {
+                // Extract all IPs from the output value
+                const allIps = Object.values(stateFile.outputs.public_ips.value) as string[];
 
-        try {
-            if (fs.existsSync(stateFilePath)) {
-                const stateFile = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
+                // Group IPs into virtual clusters
+                const totalNodesPerCluster = NODES_PER_CLUSTER + 1; // +1 for benchmarking node
+                const virtualClusterCount = Math.floor(allIps.length / totalNodesPerCluster);
 
-                if (stateFile.outputs && stateFile.outputs.public_ips && stateFile.outputs.public_ips.value) {
-                    // Extract IPs from the output value
-                    const ips = Object.values(stateFile.outputs.public_ips.value) as string[];
-                    nodes[cluster] = ips;
+                for (let i = 0; i < virtualClusterCount; i++) {
+                    const startIdx = i * totalNodesPerCluster;
+                    const clusterIps = allIps.slice(startIdx, startIdx + totalNodesPerCluster);
+                    const clusterName = i < 9 ? `cluster_0${i + 1}` : `cluster_${i + 1}`;
+                    nodes[clusterName] = clusterIps;
                 }
             }
-        } catch (error) {
-            console.error(`Error reading state file for cluster ${cluster}:`, error);
         }
+    } catch (error) {
+        console.error(`Error reading state file:`, error);
     }
 
     return nodes;

@@ -4,14 +4,8 @@ variable "github_username" {
   default     = "containerman17"
 }
 
-variable "cluster_name" {
-  description = "Name of the cluster for resource identification"
-  type        = string
-  default     = "cluster_1"
-}
-
 variable "instance_count" {
-  description = "Number of EC2 instances to create per cluster"
+  description = "Number of EC2 instances to create"
   type        = number
   default     = 5
 }
@@ -23,7 +17,7 @@ provider "aws" {
 
 resource "aws_security_group" "allow_ssh_tokyo" {
   provider    = aws.tokyo
-  name        = "benchmark_2025_04_17_${var.cluster_name}"
+  name        = "benchmark_2025_04_17"
   description = "Allow SSH, HTTPS, 9650, 9651 and ping"
 
   ingress {
@@ -73,7 +67,7 @@ resource "aws_instance" "tokyo-ec2" {
   count                       = var.instance_count
   provider                    = aws.tokyo
   ami                         = "ami-026c39f4021df9abe"
-  instance_type               = "m7i.2xlarge"
+  instance_type               = "m7i.4xlarge"
   vpc_security_group_ids      = [aws_security_group.allow_ssh_tokyo.id]
   associate_public_ip_address = true
 
@@ -110,14 +104,14 @@ resource "aws_instance" "tokyo-ec2" {
   EOF
 
   tags = {
-    Name = "${var.github_username}-terraform-${var.cluster_name}-${count.index + 1}"
+    Name = "${var.github_username}-terraform-${count.index + 1}"
   }
 }
 
 output "public_ips" {
   value = {
     for idx, instance in aws_instance.tokyo-ec2 :
-    "${var.cluster_name}-${idx + 1}" => instance.public_ip
+    "${idx + 1}" => instance.public_ip
   }
   description = "Public IPs of all tokyo EC2 instances"
 }

@@ -12,6 +12,7 @@ console.log("Found clusters:", Object.keys(clusters));
 let totalNodeCount = 0;
 let skipCount = 0;
 
+const promises = []
 // Process each cluster separately
 for (const [clusterName, ips] of Object.entries(clusters)) {
     console.log(`Processing cluster ${clusterName} with ${ips.length} nodes...`);
@@ -23,9 +24,10 @@ for (const [clusterName, ips] of Object.entries(clusters)) {
 
     // Deploy to each node in parallel
     const deployPromises = validNodes.map(ip => applyDockerCompose(ip, subnetId, ["avago"]));
-    await Promise.all(deployPromises);
+    promises.push(Promise.all(deployPromises));
 
-    console.log(`Deployed to ${validNodes.length} nodes in cluster ${clusterName}`);
 }
+
+await Promise.all(promises)
 
 console.log(`Deployment completed! Deployed to ${totalNodeCount} nodes, skipped ${skipCount} benchmarking nodes.`);

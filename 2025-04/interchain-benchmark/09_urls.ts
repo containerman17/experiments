@@ -19,10 +19,6 @@ for (const [clusterName, ips] of Object.entries(clusters)) {
 
     const firstNonBenchIp = ips.slice(1)[0] as string;
 
-    console.log(`- Endpoint: wss://${firstNonBenchIp}.sslip.io
-  Chain ID: ${chainConfig.chainId}
-  Subnet ID: ${chainConfig.subnetId}
-   
-   `)
+    console.log(`wss://${firstNonBenchIp}.sslip.io/ext/bc/${chainConfig.chainId}/ws`)
 }
 

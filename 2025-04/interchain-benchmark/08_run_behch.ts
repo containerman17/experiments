@@ -10,6 +10,7 @@ console.log("Loaded chains:", Object.keys(chains));
 const clusters = getNodeIps();
 console.log("Found clusters:", Object.keys(clusters));
 
+const promises = []
 // Deploy to each cluster with its corresponding subnet ID
 for (const [clusterName, ips] of Object.entries(clusters)) {
     const chainConfig = chains[clusterName];
@@ -25,9 +26,9 @@ for (const [clusterName, ips] of Object.entries(clusters)) {
 
     const benchURLS = avagoIps.map(ip => `http://${ip}:9650/ext/bc/${chainConfig.chainId}/rpc`);
 
-    await applyDockerCompose(benchIp, subnetId, ["bench"], benchURLS, true);
-
-    console.log(`Deployed bench to cluster ${clusterName} on ip ${benchIp}`);
+    promises.push(applyDockerCompose(benchIp, subnetId, ["bench"], benchURLS, true));
 }
+
+await Promise.all(promises)
 
 console.log("All subnets have been successfully tracked!");

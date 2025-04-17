@@ -10,6 +10,8 @@ console.log("Loaded chains:", Object.keys(chains));
 const clusters = getNodeIps();
 console.log("Found clusters:", Object.keys(clusters));
 
+const promises = []
+
 // Deploy to each cluster with its corresponding subnet ID
 for (const [clusterName, ips] of Object.entries(clusters)) {
     const chainConfig = chains[clusterName];
@@ -27,11 +29,10 @@ for (const [clusterName, ips] of Object.entries(clusters)) {
 
     for (const avagoIp of avagoIps) {
         // Deploy both avago and caddy services
-        await applyDockerCompose(avagoIp, subnetId, ["avago", "caddy"], []);
-        console.log(`Deployed avago and caddy to ${avagoIp}`);
+        promises.push(applyDockerCompose(avagoIp, subnetId, ["avago", "caddy"], []));
     }
-
-    console.log(`Deployed subnet ${subnetId} to cluster ${clusterName}`);
 }
+
+await Promise.all(promises)
 
 console.log("All subnets have been successfully tracked with Caddy reverse proxies configured!");

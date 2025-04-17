@@ -1,10 +1,42 @@
 {
     "cluster_1": {
-        "subnetId": "1AtuQky9ETPA1Dzx8cQXHUwv35Ta61boMorq5DSdLrVde2wN",
-        "chainId": "2NujAdVugyD7sEvKyCyrPTjZhoYysNZJZ7ggPcNz5Nr9AzhT68"
+        "subnetId": "2BsihTGHs7Wd49PNMY1tmnTgWL3Yaprs8no6WmVBodNkhDhj8x",
+        "chainId": "2eQ9uD33pYEgBD8bn3fQNXH5bHNdZ1gppSbn4L1gn2M6KuLk4b"
+    },
+    "cluster_10": {
+        "subnetId": "2gJVkQQ98vq7rAz48VmZXegbcayJYDZLw1WpM9SsPokums19m8",
+        "chainId": "2L7btyovAo5MYrZHHhr1wgYb96922RpmsbRU9GDyHLrWWv9VLM"
     },
     "cluster_2": {
-        "subnetId": "EZq6wzRrT91PpNAotDc7teYMq1nwJo7pRWzKLs6sqYB4dhXXK",
-        "chainId": "2vFTzC79KRRDX3R4pz8DoDbQ5mw5L9xQKKxKQZTUYp6uyeAwih"
+        "subnetId": "2GvzdkpTESSBzkhnVH3XTU5LHR2DdWrMRCEQLb8tNcuid7Yr7b",
+        "chainId": "2bjqRyxa9CNQQi628vuDBjgrDa9PFo9xb1hAkMYfBTqhtEoE47"
+    },
+    "cluster_3": {
+        "subnetId": "2o8RmDgHDikawPraacmqV8yEbzQh83mxoZRYFDyGScxwrC5vH8",
+        "chainId": "ePyxzE9twr3uehDeP5FYuoZCkARegutPZ1pYGEATaewfW3M9j"
+    },
+    "cluster_4": {
+        "subnetId": "7Mn6sCYoMRQsL6pVKLotg1KivwYMM5BiNKFPufwC2y54gihxi",
+        "chainId": "3TybYQjrR2vKTW4bX8beb4rS8jLakHeuSTj24diN7MCjj3CZk"
+    },
+    "cluster_5": {
+        "subnetId": "gAn9CzWtNtynikYrgdpz46ZNh6kR6GncGbnpkuHACpYB6deNS",
+        "chainId": "TirSXqCGjF7UcxTFBM7dFMK9vf89QAPahFQYZ1JRvoBqBNKhz"
+    },
+    "cluster_6": {
+        "subnetId": "2gJCPAHF2HqfGjTB39EvKwGfriDDFkoPR96WyqCvVcGGu7GCnK",
+        "chainId": "22hUwVZq14Db79QFtWrVMFvKeKgfqGDbJGVttsmNDDbNPzk8ak"
+    },
+    "cluster_7": {
+        "subnetId": "2bEEbNQBaKEPPA8aNHdtTyG6ebYMUzcfhuuaxQ3LxAVeDDAayj",
+        "chainId": "Qf5ARMuhtcHbXQojGPb8Jj3kj1GixJamibFwTXUsrgHKrbFvQ"
+    },
+    "cluster_8": {
+        "subnetId": "2SpKUqC9zk3nZg95j2nokbkY8PXtberXenRhtUJqb9hvyRjTd2",
+        "chainId": "DJ6fjy5PoqtQQvX53jmQFBWh1Xj9sU8hJG8c3nwiLXNwHvMPp"
+    },
+    "cluster_9": {
+        "subnetId": "ttzubb6w6gKTN6ZCB2HvaMzP1dBu2HAs2NcR3SGL2HmVJyPr1",
+        "chainId": "2HKKGiQa9C3DXonb3g8uvGWo6ecSHb57XrPcRmiyjuX1cfYi4n"
     }
 }

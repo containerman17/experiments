@@ -23,7 +23,7 @@ provider "aws" {
 
 resource "aws_security_group" "allow_ssh_tokyo" {
   provider    = aws.tokyo
-  name        = "benchmark_2025_04_16_${var.cluster_name}"
+  name        = "benchmark_2025_04_17_${var.cluster_name}"
   description = "Allow SSH, HTTPS, 9650, 9651 and ping"
 
   ingress {
@@ -73,7 +73,7 @@ resource "aws_instance" "tokyo-ec2" {
   count                       = var.instance_count
   provider                    = aws.tokyo
   ami                         = "ami-026c39f4021df9abe"
-  instance_type               = "m7i.4xlarge"
+  instance_type               = "m7i.2xlarge"
   vpc_security_group_ids      = [aws_security_group.allow_ssh_tokyo.id]
   associate_public_ip_address = true
 

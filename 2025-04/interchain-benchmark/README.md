@@ -1,12 +1,10 @@
-00. ✅ Generate key
-01. ✅ SSH key generation
-02. ✅ Create VMs
-03. ✅ Run subnet-evm without tracking the subnet
-04. ✅ Collect node PoPs
-05. 📝 On chain txs
-    1. 📝 Create subnets
-    2. 📝 Create chains
-    3. 📝 Convert to l1 with node pops
-06. 📝 Update subnet-evms with subnet IDs
-07. 📝 Launch relayers (skip for now)
-08. 📝 Start benchmarking
+00. ✅ Generate key (00_generate_key.ts)
+01. ✅ SSH key generation (01_ssh_keygen.sh)
+02. ✅ Launch VMs (02_launch_vms.sh)
+03. ✅ Launch empty nodes (03_launch_empty_nodes.ts)
+04. ✅ Check P-Chain balance (04_p_chain_balance.ts)
+05. ✅ Create subnets and chains (05_create_subnets_chains.ts)
+06. ✅ Convert to L1 with node PoPs (06_convert_to_l1.ts)
+07. 📝 Track subnets (07_track_subnets.ts)
+08. 📝 Launch relayers (skip for now)
+09. 📝 Start benchmarking

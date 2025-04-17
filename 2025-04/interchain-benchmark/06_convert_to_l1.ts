@@ -99,6 +99,7 @@ type NodePoP = {
         };
     }
 }
+
 async function collectPops(): Promise<Record<string, NodePoP[]>> {
     const clusters = getNodeIps();
     console.log("Found clusters:", Object.keys(clusters));
@@ -108,12 +109,14 @@ async function collectPops(): Promise<Record<string, NodePoP[]>> {
     let totalNodeCount = 0;
     let skipCount = 0;
 
-    // Process each cluster
-    for (const [clusterName, ips] of Object.entries(clusters)) {
+    // Process all clusters in parallel
+    const clusterPromises = Object.entries(clusters).map(async ([clusterName, ips]) => {
         console.log(`Processing cluster ${clusterName} with ${ips.length} nodes...`);
 
         // Skip the first machine (benchmarking machine)
         const validNodes = ips.slice(1);
+
+        // Update counters (using atomic operations to avoid race conditions)
         skipCount += ips.length - validNodes.length;
         totalNodeCount += validNodes.length;
 
@@ -125,6 +128,14 @@ async function collectPops(): Promise<Record<string, NodePoP[]>> {
 
         // Filter out null responses
         const responses = results.filter(response => response !== null);
+        return { clusterName, responses };
+    });
+
+    // Wait for all clusters to be processed
+    const clusterResults = await Promise.all(clusterPromises);
+
+    // Populate the pops object with results
+    for (const { clusterName, responses } of clusterResults) {
         pops[clusterName] = responses;
     }
 

@@ -35,8 +35,7 @@ import { promisify } from "util";
 import { Context, pvm, secp256k1, UnsignedTx, utils } from '@avalabs/avalanchejs';
 
 const execAsync = promisify(exec);
-
-export async function applyDockerCompose(ip: string, subnetId: string = ""): Promise<void> {
+export async function applyDockerCompose(ip: string, subnetId: string, containerNames: string[], rpcUrls: string[] = [], down = false): Promise<void> {
     console.log(`Deploying to node ${ip}...`);
 
     const sshKeyPath = path.resolve("./id_ed25519");
@@ -45,13 +44,19 @@ export async function applyDockerCompose(ip: string, subnetId: string = ""): Pro
         // Ensure key has correct permissions
         await execAsync(`chmod 600 ${sshKeyPath}`);
 
-        // Copy docker-compose.yml file to the node using the flags that worked
-        console.log("Copying docker-compose.yml...");
-        await execAsync(`scp -F /dev/null -o IdentitiesOnly=yes -i ${sshKeyPath} -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${ip}:~/`);
+        // Copy compose.yml file to the node using the flags that worked
+        console.log("Copying compose.yml...");
+        await execAsync(`scp -F /dev/null -o IdentitiesOnly=yes -i ${sshKeyPath} -o StrictHostKeyChecking=no compose.yml ubuntu@${ip}:~/`);
 
-        // Run docker-compose directly via SSH with subnetId variable
-        console.log("Starting docker-compose...");
-        await execAsync(`ssh -F /dev/null -o IdentitiesOnly=yes -i ${sshKeyPath} -o StrictHostKeyChecking=no ubuntu@${ip} "cd ~/ && export subnetId='${subnetId}' && docker compose up -d"`);
+        // If down is true, stop and remove existing containers first
+        if (down) {
+            console.log("Stopping existing containers...");
+            await execAsync(`ssh -F /dev/null -o IdentitiesOnly=yes -i ${sshKeyPath} -o StrictHostKeyChecking=no ubuntu@${ip} "cd ~/ && docker compose down --remove-orphans"`);
+        }
+
+        // Run compose directly via SSH with subnetId variable
+        console.log("Starting compose...");
+        await execAsync(`ssh -F /dev/null -o IdentitiesOnly=yes -i ${sshKeyPath} -o StrictHostKeyChecking=no ubuntu@${ip} "cd ~/ && export subnetId='${subnetId}' && export RPC_URLS_COMBINED='${rpcUrls.join(',')}' && export PUBLIC_IPV4='${ip}' && docker compose up -d --remove-orphans ${containerNames.join(' ')}"`);
 
         console.log(`Successfully deployed to ${ip}`);
     } catch (error) {

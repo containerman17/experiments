@@ -19,19 +19,15 @@ for (const [clusterName, ips] of Object.entries(clusters)) {
     }
 
     const subnetId = chainConfig.subnetId;
-    console.log(`Updating cluster ${clusterName} with subnetId: ${subnetId}`);
 
-    // Skip the first node (benchmarking machine)
+    const benchIp = ips[0] as string;
     const avagoIps = ips.slice(1);
-    console.log(`Deploying to ${avagoIps.length} nodes in cluster ${clusterName}`);
 
-    for (const avagoIp of avagoIps) {
-        // Deploy both avago and caddy services
-        await applyDockerCompose(avagoIp, subnetId, ["avago", "caddy"], []);
-        console.log(`Deployed avago and caddy to ${avagoIp}`);
-    }
+    const benchURLS = avagoIps.map(ip => `http://${ip}:9650/ext/bc/${chainConfig.chainId}/rpc`);
 
-    console.log(`Deployed subnet ${subnetId} to cluster ${clusterName}`);
+    await applyDockerCompose(benchIp, subnetId, ["bench"], benchURLS, true);
+
+    console.log(`Deployed bench to cluster ${clusterName} on ip ${benchIp}`);
 }
 
-console.log("All subnets have been successfully tracked with Caddy reverse proxies configured!");
+console.log("All subnets have been successfully tracked!");

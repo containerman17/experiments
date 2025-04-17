@@ -2,7 +2,7 @@
 
 
 NUM_CLUSTERS=2
-INSTANCE_COUNT=3
+INSTANCE_COUNT=4
 
 terraform init
 
@@ -25,7 +25,7 @@ elif [ "$mode" == "destroy" ]; then
     # Select workspace
     terraform workspace select $cluster
 
-    terraform destroy \
+    terraform destroy -auto-approve \
       -var="cluster_name=${cluster}" \
       -var="instance_count=${INSTANCE_COUNT}"
   done

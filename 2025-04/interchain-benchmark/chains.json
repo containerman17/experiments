@@ -1,10 +1,10 @@
 {
     "cluster_1": {
-        "subnetId": "Jv3vWPR1HRLN44e573fKTaH5LpnA3D7eW91LvooSxwKhYdEX8",
-        "chainId": "t2vqTWK9yk4i9bG4HHFDuHc9DqmmytksWnk4HEPFbFVgzbb2w"
+        "subnetId": "1AtuQky9ETPA1Dzx8cQXHUwv35Ta61boMorq5DSdLrVde2wN",
+        "chainId": "2NujAdVugyD7sEvKyCyrPTjZhoYysNZJZ7ggPcNz5Nr9AzhT68"
     },
     "cluster_2": {
-        "subnetId": "2Wh61fKJJBwtBtnKSUaAyTuS8iLWVdHZFkk739N3spfWjiRsSW",
-        "chainId": "2eNsYUHqA4iyye32yKce5UsywL7qCdR5iWDJMkSfr5G2yKfhnd"
+        "subnetId": "EZq6wzRrT91PpNAotDc7teYMq1nwJo7pRWzKLs6sqYB4dhXXK",
+        "chainId": "2vFTzC79KRRDX3R4pz8DoDbQ5mw5L9xQKKxKQZTUYp6uyeAwih"
     }
 }

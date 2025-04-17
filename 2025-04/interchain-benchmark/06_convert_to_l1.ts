@@ -105,13 +105,22 @@ async function collectPops(): Promise<Record<string, NodePoP[]>> {
 
     // Object to store results
     const pops: Record<string, any[]> = {};
+    let totalNodeCount = 0;
+    let skipCount = 0;
 
     // Process each cluster
     for (const [clusterName, ips] of Object.entries(clusters)) {
         console.log(`Processing cluster ${clusterName} with ${ips.length} nodes...`);
 
+        // Skip the first machine (benchmarking machine)
+        const validNodes = ips.slice(1);
+        skipCount += ips.length - validNodes.length;
+        totalNodeCount += validNodes.length;
+
+        console.log(`Skipping benchmarking node, processing ${validNodes.length} validator nodes`);
+
         // Process nodes in parallel
-        const responsePromises = ips.map(ip => getNodeResponse(ip));
+        const responsePromises = validNodes.map(ip => getNodeResponse(ip));
         const results = await Promise.all(responsePromises);
 
         // Filter out null responses
@@ -119,5 +128,6 @@ async function collectPops(): Promise<Record<string, NodePoP[]>> {
         pops[clusterName] = responses;
     }
 
+    console.log(`Processed ${totalNodeCount} nodes total, skipped ${skipCount} benchmarking nodes`);
     return pops;
 }

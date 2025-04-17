@@ -9,12 +9,23 @@ console.log(`Using subnetId: ${subnetId || "(empty)"}`);
 const clusters = getNodeIps();
 console.log("Found clusters:", Object.keys(clusters));
 
-// Flatten all nodes from all clusters into a single array
-const allNodes: string[] = Object.values(clusters).flat();
-console.log(`Deploying to ${allNodes.length} nodes...`);
+let totalNodeCount = 0;
+let skipCount = 0;
 
-// Deploy to each node in parallel
-const deployPromises = allNodes.map(ip => applyDockerCompose(ip, subnetId));
-await Promise.all(deployPromises);
+// Process each cluster separately
+for (const [clusterName, ips] of Object.entries(clusters)) {
+    console.log(`Processing cluster ${clusterName} with ${ips.length} nodes...`);
 
-console.log("Deployment completed!");
+    // Skip the first machine (benchmarking machine)
+    const validNodes = ips.slice(1);
+    skipCount += ips.length - validNodes.length;
+    totalNodeCount += validNodes.length;
+
+    // Deploy to each node in parallel
+    const deployPromises = validNodes.map(ip => applyDockerCompose(ip, subnetId, ["avago"]));
+    await Promise.all(deployPromises);
+
+    console.log(`Deployed to ${validNodes.length} nodes in cluster ${clusterName}`);
+}
+
+console.log(`Deployment completed! Deployed to ${totalNodeCount} nodes, skipped ${skipCount} benchmarking nodes.`);

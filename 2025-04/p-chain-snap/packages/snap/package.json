@@ -17,17 +17,16 @@
     "build": "mm-snap build",
     "build:clean": "yarn clean && yarn build",
     "clean": "rimraf dist",
-    "lint": "yarn lint:eslint && yarn lint:misc --check",
-    "lint:eslint": "eslint . --cache --ext js,ts",
-    "lint:fix": "yarn lint:eslint --fix && yarn lint:misc --write",
-    "lint:misc": "prettier '**/*.json' '**/*.md' '**/*.yml' '!.yarnrc.yml' --ignore-path ../../.gitignore --no-error-on-unmatched-pattern",
     "prepublishOnly": "mm-snap manifest",
     "serve": "mm-snap serve",
     "start": "mm-snap watch",
     "test": "jest"
   },
   "dependencies": {
-    "@metamask/snaps-sdk": "~6.18.0"
+    "@avalabs/avalanchejs": "^5.0.0",
+    "@metamask/key-tree": "^10.1.1",
+    "@metamask/snaps-sdk": "~6.18.0",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",

@@ -22,6 +22,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@avalabs/avalanchejs@npm:^5.0.0":
+  version: 5.0.0
+  resolution: "@avalabs/avalanchejs@npm:5.0.0"
+  dependencies:
+    "@noble/curves": 1.3.0
+    "@noble/hashes": 1.3.3
+    "@noble/secp256k1": 2.0.0
+    "@scure/base": 1.1.5
+    micro-eth-signer: 0.7.2
+  checksum: 78a3487f352b84128e5f4e8060b1a5bcde615184c68dd9d6eab754251cde8bbeadd204dc45180c87125e36c0e69ab5f2a43ee60c3ca30d77230643be2bea0be1
+  languageName: node
+  linkType: hard
+
 "@babel/code-frame@npm:^7.0.0, @babel/code-frame@npm:^7.12.13, @babel/code-frame@npm:^7.16.7, @babel/code-frame@npm:^7.23.5, @babel/code-frame@npm:^7.26.2":
   version: 7.26.2
   resolution: "@babel/code-frame@npm:7.26.2"
@@ -1817,6 +1830,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ethereumjs/rlp@npm:5.0.0":
+  version: 5.0.0
+  resolution: "@ethereumjs/rlp@npm:5.0.0"
+  bin:
+    rlp: bin/rlp
+  checksum: 86d42f88945f25fc2874f80efc4d4c37cc85fc375920134392b658c0140346fb22b815e73680b87d1fea3ae55ad6ca42ea9fec7150583be496577b01bffb9e58
+  languageName: node
+  linkType: hard
+
 "@ethereumjs/rlp@npm:^4.0.1":
   version: 4.0.1
   resolution: "@ethereumjs/rlp@npm:4.0.1"
@@ -2493,7 +2515,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@metamask/key-tree@npm:^10.0.2, @metamask/key-tree@npm:^10.1.0":
+"@metamask/key-tree@npm:^10.0.2, @metamask/key-tree@npm:^10.1.0, @metamask/key-tree@npm:^10.1.1":
   version: 10.1.1
   resolution: "@metamask/key-tree@npm:10.1.1"
   dependencies:
@@ -3040,21 +3062,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@noble/curves@npm:1.3.0, @noble/curves@npm:^1.2.0, @noble/curves@npm:~1.3.0":
+  version: 1.3.0
+  resolution: "@noble/curves@npm:1.3.0"
+  dependencies:
+    "@noble/hashes": 1.3.3
+  checksum: b65342ee66c4a440eee2978524412eabba9a9efdd16d6370e15218c6a7d80bddf35e66bb57ed52c0dfd32cb9a717b439ab3a72db618f1a0066dfebe3fd12a421
+  languageName: node
+  linkType: hard
+
 "@noble/curves@npm:1.4.2, @noble/curves@npm:~1.4.0":
   version: 1.4.2
   resolution: "@noble/curves@npm:1.4.2"
   dependencies:
     "@noble/hashes": 1.4.0
   checksum: c475a83c4263e2c970eaba728895b9b5d67e0ca880651e9c6e3efdc5f6a4f07ceb5b043bf71c399fc80fada0b8706e69d0772bffdd7b9de2483b988973a34cba
-  languageName: node
-  linkType: hard
-
-"@noble/curves@npm:^1.2.0":
-  version: 1.3.0
-  resolution: "@noble/curves@npm:1.3.0"
-  dependencies:
-    "@noble/hashes": 1.3.3
-  checksum: b65342ee66c4a440eee2978524412eabba9a9efdd16d6370e15218c6a7d80bddf35e66bb57ed52c0dfd32cb9a717b439ab3a72db618f1a0066dfebe3fd12a421
   languageName: node
   linkType: hard
 
@@ -3074,7 +3096,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@noble/hashes@npm:1.3.3, @noble/hashes@npm:~1.3.0, @noble/hashes@npm:~1.3.1, @noble/hashes@npm:~1.3.2":
+"@noble/hashes@npm:1.3.3, @noble/hashes@npm:~1.3.0, @noble/hashes@npm:~1.3.1, @noble/hashes@npm:~1.3.2, @noble/hashes@npm:~1.3.3":
   version: 1.3.3
   resolution: "@noble/hashes@npm:1.3.3"
   checksum: 8a6496d1c0c64797339bc694ad06cdfaa0f9e56cd0c3f68ae3666cfb153a791a55deb0af9c653c7ed2db64d537aa3e3054629740d2f2338bb1dcb7ab60cd205b
@@ -3099,6 +3121,13 @@ __metadata:
   version: 1.5.0
   resolution: "@noble/hashes@npm:1.5.0"
   checksum: 9cc031d5c888c455bfeef76af649b87f75380a4511405baea633c1e4912fd84aff7b61e99716f0231d244c9cfeda1fafd7d718963e6a0c674ed705e9b1b4f76b
+  languageName: node
+  linkType: hard
+
+"@noble/secp256k1@npm:2.0.0":
+  version: 2.0.0
+  resolution: "@noble/secp256k1@npm:2.0.0"
+  checksum: 945d48a1142751658e89142c33a53c3d7cf8f0ce7cf43bd36b4dcfc1819bc7dc9c227737aca2c55a5699ff548122e21ca19395eb7682a1cea9d5e5e9cda22812
   languageName: node
   linkType: hard
 
@@ -3415,6 +3444,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@scure/base@npm:1.1.5":
+  version: 1.1.5
+  resolution: "@scure/base@npm:1.1.5"
+  checksum: 9e9ee6088cb3aa0fb91f5a48497d26682c7829df3019b1251d088d166d7a8c0f941c68aaa8e7b96bbad20c71eb210397cb1099062cde3e29d4bad6b975c18519
+  languageName: node
+  linkType: hard
+
 "@scure/base@npm:^1.0.0, @scure/base@npm:^1.1.1, @scure/base@npm:^1.1.3, @scure/base@npm:~1.1.0, @scure/base@npm:~1.1.3":
   version: 1.1.3
   resolution: "@scure/base@npm:1.1.3"
@@ -3422,7 +3458,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@scure/base@npm:~1.1.6":
+"@scure/base@npm:~1.1.5, @scure/base@npm:~1.1.6":
   version: 1.1.9
   resolution: "@scure/base@npm:1.1.9"
   checksum: 120820a37dfe9dfe4cab2b7b7460552d08e67dee8057ed5354eb68d8e3440890ae983ce3bee957d2b45684950b454a2b6d71d5ee77c1fd3fddc022e2a510337f
@@ -9328,10 +9364,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"micro-eth-signer@npm:0.7.2":
+  version: 0.7.2
+  resolution: "micro-eth-signer@npm:0.7.2"
+  dependencies:
+    "@ethereumjs/rlp": 5.0.0
+    "@noble/curves": ~1.3.0
+    "@noble/hashes": ~1.3.3
+    "@scure/base": ~1.1.5
+    micro-packed: ~0.5.1
+  checksum: f91680ca8b7dd99151418ebfc18c36703ad3d68c419015f8293ddeca943011254b69bad83a4e874c51c079cceda905432797179943fb78bcc6ad39ae66a26a2b
+  languageName: node
+  linkType: hard
+
 "micro-ftch@npm:^0.3.1":
   version: 0.3.1
   resolution: "micro-ftch@npm:0.3.1"
   checksum: 0e496547253a36e98a83fb00c628c53c3fb540fa5aaeaf718438873785afd193244988c09d219bb1802984ff227d04938d9571ef90fe82b48bd282262586aaff
+  languageName: node
+  linkType: hard
+
+"micro-packed@npm:~0.5.1":
+  version: 0.5.3
+  resolution: "micro-packed@npm:0.5.3"
+  dependencies:
+    "@scure/base": ~1.1.5
+  checksum: a7018390ee9c1a692c83aa4418d03c38f78286b1b1117aee210182c8e0b597a740d3f8a3b417a5cafc20b22ad32ba2aa11cdc11bd978bedcbd9a0dba53765f62
   languageName: node
   linkType: hard
 
@@ -11270,7 +11328,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "snap@workspace:packages/snap"
   dependencies:
+    "@avalabs/avalanchejs": ^5.0.0
     "@jest/globals": ^29.5.0
+    "@metamask/key-tree": ^10.1.1
     "@metamask/snaps-cli": ^6.6.0
     "@metamask/snaps-jest": ^8.9.0
     "@metamask/snaps-sdk": ~6.18.0
@@ -11280,6 +11340,7 @@ __metadata:
     jest: ^29.5.0
     rimraf: ^3.0.2
     ts-jest: ^29.1.0
+    tweetnacl: ^1.0.3
     typescript: ~5.7.3
   languageName: unknown
   linkType: soft

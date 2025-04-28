@@ -39,15 +39,26 @@ export const onRpcRequest: OnRpcRequestHandler = async ({
     method: 'snap_getBip32Entropy',
     params: {
       path: [`m`, `44'`, `9000'`, `0'`],
-      curve: 'secp256k1'//ed25519 or secp256k1
+      curve: 'secp256k1'
     }
   }));
-  console.log('node', node);
-  const keyPair = nacl.sign.keyPair.fromSeed(Uint8Array.from(node.privateKeyBytes || []));
 
-  debugger;
-  console.log('keyPair', keyPair);
-  console.log('secp256k1.getPublicKey(keyPair.secretKey)', secp256k1.getPublicKey(Uint8Array.from([...keyPair.secretKey])));
+  const secp256k1PrivateKeyBytes = node.privateKeyBytes;
+
+  if (!secp256k1PrivateKeyBytes) {
+    throw new Error("Failed to get private key bytes");
+  }
+
+  // Use the avalanchejs library directly for secp256k1 operations
+  const secp256k1PublicKeyBytes = secp256k1.getPublicKey(secp256k1PrivateKeyBytes);
+  const address = utils.formatBech32(
+    'fuji',
+    secp256k1.publicKeyBytesToAddress(secp256k1PublicKeyBytes),
+  );
+
+  console.log('secp256k1 Private Key:', utils.bufferToHex(secp256k1PrivateKeyBytes));
+  console.log('secp256k1 Public Key:', utils.bufferToHex(secp256k1PublicKeyBytes));
+  console.log('Derived Address:', address);
 
   switch (request.method) {
     case 'hello':
@@ -58,11 +69,18 @@ export const onRpcRequest: OnRpcRequestHandler = async ({
           content: (
             <Box>
               <Text>
-                PubKey original: {/*utils.bufferToHex(keyPair.publicKey)*/}
+                PrivateKey: {utils.bufferToHex(secp256k1PrivateKeyBytes)}
               </Text>
               <Text>
-                PubKey from avalanchejs: {utils.bufferToHex(secp256k1.getPublicKey(keyPair.secretKey))}
+                PublicKey: {utils.bufferToHex(secp256k1PublicKeyBytes)}
               </Text>
+              <Text>
+                Address: {address}
+              </Text>
+              <Text>
+                Expected address is fuji15dhs4ee8cahe52rdslnerpm3an64fsd6qwrztm
+              </Text>
+
               <Text>
                 Hello, <Bold>{origin}</Bold>!
               </Text>

@@ -2,7 +2,16 @@ import { SLIP10Node } from '@metamask/key-tree';
 import type { OnRpcRequestHandler } from '@metamask/snaps-sdk';
 import { Box, Text, Bold } from '@metamask/snaps-sdk/jsx';
 import nacl from 'tweetnacl';
-import { secp256k1, UnsignedTx, utils } from '@avalabs/avalanchejs';
+import {
+    Address,
+    Context,
+    pvm,
+    secp256k1,
+    UnsignedTx,
+    utils,
+    avaxSerial,
+} from '@avalabs/avalanchejs';
+import { AddressMaps } from '@avalabs/avalanchejs/dist/utils/addressMap';
 
 const addSigToAllCreds = async (
     unsignedTx: UnsignedTx,
@@ -64,46 +73,121 @@ export const onRpcRequest: OnRpcRequestHandler = async ({
                 xp: utils.bufferToHex(secp256k1PublicKeyBytes), // No 0x prefix as requested
                 evm: ""
             };
-        case 'avalanche_sendTransaction':
-            console.log('avalanche_sendTransaction', request);
+        case 'avalanche_sendTransactionJSON':
+            const params = request.params as { transactionJSON: string, chainAlias: string };
+            console.log('avalanche_sendTransactionJSON params', params);
+            if (params.chainAlias !== "P") {
+                throw new Error("Only P chain is supported. Please set the chainAlias to P.");
+            }
+            if (!params.transactionJSON) {
+                throw new Error("Transaction hex is required.");
+            }
 
-            return snap.request({
+            const decodedJson = JSON.parse(params.transactionJSON);
+            const unsignedTx = UnsignedTx.fromJSON(params.transactionJSON);
+
+            await addSigToAllCreds(unsignedTx, privateKeyBytes);
+            const pvmApi = new pvm.PVMApi("https://api.avax-test.network");
+            const txId = await pvmApi.issueSignedTx(unsignedTx.getSignedTx()).then(tx => tx.txID)
+
+
+            // --- Confirmation Dialog ---
+            const confirmation = await snap.request({
                 method: 'snap_dialog',
                 params: {
                     type: 'confirmation',
                     content: (
                         <Box>
                             <Text>
-                                PrivateKey: {utils.bufferToHex(privateKeyBytes)}
+                                Please confirm signing and issuing the P-Chain transaction from:
                             </Text>
                             <Text>
-                                PublicKey: {utils.bufferToHex(secp256k1PublicKeyBytes)}
+                                <Bold>From: {address}</Bold>
                             </Text>
                             <Text>
-                                Address: {address}
-                            </Text>
-                            <Text>
-                                Expected address is fuji15dhs4ee8cahe52rdslnerpm3an64fsd6qwrztm
+                                <Bold>TxID: {txId}</Bold>
                             </Text>
 
-                            <Text>
-                                Hello, <Bold>{origin}</Bold>!
-                            </Text>
-                            <Text>
-                                This custom confirmation is just for display purposes.
-                            </Text>
-                            <Text>
-                                But you can edit the snap source code to make it do something,
-                                if you want to!
-                            </Text>
                         </Box>
                     ),
                 },
             });
+
+            // --- Signing and Issuing ---
+            if (confirmation) {
+                // Sign the transaction
+
+
+                // Display success dialog with TxID
+                await snap.request({
+                    method: 'snap_dialog',
+                    params: {
+                        type: 'alert',
+                        content: (
+                            <Box>
+                                <Text>Transaction Issued Successfully!</Text>
+                                <Text>
+                                    Address: <Bold>{address}</Bold>
+                                </Text>
+                                <Text>
+                                    TxID: <Bold>{txId}</Bold>
+                                </Text>
+                            </Box>
+                        ),
+                    },
+                });
+                return { txId }; // Return the txId on success
+            } else {
+                // Display rejection dialog
+                await snap.request({
+                    method: 'snap_dialog',
+                    params: {
+                        type: 'alert',
+                        content: (
+                            <Box>
+                                <Text>Transaction Rejected</Text>
+                                <Text>
+                                    You rejected the transaction signing request from <Bold>{origin}</Bold>.
+                                </Text>
+                            </Box>
+                        ),
+                    },
+                });
+                return { rejected: true }; // Indicate rejection
+            }
+
         default:
             throw new Error('Method not found.');
     }
 };
+async function issuePChainTx(hex: string): Promise<string> {
+    if (!hex.startsWith('0x')) {
+        hex = '0x' + hex;
+    }
+
+    const response = await fetch('https://api.avax-test.network/ext/bc/P', {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'platform.issueTx',
+            params: {
+                tx: hex,
+                encoding: 'hex'
+            },
+            id: 1
+        })
+    });
+
+    const data = await response.json();
+    if (data.error) {
+        throw new Error(`Failed to issue transaction: ${data.error.message}`);
+    }
+
+    return data.result.txID;
+}
 
 import type { OnHomePageHandler } from "@metamask/snaps-sdk";
 import { Heading } from "@metamask/snaps-sdk/jsx";

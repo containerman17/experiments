@@ -42,14 +42,29 @@ const Button = ({ onClick, children }: { onClick: () => void, children: React.Re
     return <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-4 mb-4 cursor-pointer" onClick={onClick}>{children}</button>
 }
 
+import { secp256k1, utils } from '@avalabs/avalanchejs';
+
 function App() {
     const [localError, setLocalError] = useState<string | null>(null)
     const [isConnected, setIsConnected] = useState<boolean>(false)
     const [pubKey, setPubKey] = useState<string | null>(null)
+    const [pChainAddress, setPChainAddress] = useState<string | null>(null)
+
+    useEffect(() => { connect() }, [])
 
     useEffect(() => {
-        connect().then(getAccountPubKey)
-    }, [])
+        if (isConnected) getAccountPubKey()
+    }, [isConnected])
+
+    useEffect(() => {
+        if (pubKey) {
+            const pubKeyBytes = utils.hexToBuffer(pubKey.replace('0x', ''))
+            setPChainAddress('P-' + utils.formatBech32(
+                'fuji',
+                secp256k1.publicKeyBytesToAddress(pubKeyBytes),
+            ))
+        }
+    }, [pubKey])
 
     async function connect() {
         try {
@@ -75,10 +90,6 @@ function App() {
         }
     }
 
-    if (!window.ethereum) return <div>No Ethereum provider found</div>
-
-    if (!isConnected) return <div className="m-4"><Button onClick={connect}>Connect</Button></div>
-
 
     async function getAccountPubKey() {
         window.ethereum.request({
@@ -102,6 +113,11 @@ function App() {
         throw new Error("Not implemented")
     }
 
+
+    if (!window.ethereum) return <div>No Ethereum provider found</div>
+    if (!isConnected) return <div className="m-4"><Button onClick={connect}>Connect</Button></div>
+
+
     return (
         <>
             <div className="m-4">
@@ -110,6 +126,7 @@ function App() {
                 <Button onClick={getAccountPubKey}>Get Account PubKey</Button>
                 <Button onClick={sendTransaction}>Send Transaction</Button>
                 <div className="m-4">PubKey: {pubKey}</div>
+                <div className="m-4">PChain Address: {pChainAddress}</div>
             </div>
         </>
     )

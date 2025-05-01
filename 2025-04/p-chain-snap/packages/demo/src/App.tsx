@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 declare global {
     // Define the known request types for the snap
     type SnapRequestMethod =
-        | { method: 'avalanche_getAccountPubKey'; params?: undefined }
+        | { method: 'avalanche_getAccountPubKey' }
         | {
             method: 'avalanche_sendTransactionJSON';
             params: {
@@ -46,8 +46,6 @@ function App() {
     const [pubKey, setPubKey] = useState<string | null>(null)
     const [pChainAddress, setPChainAddress] = useState<string | null>(null)
     const [txId, setTxId] = useState<string | null>(null)
-
-    useEffect(() => { connect() }, [])
 
     useEffect(() => {
         if (isConnected) getAccountPubKey()

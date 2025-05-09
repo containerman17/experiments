@@ -7,6 +7,7 @@
     "test": "bun testFetchBlock.ts"
   },
   "dependencies": {
+    "p-throttle": "^7.0.0",
     "viem": "^2.9.0"
   },
   "devDependencies": {

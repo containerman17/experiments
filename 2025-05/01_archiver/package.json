@@ -7,8 +7,15 @@
     "test": "bun testFetchBlock.ts"
   },
   "dependencies": {
+    "@mongodb-js/zstd": "^2.0.1",
+    "@types/pako": "^2.0.3",
+    "cbor2": "^1.12.0",
+    "level": "^10.0.0",
+    "p-limit": "^6.2.0",
     "p-throttle": "^7.0.0",
-    "viem": "^2.9.0"
+    "pako": "^2.1.0",
+    "viem": "^2.9.0",
+    "zstd-codec": "^0.1.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.0"

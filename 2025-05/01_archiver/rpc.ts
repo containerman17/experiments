@@ -2,9 +2,11 @@ import { createPublicClient, http, webSocket } from 'viem';
 import { mainnet } from 'viem/chains';
 import pThrottle from 'p-throttle';
 
-const throttle = pThrottle({
-    limit: 10,
-    interval: 1000,
+const RPS = 20;
+const DIVIDER = 10;
+export const throttle = pThrottle({
+    limit: RPS / DIVIDER,
+    interval: 1000 / DIVIDER,
 });
 
 const RPC_URL = process.env.RPC_URL;
@@ -35,11 +37,11 @@ const throttledGetBlockNumber = throttle(async () => {
     return await client.getBlockNumber();
 });
 
-export async function fetchBlockAndReceipts(blockNumber: bigint): Promise<{
+export async function fetchBlockAndReceipts(blockNumber: number): Promise<{
     block: any;
     receipts: Record<string, any>;
 }> {
-    const block = await throttledGetBlock(blockNumber);
+    const block = await throttledGetBlock(BigInt(blockNumber));
 
     const receipts: Record<string, any> = {};
     for (const tx of block.transactions) {

@@ -1,19 +1,77 @@
-This app is a prototype of an archiver that would be a source of data for an indexer.
+# Archiver Component
 
-## Data stores
-1. Config store. Keeps only the last successfuly processed block. May be a couple more values. A simple json file. 
-2. Last blocks store. Stored in a separete folder. Each block JSON is stored inside a separate file called 0000000123456.json, where 123456 is a block number.
-3. Thousand blocks stores. Stores info as Zstd'd archives of 1000 blocks per archive. Used when we need to replay the info. Example file name is 0000000123xxx.zstd where it contains files for blocks 123000-123999.
+A lightweight, single-process archiver that continuously streams blockchain blocks and receipts into compressed, rotated JSONL archives.
 
-## Block JOSN
+## 1. Config Store
 
-Has 2 fields: 
-1. One field is a block, which is the result of eth_getBlockByNumber with transaction_detail_flag=true. 
-2. Another field is an object with transaction hash as a key and transaction receipt as a value. Requests for every tx of the block using eth_getTransactionReceipt method.
+* **File:** `state.json`
+* **Contents:** `{ "lastBlock": <number> }`
+* **Purpose:** Tracks the last successfully archived block.
+* **Workflow:** On startup, load `lastBlock`. After writing each block, atomically update `state.json`.
 
-## How it works
+## 2. Streaming Pipeline
 
-One by one requests blocks and their transactions from a user given RPC (param RPC_URL). Uses p-throttle for some sane limits (10 requests per second for now, all requests are equal). Once have 1000 blocks in the store #2, moves to store #3 all of those. Works untill hits the current block. Fetches the current block number every 5 seconds. 
+1. **Initialize:**
 
-## Tech specs
-Bun, top level awaits are ok. Assume zstd installed. If rpc starts with ws, should be ws. Use viem. RPC_URL defined in env. Any code you see you can delete, except for this readme - it is all AI generated.
+   ```js
+   let current = state.lastBlock + 1;
+   let blocksInBatch = 0;
+   let batchStart = current;
+   let out = openStream(batchStart);
+   ```
+2. **Fetch Loop:**
+
+   ```js
+   while (true) {
+     const latest = await getBlockNumber(RPC_URL);
+     while (current <= latest) {
+       const block = await throttle(getBlock, [RPC_URL, current, true]);
+       const receipts = await Promise.all(
+         block.transactions.map(tx => throttle(getReceipt, [RPC_URL, tx.hash]))
+       );
+       out.write(JSON.stringify({ block, receipts }) + "\n");
+       updateState(current);
+       blocksInBatch++;
+       current++;
+
+       if (blocksInBatch >= 1000) rotateBatch();
+     }
+     await sleep(5000);
+   }
+   ```
+
+### Helpers
+
+* **`openStream(start: number)`**: returns a writable stream to `archive_<start>.jsonl.zst`, piping through `zstd -T0`.
+* **`updateState(n: number)`**: sets `state.lastBlock = n` and writes `state.json`.
+* **`rotateBatch()`**: closes current stream, resets `blocksInBatch = 0`, sets `batchStart = current`, and opens new stream.
+
+## 3. File Rotation
+
+* **Naming:** `archive_<startBlock>.jsonl.zst` (e.g. `archive_1000.jsonl.zst` contains blocks 1000–1999).
+* **Rotation Trigger:** Every 1,000 blocks.
+
+## 4. Crash Recovery
+
+* On restart, read `state.json` → `lastBlock`; resume from `lastBlock + 1`.
+* Partial writes in the active batch file are safe to truncate; completed archives are intact.
+
+## 5. Replay Script (for indexing)
+
+Provide a separate script to read and decompress archives in order:
+
+```bash
+for f in archive_*.jsonl.zst; do
+  zstd -d < "$f" | node replay.js
+done
+```
+
+## 6. Next Steps
+
+* Add metrics (blocks/s, file sizes).
+* Optionally replace `zstd` CLI with a native binding for backpressure.
+* Integrate with your indexer via the replay script.
+
+---
+
+Built with Bun and Viem. Requires `zstd` in PATH and `RPC_URL` environment variable.

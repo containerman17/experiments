@@ -1,4 +1,4 @@
-class LastProcessed {
+export class LastProcessed {
     private lastProcessed: number;
 
     queue: number[] = [];
@@ -57,5 +57,3 @@ class LastProcessed {
         }
     }
 }
-
-export const lastProcessed = new LastProcessed();

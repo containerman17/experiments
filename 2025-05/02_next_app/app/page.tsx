@@ -1,40 +1,37 @@
+"use server";
+
 import Image from "next/image";
+import { db } from "../lib/db";
+import { blocksTable } from "../lib/db/schema";
+import { decompress } from "../lib/compressor/compress";
+import { desc } from "drizzle-orm";
 
 // Updated Data Interfaces
 interface Block {
-  blockNumber: string; // Changed from id
+  blockNumber: string;
   hash: string;
-  timestamp: number; // Keep for age calculation
-  age: string;       // Calculated
-  transactionsCount: number; // Changed from txnCount
+  timestamp: number;
+  age: string;
+  transactionsCount: number;
   fee: number;
-  feeCurrency: string; // e.g., AVAX
+  feeCurrency: string;
 }
 
 interface Transaction {
-  txHash: string; // Changed from id
-  timestamp: number; // Keep for age calculation
-  age: string;       // Calculated
-  fromAddress: string; // Changed from from
-  toAddress: string;   // Changed from to
+  txHash: string;
+  timestamp: number;
+  age: string;
+  fromAddress: string;
+  toAddress: string;
   valueTotal: number;
-  valueCurrency: string; // e.g., AVAX
+  valueCurrency: string;
 }
 
 const randomHex = (lengthBytes: number) => {
   return "0x" + Array.from({ length: lengthBytes }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 }
 
-// Updated Mock Data
-const mockBlocksData: Omit<Block, 'age'>[] = [
-  { blockNumber: "61837788", hash: randomHex(20), timestamp: Date.now() - 9 * 1000, transactionsCount: 81, fee: 0.0367, feeCurrency: "AVAX" },
-  { blockNumber: "61837787", hash: randomHex(20), timestamp: Date.now() - 14 * 1000, transactionsCount: 19, fee: 0.0047, feeCurrency: "AVAX" },
-  { blockNumber: "61837786", hash: randomHex(20), timestamp: Date.now() - 15 * 1000, transactionsCount: 15, fee: 0.0085, feeCurrency: "AVAX" },
-  { blockNumber: "61837785", hash: randomHex(20), timestamp: Date.now() - 17 * 1000, transactionsCount: 8, fee: 0.0042, feeCurrency: "AVAX" },
-  { blockNumber: "61837784", hash: randomHex(20), timestamp: Date.now() - 18 * 1000, transactionsCount: 13, fee: 0.0042, feeCurrency: "AVAX" },
-  { blockNumber: "61837783", hash: randomHex(20), timestamp: Date.now() - 19 * 1000, transactionsCount: 22, fee: 0.0146, feeCurrency: "AVAX" },
-];
-
+// Mock data only for transactions since we don't have that in DB yet
 const mockTransactionsData: Omit<Transaction, 'age'>[] = [
   { txHash: randomHex(32), fromAddress: randomHex(20), toAddress: randomHex(20), timestamp: Date.now() - 9 * 1000, valueTotal: 0, valueCurrency: "AVAX" },
   { txHash: randomHex(32), fromAddress: randomHex(20), toAddress: randomHex(20), timestamp: Date.now() - 9 * 1000, valueTotal: 0, valueCurrency: "AVAX" },
@@ -70,11 +67,31 @@ function truncateAddr(address: string, startChars = 6, endChars = 4): string {
 }
 
 async function getLatestBlocks(): Promise<Block[]> {
-  await new Promise(resolve => setTimeout(resolve, 10));
-  return mockBlocksData.map(block => ({
-    ...block,
-    age: formatTimeAgo(block.timestamp),
-  }));
+  // Get the 10 most recent blocks from the database
+  const blocks = await db.select().from(blocksTable).orderBy(desc(blocksTable.number)).limit(10);
+
+  if (blocks.length === 0) {
+    throw new Error("No blocks found in database");
+  }
+
+  const formattedBlocks: Block[] = await Promise.all(
+    blocks.map(async (block) => {
+      // Decompress the stored data
+      const decompressedData = await decompress<{ txNumber: number; timestamp: number; fee: number }>(Buffer.from(block.data as Buffer));
+
+      return {
+        blockNumber: block.number.toString(),
+        hash: block.hash,
+        timestamp: decompressedData.timestamp,
+        age: formatTimeAgo(decompressedData.timestamp * 1000), // Convert seconds to milliseconds
+        transactionsCount: decompressedData.txNumber,
+        fee: decompressedData.fee,
+        feeCurrency: "AVAX" // Hardcoded currency for now
+      };
+    })
+  );
+
+  return formattedBlocks;
 }
 
 async function getLatestTransactions(): Promise<Transaction[]> {
@@ -87,15 +104,40 @@ async function getLatestTransactions(): Promise<Transaction[]> {
 
 // Main Page Component
 export default async function Home() {
-  const latestBlocks = await getLatestBlocks();
-  const latestTransactions = await getLatestTransactions();
+  let latestBlocks: Block[] = [];
+  let latestTransactions: Transaction[] = [];
+  let error: string | null = null;
+
+  try {
+    latestBlocks = await getLatestBlocks();
+    latestTransactions = await getLatestTransactions();
+  } catch (e) {
+    error = e instanceof Error ? e.message : "An unknown error occurred";
+  }
 
   return (
     <div className="min-h-screen bg-white p-6 max-w-7xl mx-auto font-sans">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <BlocksTable blocks={latestBlocks} />
-        <TransactionsTable transactions={latestTransactions} />
-      </div>
+      {error ? (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">
+                {error}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <BlocksTable blocks={latestBlocks} />
+          <TransactionsTable transactions={latestTransactions} />
+        </div>
+      )}
     </div>
   );
 }

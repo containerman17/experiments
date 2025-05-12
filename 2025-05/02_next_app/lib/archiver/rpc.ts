@@ -1,5 +1,4 @@
 import { createPublicClient, http, type PublicClient, type Block, type TransactionReceipt } from 'viem';
-import { mainnet } from 'viem/chains';
 
 // Define a type for the JSON-RPC request and response structures
 interface JsonRpcRequest {
@@ -141,9 +140,9 @@ export class RPC {
 
 
         if (Object.keys(receipts).length !== block.transactions.length) {
-            console.log('block', block);
-            console.log('receipts', receipts);
-            process.exit(1);
+            console.log('block: ', block);
+            console.log('receipts: ', receipts);
+            throw new Error('Receipts length mismatch, block: ' + blockNumber);
         }
 
         return { block, receipts };

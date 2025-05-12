@@ -1,6 +1,9 @@
 import { Archiver } from "./archiver";
 import { RPC } from "./archiver/rpc";
 import { ArchiverDB } from "./archiver/db";
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const rpc = new RPC(process.env.RPC_URL!, 100);
 const chainId = await rpc.getChainId();

@@ -1,4 +1,4 @@
-import { createPublicClient, http, webSocket } from 'viem';
+import { createPublicClient, http, webSocket, type Block, type PublicClient, type TransactionReceipt } from 'viem';
 import { mainnet } from 'viem/chains';
 import pThrottle from 'p-throttle';
 
@@ -27,7 +27,7 @@ export class RPC {
 
     public async loadChainId(): Promise<void> {
         if (this.chainId === 0) {
-            this.chainId = await this.client.getChainId();
+            this.chainId = await getChainId(this.client);
         }
     }
 
@@ -35,23 +35,18 @@ export class RPC {
         block: any;
         receipts: Record<string, any>;
     }> {
-        const getBlock = this.throttle(async (bn: bigint) => {
-            return await this.client.getBlock({
-                blockNumber: bn,
-                includeTransactions: true,
-            });
+        const getBlockThrottled = this.throttle(async (bn: bigint) => {
+            return await getBlock(this.client, bn);
         });
 
-        const getReceipt = this.throttle(async (txHash: string) => {
-            return await this.client.getTransactionReceipt({
-                hash: txHash as `0x${string}`,
-            });
+        const getReceiptThrottled = this.throttle(async (txHash: string) => {
+            return await getTransactionReceipt(this.client, txHash as `0x${string}`);
         });
 
-        const block = await getBlock(BigInt(blockNumber));
+        const block = await getBlockThrottled(BigInt(blockNumber));
 
         const receiptPromises = block.transactions.map(tx =>
-            getReceipt(tx.hash).then(receipt => [tx.hash, receipt])
+            getReceiptThrottled(tx.hash).then(receipt => [tx.hash, receipt])
         );
 
         const receiptEntries = await Promise.all(receiptPromises);
@@ -61,18 +56,45 @@ export class RPC {
     }
 
     public async getCurrentBlockNumber(): Promise<bigint> {
-        const getBlockNumber = this.throttle(async () => {
-            return await this.client.getBlockNumber();
+        const getBlockNumberThrottled = this.throttle(async () => {
+            return await getBlockNumber(this.client);
         });
 
-        return await getBlockNumber();
+        return await getBlockNumberThrottled();
     }
 
     public async getChainId(): Promise<number> {
-        const getChainId = this.throttle(async () => {
-            return await this.client.getChainId();
+        const getChainIdThrottled = this.throttle(async () => {
+            return await getChainId(this.client);
         });
 
-        return await getChainId();
+        return await getChainIdThrottled();
     }
+}
+
+
+function getBlockNumber(client: PublicClient): Promise<bigint> {
+    return client.request({
+        method: 'eth_blockNumber',
+    });
+}
+
+function getTransactionReceipt(client: PublicClient, txHash: `0x${string}`): Promise<TransactionReceipt> {
+    return client.request({
+        method: 'eth_getTransactionReceipt',
+        params: [txHash],
+    });
+}
+
+function getBlock(client: PublicClient, blockNumber: bigint): Promise<Block<bigint, true>> {
+    return client.request({
+        method: 'eth_getBlockByNumber',
+        params: [`0x${blockNumber.toString(16)}`, true],
+    });
+}
+
+function getChainId(client: PublicClient): Promise<number> {
+    return client.request({
+        method: 'eth_chainId',
+    });
 }

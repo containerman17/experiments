@@ -1,6 +1,7 @@
 import { ClassicLevel } from "classic-level"
 
 import { decode, encode } from 'cbor2';
+import { compress, decompress } from '@mongodb-js/zstd';
 
 export class ArchiverDB {
     private db: ClassicLevel<string, Uint8Array>;
@@ -22,12 +23,15 @@ export class ArchiverDB {
 
     async save(key: string, value: unknown) {
         const buffer = Buffer.from(encode(value))
-        await this.db.put(key, buffer)
+        const compressedBuffer = await compress(buffer, 22); // 22 is the maximum compression level
+        await this.db.put(key, compressedBuffer)
     }
 
     async load<Type = unknown>(key: string): Promise<Type> {
-        const buffer = await this.db.get(key)
-        if (!buffer) throw new Error(`Key not found: ${key}`)
+        const compressedBufferAsUint8Array = await this.db.get(key)
+        if (!compressedBufferAsUint8Array) throw new Error(`Key not found: ${key}`)
+        const compressedBufferAsBuffer = Buffer.from(compressedBufferAsUint8Array);
+        const buffer = await decompress(compressedBufferAsBuffer);
         return decode(buffer) as Type
     }
 

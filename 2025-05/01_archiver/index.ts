@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const rpc = new RPC(process.env.RPC_URL!, 100);
+const rpc = new RPC(process.env.RPC_URL!);
 const chainId = await rpc.getChainId();
 const db = new ArchiverDB(`data/archive/${chainId}`);
 

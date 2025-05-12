@@ -3,7 +3,7 @@ import { ArchiverDB } from "./db";
 import { LastProcessed } from "./lastProcessed";
 import { incrementAddedThisSecond } from "./stats";
 import type { GetBlockReturnType } from "viem";
-const MAX_CONCURRENCY = 100;
+const MAX_CONCURRENCY = 1000;
 
 type StoredBlock = {
     block: GetBlockReturnType<undefined, true, 'latest'>;

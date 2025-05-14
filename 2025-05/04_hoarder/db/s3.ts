@@ -4,9 +4,6 @@ import { compress, decompress } from "./compressor";
 import { promises as fs } from 'fs';
 import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 
-// Maximum value for a 32-bit unsigned integer
-const MAX_BLOCK_NUMBER = 1000000000;
-
 export class S3BlockStore implements HoarderDB {
     private bucket: string;
     private s3Client: S3Client;
@@ -26,19 +23,15 @@ export class S3BlockStore implements HoarderDB {
         this.bucket = process.env.AWS_BUCKET!;
     }
 
-    // Convert block number to storage key using inverted ordering
+    // Convert block number to storage key using simple padding
     private getKeyFromBlockNumber(blockNumber: number): string {
-        // Store blocks as MAX_UINT32 - blockNumber to enable quick retrieval of latest blocks
-        // when listing objects in ascending order
-        const invertedNumber = MAX_BLOCK_NUMBER - blockNumber;
-        return `${this.prefix}/${invertedNumber.toString().padStart(10, '0')}.json.zstd`;
+        return `${this.prefix}/${blockNumber.toString().padStart(12, '0')}.json.zstd`;
     }
 
     // Convert storage key back to block number
     private getBlockNumberFromKey(key: string): number {
         const filename = key.split('/').pop() || '';
-        const invertedNumber = parseInt(filename.split('.')[0] || '0', 10);
-        return MAX_BLOCK_NUMBER - invertedNumber;
+        return parseInt(filename.split('.')[0] || '0', 10);
     }
 
     async storeBlock(blockNumber: number, block: StoredBlock): Promise<void> {
@@ -65,13 +58,10 @@ export class S3BlockStore implements HoarderDB {
     }
 
     async getLastStoredBlockNumber(): Promise<number> {
-        // List objects with prefix and get the first one when sorted ascending
-        // The inverted numbering scheme (MAX_UINT32 - blockNumber) ensures 
-        // that the smallest key value corresponds to the highest block number
+        // List all objects with prefix to find the highest block number
         const command = new ListObjectsV2Command({
             Bucket: this.bucket,
             Prefix: this.prefix + '/',
-            MaxKeys: 1
         });
 
         const response = await this.s3Client.send(command);
@@ -80,11 +70,19 @@ export class S3BlockStore implements HoarderDB {
             throw new Error('No blocks found');
         }
 
-        const key = response.Contents[0]!.Key;
-        if (!key) {
-            throw new Error('Invalid block key');
+        // Find the highest block number by examining all keys
+        let highestBlockNumber = -1;
+        for (const item of response.Contents) {
+            if (item.Key) {
+                const blockNumber = this.getBlockNumberFromKey(item.Key);
+                highestBlockNumber = Math.max(highestBlockNumber, blockNumber);
+            }
         }
 
-        return this.getBlockNumberFromKey(key);
+        if (highestBlockNumber === -1) {
+            throw new Error('No valid blocks found');
+        }
+
+        return highestBlockNumber;
     }
 }

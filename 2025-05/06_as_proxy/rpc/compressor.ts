@@ -1,5 +1,6 @@
 import { decode, encode } from 'cbor2';
 import * as zlib from 'node:zlib';
+import { Buffer } from "node:buffer";
 
 const FLAG_UNCOMPRESSED = 0x00;
 const FLAG_NODE22_ZSTD = 0x01;

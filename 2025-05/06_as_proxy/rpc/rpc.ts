@@ -1,6 +1,6 @@
-import { type Block, type TransactionReceipt } from 'viem';
-import { StoredBlock } from './types';
-
+import { createPublicClient, http, type Block, type Chain, type GetBlockReturnType, type PublicClient, type TransactionReceipt } from 'viem';
+import type { StoredBlock } from './types.ts';
+import { utils } from "@avalabs/avalanchejs";
 // Define a type for the JSON-RPC request and response structures
 interface JsonRpcRequest {
     jsonrpc: "2.0";
@@ -20,6 +20,7 @@ interface JsonRpcResponse {
     };
 }
 
+
 export class RPC {
     private batchQueue: {
         method: string;
@@ -30,6 +31,7 @@ export class RPC {
     private intervalId: NodeJS.Timeout | null = null;
     private chainIdCache: number | null = null;
     private isProcessingBatch = false;
+    private publicClient: PublicClient;
 
     constructor(
         private rpcUrl: string,
@@ -39,6 +41,11 @@ export class RPC {
         if (!rpcUrl) {
             throw new Error('RPC_URL is not set');
         }
+
+        // Initialize viem public client
+        this.publicClient = createPublicClient({
+            transport: http(rpcUrl)
+        });
 
         // Start the interval for regular batch processing
         this.intervalId = setInterval(() => this.processBatch(), this.batchInterval);
@@ -125,7 +132,7 @@ export class RPC {
     }
 
     public async fetchBlockAndReceipts(blockNumber: number): Promise<StoredBlock> {
-        const block = await this.getBlock(BigInt(blockNumber), true) as Block<bigint, true, 'latest'>;
+        const block = await this.getBlock(BigInt(blockNumber), true);
 
         const receiptPromises = block.transactions.map(tx => {
             const txHash = typeof tx === 'string' ? tx : (tx as { hash: `0x${string}` }).hash;
@@ -143,11 +150,11 @@ export class RPC {
             throw new Error('Receipts length mismatch, block: ' + blockNumber);
         }
 
-        return { block, receipts };
+        return { block: block as GetBlockReturnType<Chain, true, 'latest'>, receipts };
     }
 
-    public getCurrentBlockNumber(): Promise<bigint> {
-        return this.request<string>('eth_blockNumber').then(hex => BigInt(hex));
+    public getCurrentBlockNumber(): Promise<number> {
+        return this.request<string>('eth_blockNumber').then(hex => parseInt(hex, 16));
     }
 
     public getChainId(): Promise<number> {
@@ -161,5 +168,23 @@ export class RPC {
 
     public getTransactionReceipt(txHash: `0x${string}`): Promise<TransactionReceipt> {
         return this.request<TransactionReceipt>('eth_getTransactionReceipt', [txHash]);
+    }
+
+    public async getBlockchainIDFromPrecompile(): Promise<string> {
+        const WARP_PRECOMPILE_ADDRESS = '0x0200000000000000000000000000000000000005' as const;
+
+        // Create a call data for the precompile contract
+        const callData = {
+            to: WARP_PRECOMPILE_ADDRESS,
+            data: '0x4213cf78' // Function signature for getBlockchainID()
+        };
+
+        // Use eth_call to execute the view function
+        const blockchainIDHex = await this.request<string>('eth_call', [callData, 'latest']);
+
+        const chainIdBytes = utils.hexToBuffer(blockchainIDHex);
+        const avalancheChainId = utils.base58check.encode(chainIdBytes);
+
+        return avalancheChainId;
     }
 }

@@ -1,0 +1,21 @@
+{
+  "name": "06_as_proxy",
+  "packageManager": "yarn@4.6.0",
+  "type": "module",
+  "scripts": {
+    "dev": "yarn exec tsx main.ts",
+    "ide": "yarn dlx @yarnpkg/sdks vscode"
+  },
+  "dependencies": {
+    "@avalabs/avalanchejs": "^5.0.0",
+    "@aws-sdk/client-s3": "^3.810.0",
+    "better-sqlite3": "^11.10.0",
+    "cbor2": "^2.0.0",
+    "dotenv": "^16.5.0",
+    "viem": "^2.29.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.18",
+    "typescript": "^5.8.3"
+  }
+}

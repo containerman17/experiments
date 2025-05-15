@@ -1,6 +1,6 @@
 import type { BlockCache, StoredBlock } from "./types.ts";
 import { compress, decompress } from "./compressor.ts";
-import { S3Client, GetObjectCommand, PutObjectCommand } from 'npm:@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import process from "node:process";
 
 export class S3BlockStore implements BlockCache {

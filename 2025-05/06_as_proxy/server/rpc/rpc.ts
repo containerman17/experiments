@@ -23,25 +23,42 @@ interface JsonRpcResponse {
 import pLimit from 'p-limit';
 import pThrottle from 'p-throttle';
 
-const concurencyLimiter = pLimit(10);
-const requestThrottle = pThrottle({
-    limit: 10,
-    interval: 1000
-});
-
-//simple rewrite of the rpc above
 export class BatchRpc {
-    constructor(
-        private rpcUrl: string,
-        private cache: BlockCache,
-        private maxBatchSize: number = 25
-    ) {
+    private concurencyLimiter: ReturnType<typeof pLimit>;
+    private requestThrottle: ReturnType<typeof pThrottle>;
+
+    private rpcUrl: string;
+    private cache: BlockCache;
+    private maxBatchSize: number;
+
+    constructor({
+        rpcUrl,
+        cache,
+        maxBatchSize = 25,
+        maxConcurrency = 10,
+        rps = 10
+    }: {
+        rpcUrl: string;
+        cache: BlockCache;
+        maxBatchSize?: number;
+        maxConcurrency?: number;
+        rps?: number;
+    }) {
         if (!rpcUrl) {
             throw new Error('RPC_URL is not set or empty');
         }
-        if (this.maxBatchSize <= 0) {
+        if (maxBatchSize <= 0) {
             throw new Error('maxBatchSize must be positive');
         }
+
+        this.rpcUrl = rpcUrl;
+        this.cache = cache;
+        this.maxBatchSize = maxBatchSize;
+        this.concurencyLimiter = pLimit(maxConcurrency);
+        this.requestThrottle = pThrottle({
+            limit: rps,
+            interval: 1000
+        });
     }
 
     /**
@@ -78,7 +95,7 @@ export class BatchRpc {
 
         try {
             // Apply throttle and concurrency limit to the actual fetch execution
-            const responses = await requestThrottle(() => concurencyLimiter(executeFetch))();
+            const responses = await this.requestThrottle(() => this.concurencyLimiter(executeFetch))();
 
             let individualResponses: JsonRpcResponse[];
             if (Array.isArray(responses)) {
@@ -218,6 +235,10 @@ export class BatchRpc {
                 cacheMisses.push({ originalIndex: index, blockNumber });
             }
         }));
+
+        const numCached = blockNumbers.length - cacheMisses.length;
+        const numUncached = cacheMisses.length;
+        console.log(`getBlocksWithReceipts: Cache hits: ${numCached}, Cache misses (to fetch): ${numUncached}`);
 
         // Step 2: Fetch uncached blocks if any
         if (cacheMisses.length > 0) {

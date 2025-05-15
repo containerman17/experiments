@@ -3,7 +3,7 @@ import { compress, decompress } from "./compressor.ts";
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import process from "node:process";
 import pThrottle from 'p-throttle';
-
+import pLimit from 'p-limit';
 export class S3BlockStore implements BlockCache {
     private bucket: string;
     private s3Client: S3Client;
@@ -24,8 +24,11 @@ export class S3BlockStore implements BlockCache {
         });
         this.bucket = process.env.AWS_BUCKET!;
 
+        const readConcurrencyLimit = pLimit(45);
+        const writeConcurrencyLimit = pLimit(45);
+
         const readThrottle = pThrottle({
-            limit: 100,
+            limit: 500,
             interval: 1000
         });
 
@@ -34,8 +37,8 @@ export class S3BlockStore implements BlockCache {
             interval: 1000
         });
 
-        this.throttledRead = readThrottle(async (fn) => fn());
-        this.throttledWrite = writeThrottle(async (fn) => fn());
+        this.throttledRead = readThrottle(async (fn) => readConcurrencyLimit(fn));
+        this.throttledWrite = writeThrottle(async (fn) => writeConcurrencyLimit(fn));
     }
 
     // Convert block number to storage key using simple padding

@@ -17,9 +17,9 @@ db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run('last
 
 
 let indexedRecently = 0
-const interval_seconds = 5
+const interval_seconds = 10
 setInterval(() => {
-    console.log(`Indexing ${indexedRecently / interval_seconds} tx/s`)
+    console.log(`🔥 Indexing ${indexedRecently / interval_seconds} tx/s`)
     indexedRecently = 0
 }, interval_seconds * 1000)
 
@@ -53,9 +53,15 @@ async function startLoop() {
     // 1st arg: rpcUrl (string)
     // 2nd arg: cache (BlockCache instance)
     // 3rd arg: maxBatchSize for internal JSON-RPC batching (number, defaults to 25 if not provided)
-    const rpc = new BatchRpc(rpcUrl, cacher, 50);
+    const rpc = new BatchRpc({
+        rpcUrl,
+        cache: cacher,
+        maxBatchSize: 40,
+        maxConcurrency: 20,
+        rps: 20
+    });
 
-    const PROCESSING_BATCH_SIZE = 1000; // Number of blocks to fetch and process per cycle
+    const PROCESSING_BATCH_SIZE = 200; // Number of blocks to fetch and process per cycle
 
     console.log('Starting indexer loop...');
 

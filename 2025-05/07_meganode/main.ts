@@ -18,7 +18,7 @@ interface ApiResponse {
 async function fetchChainsPage(nextPageToken?: string): Promise<ApiResponse> {
     console.log("fetching chains page", nextPageToken);
     const pageSize = 100;
-    let url = `https://glacier-api.avax.network/v1/networks/mainnet/blockchains?pageSize=${pageSize}`;
+    let url = `https://glacier-api.avax.network/v1/networks/fuji/blockchains?pageSize=${pageSize}`;
     if (nextPageToken) {
         url += `&pageToken=${nextPageToken}`;
     }
@@ -48,6 +48,10 @@ const allBlockchains = await fetchAllChains();
 //for each vmId, count the number of chains
 const vmStats: Record<string, number> = {};
 for (const blockchain of allBlockchains) {
+    if (blockchain.blockchainId === "i9gFpZQHPLcGfZaQLiwFAStddQD7iTKBpFfurPFJsXm1CkTZK") {
+        console.log(blockchain);
+    }
+
     if (vmStats[blockchain.vmId]) {
         vmStats[blockchain.vmId]++;
     } else {

@@ -2,10 +2,13 @@ import type { BlockCache, StoredBlock } from "./types.ts";
 import { compress, decompress } from "./compressor.ts";
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import process from "node:process";
+import pThrottle from 'p-throttle';
 
 export class S3BlockStore implements BlockCache {
     private bucket: string;
     private s3Client: S3Client;
+    private throttledRead: <T>(fn: () => Promise<T>) => Promise<T>;
+    private throttledWrite: <T>(fn: () => Promise<T>) => Promise<T>;
 
     constructor(private prefix: string) {
         if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_BUCKET) {
@@ -20,6 +23,19 @@ export class S3BlockStore implements BlockCache {
             }
         });
         this.bucket = process.env.AWS_BUCKET!;
+
+        const readThrottle = pThrottle({
+            limit: 100,
+            interval: 1000
+        });
+
+        const writeThrottle = pThrottle({
+            limit: 50,
+            interval: 1000
+        });
+
+        this.throttledRead = readThrottle(async (fn) => fn());
+        this.throttledWrite = writeThrottle(async (fn) => fn());
     }
 
     // Convert block number to storage key using simple padding
@@ -34,7 +50,7 @@ export class S3BlockStore implements BlockCache {
             Key: this.getKeyFromBlockNumber(blockNumber),
             Body: data
         });
-        await this.s3Client.send(command);
+        await this.throttledWrite(() => this.s3Client.send(command));
     }
 
     async loadBlock(blockNumber: number): Promise<StoredBlock | null> {
@@ -43,7 +59,7 @@ export class S3BlockStore implements BlockCache {
             Key: this.getKeyFromBlockNumber(blockNumber)
         });
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.throttledRead(() => this.s3Client.send(command));
             const data = await response.Body?.transformToByteArray();
             if (!data) {
                 // This case might be redundant if S3 already threw NoSuchKey for an empty body,

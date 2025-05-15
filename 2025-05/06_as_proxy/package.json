@@ -13,9 +13,12 @@
     "@avalabs/avalanchejs": "^5.0.0",
     "@aws-sdk/client-s3": "^3.810.0",
     "@types/node": "^22.15",
+    "@types/p-throttle": "^2.1.0",
     "better-sqlite3": "^11.10.0",
     "cbor2": "^2.0.0",
     "dotenv": "^16.5.0",
+    "p-limit": "^6.2.0",
+    "p-throttle": "^7.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "viem": "^2.29.2"

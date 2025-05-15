@@ -32,6 +32,8 @@ export class RPC {
     private chainIdCache: number | null = null;
     private isProcessingBatch = false;
     private publicClient: PublicClient;
+    private requestsProcessedInInterval: number = 0;
+    private lastLogTimestamp: number = Date.now();
 
     constructor(
         private rpcUrl: string,
@@ -76,6 +78,7 @@ export class RPC {
         try {
             // Take at most maxBatchSize items from the queue, maintaining FIFO order
             const batchToProcess = this.batchQueue.splice(0, this.maxBatchSize);
+            this.requestsProcessedInInterval += batchToProcess.length;
 
             const batchRequests: JsonRpcRequest[] = batchToProcess.map(({ method, params }, index) => ({
                 jsonrpc: "2.0",
@@ -86,11 +89,14 @@ export class RPC {
 
             try {
                 // Perform the fetch directly - we're already timing batches
+                const fetchStartTime = Date.now();
                 const httpResponse = await fetch(this.rpcUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(batchRequests)
                 });
+                const fetchEndTime = Date.now();
+                // console.log(`[RPC Fetch Stats] Batch of ${batchRequests.length} requests took ${fetchEndTime - fetchStartTime}ms to ${this.rpcUrl}`);
 
                 if (!httpResponse.ok) {
                     const errorText = await httpResponse.text();
@@ -120,6 +126,14 @@ export class RPC {
             }
         } finally {
             this.isProcessingBatch = false;
+
+            const currentTime = Date.now();
+            if (currentTime - this.lastLogTimestamp >= 1000) {
+                const intervalSeconds = (currentTime - this.lastLogTimestamp) / 1000;
+                console.log(`[RPC Stats @ ${new Date(currentTime).toISOString()}] Queue: ${this.batchQueue.length}, Processed in last ${intervalSeconds.toFixed(3)}s: ${this.requestsProcessedInInterval}, Interval: ${intervalSeconds.toFixed(3)}s`);
+                this.requestsProcessedInInterval = 0;
+                this.lastLogTimestamp = currentTime;
+            }
         }
     }
 

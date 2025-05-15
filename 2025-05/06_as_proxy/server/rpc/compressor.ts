@@ -41,7 +41,6 @@ export async function compress(data: any, level: number = DEFAULT_COMPRESSION_LE
     compressedData.copy(result, 1);
     // Calculate and log compression rate
     const compressionRate = cborEncoded.length / result.length;
-    console.log(`Compression rate: ${compressionRate.toFixed(1)}x (${cborEncoded.length / 1000} -> ${result.length / 1000} KB)`);
 
     return result;
 }

@@ -4,8 +4,8 @@ import { S3BlockStore } from "./rpc/s3cache.ts";
 import { CachedRPC } from "./rpc/cachedRpc.ts";
 import { toBytes } from 'viem'
 import Database from 'better-sqlite3';
-import { StoredBlock } from "./rpc/types.ts";
-const db = new Database('/tmp/foobar.db');
+import { BlockCache, StoredBlock } from "./rpc/types.ts";
+const db = new Database('/tmp/foobar2.db');
 db.pragma('journal_mode = WAL');
 
 db.exec('CREATE TABLE IF NOT EXISTS tx_block_lookup (hash_to_block BLOB PRIMARY KEY) WITHOUT ROWID;');
@@ -15,19 +15,31 @@ db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run('last
 
 dotenv.config()
 
+let indexedRecently = 0
+const interval_seconds = 5
+setInterval(() => {
+    console.log(`Indexing ${indexedRecently / interval_seconds} tx/s`)
+    indexedRecently = 0
+}, interval_seconds * 1000)
+
 //This function is guaranteed to be called in order and inside a transaction
 function handleBlock({ block, receipts }: StoredBlock) {
-    console.log(`Block ${Number(block.number)} has ${Object.keys(receipts).length} receipts`)
+    if (Number(block.number) % 100 === 0) {
+        console.log('handleBlock', Number(block.number))
+    }
+    // console.log('handleBlock', Number(block.number))
     for (const tx of block.transactions) {
         const txHashBytes = toBytes(tx.hash)
         const lookupKey = Buffer.from([...txHashBytes.slice(0, 5), ...toBytes(Number(block.number))])
-        db.prepare('INSERT INTO tx_block_lookup (hash_to_block) VALUES (?)').run(lookupKey)
-        db.prepare('UPDATE configs SET value = ? WHERE key = ?').run(Number(block.number), 'last_processed_block')
+        db.prepare('INSERT INTO tx_block_lookup (hash_to_block) VALUES (?) ON CONFLICT(hash_to_block) DO NOTHING').run(lookupKey)
     }
+    db.prepare('UPDATE configs SET value = ? WHERE key = ?').run(Number(block.number), 'last_processed_block')
+    indexedRecently++
 }
 
 async function startLoop() {
-    const uncachedRPC = new RPC(process.env.RPC_URL!);
+    const uncachedRPC = new RPC(process.env.RPC_URL!, 10, 50); // maxBatchSize 10, batchInterval 150ms
+    await uncachedRPC.loadChainId(); // It's good practice to load the chainId early if needed elsewhere
     const chainIdbase58 = await uncachedRPC.getBlockchainIDFromPrecompile()
     const cacher = new S3BlockStore(chainIdbase58)
     const cachedRPC = new CachedRPC(cacher, uncachedRPC)
@@ -37,13 +49,28 @@ async function startLoop() {
     console.log('lastProcessedBlock', lastProcessedBlock)
     let currentBlock = lastProcessedBlock + 1
 
-    for (let i = currentBlock; i < 300; i++) {
-        const block = await cachedRPC.getBlock(currentBlock)
-        currentBlock++
-        db.transaction((cats) => {
+    let blockPromises: Record<number, Promise<StoredBlock> | null> = {}
+
+    for (let i = currentBlock; i < 2500; i++) {
+        //prefill with future block promises
+        const CACHE_DEPTH = 30
+        for (let j = i; j < i + CACHE_DEPTH; j++) {
+            if (!blockPromises[j]) {
+                blockPromises[j] = cachedRPC.getBlock(j)
+            }
+        }
+
+        const block = await blockPromises[i]
+        if (!block) {
+            throw new Error(`Block ${i} not found`)
+        }
+        db.transaction(() => {
             handleBlock(block)
         })()
+        currentBlock++
     }
+
+    console.log('done')
 }
 
 startLoop()

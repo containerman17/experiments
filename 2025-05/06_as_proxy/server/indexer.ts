@@ -10,6 +10,8 @@ db.pragma('journal_mode = WAL');
 
 db.exec('CREATE TABLE IF NOT EXISTS tx_block_lookup (hash_to_block BLOB PRIMARY KEY) WITHOUT ROWID;');
 db.exec('CREATE TABLE IF NOT EXISTS configs (key TEXT PRIMARY KEY, value TEXT)');
+db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run('last_processed_block', '-1');
+
 
 dotenv.config()
 
@@ -20,6 +22,7 @@ function handleBlock({ block, receipts }: StoredBlock) {
         const txHashBytes = toBytes(tx.hash)
         const lookupKey = Buffer.from([...txHashBytes.slice(0, 5), ...toBytes(Number(block.number))])
         db.prepare('INSERT INTO tx_block_lookup (hash_to_block) VALUES (?)').run(lookupKey)
+        db.prepare('UPDATE configs SET value = ? WHERE key = ?').run(Number(block.number), 'last_processed_block')
     }
 }
 
@@ -29,15 +32,17 @@ async function startLoop() {
     const cacher = new S3BlockStore(chainIdbase58)
     const cachedRPC = new CachedRPC(cacher, uncachedRPC)
 
-    let currentBlock = 100
+    const lastProcessedBlockResp = db.prepare('SELECT value FROM configs WHERE key = ?').get('last_processed_block') as { value: string }
+    const lastProcessedBlock = parseInt(lastProcessedBlockResp.value)
+    console.log('lastProcessedBlock', lastProcessedBlock)
+    let currentBlock = lastProcessedBlock + 1
 
-    for (let i = currentBlock; i < (260); i++) {
+    for (let i = currentBlock; i < 300; i++) {
         const block = await cachedRPC.getBlock(currentBlock)
         currentBlock++
-        const runTx = db.transaction((cats) => {
+        db.transaction((cats) => {
             handleBlock(block)
-        });
-        runTx()
+        })()
     }
 }
 

@@ -1,0 +1,17 @@
+{
+  "name": "06_as_proxy",
+  "packageManager": "yarn@4.6.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --loader ts-node/esm index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "cbor2": "^2.0.0",
+    "viem": "^2.29.2"
+  }
+}

@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Block, type Chain, type GetBlockReturnType, type PublicClient, type TransactionReceipt } from 'viem';
-import type { StoredBlock } from './types.ts';
+import type { BlockCache, StoredBlock } from './types.ts';
 import { utils } from "@avalabs/avalanchejs";
 // Define a type for the JSON-RPC request and response structures
 interface JsonRpcRequest {
@@ -20,189 +20,6 @@ interface JsonRpcResponse {
     };
 }
 
-
-export class RPC {
-    private batchQueue: {
-        method: string;
-        params: any[];
-        resolve: (value: any) => void;
-        reject: (error: any) => void;
-    }[] = [];
-    private intervalId: NodeJS.Timeout | null = null;
-    private chainIdCache: number | null = null;
-    private isProcessingBatch = false;
-    private publicClient: PublicClient;
-    private requestsProcessedInInterval: number = 0;
-    private lastLogTimestamp: number = Date.now();
-
-    constructor(
-        private rpcUrl: string,
-        private maxBatchSize: number = 25,
-        private batchInterval: number = 50
-    ) {
-        if (!rpcUrl) {
-            throw new Error('RPC_URL is not set');
-        }
-
-        // Initialize viem public client
-        this.publicClient = createPublicClient({
-            transport: http(rpcUrl)
-        });
-
-        // Start the interval for regular batch processing
-        this.intervalId = setInterval(() => this.processBatch(), this.batchInterval);
-    }
-
-    public async loadChainId(): Promise<void> {
-        if (this.chainIdCache === null) {
-            this.chainIdCache = await this.getChainId();
-        }
-    }
-
-    public getCachedChainId(): number | null {
-        return this.chainIdCache;
-    }
-
-    private request<T>(method: string, params: any[] = []): Promise<T> {
-        return new Promise((resolve, reject) => {
-            this.batchQueue.push({ method, params, resolve, reject });
-        });
-    }
-
-    private async processBatch() {
-        // Don't run concurrent batch processing
-        if (this.isProcessingBatch || this.batchQueue.length === 0) return;
-
-        this.isProcessingBatch = true;
-
-        try {
-            // Take at most maxBatchSize items from the queue, maintaining FIFO order
-            const batchToProcess = this.batchQueue.splice(0, this.maxBatchSize);
-            this.requestsProcessedInInterval += batchToProcess.length;
-
-            const batchRequests: JsonRpcRequest[] = batchToProcess.map(({ method, params }, index) => ({
-                jsonrpc: "2.0",
-                id: index,
-                method,
-                params
-            }));
-
-            try {
-                // Perform the fetch directly - we're already timing batches
-                const fetchStartTime = Date.now();
-                const httpResponse = await fetch(this.rpcUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(batchRequests)
-                });
-                const fetchEndTime = Date.now();
-                // console.log(`[RPC Fetch Stats] Batch of ${batchRequests.length} requests took ${fetchEndTime - fetchStartTime}ms to ${this.rpcUrl}`);
-
-                if (!httpResponse.ok) {
-                    const errorText = await httpResponse.text();
-                    throw new Error(`RPC request failed with status ${httpResponse.status}: ${errorText}`);
-                }
-
-                const responses = await httpResponse.json() as JsonRpcResponse[];
-
-                if (!Array.isArray(responses)) {
-                    throw new Error('Batch RPC response is not an array');
-                }
-
-                responses.forEach((response) => {
-                    const requestItem = batchToProcess[response.id];
-                    if (requestItem) {
-                        if (response.error) {
-                            requestItem.reject(response.error);
-                        } else {
-                            requestItem.resolve(response.result);
-                        }
-                    } else {
-                        console.error(`Received response for unknown ID: ${response.id}`);
-                    }
-                });
-            } catch (error) {
-                batchToProcess.forEach(item => item.reject(error));
-            }
-        } finally {
-            this.isProcessingBatch = false;
-
-            const currentTime = Date.now();
-            if (currentTime - this.lastLogTimestamp >= 1000) {
-                const intervalSeconds = (currentTime - this.lastLogTimestamp) / 1000;
-                console.log(`[RPC Stats @ ${new Date(currentTime).toISOString()}] Queue: ${this.batchQueue.length}, Processed in last ${intervalSeconds.toFixed(3)}s: ${this.requestsProcessedInInterval}, Interval: ${intervalSeconds.toFixed(3)}s`);
-                this.requestsProcessedInInterval = 0;
-                this.lastLogTimestamp = currentTime;
-            }
-        }
-    }
-
-    // Cleanup method to cancel the interval when done
-    public dispose() {
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
-        }
-    }
-
-    public async fetchBlockAndReceipts(blockNumber: number): Promise<StoredBlock> {
-        const block = await this.getBlock(BigInt(blockNumber), true);
-
-        const receiptPromises = block.transactions.map(tx => {
-            const txHash = typeof tx === 'string' ? tx : (tx as { hash: `0x${string}` }).hash;
-            return this.getTransactionReceipt(txHash as `0x${string}`)
-                .then(receipt => [txHash, receipt] as const);
-        });
-
-        const receiptEntries = await Promise.all(receiptPromises);
-        const receipts = Object.fromEntries(receiptEntries) as Record<string, TransactionReceipt>;
-
-
-        if (Object.keys(receipts).length !== block.transactions.length) {
-            console.log('block: ', block);
-            console.log('receipts: ', receipts);
-            throw new Error('Receipts length mismatch, block: ' + blockNumber);
-        }
-
-        return { block: block as GetBlockReturnType<Chain, true, 'latest'>, receipts };
-    }
-
-    public getCurrentBlockNumber(): Promise<number> {
-        return this.request<string>('eth_blockNumber').then(hex => parseInt(hex, 16));
-    }
-
-    public getChainId(): Promise<number> {
-        return this.request<string>('eth_chainId').then(hex => parseInt(hex, 16));
-    }
-
-    public getBlock(blockNumberOrTag: bigint | 'latest' | 'earliest' | 'pending', includeTransactions: boolean = true): Promise<Block<bigint, typeof includeTransactions>> {
-        const paramBlock = typeof blockNumberOrTag === 'bigint' ? `0x${blockNumberOrTag.toString(16)}` : blockNumberOrTag;
-        return this.request<Block<bigint, typeof includeTransactions>>('eth_getBlockByNumber', [paramBlock, includeTransactions]);
-    }
-
-    public getTransactionReceipt(txHash: `0x${string}`): Promise<TransactionReceipt> {
-        return this.request<TransactionReceipt>('eth_getTransactionReceipt', [txHash]);
-    }
-
-    public async getBlockchainIDFromPrecompile(): Promise<string> {
-        const WARP_PRECOMPILE_ADDRESS = '0x0200000000000000000000000000000000000005' as const;
-
-        // Create a call data for the precompile contract
-        const callData = {
-            to: WARP_PRECOMPILE_ADDRESS,
-            data: '0x4213cf78' // Function signature for getBlockchainID()
-        };
-
-        // Use eth_call to execute the view function
-        const blockchainIDHex = await this.request<string>('eth_call', [callData, 'latest']);
-
-        const chainIdBytes = utils.hexToBuffer(blockchainIDHex);
-        const avalancheChainId = utils.base58check.encode(chainIdBytes);
-
-        return avalancheChainId;
-    }
-}
-
 import pLimit from 'p-limit';
 import pThrottle from 'p-throttle';
 
@@ -216,6 +33,7 @@ const requestThrottle = pThrottle({
 export class BatchRpc {
     constructor(
         private rpcUrl: string,
+        private cache: BlockCache,
         private maxBatchSize: number = 25
     ) {
         if (!rpcUrl) {
@@ -383,11 +201,94 @@ export class BatchRpc {
         return finalResults;
     }
 
+    public async getBlocksWithReceipts(blockNumbers: number[]): Promise<StoredBlock[]> {
+        if (!blockNumbers || blockNumbers.length === 0) {
+            return [];
+        }
+
+        const results: Array<StoredBlock | null> = new Array(blockNumbers.length).fill(null);
+        const cacheMisses: Array<{ originalIndex: number; blockNumber: number }> = [];
+
+        // Step 1: Try to load from cache
+        await Promise.all(blockNumbers.map(async (blockNumber, index) => {
+            const cachedBlock = await this.cache.loadBlock(blockNumber);
+            if (cachedBlock) {
+                results[index] = cachedBlock;
+            } else {
+                cacheMisses.push({ originalIndex: index, blockNumber });
+            }
+        }));
+
+        // Step 2: Fetch uncached blocks if any
+        if (cacheMisses.length > 0) {
+            const blockNumbersToFetch = cacheMisses.map(miss => miss.blockNumber);
+            const fetchedBlocks = await this.getBlocksWithReceiptsUncached(blockNumbersToFetch);
+
+            // Step 3: Save newly fetched blocks to cache and populate results
+            const savePromises: Promise<void>[] = [];
+            fetchedBlocks.forEach(fetchedBlock => {
+                // Find the original index for this fetched block
+                const missInfo = cacheMisses.find(miss => miss.blockNumber === Number(fetchedBlock.block.number));
+                if (missInfo) {
+                    results[missInfo.originalIndex] = fetchedBlock;
+                    savePromises.push(this.cache.saveBlock(missInfo.blockNumber, fetchedBlock));
+                } else {
+                    // This case should ideally not happen if getBlocksWithReceiptsUncached returns blocks for all requested numbers
+                    // or if block numbers are unique in the input.
+                    console.warn(`Fetched block ${fetchedBlock.block.number} but could not find its original request index.`);
+                }
+            });
+            await Promise.all(savePromises);
+        }
+
+        // Filter out any nulls which means a block was neither in cache nor fetched (shouldn't happen if fetch is robust)
+        // And ensure the order is preserved.
+        const finalResults = results.filter(block => block !== null) as StoredBlock[];
+
+        // The `finalResults` might not be in the same order as `blockNumbers` if some blocks failed to load/fetch.
+        // We need to re-order based on the original `blockNumbers` array.
+        // However, `results` array is already in the correct order due to indexed assignment.
+        // The filtering step above might remove elements, so we need a more robust way to map back if order is critical
+        // and not all blocks are guaranteed to be found.
+
+        // For now, assuming `results` will be dense if all blocks are found, or sparse with nulls.
+        // If a block is truly missing (not in cache, failed to fetch), it will be null in results.
+        // The requirement is to return StoredBlock[], so we must filter out nulls.
+        // This means the returned array length might be less than blockNumbers.length if blocks are missing.
+
+        // To ensure the output array corresponds to the input `blockNumbers` and maintains order,
+        // while also considering that some blocks might be completely unresolvable (neither in cache nor fetchable),
+        // we will reconstruct the result carefully.
+
+        const orderedResults: StoredBlock[] = [];
+        const fetchedMap = new Map<number, StoredBlock>();
+        finalResults.forEach(block => {
+            if (block && block.block && typeof block.block.number === 'bigint') { // viem returns bigint for block.number
+                fetchedMap.set(Number(block.block.number), block);
+            } else if (block && block.block && typeof block.block.number === 'string') { // sometimes it's a hex string from RPC
+                fetchedMap.set(parseInt(block.block.number, 16), block);
+            } else if (block && block.block && typeof block.block.number === 'number') { // or just a number
+                fetchedMap.set(block.block.number, block);
+            }
+
+        });
+
+        blockNumbers.forEach(num => {
+            const block = fetchedMap.get(num);
+            if (block) {
+                orderedResults.push(block);
+            }
+            // If block is not in fetchedMap, it means it was not found in cache and could not be fetched.
+            // It will be omitted from the result as per StoredBlock[] promise.
+        });
+        return orderedResults;
+    }
+
     /**
      * Fetches multiple blocks and their transaction receipts using batched RPC calls.
      * Implements the `getBlocksWithReceipts` TODO.
      */
-    public async getBlocksWithReceipts(blockNumbers: number[]): Promise<StoredBlock[]> {
+    public async getBlocksWithReceiptsUncached(blockNumbers: number[]): Promise<StoredBlock[]> {
         if (!blockNumbers || blockNumbers.length === 0) {
             return [];
         }
@@ -472,4 +373,61 @@ export class BatchRpc {
         }
         return storedBlocksResult;
     }
+
+    public getCurrentBlockNumber(): Promise<number> {
+        return this.batchRpcRequests<string>([{ method: 'eth_blockNumber', params: [] }]).then(results => {
+            if (results && results.length > 0 && results[0].result && !results[0].error) {
+                return parseInt(results[0].result, 16);
+            }
+            throw new Error('Failed to get current block number');
+        });
+    }
+}
+
+/**
+ * Fetches the Avalanche Blockchain ID by calling the getBlockchainID() method on the Warp precompile.
+ * This function makes a direct JSON-RPC 'eth_call' to the given RPC endpoint.
+ * @param rpcUrl The URL of the JSON-RPC endpoint.
+ * @returns A promise that resolves to the base58check encoded Avalanche Blockchain ID.
+ */
+export async function fetchBlockchainIDFromPrecompile(rpcUrl: string): Promise<string> {
+    const WARP_PRECOMPILE_ADDRESS = '0x0200000000000000000000000000000000000005' as const;
+    const getBlockchainIDFunctionSignature = '0x4213cf78'; // Function signature for getBlockchainID()
+
+    const requestPayload: JsonRpcRequest = {
+        jsonrpc: "2.0",
+        id: 1, // Static ID for this single request
+        method: "eth_call",
+        params: [{
+            to: WARP_PRECOMPILE_ADDRESS,
+            data: getBlockchainIDFunctionSignature
+        }, "latest"]
+    };
+
+    const httpResponse = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload)
+    });
+
+    if (!httpResponse.ok) {
+        const errorText = await httpResponse.text().catch(() => "Failed to get error text");
+        throw new Error(`RPC request to fetch blockchain ID failed at ${rpcUrl} with status ${httpResponse.status}: ${errorText}`);
+    }
+
+    const responseJson = await httpResponse.json() as JsonRpcResponse;
+
+    if (responseJson.error) {
+        throw new Error(`RPC error fetching blockchain ID: ${responseJson.error.message} (Code: ${responseJson.error.code})`);
+    }
+
+    if (typeof responseJson.result !== 'string' || !responseJson.result.startsWith('0x')) {
+        throw new Error('Invalid result format for blockchain ID from precompile.');
+    }
+
+    const blockchainIDHex = responseJson.result;
+    const chainIdBytes = utils.hexToBuffer(blockchainIDHex);
+    const avalancheChainId = utils.base58check.encode(chainIdBytes);
+
+    return avalancheChainId;
 }

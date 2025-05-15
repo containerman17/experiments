@@ -8,4 +8,4 @@ docker run -it -d \
     -e AVAGO_TRACK_SUBNETS=i9gFpZQHPLcGfZaQLiwFAStddQD7iTKBpFfurPFJsXm1CkTZK \
     -e AVAGO_NETWORK_ID=fuji \
     -e AVAGO_HTTP_ALLOWED_HOSTS="*" \
-    avaplatform/subnet-evm:v0.7.3
+    containerman17/subnet-evm-plus

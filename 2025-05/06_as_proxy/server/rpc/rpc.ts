@@ -23,6 +23,35 @@ interface JsonRpcResponse {
 import pLimit from 'p-limit';
 import pThrottle from 'p-throttle';
 
+class RpcMetrics {
+    private metrics: {
+        requestTime: number[]
+    }
+
+    constructor() {
+        this.metrics = {
+            requestTime: []
+        }
+
+        const intervalSec = 5;
+
+        setInterval(() => {
+            const requestCount = this.metrics.requestTime.length;
+            const minTime = Math.min(...this.metrics.requestTime);
+            const maxTime = Math.max(...this.metrics.requestTime);
+            const averageRequestTime = this.metrics.requestTime.reduce((sum, time) => sum + time, 0) / requestCount;
+            const rps = requestCount / intervalSec;
+
+            console.log(`⏳ RPC Stats (${intervalSec}s): ${rps.toFixed(1)} rps, ${minTime}ms min, ${maxTime}ms max, ${averageRequestTime.toFixed(1)}ms avg`);
+            this.metrics.requestTime = [];
+        }, intervalSec * 1000);
+    }
+
+    public recordRequestTime(time: number) {
+        this.metrics.requestTime.push(time);
+    }
+}
+
 export class BatchRpc {
     private concurencyLimiter: ReturnType<typeof pLimit>;
     private requestThrottle: ReturnType<typeof pThrottle>;
@@ -30,6 +59,7 @@ export class BatchRpc {
     private rpcUrl: string;
     private cache: BlockCache;
     private maxBatchSize: number;
+    private metrics: RpcMetrics = new RpcMetrics();
 
     constructor({
         rpcUrl,
@@ -78,19 +108,25 @@ export class BatchRpc {
         }));
 
         const executeFetch = async () => {
-            const httpResponse = await fetch(this.rpcUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(jsonRpcRequests)
-            });
+            const startTime = Date.now();
 
-            if (!httpResponse.ok) {
-                const errorText = await httpResponse.text().catch(() => "Failed to get error text");
-                throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${httpResponse.status}: ${errorText}`);
+            try {
+                const httpResponse = await fetch(this.rpcUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(jsonRpcRequests)
+                });
+
+                if (!httpResponse.ok) {
+                    const errorText = await httpResponse.text().catch(() => "Failed to get error text");
+                    throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${httpResponse.status}: ${errorText}`);
+                }
+                // Server might return single response for single-item batch, or if batch request itself is an error.
+                const jsonData = await httpResponse.json();
+                return jsonData as unknown as JsonRpcResponse[] | JsonRpcResponse;
+            } finally {
+                this.metrics.recordRequestTime(Date.now() - startTime);
             }
-            // Server might return single response for single-item batch, or if batch request itself is an error.
-            const jsonData = await httpResponse.json();
-            return jsonData as unknown as JsonRpcResponse[] | JsonRpcResponse;
         };
 
         try {

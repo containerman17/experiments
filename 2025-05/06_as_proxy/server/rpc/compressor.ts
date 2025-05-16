@@ -4,7 +4,7 @@ import { Buffer } from "node:buffer";
 
 const FLAG_UNCOMPRESSED = 0x00;
 const FLAG_NODE22_ZSTD = 0x01;
-const DEFAULT_COMPRESSION_LEVEL = 19;
+const DEFAULT_COMPRESSION_LEVEL = 18;
 
 /**
  * Encodes data using CBOR encoding and compresses it with ZSTD

@@ -1,6 +1,5 @@
 import type { Plugin, ViteDevServer } from 'vite';
 import { IncomingMessage, ServerResponse } from 'http';
-import "./server/indexer.ts"
 
 export function apiPlugin(): Plugin {
     return {

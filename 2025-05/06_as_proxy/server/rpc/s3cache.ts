@@ -4,6 +4,7 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3
 import process from "node:process";
 import pThrottle from 'p-throttle';
 import pLimit from 'p-limit';
+import { encode } from "cbor2";
 export class S3BlockStore implements BlockCache {
     private bucket: string;
     private s3Client: S3Client;
@@ -47,7 +48,15 @@ export class S3BlockStore implements BlockCache {
     }
 
     async saveBlock(blockNumber: number, block: StoredBlock): Promise<void> {
+        const originalSize = Buffer.from(encode(block)).length;
+        const compressionStarted = performance.now();
         const data = await compress(block);
+        const compressedSize = data.length;
+        const txCount = block.block.transactions.length;
+        const compressionTime = performance.now() - compressionStarted;
+
+        console.log(`🚃 Block ${blockNumber}: ${txCount} txs, ${(originalSize / 1024).toFixed(2)}KB -> ${(compressedSize / 1024).toFixed(2)}KB (${(originalSize / compressedSize).toFixed(1)}x reduction, ${compressionTime.toFixed(2)}ms compression time)`);
+
         const command = new PutObjectCommand({
             Bucket: this.bucket,
             Key: this.getKeyFromBlockNumber(blockNumber),

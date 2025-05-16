@@ -7,6 +7,7 @@ import { S3BlockStore } from "./rpc/s3cache.ts";
 import { rpcSchema, toBytes } from 'viem'
 import Database from 'better-sqlite3';
 import { BlockCache, StoredBlock } from "./rpc/types.ts";
+import { Hex, Transaction, TransactionReceipt, Block as ViemBlock, fromBytes, toBytes as viemToBytes } from 'viem';
 const db = new Database('/tmp/foobar2.db');
 db.pragma('journal_mode = WAL');
 
@@ -17,7 +18,7 @@ db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run('last
 
 
 let indexedRecently = 0
-const interval_seconds = 10
+const interval_seconds = 30
 setInterval(() => {
     console.log(`🔥 Indexing ${indexedRecently / interval_seconds} tx/s`)
     indexedRecently = 0
@@ -39,6 +40,77 @@ function handleBlock({ block, receipts }: StoredBlock) {
     indexedRecently++
 }
 
+export class IndexerAPI {
+    private db: Database.Database;
+    private rpc: BatchRpc;
+
+    constructor(db: Database.Database, rpc: BatchRpc) {
+        this.db = db;
+        this.rpc = rpc;
+    }
+
+    async getTx(txHash: Hex): Promise<{ transaction: Transaction; receipt: TransactionReceipt; blockNumber: bigint } | null> {
+        const fullTxHashBytes = viemToBytes(txHash);
+        const prefixBytes = fullTxHashBytes.slice(0, 5);
+        const prefixHex = Buffer.from(prefixBytes).toString('hex');
+
+        const lookupKeyRows = this.db.prepare(
+            'SELECT hash_to_block FROM tx_block_lookup WHERE hex(hash_to_block) LIKE ?'
+        ).all(`${prefixHex}%`) as { hash_to_block: Buffer }[];
+
+        if (lookupKeyRows.length === 0) {
+            return null;
+        }
+
+        const potentialBlockNumbers = new Set<number>();
+        for (const row of lookupKeyRows) {
+            const lookupKeyBlob = row.hash_to_block;
+            // Ensure lookupKeyBlob is long enough (prefix + at least 1 byte for number)
+            if (lookupKeyBlob.length > 5) {
+                const blockNumberBytes = lookupKeyBlob.slice(5);
+                try {
+                    // fromBytes expects Uint8Array. Buffer is a Uint8Array subclass.
+                    const blockNumber = fromBytes(blockNumberBytes, 'number');
+                    potentialBlockNumbers.add(blockNumber);
+                } catch (e) {
+                    console.error(`Error parsing block number from lookup key ${lookupKeyBlob.toString('hex')}:`, e);
+                }
+            }
+        }
+
+        if (potentialBlockNumbers.size === 0) {
+            return null;
+        }
+
+        const blockNumbersToFetch = Array.from(potentialBlockNumbers);
+        // Sort to fetch in order, though not strictly necessary for correctness here
+        blockNumbersToFetch.sort((a, b) => a - b);
+
+        const fetchedBlocksData = await this.rpc.getBlocksWithReceipts(blockNumbersToFetch);
+
+        for (const storedBlock of fetchedBlocksData) {
+            if (storedBlock && storedBlock.block && storedBlock.block.transactions && storedBlock.receipts) {
+                for (let i = 0; i < storedBlock.block.transactions.length; i++) {
+                    const tx = storedBlock.block.transactions[i];
+                    // Assuming tx is a full transaction object with a 'hash' property
+                    if (tx.hash === txHash) {
+                        // Assuming receipts are in the same order as transactions or have transactionHash
+                        const receipt = storedBlock.receipts.find(r => r.transactionHash === txHash) || storedBlock.receipts[i];
+                        if (receipt) {
+                            return {
+                                transaction: tx,
+                                receipt: receipt,
+                                blockNumber: storedBlock.block.number // ViemBlock.number is bigint
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+}
+
 async function startLoop() {
     const rpcUrl = process.env.RPC_URL;
     if (!rpcUrl) {
@@ -53,15 +125,16 @@ async function startLoop() {
     // 1st arg: rpcUrl (string)
     // 2nd arg: cache (BlockCache instance)
     // 3rd arg: maxBatchSize for internal JSON-RPC batching (number, defaults to 25 if not provided)
+    const concurrency = 20
     const rpc = new BatchRpc({
         rpcUrl,
         cache: cacher,
         maxBatchSize: 40,
-        maxConcurrency: 20,
-        rps: 20
+        maxConcurrency: concurrency,
+        rps: concurrency * 2
     });
 
-    const PROCESSING_BATCH_SIZE = 200; // Number of blocks to fetch and process per cycle
+    const PROCESSING_BATCH_SIZE = 100; // Number of blocks to fetch and process per cycle
 
     console.log('Starting indexer loop...');
 

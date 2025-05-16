@@ -18,7 +18,7 @@ interface ApiResponse {
 async function fetchChainsPage(nextPageToken?: string): Promise<ApiResponse> {
     console.log("fetching chains page", nextPageToken);
     const pageSize = 100;
-    let url = `https://glacier-api.avax.network/v1/networks/fuji/blockchains?pageSize=${pageSize}`;
+    let url = `https://glacier-api.avax.network/v1/networks/mainnet/blockchains?pageSize=${pageSize}`;
     if (nextPageToken) {
         url += `&pageToken=${nextPageToken}`;
     }
@@ -45,11 +45,13 @@ async function fetchAllChains() {
 //for each vmId, count the number of chains
 const allBlockchains = await fetchAllChains();
 
+const pHVmChains: string[] = [];
+
 //for each vmId, count the number of chains
 const vmStats: Record<string, number> = {};
 for (const blockchain of allBlockchains) {
-    if (blockchain.blockchainId === "i9gFpZQHPLcGfZaQLiwFAStddQD7iTKBpFfurPFJsXm1CkTZK") {
-        console.log(blockchain);
+    if (blockchain.vmId === "pHtkgxQseTRZAKkfVvk2aDSSYRik6jwbQXSzQQixaEeC9rwke") {
+        pHVmChains.push(blockchain.subnetId);
     }
 
     if (vmStats[blockchain.vmId]) {
@@ -58,6 +60,8 @@ for (const blockchain of allBlockchains) {
         vmStats[blockchain.vmId] = 1;
     }
 }
+
+console.log("pHVmChains", [...new Set(pHVmChains)].join(","));
 
 const sortedVmStats = Object.entries(vmStats)
     .sort(([, a], [, b]) => b - a)

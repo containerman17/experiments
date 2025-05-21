@@ -111,14 +111,14 @@ if (!rpcUrl) {
     process.exit(1);
 }
 
-const PROCESSING_BATCH_SIZE = 10; // Number of blocks to fetch and process per cycle
+const PROCESSING_BATCH_SIZE = 1000; // Number of blocks to fetch and process per cycle
 const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
-const concurrency = 2
+const concurrency = 5
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: 1,
+    maxBatchSize: 1000,
     maxConcurrency: concurrency,
     rps: concurrency * 2
 });
@@ -126,9 +126,6 @@ const rpc = new BatchRpc({
 const indexer = new IndexerAPI(db, rpc);
 
 async function startLoop() {
-
-
-
     console.log('Starting indexer loop...');
 
     while (true) {

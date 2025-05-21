@@ -6,6 +6,7 @@
       "dependencies": {
         "@avalabs/avalanchejs": "^5.0.0",
         "@aws-sdk/client-s3": "^3.812.0",
+        "@msgpack/msgpack": "^3.1.1",
         "@types/better-sqlite3": "^7.6.13",
         "@yu7400ki/zstd-wasm": "npm:@jsr/yu7400ki__zstd-wasm",
         "better-sqlite3": "^11.10.0",
@@ -106,6 +107,8 @@
     "@cto.af/wtf8": ["@cto.af/wtf8@0.0.2", "", {}, "sha512-ATm4UQiKrdm5GnU6BvIwUDN+LDEtt23zuzKFpnfDT59ULAd0aMYm/nSFzbSO02garLcXumRC13PzNfa7BsfvSg=="],
 
     "@ethereumjs/rlp": ["@ethereumjs/rlp@5.0.0", "", { "bin": { "rlp": "bin/rlp" } }, "sha512-WuS1l7GJmB0n0HsXLozCoEFc9IwYgf3l0gCkKVYgR67puVF1O4OpEaN0hWmm1c+iHUHFCKt1hJrvy5toLg+6ag=="],
+
+    "@msgpack/msgpack": ["@msgpack/msgpack@3.1.1", "", {}, "sha512-DnBpqkMOUGayNVKyTLlkM6ILmU/m/+VUxGkuQlPQVAcvreLz5jn1OlQnWd8uHKL/ZSiljpM12rjRhr51VtvJUQ=="],
 
     "@noble/curves": ["@noble/curves@1.3.0", "", { "dependencies": { "@noble/hashes": "1.3.3" } }, "sha512-t01iSXPuN+Eqzb4eBX0S5oubSqXbK/xXa1Ne18Hj8f9pStxztHCE2gfboSp/dZRLSqfuLpRK2nDXDK+W9puocA=="],
 

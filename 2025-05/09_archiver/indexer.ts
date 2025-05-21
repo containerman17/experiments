@@ -5,6 +5,9 @@ import { Database } from "bun:sqlite";
 import type { BlockCache, StoredBlock } from "./rpc/types.ts";
 import type { Hex, Transaction, TransactionReceipt } from 'viem';
 import { fromBytes, toBytes as viemToBytes } from 'viem';
+import { compress } from "./rpc/compressor.ts";
+import { encode } from 'cbor2';
+import fs from 'node:fs';
 const db = new Database('/tmp/foobar2.db');
 db.exec('PRAGMA journal_mode = WAL');
 
@@ -111,14 +114,14 @@ if (!rpcUrl) {
     process.exit(1);
 }
 
-const PROCESSING_BATCH_SIZE = 1000; // Number of blocks to fetch and process per cycle
+const PROCESSING_BATCH_SIZE = 100; // Number of blocks to fetch and process per cycle
 const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
-const concurrency = 5
+const concurrency = 10
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: 1000,
+    maxBatchSize: 200,
     maxConcurrency: concurrency,
     rps: concurrency * 2
 });
@@ -163,6 +166,14 @@ async function startLoop() {
 
             if (fetchedBlocks.length > 0) {
                 console.log(`Received ${fetchedBlocks.length} blocks. Processing them in a transaction.`);
+
+                // Compression comparison
+                for (const block of fetchedBlocks) {
+                    if (Object.keys(block.receipts).length > 1) {
+                        fs.writeFileSync(`./compression_bench.cbor2`, encode(block.receipts));
+                    }
+                }
+
                 db.transaction(() => {
                     for (const block of fetchedBlocks) {
                         // handleBlock updates 'last_processed_block' in the DB for each block

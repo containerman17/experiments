@@ -16,9 +16,13 @@ cat >  ~/.avalanchego_beam/configs/chains/2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv
 }
 EOF
 
+docker stop beam || true
+docker rm beam || true
+
 docker run -it -d \
     --name beam \
     --network host \
+    --restart always \
     -v ~/.avalanchego_beam:/root/.avalanchego \
     -e AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=true \
     -e AVAGO_PUBLIC_IP_RESOLUTION_SERVICE=opendns \

@@ -7,6 +7,7 @@ import pLimit from 'p-limit';
 import { encode } from "cbor2";
 import fs from 'node:fs';
 
+
 export class S3BlockStore implements BlockCache {
     private bucket: string;
     private s3Client: S3Client;
@@ -27,16 +28,16 @@ export class S3BlockStore implements BlockCache {
         });
         this.bucket = process.env.AWS_BUCKET!;
 
-        const readConcurrencyLimit = pLimit(45);
-        const writeConcurrencyLimit = pLimit(45);
+        const readConcurrencyLimit = pLimit(50);
+        const writeConcurrencyLimit = pLimit(50);
 
         const readThrottle = pThrottle({
-            limit: 500,
+            limit: 250,
             interval: 1000
         });
 
         const writeThrottle = pThrottle({
-            limit: 50,
+            limit: 250,
             interval: 1000
         });
 

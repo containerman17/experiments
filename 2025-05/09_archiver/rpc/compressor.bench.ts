@@ -2,9 +2,8 @@ import { readFileSync } from 'node:fs';
 import { decode } from 'cbor2';
 import { encode as cborEncode } from 'cbor2';
 import { encode as msgpackEncode } from '@msgpack/msgpack';
-import { compress as zstdCompress } from '@yu7400ki/zstd-wasm';
 import { Buffer } from 'node:buffer';
-
+import { compressBuffer } from './compressor';
 const COMPRESSION_LEVEL = 18;
 const TEST_FILE = './compression_bench.cbor2';
 const ITERATIONS = 5;
@@ -81,7 +80,7 @@ async function runBenchmark() {
 
             // Measure compression time
             const compressStart = performance.now();
-            compressedBuffer = Buffer.from(await zstdCompress(encodedBuffer, COMPRESSION_LEVEL));
+            compressedBuffer = Buffer.from(await compressBuffer(encodedBuffer, COMPRESSION_LEVEL));
             const compressEnd = performance.now();
 
             totalEncodeTime += (encodeEnd - encodeStart);

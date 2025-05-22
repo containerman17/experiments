@@ -1,14 +1,16 @@
 import { BatchRpc, fetchBlockchainIDFromPrecompile } from "./rpc/rpc.ts"
 import { S3BlockStore } from "./rpc/s3cache.ts";
 import { rpcSchema, toBytes } from 'viem'
-import { Database } from "bun:sqlite";
+import SQLite from "better-sqlite3";
 import type { BlockCache, StoredBlock } from "./rpc/types.ts";
 import type { Hex, Transaction, TransactionReceipt } from 'viem';
 import { fromBytes, toBytes as viemToBytes } from 'viem';
 import { compress } from "./rpc/compressor.ts";
 import { encode } from 'cbor2';
 import fs from 'node:fs';
-const db = new Database('/tmp/foobar2.db');
+import dotenv from 'dotenv';
+dotenv.config();
+const db = new SQLite(process.env.DB_PATH || '/tmp/foobar2.db');
 db.exec('PRAGMA journal_mode = WAL');
 
 db.exec('CREATE TABLE IF NOT EXISTS tx_block_lookup (hash_to_block BLOB PRIMARY KEY) WITHOUT ROWID;');
@@ -40,10 +42,10 @@ function handleBlock({ block, receipts }: StoredBlock) {
 }
 
 export class IndexerAPI {
-    private db: Database;
+    private db: SQLite.Database;
     private rpc: BatchRpc;
 
-    constructor(db: Database, rpc: BatchRpc) {
+    constructor(db: SQLite.Database, rpc: BatchRpc) {
         this.db = db;
         this.rpc = rpc;
     }
@@ -114,14 +116,14 @@ if (!rpcUrl) {
     process.exit(1);
 }
 
-const PROCESSING_BATCH_SIZE = 100; // Number of blocks to fetch and process per cycle
+const PROCESSING_BATCH_SIZE = 200; // Number of blocks to fetch and process per cycle
 const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
-const concurrency = 10
+const concurrency = 5
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: 200,
+    maxBatchSize: 300,
     maxConcurrency: concurrency,
     rps: concurrency * 2
 });

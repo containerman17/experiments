@@ -17,8 +17,18 @@
     "@yu7400ki/zstd-wasm": "npm:@jsr/yu7400ki__zstd-wasm",
     "better-sqlite3": "^11.10.0",
     "cbor2": "^2.0.1",
+    "dotenv": "^16.5.0",
     "p-limit": "^6.2.0",
     "p-throttle": "^7.0.0",
     "viem": "^2.30.0"
-  }
+  },
+  "version": "1.0.0",
+  "description": "To install dependencies:",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

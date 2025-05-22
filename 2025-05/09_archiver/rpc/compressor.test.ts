@@ -1,13 +1,14 @@
-import { expect, test } from "bun:test";
 import { compress, decompress } from "./compressor";
 import { Buffer } from "node:buffer";
 import { encode as cborEncode } from 'cbor2';
+import assert from "node:assert";
+import test from "node:test";
 
 test("should compress and decompress a simple object", async () => {
     const originalData = { message: "hello world", count: 42 };
     const compressed = await compress(originalData);
     const decompressed = await decompress<typeof originalData>(compressed);
-    expect(decompressed).toEqual(originalData);
+    assert.deepEqual(decompressed, originalData);
 });
 
 test("should compress and decompress with different compression levels", async () => {
@@ -21,14 +22,14 @@ test("should compress and decompress with different compression levels", async (
     const compressedDefault = await compress(originalData);
 
     // Level 0 should definitely be different from default compression
-    expect(compressedWithLevel0.length).not.toBe(compressedDefault.length);
+    assert.notEqual(compressedWithLevel0.length, compressedDefault.length);
 
     // Both should correctly decompress
     const decompressedLevel0 = await decompress<typeof originalData>(compressedWithLevel0);
     const decompressedDefault = await decompress<typeof originalData>(compressedDefault);
 
-    expect(decompressedLevel0).toEqual(originalData);
-    expect(decompressedDefault).toEqual(originalData);
+    assert.deepEqual(decompressedLevel0, originalData);
+    assert.deepEqual(decompressedDefault, originalData);
 });
 
 test("should decompress uncompressed data", async () => {
@@ -49,19 +50,22 @@ test("should decompress uncompressed data", async () => {
     const dataWithUncompressedFlag = Buffer.concat([Buffer.from([uncompressedFlag]), knownCborPayload]);
 
     const decompressed = await decompress<string>(dataWithUncompressedFlag);
-    expect(decompressed).toEqual("hello");
+    assert.deepEqual(decompressed, "hello");
 });
 
 test("should throw an error for an unknown compression flag", async () => {
     const fakeData = Buffer.from([0x99, 0x01, 0x02, 0x03]); // Unknown flag 0x99
-    await expect(decompress(fakeData)).rejects.toThrow("Unknown compression flag: 153");
+    await assert.rejects(() => decompress(fakeData), {
+        name: 'Error',
+        message: /Unknown compression flag/
+    });
 });
 
 test("compress should produce a buffer starting with the ZSTD flag", async () => {
     const originalData = { test: "flag check" };
     const compressed = await compress(originalData);
     const FLAG_NODE22_ZSTD = 0x01;
-    expect(compressed[0]).toBe(FLAG_NODE22_ZSTD);
+    assert.equal(compressed[0], FLAG_NODE22_ZSTD);
 });
 
 test("decompression of empty or minimal data", async () => {
@@ -69,13 +73,13 @@ test("decompression of empty or minimal data", async () => {
     const emptyObj = {};
     const compressedEmptyObj = await compress(emptyObj);
     const decompressedEmptyObj = await decompress<typeof emptyObj>(compressedEmptyObj);
-    expect(decompressedEmptyObj).toEqual(emptyObj);
+    assert.deepEqual(decompressedEmptyObj, emptyObj);
 
     // Test with null
     const nullData = null;
     const compressedNull = await compress(nullData);
     const decompressedNull = await decompress<typeof nullData>(compressedNull);
-    expect(decompressedNull).toEqual(nullData);
+    assert.deepEqual(decompressedNull, nullData);
 });
 
 test("should correctly decompress data marked as uncompressed", async () => {
@@ -88,6 +92,6 @@ test("should correctly decompress data marked as uncompressed", async () => {
     cborEncoded.copy(dataWithUncompressedFlag, 1);
 
     const decompressed = await decompress<typeof originalData>(dataWithUncompressedFlag);
-    expect(decompressed).toEqual(originalData);
+    assert.deepEqual(decompressed, originalData);
 });
 

@@ -1,16 +1,13 @@
 #!/bin/bash
 
-cat >  ~/.avalanchego/configs/chains/C/config.json <<EOF
-{
-  "pruning-enabled": false
-}
-EOF
+docker stop avago || true
+docker rm avago || true
 
 docker run -it -d \
     --name avago \
     --network host \
     -v ~/.avalanchego:/root/.avalanchego \
-    -e AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=false \
+    -e AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=true \
     -e AVAGO_PUBLIC_IP_RESOLUTION_SERVICE=opendns \
     -e AVAGO_HTTP_HOST=0.0.0.0 \
     -e AVAGO_HTTP_PORT=9650 \

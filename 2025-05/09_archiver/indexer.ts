@@ -119,11 +119,11 @@ if (!rpcUrl) {
 const PROCESSING_BATCH_SIZE = 200; // Number of blocks to fetch and process per cycle
 const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
-const concurrency = 5
+const concurrency = 1
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: 300,
+    maxBatchSize: 10,
     maxConcurrency: concurrency,
     rps: concurrency * 2
 });

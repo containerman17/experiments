@@ -116,14 +116,18 @@ if (!rpcUrl) {
     process.exit(1);
 }
 
-const PROCESSING_BATCH_SIZE = 200; // Number of blocks to fetch and process per cycle
+const PROCESSING_BATCH_SIZE = 1000; // Number of blocks to fetch and process per cycle
 const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
-const concurrency = 1
+
+
+const isLocal = process.env.RPC_URL?.includes('localhost') || process.env.RPC_URL?.includes('127.0.0.1')
+
+const concurrency = isLocal ? 100 : 5
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: 10,
+    maxBatchSize: isLocal ? 1000 : 200,
     maxConcurrency: concurrency,
     rps: concurrency * 2
 });

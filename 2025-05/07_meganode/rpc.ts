@@ -251,4 +251,33 @@ async function getCurrentValidatorsWithEndpoint(endpoint: string, subnetId: stri
     return data.result.validators;
 }
 
-export { getCurrentValidators, type Validator, type Owner };
+export { getCurrentValidators, fetchSubnet, type Validator, type Owner, type SubnetInfo, type SubnetOwnershipInfo };
+
+interface SubnetOwnershipInfo {
+    addresses: string[];
+    locktime: number;
+    threshold: number;
+}
+
+interface SubnetInfo {
+    createBlockTimestamp: number;
+    createBlockIndex: string;
+    subnetId: string;
+    ownerAddresses: string[];
+    threshold: number;
+    locktime: number;
+    subnetOwnershipInfo: SubnetOwnershipInfo;
+    isL1: boolean;
+    blockchains: Blockchain[];
+}
+
+async function fetchSubnet(subnetId: string): Promise<SubnetInfo> {
+    const url = `https://glacier-api.avax.network/v1/networks/mainnet/subnets/${subnetId}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch subnet: ${response.statusText}`);
+    }
+
+    return response.json() as Promise<SubnetInfo>;
+}

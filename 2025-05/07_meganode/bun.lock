@@ -7,6 +7,7 @@
         "p-limit": "^6.2.0",
         "p-throttle": "^7.0.0",
         "viem": "^2.30.0",
+        "yaml": "^2.8.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -54,6 +55,8 @@
     "viem": ["viem@2.30.0", "", { "dependencies": { "@noble/curves": "1.8.2", "@noble/hashes": "1.7.2", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "abitype": "1.0.8", "isows": "1.0.7", "ox": "0.6.9", "ws": "8.18.1" }, "peerDependencies": { "typescript": ">=5.0.4" }, "optionalPeers": ["typescript"] }, "sha512-hvO4l5JIOnYPL8imULoFQiVTSkebIqzGHmIfsdMfIHpAgBaCx8rJJH9cXAxQeWCqsFuTmjEj1cX912N7HSCgpQ=="],
 
     "ws": ["ws@8.18.1", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-RKW2aJZMXeMxVpnZ6bck+RswznaxmzdULiBr6KY7XkTnW8uvt0iT9H5DkHUChXrc+uurzwa0rVI16n/Xzjdz1w=="],
+
+    "yaml": ["yaml@2.8.0", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-4lLa/EcQCB0cJkyts+FpIRx5G/llPxfP6VQU5KByHEhLxY3IJCH0f0Hy1MHI8sClTvsIb8qwRJ6R/ZdlDJ/leQ=="],
 
     "yocto-queue": ["yocto-queue@1.2.1", "", {}, "sha512-AyeEbWOu/TAXdxlV9wmGcR0+yh2j3vYPGOECcIj2S7MkrLyC7ne+oye2BKTItt0ii2PHk4cDy+95+LshzbXnGg=="],
   }

@@ -10,6 +10,7 @@
   "dependencies": {
     "p-limit": "^6.2.0",
     "p-throttle": "^7.0.0",
-    "viem": "^2.30.0"
+    "viem": "^2.30.0",
+    "yaml": "^2.8.0"
   }
 }

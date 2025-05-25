@@ -57,13 +57,20 @@ const data: HetznerData = await response.json();
 data.server.sort((a, b) => {
     const totalDiskA = a.serverDiskData.nvme.reduce((sum, size) => sum + size, 0) + a.serverDiskData.sata.reduce((sum, size) => sum + size, 0);
     const totalDiskB = b.serverDiskData.nvme.reduce((sum, size) => sum + size, 0) + b.serverDiskData.sata.reduce((sum, size) => sum + size, 0);
-    if (totalDiskA > totalDiskB) {
-        return -1;
-    } else if (totalDiskA < totalDiskB) {
-        return 1;
-    } else {
-        return a.price - b.price;
-    }
+
+
+    // if (totalDiskA > totalDiskB) {
+    //     return -1;
+    // } else if (totalDiskA < totalDiskB) {
+    //     return 1;
+    // } else {
+    //     return a.price - b.price;
+    // }
+
+    const coefA = totalDiskA / a.price;
+    const coefB = totalDiskB / b.price;
+
+    return coefB - coefA;
 });
 
 // Slice to get the top 20 servers

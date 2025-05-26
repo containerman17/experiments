@@ -127,8 +127,10 @@ async function main() {
     const indexers = new Map<string, Indexer>();
     const aliases = new Map<string, string>(); // Maps alias -> primary blockchain ID
 
+    console.log({ envRpcUrls, glacierRpcUrls })
 
-    const bannedUrls = ["https://support.msu.io"]
+
+    const bannedUrls = ["https://henesys-rpc.msu.io"]
 
     async function initRpcUrl(rpcUrl: string) {
         if (bannedUrls.includes(rpcUrl)) {

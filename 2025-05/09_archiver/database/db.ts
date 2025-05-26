@@ -4,13 +4,39 @@ import * as path from 'node:path';
 import { toBytes, fromBytes } from 'viem';
 import type { Hex, Transaction } from 'viem';
 
+const schema = `
+PRAGMA page_size = 4096;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = OFF;
+PRAGMA cache_size = -64000;
+PRAGMA wal_autocheckpoint = 10000;
+PRAGMA checkpoint_fullfsync = OFF;
+
+CREATE TABLE IF NOT EXISTS tx_block_lookup (
+    hash_to_block BLOB PRIMARY KEY
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS configs (
+    key TEXT PRIMARY KEY, 
+    value TEXT
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS stats (
+    frequency TEXT NOT NULL,
+    bucket INTEGER NOT NULL,
+    metric TEXT NOT NULL,
+    submetric TEXT NOT NULL DEFAULT '',
+    value INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (frequency, bucket, metric, submetric)
+) WITHOUT ROWID;
+
+INSERT OR IGNORE INTO configs (key, value) VALUES ('last_processed_block', '-1');
+`
+
 export function initializeDatabase(blockchainID: string): SQLite.Database {
     const dbPath = `./data/${blockchainID}/index.sqlite`;
     const db = new SQLite(dbPath);
 
-    // Read and execute schema
-    const schemaPath = path.join(process.cwd(), 'database', 'schema.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
 
     return db;
@@ -81,65 +107,42 @@ export class Database {
         const hourBucket = Math.floor(blockTimestamp / 3600);
         const dayBucket = Math.floor(blockTimestamp / 86400);
 
-        const HOURLY_SQL = `INSERT INTO tx_counts_hourly (hour_bucket, tx_count) VALUES (?, ?) ON CONFLICT(hour_bucket) DO UPDATE SET tx_count = tx_count + excluded.tx_count`;
-        const DAILY_SQL = `INSERT INTO tx_counts_daily (day_bucket, tx_count) VALUES (?, ?) ON CONFLICT(day_bucket) DO UPDATE SET tx_count = tx_count + excluded.tx_count`;
+        const STATS_SQL = `INSERT INTO stats (frequency, bucket, metric, submetric, value) VALUES (?, ?, ?, ?, ?) ON CONFLICT(frequency, bucket, metric, submetric) DO UPDATE SET value = value + excluded.value`;
 
-        this.prepareCached(HOURLY_SQL).run(hourBucket, txCount);
-        this.prepareCached(DAILY_SQL).run(dayBucket, txCount);
+        this.prepareCached(STATS_SQL).run('1h', hourBucket, 'txCnt', '', txCount);
+        this.prepareCached(STATS_SQL).run('1d', dayBucket, 'txCnt', '', txCount);
     }
 
-    getHourlyTxCount(limit: number = 10): Array<{ timestamp: number; txCount: number }> {
-        const SQL = `SELECT hour_bucket, tx_count FROM tx_counts_hourly WHERE hour_bucket >= ? ORDER BY hour_bucket DESC LIMIT ?`;
+    private getMetric(frequency: '1h' | '1d', metric: string, submetric: string, limit: number = 10): Array<{ timestamp: number; value: number }> {
+        const SQL = `SELECT bucket, value FROM stats WHERE frequency = ? AND metric = ? AND submetric = ? AND bucket >= ? ORDER BY bucket DESC LIMIT ?`;
         const now = Math.floor(Date.now() / 1000);
-        const currentBucket = Math.floor(now / 3600);
+        const bucketSize = frequency === '1h' ? 3600 : 86400;
+        const currentBucket = Math.floor(now / bucketSize);
         const startBucket = currentBucket - limit + 1;
 
-        const rows = this.prepareCached(SQL).all(startBucket, limit) as Array<{ hour_bucket: number; tx_count: number }>;
+        const rows = this.prepareCached(SQL).all(frequency, metric, submetric, startBucket, limit) as Array<{ bucket: number; value: number }>;
 
         // Create a map for quick lookup
         const dataMap = new Map<number, number>();
         for (const row of rows) {
-            dataMap.set(row.hour_bucket, row.tx_count);
+            dataMap.set(row.bucket, row.value);
         }
 
         // Fill in missing buckets with zeros
-        const result: Array<{ timestamp: number; txCount: number }> = [];
+        const result: Array<{ timestamp: number; value: number }> = [];
         for (let bucket = startBucket; bucket <= currentBucket; bucket++) {
-            const txCount = dataMap.get(bucket) || 0;
+            const value = dataMap.get(bucket) || 0;
             result.push({
-                timestamp: bucket * 3600,
-                txCount: txCount
+                timestamp: bucket * bucketSize,
+                value: value
             });
         }
 
         return result.slice(-limit);
     }
 
-    getDailyTxCount(limit: number = 10): Array<{ timestamp: number; txCount: number }> {
-        const SQL = `SELECT day_bucket, tx_count FROM tx_counts_daily WHERE day_bucket >= ? ORDER BY day_bucket DESC LIMIT ?`;
-        const now = Math.floor(Date.now() / 1000);
-        const currentBucket = Math.floor(now / 86400);
-        const startBucket = currentBucket - limit + 1;
-
-        const rows = this.prepareCached(SQL).all(startBucket, limit) as Array<{ day_bucket: number; tx_count: number }>;
-
-        // Create a map for quick lookup
-        const dataMap = new Map<number, number>();
-        for (const row of rows) {
-            dataMap.set(row.day_bucket, row.tx_count);
-        }
-
-        // Fill in missing buckets with zeros
-        const result: Array<{ timestamp: number; txCount: number }> = [];
-        for (let bucket = startBucket; bucket <= currentBucket; bucket++) {
-            const txCount = dataMap.get(bucket) || 0;
-            result.push({
-                timestamp: bucket * 86400,
-                txCount: txCount
-            });
-        }
-
-        return result.slice(-limit);
+    getTxCount(frequency: '1h' | '1d', limit: number = 10): Array<{ timestamp: number; value: number }> {
+        return this.getMetric(frequency, 'txCnt', '', limit);
     }
 
     transaction<T>(fn: () => T): T {

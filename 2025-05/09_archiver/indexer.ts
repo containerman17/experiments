@@ -129,7 +129,6 @@ async function main() {
 
     console.log({ envRpcUrls, glacierRpcUrls })
 
-
     const bannedUrls = ["https://henesys-rpc.msu.io"]
 
     async function initRpcUrl(rpcUrl: string) {

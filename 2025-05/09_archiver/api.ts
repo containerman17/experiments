@@ -79,13 +79,12 @@ GET /{chainId}/tx/{txHash}.json
     Get transaction details by hash
     Example: /${exampleChainId}/tx/0x123abc.json
 
-GET /{chainId}/stats/txCount/hourly?limit=10
-    Get hourly transaction counts (default limit: 10, max: 100)
-    Example: /${exampleChainId}/stats/txCount/hourly?limit=24
-
-GET /{chainId}/stats/txCount/daily?limit=10
-    Get daily transaction counts (default limit: 10, max: 100)
-    Example: /${exampleChainId}/stats/txCount/daily?limit=30
+GET /{chainId}/stats/txCount/{interval}?limit=10
+    Get transaction counts by time interval (default limit: 10, max: 100)
+    Intervals: "1h" or "1d"
+    Examples: 
+        /${exampleChainId}/stats/txCount/1h?limit=24
+        /${exampleChainId}/stats/txCount/1d?limit=30
 
 GET /{chainId}/stats/tps/today
     Get transactions per second for last 24 hours
@@ -120,36 +119,28 @@ Replace {chainId} with any supported format from the chains listed above.
         return txs[0]
     })
 
-    // Route for hourly tx count by chain
-    fastify.get('/:chainId/stats/txCount/hourly', async function handler(request: any, reply) {
+    // Route for tx count by time interval
+    fastify.get('/:chainId/stats/txCount/:interval', async function handler(request: any, reply) {
         const chainId = request.params.chainId as string
+        const interval = request.params.interval as string
 
         const indexer = getIndexer(chainId)
         if (!indexer) {
             return reply.code(404).send({
                 error: 'Chain not found',
-                hint: `Try /${exampleChainId}/stats/txCount/hourly`
+                hint: `Try /${exampleChainId}/stats/txCount/1h`
+            })
+        }
+
+        if (interval !== '1h' && interval !== '1d') {
+            return reply.code(400).send({
+                error: 'Invalid interval',
+                hint: 'Use "1h" or "1d"'
             })
         }
 
         const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
-        return indexer.db.getHourlyTxCount(limit)
-    })
-
-    // Route for daily tx count by chain
-    fastify.get('/:chainId/stats/txCount/daily', async function handler(request: any, reply) {
-        const chainId = request.params.chainId as string
-
-        const indexer = getIndexer(chainId)
-        if (!indexer) {
-            return reply.code(404).send({
-                error: 'Chain not found',
-                hint: `Try /${exampleChainId}/stats/txCount/daily`
-            })
-        }
-
-        const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
-        return indexer.db.getDailyTxCount(limit)
+        return indexer.db.getTxCount(interval, limit)
     })
 
     // Route for TPS over last 24 hours by chain
@@ -165,14 +156,14 @@ Replace {chainId} with any supported format from the chains listed above.
         }
 
         // Get last 24 hours of hourly data
-        const hourlyData = indexer.db.getHourlyTxCount(24)
+        const hourlyData = indexer.db.getTxCount('1h', 24)
 
         if (hourlyData.length === 0) {
             return { tps: 0, totalTxs: 0, timeSpanSeconds: 0 }
         }
 
         // Calculate total transactions
-        const totalTxs = hourlyData.reduce((sum, hour) => sum + hour.txCount, 0)
+        const totalTxs = hourlyData.reduce((sum, hour) => sum + hour.value, 0)
 
         // Calculate exact time span
         const now = Date.now()

@@ -79,12 +79,30 @@ GET /{chainId}/tx/{txHash}.json
     Get transaction details by hash
     Example: /${exampleChainId}/tx/0x123abc.json
 
-GET /{chainId}/stats/txCount/{interval}?limit=10
+GET /{chainId}/stats/txs/{interval}?limit=10
     Get transaction counts by time interval (default limit: 10, max: 100)
-    Intervals: "1h" or "1d"
+    Intervals: "1h", "1d", or "1w"
     Examples: 
-        /${exampleChainId}/stats/txCount/1h?limit=24
-        /${exampleChainId}/stats/txCount/1d?limit=30
+        /${exampleChainId}/stats/txs/1h?limit=24
+        /${exampleChainId}/stats/txs/1d?limit=30
+        /${exampleChainId}/stats/txs/1w?limit=12
+
+GET /{chainId}/stats/icmOut/{interval}?limit=10
+    Get ICM messages sent by time interval, grouped by receiver chain (default limit: 10, max: 100)
+    Intervals: "1h", "1d", or "1w"
+    Examples: 
+        /${exampleChainId}/stats/icmOut/1h?limit=24
+        /${exampleChainId}/stats/icmOut/1d?limit=30
+        /${exampleChainId}/stats/icmOut/1w?limit=12
+
+GET /stats/icmOut/{interval}?limit=10
+    Get ICM messages sent by time interval for ALL chains (default limit: 10, max: 100)
+    Returns object with chain IDs as keys
+    Intervals: "1h", "1d", or "1w"
+    Examples: 
+        /stats/icmOut/1h?limit=24
+        /stats/icmOut/1d?limit=30
+        /stats/icmOut/1w?limit=12
 
 GET /{chainId}/stats/tps/today
     Get transactions per second for last 24 hours
@@ -120,7 +138,7 @@ Replace {chainId} with any supported format from the chains listed above.
     })
 
     // Route for tx count by time interval
-    fastify.get('/:chainId/stats/txCount/:interval', async function handler(request: any, reply) {
+    fastify.get('/:chainId/stats/txs/:interval', async function handler(request: any, reply) {
         const chainId = request.params.chainId as string
         const interval = request.params.interval as string
 
@@ -128,20 +146,53 @@ Replace {chainId} with any supported format from the chains listed above.
         if (!indexer) {
             return reply.code(404).send({
                 error: 'Chain not found',
-                hint: `Try /${exampleChainId}/stats/txCount/1h`
+                hint: `Try /${exampleChainId}/stats/txs/1h`
             })
         }
 
-        if (interval !== '1h' && interval !== '1d') {
+        if (interval !== '1h' && interval !== '1d' && interval !== '1w') {
             return reply.code(400).send({
                 error: 'Invalid interval',
-                hint: 'Use "1h" or "1d"'
+                hint: 'Use "1h", "1d", or "1w"'
             })
         }
 
         const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
-        return indexer.db.getTxCount(interval, limit)
+        return indexer.db.getTxCount(interval as '1h' | '1d' | '1w', limit)
     })
+
+    // Route for ICM messages sent by time interval
+    fastify.get('/:chainId/stats/:direction/:interval', async function handler(request: any, reply) {
+        const chainId = request.params.chainId as string
+        const interval = request.params.interval as string
+        const direction = request.params.direction as string
+
+        const indexer = getIndexer(chainId)
+        if (!indexer) {
+            return reply.code(404).send({
+                error: 'Chain not found',
+                hint: `Try /${exampleChainId}/stats/icmOut/1h`
+            })
+        }
+
+        if (interval !== '1h' && interval !== '1d' && interval !== '1w') {
+            return reply.code(400).send({
+                error: 'Invalid interval',
+                hint: 'Use "1h", "1d", or "1w"'
+            })
+        }
+
+        const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
+
+        if (direction === 'icmOut') {
+            return indexer.db.getIcmOut(interval as '1h' | '1d' | '1w', limit)
+        } else if (direction === 'icmIn') {
+            return indexer.db.getIcmIn(interval as '1h' | '1d' | '1w', limit)
+        } else {
+            return reply.code(400).send({ error: 'Invalid direction' })
+        }
+    })
+
 
     // Route for TPS over last 24 hours by chain
     fastify.get('/:chainId/stats/tps/today', async function handler(request: any, reply) {
@@ -249,11 +300,49 @@ Replace {chainId} with any supported format from the chains listed above.
         return Promise.all(indexingPromises);
     })
 
+    // Global ICM messages sent by time interval (all chains)
+    fastify.get('/stats/:direction/:interval', async function handler(request: any, reply) {
+        const interval = request.params.interval as string
+        const direction = request.params.direction as string
+
+        if (interval !== '1h' && interval !== '1d' && interval !== '1w') {
+            return reply.code(400).send({
+                error: 'Invalid interval',
+                hint: 'Use "1h", "1d", or "1w"'
+            })
+        }
+
+        const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
+
+        if (!['icmOut', 'icmIn'].includes(direction)) {
+            return reply.code(400).send({
+                error: 'Invalid direction',
+                hint: 'Use "icmOut" or "icmIn"'
+            })
+        }
+
+        // Query all chains in parallel
+        const chainPromises = Array.from(indexers.entries()).map(async ([chainId, indexer]) => {
+            const data = direction === 'icmOut' ? indexer.db.getIcmOut(interval as '1h' | '1d' | '1w', limit) : indexer.db.getIcmIn(interval as '1h' | '1d' | '1w', limit)
+            return { chainId, data }
+        })
+
+        const chainResults = await Promise.all(chainPromises)
+
+        // Build result object with chainIds as keys
+        const result: Record<string, Array<{ timestamp: number; value: Record<string, number> }>> = {}
+        for (const { chainId, data } of chainResults) {
+            result[chainId] = data
+        }
+
+        return result
+    })
+
     // Catch-all for unhandled routes
     fastify.setNotFoundHandler(async function handler(request, reply) {
         return reply.code(404).send({
             error: 'Route not found',
-            hint: `Try /${exampleChainId}/stats/txCount/hourly or /chains or / for docs`
+            hint: `Try /${exampleChainId}/stats/txs/1h or /${exampleChainId}/stats/icmOut/1h or /chains or / for docs`
         })
     })
 
@@ -268,9 +357,15 @@ async function fetchTxsFromBlocks(txHashes: Hex[], blockNumbers: number[], rpc: 
     for (const block of fetchedBlocksData) {
         for (const tx of block.block.transactions) {
             if (txHashes.includes(tx.hash)) {
+                const receipt = block.receipts[tx.hash]
+                if (!receipt) {
+                    //TODO: gra
+                    throw new Error("Implementation error: no receipt, this should not happen")
+                }
+
                 txs.push({
                     transaction: tx,
-                    receipt: block.receipts[tx.hash],
+                    receipt: receipt,
                     blockNumber: block.block.number
                 });
                 foundTxs.add(tx.hash);

@@ -1,4 +1,4 @@
-import type { Chain } from "viem";
+import type { Chain, TransactionReceipt } from "viem";
 import type { GetBlockReturnType } from "viem";
 
 export interface BlockCache {
@@ -8,5 +8,5 @@ export interface BlockCache {
 
 export type StoredBlock = {
     block: GetBlockReturnType<Chain, true, 'latest'>;
-    receipts: Record<string, any>;
+    receipts: Record<string, TransactionReceipt>;
 }

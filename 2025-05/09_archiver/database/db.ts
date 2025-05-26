@@ -1,8 +1,6 @@
 import SQLite from "better-sqlite3";
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { toBytes, fromBytes } from 'viem';
-import type { Hex, Transaction } from 'viem';
+import type { Hex } from 'viem';
 
 const schema = `
 PRAGMA page_size = 4096;
@@ -103,20 +101,34 @@ export class Database {
         return blockNumbers;
     }
 
-    recordTxCount(txCount: number, blockTimestamp: number): void {
+    private recordStats(metric: string, submetric: string, value: number, blockTimestamp: number): void {
         const hourBucket = Math.floor(blockTimestamp / 3600);
         const dayBucket = Math.floor(blockTimestamp / 86400);
+        const weekBucket = Math.floor(blockTimestamp / 604800); // 7 * 24 * 60 * 60 = 604800
 
         const STATS_SQL = `INSERT INTO stats (frequency, bucket, metric, submetric, value) VALUES (?, ?, ?, ?, ?) ON CONFLICT(frequency, bucket, metric, submetric) DO UPDATE SET value = value + excluded.value`;
 
-        this.prepareCached(STATS_SQL).run('1h', hourBucket, 'txCnt', '', txCount);
-        this.prepareCached(STATS_SQL).run('1d', dayBucket, 'txCnt', '', txCount);
+        this.prepareCached(STATS_SQL).run('1h', hourBucket, metric, submetric, value);
+        this.prepareCached(STATS_SQL).run('1d', dayBucket, metric, submetric, value);
+        this.prepareCached(STATS_SQL).run('1w', weekBucket, metric, submetric, value);
     }
 
-    private getMetric(frequency: '1h' | '1d', metric: string, submetric: string, limit: number = 10): Array<{ timestamp: number; value: number }> {
+    recordTxCount(txCount: number, blockTimestamp: number): void {
+        this.recordStats('txCnt', '', txCount, blockTimestamp);
+    }
+
+    recordICMMessagesSent(count: number, receiverChainId: string, blockTimestamp: number): void {
+        this.recordStats('icmSent', receiverChainId, count, blockTimestamp);
+    }
+
+    recordICMMessagesReceived(count: number, senderChainId: string, blockTimestamp: number): void {
+        this.recordStats('icmReceived', senderChainId, count, blockTimestamp);
+    }
+
+    private getMetric(frequency: '1h' | '1d' | '1w', metric: string, submetric: string, limit: number = 10): Array<{ timestamp: number; value: number }> {
         const SQL = `SELECT bucket, value FROM stats WHERE frequency = ? AND metric = ? AND submetric = ? AND bucket >= ? ORDER BY bucket DESC LIMIT ?`;
         const now = Math.floor(Date.now() / 1000);
-        const bucketSize = frequency === '1h' ? 3600 : 86400;
+        const bucketSize = frequency === '1h' ? 3600 : frequency === '1d' ? 86400 : 604800;
         const currentBucket = Math.floor(now / bucketSize);
         const startBucket = currentBucket - limit + 1;
 
@@ -141,8 +153,47 @@ export class Database {
         return result.slice(-limit);
     }
 
-    getTxCount(frequency: '1h' | '1d', limit: number = 10): Array<{ timestamp: number; value: number }> {
+    private getMetricWithSubmetric(frequency: '1h' | '1d' | '1w', metric: string, limit: number = 10): Array<{ timestamp: number; value: Record<string, number> }> {
+        const SQL = `SELECT bucket, submetric, value FROM stats WHERE frequency = ? AND metric = ? AND bucket >= ? ORDER BY bucket DESC, submetric`;
+        const now = Math.floor(Date.now() / 1000);
+        const bucketSize = frequency === '1h' ? 3600 : frequency === '1d' ? 86400 : 604800;
+        const currentBucket = Math.floor(now / bucketSize);
+        const startBucket = currentBucket - limit + 1;
+
+        const rows = this.prepareCached(SQL).all(frequency, metric, startBucket) as Array<{ bucket: number; submetric: string; value: number }>;
+
+        // Group by bucket and submetric
+        const dataMap = new Map<number, Record<string, number>>();
+        for (const row of rows) {
+            if (!dataMap.has(row.bucket)) {
+                dataMap.set(row.bucket, {});
+            }
+            dataMap.get(row.bucket)![row.submetric] = row.value;
+        }
+
+        // Fill in missing buckets with empty objects
+        const result: Array<{ timestamp: number; value: Record<string, number> }> = [];
+        for (let bucket = startBucket; bucket <= currentBucket; bucket++) {
+            const value = dataMap.get(bucket) || {};
+            result.push({
+                timestamp: bucket * bucketSize,
+                value: value
+            });
+        }
+
+        return result.slice(-limit);
+    }
+
+    getTxCount(frequency: '1h' | '1d' | '1w', limit: number = 10): Array<{ timestamp: number; value: number }> {
         return this.getMetric(frequency, 'txCnt', '', limit);
+    }
+
+    getIcmOut(frequency: '1h' | '1d' | '1w', limit: number = 10): Array<{ timestamp: number; value: Record<string, number> }> {
+        return this.getMetricWithSubmetric(frequency, 'icmSent', limit);
+    }
+
+    getIcmIn(frequency: '1h' | '1d' | '1w', limit: number = 10): Array<{ timestamp: number; value: Record<string, number> }> {
+        return this.getMetricWithSubmetric(frequency, 'icmReceived', limit);
     }
 
     transaction<T>(fn: () => T): T {

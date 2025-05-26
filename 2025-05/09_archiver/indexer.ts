@@ -6,6 +6,8 @@ import { mkdir } from 'node:fs/promises';
 import { SqliteBlockStore } from "./rpc/sqliteCache.ts";
 import { startAPI } from "./api.ts";
 import { getGlacierRpcUrls } from "./glacier.ts";
+import { INCLUDE_GLACIER } from "./config.ts";
+import { utils } from "@avalabs/avalanchejs";
 
 dotenv.config();
 
@@ -21,6 +23,51 @@ function handleBlock(db: Database, chainId: string, { block, receipts }: StoredB
     }
     db.updateConfig('last_processed_block', Number(block.number).toString())
     db.recordTxCount(Object.keys(receipts).length, Number(block.timestamp))
+
+    //teleporter events
+
+    const TELEPORTER_ADDRESS = "0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf"
+    const teleporterTopics = new Map<string, string>([
+        ['0x1eac640109dc937d2a9f42735a05f794b39a5e3759d681951d671aabbce4b104', 'BlockchainIDInitialized'],
+        ['0x2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8', 'SendCrossChainMessage'],
+        ['0xd13a7935f29af029349bed0a2097455b91fd06190a30478c575db3f31e00bf57', 'ReceiptReceived'],
+        ['0x292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34', 'ReceiveCrossChainMessage'],
+        ['0x34795cc6b122b9a0ae684946319f1e14a577b4e8f9b3dda9ac94c21a54d3188c', 'MessageExecuted'],
+        ['0x4619adc1017b82e02eaefac01a43d50d6d8de4460774bc370c3ff0210d40c985', 'MessageExecutionFailed']
+    ]);
+
+    //collect icm stats
+    const messagesSent: Record<string, number> = {}
+    const messagesReceived: Record<string, number> = {}
+    for (let receipt of Object.values(receipts)) {
+        for (let log of receipt.logs) {
+            if (log.address !== TELEPORTER_ADDRESS) continue
+            const topic0Name = teleporterTopics.get(log.topics[0]!)
+            if (!topic0Name) throw new Error("Unknown teleporter topic, this should not happen")
+
+            if (topic0Name === "SendCrossChainMessage") {
+                const receiver = log.topics[2] as string
+                if (!receiver) throw new Error("Empty receiver, this should not happen")
+                messagesSent[receiver] = (messagesSent[receiver] || 0) + 1
+            }
+            if (topic0Name === "ReceiveCrossChainMessage") {
+                const sender = log.topics[2] as string
+                if (!sender) throw new Error("Empty sender, this should not happen")
+                messagesReceived[sender] = (messagesReceived[sender] || 0) + 1
+            }
+        }
+    }
+
+    for (let [receiver, count] of Object.entries(messagesSent)) {
+        const receiverBase58 = utils.base58check.encode(utils.hexToBuffer(receiver))
+        db.recordICMMessagesSent(count, receiverBase58, Number(block.timestamp))
+    }
+
+    for (let [sender, count] of Object.entries(messagesReceived)) {
+        const senderBase58 = utils.base58check.encode(utils.hexToBuffer(sender))
+        db.recordICMMessagesReceived(count, senderBase58, Number(block.timestamp))
+    }
+
 }
 
 export class Indexer {
@@ -53,18 +100,27 @@ export class Indexer {
     async startLoop() {
         console.log(`Starting indexer loop for blockchain ${this.blockchainID}...`);
 
+        let latestBlock: number | null = null;
+
         while (true) {
             try {
                 const start = performance.now();
 
-                const latestBlock = await this.rpc.getCurrentBlockNumber();
-
                 const lastProcessedBlock = this.db.getConfig('last_processed_block');
                 let currentBlockToProcess = parseInt(lastProcessedBlock || '-1') + 1;
 
-                console.log(`[${this.blockchainID}] Loop iteration. Current block to process: ${currentBlockToProcess}, Latest block from RPC: ${latestBlock}`);
+                // Only fetch latest block when:
+                // 1. First time (not initialized)
+                // 2. When we've caught up to the previously known latest block
+                if (latestBlock === null || currentBlockToProcess > latestBlock) {
+                    latestBlock = await this.rpc.getCurrentBlockNumber();
+                    console.log(`[${this.blockchainID}] Updated latest block from RPC: ${latestBlock}`);
+                }
+
+                console.log(`[${this.blockchainID}] Loop iteration. Current block to process: ${currentBlockToProcess}, Latest block: ${latestBlock}`);
 
                 if (currentBlockToProcess > latestBlock) {
+                    console.log(`[${this.blockchainID}] Caught up to latest block. Waiting for new blocks...`);
                     await new Promise(resolve => setTimeout(resolve, interval_seconds * 1000));
                     continue;
                 }
@@ -122,7 +178,7 @@ async function main() {
     }
 
     const envRpcUrls = rpcUrls.split(',').map(url => url.trim())
-    const glacierRpcUrls = (await getGlacierRpcUrls()).map(url => url.rpcUrl)
+    const glacierRpcUrls = INCLUDE_GLACIER ? (await getGlacierRpcUrls()).map(url => url.rpcUrl) : []
 
     const indexers = new Map<string, Indexer>();
     const aliases = new Map<string, string>(); // Maps alias -> primary blockchain ID

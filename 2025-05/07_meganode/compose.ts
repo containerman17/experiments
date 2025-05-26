@@ -19,7 +19,7 @@ function padzero(num: number, size: number): string {
 // Function to generate a service configuration
 function generateService(config: ServiceConfig) {
     return {
-        image: 'avaplatform/subnet-evm:v0.7.3',
+        image: 'containerman17/subnet-evm-plus:latest',
         container_name: config.containerName,
         network_mode: 'host',
         restart: 'always',

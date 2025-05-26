@@ -9,6 +9,7 @@ import { compress } from "./rpc/compressor.ts";
 import { encode } from 'cbor2';
 import fs from 'node:fs';
 import dotenv from 'dotenv';
+import { FileBlockStore } from "./rpc/fileCache.ts";
 dotenv.config();
 const db = new SQLite(process.env.DB_PATH || '/tmp/foobar2.db');
 db.exec('PRAGMA journal_mode = WAL');
@@ -27,7 +28,7 @@ setInterval(() => {
 
 //This function is guaranteed to be called in order and inside a transaction
 function handleBlock({ block, receipts }: StoredBlock) {
-    if (Number(block.number) % 100 === 0) {
+    if (Number(block.number) % 1000 === 0) {
         console.log('handleBlock', Number(block.number))
     }
     // console.log('handleBlock', Number(block.number))
@@ -116,9 +117,10 @@ if (!rpcUrl) {
     process.exit(1);
 }
 
-const PROCESSING_BATCH_SIZE = 1000; // Number of blocks to fetch and process per cycle
+const PROCESSING_BATCH_SIZE = 10000; // Number of blocks to fetch and process per cycle
 const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
-const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
+// const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
+const cacher = new FileBlockStore(`./cache/${blockchainID}`); // This is the BlockCache instance
 
 
 const isLocal = process.env.RPC_URL?.includes('localhost') || process.env.RPC_URL?.includes('127.0.0.1')
@@ -127,9 +129,9 @@ const concurrency = isLocal ? 100 : 5
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: isLocal ? 1000 : 200,
+    maxBatchSize: isLocal ? 100 : 200,
     maxConcurrency: concurrency,
-    rps: concurrency * 2
+    rps: concurrency * (isLocal ? 10 : 2)
 });
 
 const indexer = new IndexerAPI(db, rpc);
@@ -138,6 +140,8 @@ async function startLoop() {
     console.log('Starting indexer loop...');
 
     while (true) {
+        const start = performance.now();
+
         const latestBlock = await rpc.getCurrentBlockNumber();
 
         const lastProcessedBlockResp = db.prepare('SELECT value FROM configs WHERE key = ?').get('last_processed_block') as { value: string };
@@ -198,6 +202,9 @@ async function startLoop() {
             console.log('Waiting before retrying...');
             await new Promise(resolve => setTimeout(resolve, interval_seconds * 1000));
         }
+
+        const end = performance.now();
+        console.log(`Time taken: ${end - start}ms`);
     }
 }
 

@@ -1,6 +1,6 @@
 services:
   avago00:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago00
     network_mode: host
     restart: always
@@ -19,7 +19,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago01:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago01
     network_mode: host
     restart: always
@@ -38,7 +38,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago02:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago02
     network_mode: host
     restart: always
@@ -57,7 +57,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago03:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago03
     network_mode: host
     restart: always
@@ -76,7 +76,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago04:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago04
     network_mode: host
     restart: always
@@ -95,7 +95,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago05:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago05
     network_mode: host
     restart: always
@@ -114,7 +114,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago06:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago06
     network_mode: host
     restart: always
@@ -133,7 +133,7 @@ services:
         max-size: 50m
         max-file: "3"
   avago07:
-    image: avaplatform/subnet-evm:v0.7.3
+    image: containerman17/subnet-evm-plus:latest
     container_name: avago07
     network_mode: host
     restart: always

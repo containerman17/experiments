@@ -4,7 +4,7 @@ import { Buffer } from 'node:buffer';
 
 const FLAG_UNCOMPRESSED = 0x00;
 const FLAG_ZSTD_NODE = 0x01;
-const DEFAULT_COMPRESSION_LEVEL = 18;
+const DEFAULT_COMPRESSION_LEVEL = 6;
 
 /**
  * Compresses a buffer with ZSTD and adds a flag byte

@@ -16,6 +16,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^11.10.0",
     "cbor2": "^2.0.1",
+    "console-table-printer": "^2.13.0",
     "dotenv": "^16.5.0",
     "p-limit": "^6.2.0",
     "p-throttle": "^7.0.0",

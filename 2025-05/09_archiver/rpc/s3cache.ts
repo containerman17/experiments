@@ -28,16 +28,16 @@ export class S3BlockStore implements BlockCache {
         });
         this.bucket = process.env.AWS_BUCKET!;
 
-        const readConcurrencyLimit = pLimit(50);
-        const writeConcurrencyLimit = pLimit(50);
+        const readConcurrencyLimit = pLimit(200);
+        const writeConcurrencyLimit = pLimit(200);
 
         const readThrottle = pThrottle({
-            limit: 250,
+            limit: 500,
             interval: 1000
         });
 
         const writeThrottle = pThrottle({
-            limit: 250,
+            limit: 500,
             interval: 1000
         });
 
@@ -58,7 +58,7 @@ export class S3BlockStore implements BlockCache {
         const txCount = block.block.transactions.length;
         const compressionTime = performance.now() - compressionStarted;
 
-        console.log(`🚃 Block ${blockNumber}: ${txCount} txs, ${(originalSize / 1024).toFixed(2)}KB -> ${(compressedSize / 1024).toFixed(2)}KB (${(originalSize / compressedSize).toFixed(1)}x reduction, ${compressionTime.toFixed(2)}ms compression time)`);
+        // console.log(`🚃 Block ${blockNumber}: ${txCount} txs, ${(originalSize / 1024).toFixed(2)}KB -> ${(compressedSize / 1024).toFixed(2)}KB (${(originalSize / compressedSize).toFixed(1)}x reduction, ${compressionTime.toFixed(2)}ms compression time)`);
 
         const command = new PutObjectCommand({
             Bucket: this.bucket,

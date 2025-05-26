@@ -1,25 +1,81 @@
-// #!/usr/bin/env bun
+#!/usr/bin/env bun
 
+import YAML from 'yaml'
+import fs from 'fs'
+import { createPublicClient, http } from 'viem'
+import { fetchSubnet } from './rpc'
 
-// import { chainIds } from "./config";
+// Parse compose.yml to extract subnet-to-port mapping
+function parseComposeFile(): Map<string, number> {
+    const composeContent = fs.readFileSync('compose.yml', 'utf8')
+    const compose = YAML.parse(composeContent)
 
-// import { createPublicClient, http } from 'viem'
+    const subnetToPort = new Map<string, number>()
 
-// let port = 9000
-// async function check(chainId: string) {
-//     port += 2
-//     const url = `http://65.21.140.118:${port}/ext/bc/${chainId}/rpc`
+    for (const [serviceName, service] of Object.entries(compose.services)) {
+        const environment = (service as any).environment as string[]
 
-//     const client = createPublicClient({
-//         transport: http(url)
-//     })
+        let httpPort: number | undefined
+        let trackSubnets: string[] = []
 
-//     try {
-//         const block = await client.getBlockNumber()
-//         console.log(`✅ ${chainId} is ready, block: ${block}`)
-//     } catch (error) {
-//         console.log(`❌ ${chainId} is not ready`, error)
-//     }
-// }
+        for (const envVar of environment) {
+            if (envVar.startsWith('AVAGO_HTTP_PORT=')) {
+                httpPort = parseInt(envVar.split('=')[1]!)
+            } else if (envVar.startsWith('AVAGO_TRACK_SUBNETS=')) {
+                trackSubnets = envVar.split('=')[1]!.split(',')
+            }
+        }
 
-// await Promise.all(chainIds.map(check))
+        if (httpPort && trackSubnets.length > 0) {
+            for (const subnetId of trackSubnets) {
+                subnetToPort.set(subnetId.trim(), httpPort)
+            }
+        }
+    }
+
+    return subnetToPort
+}
+
+// TODO: Need function to get chain IDs for a subnet
+// How do you get the chain IDs for each subnet?
+async function getChainIdsForSubnet(subnetId: string): Promise<string[]> {
+    const subnet = await fetchSubnet(subnetId)
+    return subnet.blockchains.map(blockchain => blockchain.blockchainId)
+}
+
+async function checkChain(chainId: string, port: number) {
+    const url = `http://65.21.140.118:${port}/ext/bc/${chainId}/rpc`
+
+    const client = createPublicClient({
+        transport: http(url)
+    })
+
+    try {
+        const block = await client.getBlockNumber()
+        console.log(`✅ ${chainId} (port ${port}) block: ${block}`)
+    } catch (error) {
+        console.log(`❌ ${chainId} (port ${port}) not ready`)
+    }
+}
+
+async function checkSubnet(subnetId: string, port: number) {
+    try {
+        const chainIds = await getChainIdsForSubnet(subnetId)
+
+        await Promise.all(
+            chainIds.map(chainId => checkChain(chainId, port))
+        )
+    } catch (error) {
+        // Silent fail for subnet fetch errors
+    }
+}
+
+// Main execution
+const subnetToPort = parseComposeFile()
+console.log(`Found ${subnetToPort.size} subnets to check`)
+
+await Promise.all(
+    Array.from(subnetToPort.entries()).map(([subnetId, port]) =>
+        checkSubnet(subnetId, port)
+    )
+)

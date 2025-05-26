@@ -1,53 +1,54 @@
 import { BatchRpc, fetchBlockchainIDFromPrecompile } from "./rpc/rpc.ts"
-import { S3BlockStore } from "./rpc/s3cache.ts";
-import { rpcSchema, toBytes } from 'viem'
-import SQLite from "better-sqlite3";
-import type { BlockCache, StoredBlock } from "./rpc/types.ts";
+import { toBytes } from 'viem'
+import type { StoredBlock } from "./rpc/types.ts";
 import type { Hex, Transaction, TransactionReceipt } from 'viem';
 import { fromBytes, toBytes as viemToBytes } from 'viem';
-import { compress } from "./rpc/compressor.ts";
 import { encode } from 'cbor2';
 import fs from 'node:fs';
 import dotenv from 'dotenv';
 import { FileBlockStore } from "./rpc/fileCache.ts";
+import { initializeDatabase, Database } from "./database/db.ts";
+
 dotenv.config();
-const db = new SQLite(process.env.DB_PATH || '/tmp/foobar2.db');
-db.exec('PRAGMA journal_mode = WAL');
 
-db.exec('CREATE TABLE IF NOT EXISTS tx_block_lookup (hash_to_block BLOB PRIMARY KEY) WITHOUT ROWID;');
-db.exec('CREATE TABLE IF NOT EXISTS configs (key TEXT PRIMARY KEY, value TEXT)');
-db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run('last_processed_block', '-1');
+const interval_seconds = 1; // Default polling interval
 
+const rpcUrl = process.env.RPC_URL;
+if (!rpcUrl) {
+    console.error("RPC_URL environment variable is not set.");
+    process.exit(1);
+}
+const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 
-let indexedRecently = 0
-const interval_seconds = 30
-setInterval(() => {
-    console.log(`🔥 Indexing ${indexedRecently / interval_seconds} tx/s`)
-    indexedRecently = 0
-}, interval_seconds * 1000)
+import { mkdir } from 'node:fs/promises';
+import { SqliteBlockStore } from "./rpc/sqliteCache.ts";
+await mkdir(`./data/${blockchainID}`, { recursive: true });
+
+const rawDb = initializeDatabase(blockchainID);
+const db = new Database(rawDb);
+
 
 //This function is guaranteed to be called in order and inside a transaction
 function handleBlock({ block, receipts }: StoredBlock) {
-    if (Number(block.number) % 1000 === 0) {
-        console.log('handleBlock', Number(block.number))
+    if (Number(block.number) % 100 === 0) {
+        console.log('handleBlock', Number(block.number), `with ${Object.keys(receipts).length} receipts`)
     }
     // console.log('handleBlock', Number(block.number))
     for (const tx of block.transactions) {
         const txHashBytes = toBytes(tx.hash)
         // Using block.number which is typically a bigint from viem, ensure it's converted for toBytes if needed, though Number() should suffice for typical range.
         const lookupKey = Buffer.from([...txHashBytes.slice(0, 5), ...toBytes(Number(block.number))])
-        db.prepare('INSERT INTO tx_block_lookup (hash_to_block) VALUES (?) ON CONFLICT(hash_to_block) DO NOTHING').run(lookupKey)
+        db.insertTxBlockLookup(lookupKey)
     }
-    db.prepare('UPDATE configs SET value = ? WHERE key = ?').run(Number(block.number).toString(), 'last_processed_block')
-    indexedRecently++
+    db.updateConfig('last_processed_block', Number(block.number).toString())
 }
 
 export class IndexerAPI {
-    private db: SQLite.Database;
+    private db: Database;
     private rpc: BatchRpc;
 
-    constructor(db: SQLite.Database, rpc: BatchRpc) {
-        this.db = db;
+    constructor(database: Database, rpc: BatchRpc) {
+        this.db = database;
         this.rpc = rpc;
     }
 
@@ -56,9 +57,7 @@ export class IndexerAPI {
         const prefixBytes = fullTxHashBytes.slice(0, 5);
         const prefixHex = Buffer.from(prefixBytes).toString('hex');
 
-        const lookupKeyRows = this.db.prepare(
-            'SELECT hash_to_block FROM tx_block_lookup WHERE hex(hash_to_block) LIKE ?'
-        ).all(`${prefixHex}%`) as { hash_to_block: Buffer }[];
+        const lookupKeyRows = this.db.getTxLookupByPrefix(prefixHex);
 
         if (lookupKeyRows.length === 0) {
             return null;
@@ -111,25 +110,19 @@ export class IndexerAPI {
     }
 }
 
-const rpcUrl = process.env.RPC_URL;
-if (!rpcUrl) {
-    console.error("RPC_URL environment variable is not set.");
-    process.exit(1);
-}
-
-const PROCESSING_BATCH_SIZE = 10000; // Number of blocks to fetch and process per cycle
-const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
-// const cacher = new S3BlockStore(blockchainID); // This is the BlockCache instance
-const cacher = new FileBlockStore(`./cache/${blockchainID}`); // This is the BlockCache instance
-
 
 const isLocal = process.env.RPC_URL?.includes('localhost') || process.env.RPC_URL?.includes('127.0.0.1')
 
-const concurrency = isLocal ? 100 : 5
+const PROCESSING_BATCH_SIZE = isLocal ? 10000 : 100; // Number of blocks to fetch and process per cycle
+
+// const cacher = new FileBlockStore(`./data/${blockchainID}/blocks/`); // This is the BlockCache instance
+const cacher = new SqliteBlockStore(`./data/${blockchainID}/blocks.sqlite`); // This is the BlockCache instance
+
+const concurrency = isLocal ? 100 : 10
 const rpc = new BatchRpc({
     rpcUrl,
     cache: cacher,
-    maxBatchSize: isLocal ? 100 : 200,
+    maxBatchSize: isLocal ? 100 : 100,
     maxConcurrency: concurrency,
     rps: concurrency * (isLocal ? 10 : 2)
 });
@@ -144,8 +137,8 @@ async function startLoop() {
 
         const latestBlock = await rpc.getCurrentBlockNumber();
 
-        const lastProcessedBlockResp = db.prepare('SELECT value FROM configs WHERE key = ?').get('last_processed_block') as { value: string };
-        let currentBlockToProcess = parseInt(lastProcessedBlockResp.value) + 1;
+        const lastProcessedBlock = db.getConfig('last_processed_block');
+        let currentBlockToProcess = parseInt(lastProcessedBlock || '-1') + 1;
 
         console.log(`Loop iteration. Current block to process: ${currentBlockToProcess}, Latest block from RPC: ${latestBlock}`);
 
@@ -184,12 +177,14 @@ async function startLoop() {
                     }
                 }
 
+                const txStart = performance.now();
                 db.transaction(() => {
                     for (const block of fetchedBlocks) {
                         // handleBlock updates 'last_processed_block' in the DB for each block
                         handleBlock(block);
                     }
-                })();
+                });
+                console.log(`Time taken to process ${fetchedBlocks.length} blocks: ${performance.now() - txStart}ms`);
                 console.log(`Successfully processed batch. Last block in DB should now be updated by handleBlock.`);
             } else if (blockNumbersToFetch.length > 0) {
                 console.warn(`Requested ${blockNumbersToFetch.length} blocks, but received 0. Possible gap or RPC issue. Waiting before retry.`);

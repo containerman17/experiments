@@ -235,14 +235,15 @@ export class BatchRpc {
         resultsFromAllHttpBatches.forEach(batchResultArray => {
             batchResultArray.forEach(singleOpResult => {
                 const originalRequestIndex = singleOpResult.internalId as number;
-                if (originalRequestIndex !== undefined && originalRequestIndex < requests.length) {
+                const originalRequest = requests[originalRequestIndex];
+                if (originalRequestIndex !== undefined && originalRequestIndex < requests.length && originalRequest) {
                     finalResults[originalRequestIndex] = {
-                        idToCorrelate: requests[originalRequestIndex].idToCorrelate,
+                        idToCorrelate: originalRequest.idToCorrelate,
                         result: singleOpResult.result,
                         error: singleOpResult.error
                     };
                 } else {
-                    console.error("Error mapping result back: internalId missing or out of bounds", singleOpResult);
+                    throw new Error(`Error mapping result back: internalId missing or out of bounds: ${singleOpResult.internalId}`);
                 }
             });
         });
@@ -438,8 +439,9 @@ export class BatchRpc {
 
     public getCurrentBlockNumber(): Promise<number> {
         return this.batchRpcRequests<string>([{ method: 'eth_blockNumber', params: [] }]).then(results => {
-            if (results && results.length > 0 && results[0].result && !results[0].error) {
-                return parseInt(results[0].result, 16);
+            const firstResult = results?.[0];
+            if (firstResult?.result && !firstResult.error) {
+                return parseInt(firstResult.result, 16);
             }
             throw new Error('Failed to get current block number');
         });

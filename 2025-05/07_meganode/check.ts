@@ -43,6 +43,7 @@ async function getChainIdsForSubnet(subnetId: string): Promise<string[]> {
     return subnet.blockchains.map(blockchain => blockchain.blockchainId)
 }
 
+let successfulUrls: string[] = []
 async function checkChain(chainId: string, port: number) {
     const url = `http://65.21.140.118:${port}/ext/bc/${chainId}/rpc`
 
@@ -53,6 +54,7 @@ async function checkChain(chainId: string, port: number) {
     try {
         const block = await client.getBlockNumber()
         console.log(`✅ ${url} block: ${Number(block).toLocaleString()}`)
+        successfulUrls.push(url)
     } catch (error) {
         console.log(`❌ ${url} not ready`)
     }
@@ -79,3 +81,5 @@ await Promise.all(
         checkSubnet(subnetId, port)
     )
 )
+
+console.log(`RPC_URLS=${successfulUrls.join(',')}`)

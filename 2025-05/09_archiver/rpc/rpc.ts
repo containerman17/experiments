@@ -447,6 +447,16 @@ export class BatchRpc {
             throw new Error('Failed to get current block number');
         });
     }
+
+    public getEvmChainId(): Promise<number> {
+        return this.batchRpcRequests<string>([{ method: 'eth_chainId', params: [] }]).then(results => {
+            const firstResult = results?.[0];
+            if (firstResult?.result && !firstResult.error) {
+                return parseInt(firstResult.result, 16);
+            }
+            throw new Error('Failed to get current block number');
+        });
+    }
 }
 
 /**

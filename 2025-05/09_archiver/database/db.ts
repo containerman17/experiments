@@ -150,4 +150,9 @@ export class Database {
     getRawDb(): SQLite.Database {
         return this.db;
     }
+
+    getLastProcessedBlockNumber(): number {
+        const lastProcessedBlock = this.getConfig('last_processed_block');
+        return parseInt(lastProcessedBlock || '-1');
+    }
 }

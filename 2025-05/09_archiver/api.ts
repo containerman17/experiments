@@ -72,6 +72,9 @@ Endpoints:
 GET /chains
     Returns list of available chain IDs
 
+GET /indexing
+    Returns indexing status for all chains (block number, timestamp, days ago)
+
 GET /{chainId}/tx/{txHash}.json
     Get transaction details by hash
     Example: /${exampleChainId}/tx/0x123abc.json
@@ -189,6 +192,70 @@ Replace {chainId} with any supported format from the chains listed above.
     // List available chains
     fastify.get('/chains', async function handler(request: any, reply) {
         return getChainInfo()
+    })
+
+    // Indexing status for all chains
+    fastify.get('/indexing', async function handler(request: any, reply) {
+        const indexingPromises = Array.from(indexers.entries()).map(async ([avalancheChainId, indexer]) => {
+            const lastProcessedBlockNumber = indexer.db.getLastProcessedBlockNumber();
+
+            if (lastProcessedBlockNumber === -1) {
+                return {
+                    avalancheChainId,
+                    evmChainId: null,
+                    blockNumber: -1,
+                    blockTime: null,
+                    daysAgo: null
+                };
+            }
+
+            try {
+                const blocks = await indexer.rpc.getBlocksWithReceipts([lastProcessedBlockNumber]);
+
+                if (blocks.length === 0) {
+                    return {
+                        avalancheChainId,
+                        evmChainId: null,
+                        blockNumber: lastProcessedBlockNumber,
+                        blockTime: null,
+                        daysAgo: null
+                    };
+                }
+
+                const block = blocks[0]!;
+                const blockTimestamp = Number(block.block.timestamp);
+                const now = Math.floor(Date.now() / 1000);
+                const secondsAgo = now - blockTimestamp;
+                const daysAgo = Number((secondsAgo / (24 * 60 * 60)).toFixed(2));
+
+                // Find the EVM chain ID by looking through aliases
+                const evmChainId = Array.from(aliases.entries())
+                    .find(([alias, primaryId]) => primaryId === avalancheChainId && !alias.startsWith('0x'))?.[0]
+                    ? parseInt(Array.from(aliases.entries())
+                        .find(([alias, primaryId]) => primaryId === avalancheChainId && !alias.startsWith('0x'))![0])
+                    : null;
+
+                return {
+                    avalancheChainId,
+                    evmChainId,
+                    blockNumber: lastProcessedBlockNumber,
+                    blockTime: blockTimestamp,
+                    daysAgo
+                };
+
+            } catch (error) {
+                console.error(`Error fetching block ${lastProcessedBlockNumber} for chain ${avalancheChainId}:`, error);
+                return {
+                    avalancheChainId,
+                    evmChainId: null,
+                    blockNumber: lastProcessedBlockNumber,
+                    blockTime: null,
+                    daysAgo: null
+                };
+            }
+        });
+
+        return Promise.all(indexingPromises);
     })
 
     // Catch-all for unhandled routes

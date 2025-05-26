@@ -23,6 +23,48 @@ interface JsonRpcResponse {
 import pLimit from 'p-limit';
 import pThrottle from 'p-throttle';
 
+interface HostLimiters {
+    concurrencyLimiter: ReturnType<typeof pLimit>;
+    requestThrottle: ReturnType<typeof pThrottle>;
+}
+
+// Global map to store limiters per host
+const hostLimitersMap = new Map<string, HostLimiters>();
+
+/**
+ * Extracts hostname from URL without port
+ */
+function getHostFromUrl(url: string): string {
+    try {
+        const parsed = new URL(url);
+        return parsed.hostname; // This automatically excludes the port
+    } catch (error) {
+        // Fallback for invalid URLs - just return the original URL
+        console.warn(`Invalid URL format: ${url}, using as-is for limiter key`);
+        return url;
+    }
+}
+
+/**
+ * Gets or creates limiters for a specific host
+ */
+function getLimitersForHost(url: string, maxConcurrency: number, rps: number): HostLimiters {
+    const host = getHostFromUrl(url);
+
+    if (!hostLimitersMap.has(host)) {
+        console.log(`Creating new limiters for host: ${host} (concurrency: ${maxConcurrency}, rps: ${rps})`);
+        hostLimitersMap.set(host, {
+            concurrencyLimiter: pLimit(maxConcurrency),
+            requestThrottle: pThrottle({
+                limit: rps,
+                interval: 1000
+            })
+        });
+    }
+
+    return hostLimitersMap.get(host)!;
+}
+
 class RpcMetrics {
     private metrics: {
         requestTime: number[]
@@ -37,18 +79,18 @@ class RpcMetrics {
 
         const intervalSec = 5;
 
-        setInterval(() => {
-            const requestCount = this.metrics.requestTime.length;
-            const minTime = Math.min(...this.metrics.requestTime);
-            const maxTime = Math.max(...this.metrics.requestTime);
-            const averageRequestTime = this.metrics.requestTime.reduce((sum, time) => sum + time, 0) / requestCount;
-            const rps = requestCount / intervalSec;
-            const avgRequestsInBatch = this.metrics.requestsInBatch.reduce((sum, requests) => sum + requests, 0) / this.metrics.requestsInBatch.length;
+        // setInterval(() => {
+        //     const requestCount = this.metrics.requestTime.length;
+        //     const minTime = Math.min(...this.metrics.requestTime);
+        //     const maxTime = Math.max(...this.metrics.requestTime);
+        //     const averageRequestTime = this.metrics.requestTime.reduce((sum, time) => sum + time, 0) / requestCount;
+        //     const rps = requestCount / intervalSec;
+        //     const avgRequestsInBatch = this.metrics.requestsInBatch.reduce((sum, requests) => sum + requests, 0) / this.metrics.requestsInBatch.length;
 
-            console.log(`⏳ RPC Stats (${intervalSec}s): ${rps.toFixed(1)} rps, ${minTime}ms min, ${maxTime}ms max, ${averageRequestTime.toFixed(1)}ms avg, ${avgRequestsInBatch.toFixed(1)} avg requests in batch`);
-            this.metrics.requestTime = [];
-            this.metrics.requestsInBatch = [];
-        }, intervalSec * 1000);
+        //     console.log(`⏳ RPC Stats (${intervalSec}s): ${rps.toFixed(1)} rps, ${minTime}ms min, ${maxTime}ms max, ${averageRequestTime.toFixed(1)}ms avg, ${avgRequestsInBatch.toFixed(1)} avg requests in batch`);
+        //     this.metrics.requestTime = [];
+        //     this.metrics.requestsInBatch = [];
+        // }, intervalSec * 1000);
     }
 
     public recordRequestTime(time: number, requestsInBatch: number) {
@@ -89,11 +131,9 @@ export class BatchRpc {
         this.rpcUrl = rpcUrl;
         this.cache = cache;
         this.maxBatchSize = maxBatchSize;
-        this.concurencyLimiter = pLimit(maxConcurrency);
-        this.requestThrottle = pThrottle({
-            limit: rps,
-            interval: 1000
-        });
+        const { concurrencyLimiter, requestThrottle } = getLimitersForHost(rpcUrl, maxConcurrency, rps);
+        this.concurencyLimiter = concurrencyLimiter;
+        this.requestThrottle = requestThrottle;
     }
 
     /**

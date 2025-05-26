@@ -1,6 +1,8 @@
 import SQLite from "better-sqlite3";
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { toBytes, fromBytes } from 'viem';
+import type { Hex } from 'viem';
 
 export function initializeDatabase(blockchainID: string): SQLite.Database {
     const dbPath = `./data/${blockchainID}/index.sqlite`;
@@ -29,7 +31,9 @@ export class Database {
         this.getTxLookupByPrefixStmt = db.prepare('SELECT hash_to_block FROM tx_block_lookup WHERE hex(hash_to_block) LIKE ?');
     }
 
-    insertTxBlockLookup(lookupKey: Buffer): void {
+    insertTxBlockLookup(txHash: Hex, blockNumber: number): void {
+        const txHashBytes = toBytes(txHash);
+        const lookupKey = Buffer.from([...txHashBytes.slice(0, 5), ...toBytes(blockNumber)]);
         this.insertTxLookupStmt.run(lookupKey);
     }
 
@@ -42,8 +46,29 @@ export class Database {
         return result?.value || null;
     }
 
-    getTxLookupByPrefix(prefixHex: string): { hash_to_block: Buffer }[] {
-        return this.getTxLookupByPrefixStmt.all(`${prefixHex}%`) as { hash_to_block: Buffer }[];
+    getTxLookupByPrefix(txHash: Hex): number[] {
+        const fullTxHashBytes = toBytes(txHash);
+        const prefixBytes = fullTxHashBytes.slice(0, 5);
+        const prefixHex = Buffer.from(prefixBytes).toString('hex');
+
+        const lookupKeyRows = this.getTxLookupByPrefixStmt.all(`${prefixHex}%`) as { hash_to_block: Buffer }[];
+
+        const blockNumbers: number[] = [];
+        for (const row of lookupKeyRows) {
+            const lookupKeyBlob = row.hash_to_block;
+            // Ensure lookupKeyBlob is long enough (prefix + at least 1 byte for number)
+            if (lookupKeyBlob.length > 5) {
+                const blockNumberBytes = lookupKeyBlob.slice(5);
+                try {
+                    const blockNumber = fromBytes(blockNumberBytes, 'number');
+                    blockNumbers.push(blockNumber);
+                } catch (e) {
+                    console.error(`Error parsing block number from lookup key ${lookupKeyBlob.toString('hex')}:`, e);
+                }
+            }
+        }
+
+        return blockNumbers;
     }
 
     transaction<T>(fn: () => T): T {

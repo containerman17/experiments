@@ -1,8 +1,6 @@
 import { BatchRpc, fetchBlockchainIDFromPrecompile } from "./rpc/rpc.ts"
-import { toBytes } from 'viem'
 import type { StoredBlock } from "./rpc/types.ts";
 import type { Hex, Transaction, TransactionReceipt } from 'viem';
-import { fromBytes, toBytes as viemToBytes } from 'viem';
 import { encode } from 'cbor2';
 import fs from 'node:fs';
 import dotenv from 'dotenv';
@@ -22,6 +20,8 @@ const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 
 import { mkdir } from 'node:fs/promises';
 import { SqliteBlockStore } from "./rpc/sqliteCache.ts";
+import { startAPI } from "./api.ts";
+import { IndexerAPI } from "./indexerAPI.ts";
 await mkdir(`./data/${blockchainID}`, { recursive: true });
 
 const rawDb = initializeDatabase(blockchainID);
@@ -35,79 +35,9 @@ function handleBlock({ block, receipts }: StoredBlock) {
     }
     // console.log('handleBlock', Number(block.number))
     for (const tx of block.transactions) {
-        const txHashBytes = toBytes(tx.hash)
-        // Using block.number which is typically a bigint from viem, ensure it's converted for toBytes if needed, though Number() should suffice for typical range.
-        const lookupKey = Buffer.from([...txHashBytes.slice(0, 5), ...toBytes(Number(block.number))])
-        db.insertTxBlockLookup(lookupKey)
+        db.insertTxBlockLookup(tx.hash, Number(block.number))
     }
     db.updateConfig('last_processed_block', Number(block.number).toString())
-}
-
-export class IndexerAPI {
-    private db: Database;
-    private rpc: BatchRpc;
-
-    constructor(database: Database, rpc: BatchRpc) {
-        this.db = database;
-        this.rpc = rpc;
-    }
-
-    async getTx(txHash: Hex): Promise<{ transaction: Transaction; receipt: TransactionReceipt; blockNumber: bigint } | null> {
-        const fullTxHashBytes = viemToBytes(txHash);
-        const prefixBytes = fullTxHashBytes.slice(0, 5);
-        const prefixHex = Buffer.from(prefixBytes).toString('hex');
-
-        const lookupKeyRows = this.db.getTxLookupByPrefix(prefixHex);
-
-        if (lookupKeyRows.length === 0) {
-            return null;
-        }
-
-        const potentialBlockNumbers = new Set<number>();
-        for (const row of lookupKeyRows) {
-            const lookupKeyBlob = row.hash_to_block;
-            // Ensure lookupKeyBlob is long enough (prefix + at least 1 byte for number)
-            if (lookupKeyBlob.length > 5) {
-                const blockNumberBytes = lookupKeyBlob.slice(5);
-                try {
-                    // fromBytes expects Uint8Array. Buffer is a Uint8Array subclass.
-                    const blockNumber = fromBytes(blockNumberBytes, 'number');
-                    potentialBlockNumbers.add(blockNumber);
-                } catch (e) {
-                    console.error(`Error parsing block number from lookup key ${lookupKeyBlob.toString('hex')}:`, e);
-                }
-            }
-        }
-
-        if (potentialBlockNumbers.size === 0) {
-            return null;
-        }
-
-        const blockNumbersToFetch = Array.from(potentialBlockNumbers);
-        // Sort to fetch in order, though not strictly necessary for correctness here
-        blockNumbersToFetch.sort((a, b) => a - b);
-
-        const fetchedBlocksData = await this.rpc.getBlocksWithReceipts(blockNumbersToFetch);
-
-        for (const storedBlock of fetchedBlocksData) {
-            if (storedBlock && storedBlock.block && storedBlock.block.transactions && storedBlock.receipts) {
-                for (let i = 0; i < storedBlock.block.transactions.length; i++) {
-                    const tx = storedBlock.block.transactions[i];
-                    if (tx && tx.hash === txHash) {
-                        const receipt = storedBlock.receipts[txHash];
-                        if (receipt) {
-                            return {
-                                transaction: tx as Transaction,
-                                receipt: receipt,
-                                blockNumber: storedBlock.block.number
-                            };
-                        }
-                    }
-                }
-            }
-        }
-        return null;
-    }
 }
 
 
@@ -127,7 +57,6 @@ const rpc = new BatchRpc({
     rps: concurrency * (isLocal ? 10 : 2)
 });
 
-const indexer = new IndexerAPI(db, rpc);
 
 async function startLoop() {
     console.log('Starting indexer loop...');
@@ -205,5 +134,13 @@ async function startLoop() {
 
 startLoop().catch(error => {
     console.error("Critical error in startLoop:", error);
+    process.exit(1);
+});
+
+const indexer = new IndexerAPI(db, rpc);
+
+
+startAPI(indexer).catch(error => {
+    console.error("Critical error in startAPI:", error);
     process.exit(1);
 });

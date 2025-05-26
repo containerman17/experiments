@@ -1,10 +1,6 @@
 import { BatchRpc, fetchBlockchainIDFromPrecompile } from "./rpc/rpc.ts"
 import type { StoredBlock } from "./rpc/types.ts";
-import type { Hex, Transaction, TransactionReceipt } from 'viem';
-import { encode } from 'cbor2';
-import fs from 'node:fs';
 import dotenv from 'dotenv';
-import { FileBlockStore } from "./rpc/fileCache.ts";
 import { initializeDatabase, Database } from "./database/db.ts";
 
 dotenv.config();
@@ -21,7 +17,6 @@ const blockchainID = await fetchBlockchainIDFromPrecompile(rpcUrl);
 import { mkdir } from 'node:fs/promises';
 import { SqliteBlockStore } from "./rpc/sqliteCache.ts";
 import { startAPI } from "./api.ts";
-import { IndexerAPI } from "./indexerAPI.ts";
 await mkdir(`./data/${blockchainID}`, { recursive: true });
 
 const rawDb = initializeDatabase(blockchainID);
@@ -130,10 +125,8 @@ startLoop().catch(error => {
     process.exit(1);
 });
 
-const indexer = new IndexerAPI(db, rpc);
 
-
-startAPI(indexer).catch(error => {
+startAPI(rpc, db).catch(error => {
     console.error("Critical error in startAPI:", error);
     process.exit(1);
 });

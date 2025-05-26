@@ -52,7 +52,7 @@ async function checkChain(chainId: string, port: number) {
 
     try {
         const block = await client.getBlockNumber()
-        console.log(`✅ ${url} block: ${block}`)
+        console.log(`✅ ${url} block: ${Number(block).toLocaleString()}`)
     } catch (error) {
         console.log(`❌ ${url} not ready`)
     }

@@ -119,7 +119,8 @@ export class BatchRpc {
                 const httpResponse = await fetch(this.rpcUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(jsonRpcRequests)
+                    body: JSON.stringify(jsonRpcRequests),
+                    credentials: 'include'
                 });
 
                 if (!httpResponse.ok) {
@@ -471,7 +472,8 @@ export async function fetchBlockchainIDFromPrecompile(rpcUrl: string): Promise<s
     const httpResponse = await fetch(rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload)
+        body: JSON.stringify(requestPayload),
+        credentials: 'include'
     });
 
     if (!httpResponse.ok) {

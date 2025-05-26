@@ -2,7 +2,7 @@ import SQLite from "better-sqlite3";
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { toBytes, fromBytes } from 'viem';
-import type { Hex } from 'viem';
+import type { Hex, Transaction } from 'viem';
 
 export function initializeDatabase(blockchainID: string): SQLite.Database {
     const dbPath = `./data/${blockchainID}/index.sqlite`;

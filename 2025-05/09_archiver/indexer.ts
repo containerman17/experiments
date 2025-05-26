@@ -8,7 +8,7 @@ import { startAPI } from "./api.ts";
 
 dotenv.config();
 
-const interval_seconds = 1; // Default polling interval
+const interval_seconds = 5; // Default polling interval
 
 //This function is guaranteed to be called in order and inside a transaction
 function handleBlock(db: Database, chainId: string, { block, receipts }: StoredBlock) {
@@ -122,6 +122,7 @@ async function main() {
 
     const urls = rpcUrls.split(',').map(url => url.trim());
     const indexers = new Map<string, Indexer>();
+    const aliases = new Map<string, string>(); // Maps alias -> primary blockchain ID
 
     // Initialize all indexers
     for (const rpcUrl of urls) {
@@ -133,11 +134,12 @@ async function main() {
         const evmChainId = await indexer.rpc.getEvmChainId()
         console.log(`[${blockchainID}] EVM Chain ID: ${evmChainId}`)
 
+        // Store indexer with primary blockchain ID
         indexers.set(blockchainID, indexer);
-        //as decimal string
-        indexers.set(evmChainId.toString(), indexer);
-        //as hex string
-        indexers.set("0x" + evmChainId.toString(16), indexer);
+
+        // Add aliases for EVM chain ID
+        aliases.set(evmChainId.toString(), blockchainID); // decimal
+        aliases.set("0x" + evmChainId.toString(16), blockchainID); // hex
 
         // Start the indexer loop (non-blocking)
         indexer.startLoop().catch(error => {
@@ -151,7 +153,7 @@ async function main() {
         process.exit(1);
     }
 
-    startAPI(indexers).catch(error => {
+    startAPI(indexers, aliases).catch(error => {
         console.error("Critical error in startAPI:", error);
         process.exit(1);
     });

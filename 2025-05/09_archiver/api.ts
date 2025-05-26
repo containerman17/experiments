@@ -11,16 +11,61 @@ const fastify = Fastify({
     logger: true
 })
 
-export async function startAPI(indexers: Map<string, Indexer>) {
+export async function startAPI(indexers: Map<string, Indexer>, aliases: Map<string, string>) {
     const chainIds = Array.from(indexers.keys())
     const exampleChainId = chainIds[0]
+
+    // Helper function to resolve chain ID through aliases
+    function getIndexer(chainId: string): Indexer | undefined {
+        // Try direct lookup first
+        let indexer = indexers.get(chainId);
+        if (indexer) return indexer;
+
+        // Try alias lookup
+        const primaryChainId = aliases.get(chainId);
+        if (primaryChainId) {
+            return indexers.get(primaryChainId);
+        }
+
+        return undefined;
+    }
+
+    // Helper function to build chain info objects
+    function getChainInfo() {
+        const chains = [];
+        for (const [avalancheChainId, indexer] of indexers) {
+            // Find the EVM chain ID by looking through aliases
+            let evmChainId = null;
+            for (const [alias, primaryId] of aliases) {
+                if (primaryId === avalancheChainId && !alias.startsWith('0x')) {
+                    evmChainId = parseInt(alias);
+                    break;
+                }
+            }
+
+            chains.push({
+                avalancheChainId,
+                evmChainId,
+                evmChainIdHex: evmChainId ? `0x${evmChainId.toString(16)}` : null
+            });
+        }
+        return chains;
+    }
 
     // API documentation on root
     fastify.get('/', async function handler(request: any, reply) {
         reply.type('text/plain')
+
+        const chainInfo = getChainInfo()
+        const chainList = chainInfo.map(chain =>
+            `${chain.avalancheChainId} (EVM: ${chain.evmChainId}, ${chain.evmChainIdHex})`
+        ).join(', ')
+
         return `Blockchain Indexer API
 
-Available Chains: ${chainIds.join(', ')}
+Available Chains: ${chainList}
+
+Note: You can use any of the chain ID formats (Avalanche chain ID, EVM chain ID decimal, or EVM chain ID hex) in the endpoints below.
 
 Endpoints:
 
@@ -43,7 +88,7 @@ GET /{chainId}/stats/tps/today
     Get transactions per second for last 24 hours
     Example: /${exampleChainId}/stats/tps/today
 
-Replace {chainId} with one of: ${chainIds.join(', ')}
+Replace {chainId} with any supported format from the chains listed above.
 `
     })
 
@@ -52,7 +97,7 @@ Replace {chainId} with one of: ${chainIds.join(', ')}
         const chainId = request.params.chainId as string
         const txHash = request.params.txHash as string
 
-        const indexer = indexers.get(chainId)
+        const indexer = getIndexer(chainId)
         if (!indexer) {
             return reply.code(404).send({
                 error: 'Chain not found',
@@ -76,7 +121,7 @@ Replace {chainId} with one of: ${chainIds.join(', ')}
     fastify.get('/:chainId/stats/txCount/hourly', async function handler(request: any, reply) {
         const chainId = request.params.chainId as string
 
-        const indexer = indexers.get(chainId)
+        const indexer = getIndexer(chainId)
         if (!indexer) {
             return reply.code(404).send({
                 error: 'Chain not found',
@@ -92,7 +137,7 @@ Replace {chainId} with one of: ${chainIds.join(', ')}
     fastify.get('/:chainId/stats/txCount/daily', async function handler(request: any, reply) {
         const chainId = request.params.chainId as string
 
-        const indexer = indexers.get(chainId)
+        const indexer = getIndexer(chainId)
         if (!indexer) {
             return reply.code(404).send({
                 error: 'Chain not found',
@@ -108,7 +153,7 @@ Replace {chainId} with one of: ${chainIds.join(', ')}
     fastify.get('/:chainId/stats/tps/today', async function handler(request: any, reply) {
         const chainId = request.params.chainId as string
 
-        const indexer = indexers.get(chainId)
+        const indexer = getIndexer(chainId)
         if (!indexer) {
             return reply.code(404).send({
                 error: 'Chain not found',
@@ -143,7 +188,7 @@ Replace {chainId} with one of: ${chainIds.join(', ')}
 
     // List available chains
     fastify.get('/chains', async function handler(request: any, reply) {
-        return Array.from(indexers.keys())
+        return getChainInfo()
     })
 
     // Catch-all for unhandled routes

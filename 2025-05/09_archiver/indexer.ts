@@ -38,12 +38,13 @@ function handleBlock({ block, receipts }: StoredBlock) {
         db.insertTxBlockLookup(tx.hash, Number(block.number))
     }
     db.updateConfig('last_processed_block', Number(block.number).toString())
+    db.recordTxCount(Object.keys(receipts).length, Number(block.timestamp))
 }
 
 
 const isLocal = process.env.RPC_URL?.includes('localhost') || process.env.RPC_URL?.includes('127.0.0.1')
 
-const PROCESSING_BATCH_SIZE = isLocal ? 10000 : 100; // Number of blocks to fetch and process per cycle
+const PROCESSING_BATCH_SIZE = isLocal ? 10000 : 1000; // Number of blocks to fetch and process per cycle
 
 // const cacher = new FileBlockStore(`./data/${blockchainID}/blocks/`); // This is the BlockCache instance
 const cacher = new SqliteBlockStore(`./data/${blockchainID}/blocks.sqlite`); // This is the BlockCache instance
@@ -72,7 +73,6 @@ async function startLoop() {
         console.log(`Loop iteration. Current block to process: ${currentBlockToProcess}, Latest block from RPC: ${latestBlock}`);
 
         if (currentBlockToProcess > latestBlock) {
-            console.log(`Caught up to the latest block (${latestBlock}). Waiting for new blocks...`);
             await new Promise(resolve => setTimeout(resolve, interval_seconds * 1000));
             continue;
         }
@@ -98,13 +98,6 @@ async function startLoop() {
 
             if (fetchedBlocks.length > 0) {
                 console.log(`Received ${fetchedBlocks.length} blocks. Processing them in a transaction.`);
-
-                // Compression comparison
-                for (const block of fetchedBlocks) {
-                    if (Object.keys(block.receipts).length > 1) {
-                        fs.writeFileSync(`./compression_bench.cbor2`, encode(block.receipts));
-                    }
-                }
 
                 const txStart = performance.now();
                 db.transaction(() => {

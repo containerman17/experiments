@@ -3,7 +3,7 @@ import * as zlib from 'node:zlib';
 import { Buffer } from 'node:buffer';
 
 const FLAG_UNCOMPRESSED = 0x00;
-const FLAG_ZSTD_NODE = 0x01;
+const FLAG_ZSTD_CBOR2 = 0x01;
 const DEFAULT_COMPRESSION_LEVEL = 6;
 
 /**
@@ -23,7 +23,7 @@ export async function compressBuffer(buffer: Buffer, level: number = DEFAULT_COM
 
     // Prepend flag byte
     const result = Buffer.alloc(compressedBuffer.length + 1);
-    result[0] = FLAG_ZSTD_NODE;
+    result[0] = FLAG_ZSTD_CBOR2;
     compressedBuffer.copy(result, 1);
 
     return result;
@@ -38,7 +38,7 @@ export async function decompressBuffer(data: Buffer): Promise<Buffer> {
 
     if (flag === FLAG_UNCOMPRESSED) {
         return Buffer.from(payload);
-    } else if (flag === FLAG_ZSTD_NODE) {
+    } else if (flag === FLAG_ZSTD_CBOR2) {
         return nodeZstdDecompress(payload);
     } else {
         throw new Error(`Unknown compression flag: ${flag}`);

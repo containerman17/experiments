@@ -14,4 +14,14 @@ CREATE TABLE IF NOT EXISTS configs (
     value TEXT
 ) WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS tx_counts_hourly (
+    hour_bucket INTEGER PRIMARY KEY,
+    tx_count INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS tx_counts_daily (
+    day_bucket INTEGER PRIMARY KEY,
+    tx_count INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
+
 INSERT OR IGNORE INTO configs (key, value) VALUES ('last_processed_block', '-1');

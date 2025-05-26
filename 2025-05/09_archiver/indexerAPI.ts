@@ -3,7 +3,7 @@ import type { Hex, Transaction, TransactionReceipt } from 'viem';
 import { Database } from "./database/db.ts";
 
 export class IndexerAPI {
-    private db: Database;
+    public db: Database;
     private rpc: BatchRpc;
 
     constructor(database: Database, rpc: BatchRpc) {

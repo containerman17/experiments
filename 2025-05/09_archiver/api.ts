@@ -13,6 +13,7 @@ export async function startAPI(indexer: IndexerAPI) {
         logger: true
     })
 
+
     fastify.get('/tx/:txHash.json', async function handler(request: any, reply) {
         const txHash = request.params.txHash as string
 
@@ -28,6 +29,15 @@ export async function startAPI(indexer: IndexerAPI) {
         }
 
         return tx
+    })
+    fastify.get('/stats/txCount/hourly', async function handler(request: any, reply) {
+        const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
+        return indexer.db.getHourlyTxCount(limit)
+    })
+
+    fastify.get('/stats/txCount/daily', async function handler(request: any, reply) {
+        const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
+        return indexer.db.getDailyTxCount(limit)
     })
 
     await fastify.listen({ port: 3000 })

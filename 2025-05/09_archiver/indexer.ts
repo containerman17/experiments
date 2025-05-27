@@ -80,7 +80,7 @@ export class Indexer {
     constructor(rpcUrl: string, blockchainID: string) {
         this.blockchainID = blockchainID;
         this.isUnlimited = rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1') || rpcUrl.includes('65.21.140.118')
-        this.PROCESSING_BATCH_SIZE = this.isUnlimited ? 10000 : 100;
+        this.PROCESSING_BATCH_SIZE = this.isUnlimited ? 1000 : 100;
 
         const rawDb = initializeDatabase(blockchainID);
         this.db = new Database(rawDb);

@@ -1,1 +1,1 @@
-export const INCLUDE_GLACIER = false
+export const INCLUDE_GLACIER = true

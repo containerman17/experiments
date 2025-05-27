@@ -1,10 +1,8 @@
 // Import the framework and instantiate it
 import Fastify from 'fastify'
-import type { IndexerAPI } from './indexerAPI'
 import type { Hex, Transaction, TransactionReceipt } from 'viem'
 import { isHex } from 'viem'
 import type { BatchRpc } from './rpc/rpc'
-import type { Database } from './database/db'
 import type { Indexer } from './indexer'
 
 const fastify = Fastify({

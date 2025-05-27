@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS stats (
 ) WITHOUT ROWID;
 
 INSERT OR IGNORE INTO configs (key, value) VALUES ('last_processed_block', '-1');
+INSERT OR IGNORE INTO configs (key, value) VALUES ('latest_block_number', 0);
 `
 
 export function initializeDatabase(blockchainID: string): SQLite.Database {
@@ -64,12 +65,12 @@ export class Database {
         this.prepareCached(SQL).run(lookupKey);
     }
 
-    updateConfig(key: string, value: string): void {
+    private updateConfig(key: string, value: string): void {
         const SQL = `UPDATE configs SET value = ? WHERE key = ?`;
         this.prepareCached(SQL).run(value, key);
     }
 
-    getConfig(key: string): string | null {
+    private getConfig(key: string): string | null {
         const SQL = `SELECT value FROM configs WHERE key = ?`;
         const result = this.prepareCached(SQL).get(key) as { value: string } | undefined;
         return result?.value || null;
@@ -205,8 +206,21 @@ export class Database {
         return this.db;
     }
 
-    getLastProcessedBlockNumber(): number {
+    getLastProcessedBlock(): number {
         const lastProcessedBlock = this.getConfig('last_processed_block');
         return parseInt(lastProcessedBlock || '-1');
+    }
+
+    setLastProcessedBlock(blockNumber: number): void {
+        this.updateConfig('last_processed_block', blockNumber.toString());
+    }
+
+    getLatestBlockNumber(): number | null {
+        const latestBlock = this.getConfig('latest_block_number');
+        return latestBlock ? parseInt(latestBlock) : null;
+    }
+
+    setLatestBlockNumber(blockNumber: number): void {
+        this.updateConfig('latest_block_number', blockNumber.toString());
     }
 }

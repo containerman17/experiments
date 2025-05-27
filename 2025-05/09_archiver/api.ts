@@ -87,6 +87,15 @@ GET /{chainId}/stats/txs/{interval}?limit=10
         /${exampleChainId}/stats/txs/1d?limit=30
         /${exampleChainId}/stats/txs/1w?limit=12
 
+GET /stats/txs/{interval}?limit=10
+    Get transaction counts by time interval for ALL chains (default limit: 10, max: 100)
+    Returns object with chain IDs as keys
+    Intervals: "1h", "1d", or "1w"
+    Examples: 
+        /stats/txs/1h?limit=24
+        /stats/txs/1d?limit=30
+        /stats/txs/1w?limit=12
+
 GET /{chainId}/stats/icmOut/{interval}?limit=10
     Get ICM messages sent by time interval, grouped by receiver chain (default limit: 10, max: 100)
     Intervals: "1h", "1d", or "1w"
@@ -239,65 +248,92 @@ Replace {chainId} with any supported format from the chains listed above.
     // Indexing status for all chains
     fastify.get('/indexing', async function handler(request: any, reply) {
         const indexingPromises = Array.from(indexers.entries()).map(async ([avalancheChainId, indexer]) => {
-            const lastProcessedBlockNumber = indexer.db.getLastProcessedBlockNumber();
+            const latestBlockIndexed = indexer.db.getLastProcessedBlock();
+            const latestBlockOnChain = indexer.db.getLatestBlockNumber();
 
-            if (lastProcessedBlockNumber === -1) {
+            if (latestBlockIndexed === -1) {
                 return {
                     avalancheChainId,
                     evmChainId: null,
-                    blockNumber: -1,
-                    blockTime: null,
-                    daysAgo: null
+                    latestBlockIndexed: -1,
+                    latestBlockOnChain: latestBlockOnChain,
+                    indexingProgress: 0,
+                    blockTime: null
                 };
             }
 
-            try {
-                const blocks = await indexer.rpc.getBlocksWithReceipts([lastProcessedBlockNumber]);
+            const blocks = await indexer.rpc.getBlocksWithReceipts([latestBlockIndexed]);
 
-                if (blocks.length === 0) {
-                    return {
-                        avalancheChainId,
-                        evmChainId: null,
-                        blockNumber: lastProcessedBlockNumber,
-                        blockTime: null,
-                        daysAgo: null
-                    };
-                }
+            if (blocks.length === 0) {
+                const indexingProgress = latestBlockOnChain && latestBlockOnChain > 0
+                    ? Number(((latestBlockIndexed / latestBlockOnChain) * 100).toFixed(2))
+                    : 0;
 
-                const block = blocks[0]!;
-                const blockTimestamp = Number(block.block.timestamp);
-                const now = Math.floor(Date.now() / 1000);
-                const secondsAgo = now - blockTimestamp;
-                const daysAgo = Number((secondsAgo / (24 * 60 * 60)).toFixed(2));
-
-                // Find the EVM chain ID by looking through aliases
-                const evmChainId = Array.from(aliases.entries())
-                    .find(([alias, primaryId]) => primaryId === avalancheChainId && !alias.startsWith('0x'))?.[0]
-                    ? parseInt(Array.from(aliases.entries())
-                        .find(([alias, primaryId]) => primaryId === avalancheChainId && !alias.startsWith('0x'))![0])
-                    : null;
-
-                return {
-                    avalancheChainId,
-                    evmChainId,
-                    blockNumber: lastProcessedBlockNumber,
-                    blockTime: blockTimestamp,
-                    daysAgo
-                };
-
-            } catch (error) {
-                console.error(`Error fetching block ${lastProcessedBlockNumber} for chain ${avalancheChainId}:`, error);
                 return {
                     avalancheChainId,
                     evmChainId: null,
-                    blockNumber: lastProcessedBlockNumber,
-                    blockTime: null,
-                    daysAgo: null
+                    latestBlockIndexed: latestBlockIndexed,
+                    latestBlockOnChain: latestBlockOnChain,
+                    indexingProgress: indexingProgress,
+                    blockTime: null
                 };
             }
+
+            const block = blocks[0]!;
+            const blockTimestamp = Number(block.block.timestamp);
+
+            // Find the EVM chain ID by looking through aliases
+            const evmChainId = Array.from(aliases.entries())
+                .find(([alias, primaryId]) => primaryId === avalancheChainId && !alias.startsWith('0x'))?.[0]
+                ? parseInt(Array.from(aliases.entries())
+                    .find(([alias, primaryId]) => primaryId === avalancheChainId && !alias.startsWith('0x'))![0])
+                : null;
+
+            const indexingProgress = latestBlockOnChain && latestBlockOnChain > 0
+                ? Number(((latestBlockIndexed / latestBlockOnChain) * 100).toFixed(2))
+                : 0;
+
+            return {
+                avalancheChainId,
+                evmChainId,
+                latestBlockIndexed: latestBlockIndexed,
+                latestBlockOnChain: latestBlockOnChain,
+                indexingProgress: indexingProgress,
+                blockTime: blockTimestamp
+            };
         });
 
         return Promise.all(indexingPromises);
+    })
+
+    // Global transaction counts by time interval (all chains)
+    fastify.get('/stats/txs/:interval', async function handler(request: any, reply) {
+        const interval = request.params.interval as string
+
+        if (interval !== '1h' && interval !== '1d' && interval !== '1w') {
+            return reply.code(400).send({
+                error: 'Invalid interval',
+                hint: 'Use "1h", "1d", or "1w"'
+            })
+        }
+
+        const limit = Math.min(Math.max(Number(request.query.limit) || 10, 1), 100)
+
+        // Query all chains in parallel
+        const chainPromises = Array.from(indexers.entries()).map(async ([chainId, indexer]) => {
+            const data = indexer.db.getTxCount(interval as '1h' | '1d' | '1w', limit)
+            return { chainId, data }
+        })
+
+        const chainResults = await Promise.all(chainPromises)
+
+        // Build result object with chainIds as keys
+        const result: Record<string, Array<{ timestamp: number; value: number }>> = {}
+        for (const { chainId, data } of chainResults) {
+            result[chainId] = data
+        }
+
+        return result
     })
 
     // Global ICM messages sent by time interval (all chains)

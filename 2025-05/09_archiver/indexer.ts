@@ -21,7 +21,7 @@ function handleBlock(db: Database, chainId: string, { block, receipts }: StoredB
     for (const tx of block.transactions) {
         db.insertTxBlockLookup(tx.hash, Number(block.number))
     }
-    db.updateConfig('last_processed_block', Number(block.number).toString())
+    db.setLastProcessedBlock(Number(block.number))
     db.recordTxCount(Object.keys(receipts).length, Number(block.timestamp))
 
     //teleporter events
@@ -106,14 +106,14 @@ export class Indexer {
             try {
                 const start = performance.now();
 
-                const lastProcessedBlock = this.db.getConfig('last_processed_block');
-                let currentBlockToProcess = parseInt(lastProcessedBlock || '-1') + 1;
+                let currentBlockToProcess = this.db.getLastProcessedBlock() + 1;
 
                 // Only fetch latest block when:
                 // 1. First time (not initialized)
                 // 2. When we've caught up to the previously known latest block
                 if (latestBlock === null || currentBlockToProcess > latestBlock) {
                     latestBlock = await this.rpc.getCurrentBlockNumber();
+                    this.db.setLatestBlockNumber(latestBlock);
                     console.log(`[${this.blockchainID}] Updated latest block from RPC: ${latestBlock}`);
                 }
 

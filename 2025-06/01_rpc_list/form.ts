@@ -18,6 +18,7 @@ const knownNonEvmChains = [
 interface ChainData {
     chainName: string;
     blockchainId: string;
+    subnetId: string;
     rpcUrl?: string;
     glacierChainId?: string;
     comment?: string;
@@ -101,13 +102,16 @@ function categorizeChains(
 
     for (const blockchainId of validatedChains) {
         const rpcUrl = officialRpcUrls.get(blockchainId);
-        const chainName = blockchains.find(b => b.blockchainId === blockchainId)?.blockchainName || 'Unknown';
+        const blockchain = blockchains.find(b => b.blockchainId === blockchainId);
+        const chainName = blockchain?.blockchainName || 'Unknown';
+        const subnetId = blockchain?.subnetId || 'Unknown';
         const glacierChain = glacierChains.find(g => g.platformChainId === blockchainId);
         const comment = comments[blockchainId];
 
         const baseChain: ChainData = {
             chainName,
             blockchainId,
+            subnetId,
             glacierChainId: glacierChain?.chainId,
             comment
         };
@@ -153,6 +157,41 @@ function generateWithoutRpcTable(chainsWithoutRpc: ChainData[]): string {
     return table;
 }
 
+// Generate chains.json file
+async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: ChainData[]): Promise<void> {
+    const chainsWithRpcDetails = await Promise.all(
+        chainsWithRpc.map(async (chain) => {
+            const { evmChainId, lastBlockNumber } = await fetchChainDetails(chain.rpcUrl!);
+            return {
+                chainName: chain.chainName,
+                blockchainId: chain.blockchainId,
+                subnetId: chain.subnetId,
+                rpcUrl: chain.rpcUrl,
+                evmChainId,
+                lastBlockNumber,
+                glacierChainId: chain.glacierChainId,
+                comment: chain.comment || null
+            };
+        })
+    );
+
+    const chainsWithoutRpcDetails = chainsWithoutRpc.map(chain => ({
+        chainName: chain.chainName,
+        blockchainId: chain.blockchainId,
+        subnetId: chain.subnetId,
+        rpcUrl: null,
+        evmChainId: chain.glacierChainId || null,
+        lastBlockNumber: null,
+        glacierChainId: chain.glacierChainId,
+        comment: chain.comment || 'TODO: investigate'
+    }));
+
+    const allChains = [...chainsWithRpcDetails, ...chainsWithoutRpcDetails];
+
+    const chainsJsonPath = path.join(dirname(fileURLToPath(import.meta.url)), 'chains.json');
+    fs.writeFileSync(chainsJsonPath, JSON.stringify(allChains, null, 2));
+}
+
 // Main execution
 try {
     const comments = loadComments();
@@ -176,7 +215,10 @@ try {
 
     fs.writeFileSync(path.join(dirname(fileURLToPath(import.meta.url)), 'README.md'), readme);
 
+    await generateChainsJson(withRpc, withoutRpc);
+
     console.log('README.md updated successfully');
+    console.log('chains.json generated successfully');
     console.log(`Chains with RPC: ${withRpc.length}`);
     console.log(`Chains without RPC: ${withoutRpc.length}`);
     process.exit(0);

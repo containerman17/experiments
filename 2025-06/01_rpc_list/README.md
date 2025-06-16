@@ -7,11 +7,11 @@
 | Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Last Block | Comment |
 |------------|---------------|---------|--------------|------------|---------|
 | Blockticity | 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc | https://subnets.avax.network/btic/mainnet/rpc | 28530 | 51,256 |  |
-| even | 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL | https://subnets.avax.network/even/mainnet/rpc | 33345 | 175,411 |  |
+| even | 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL | https://subnets.avax.network/even/mainnet/rpc | 33345 | 175,412 |  |
 | CXChain | 25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV | https://subnets.avax.network/cx/mainnet/rpc | 737373 | 771 |  |
 | FRQTALNETWORK | 2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB | https://subnets.avax.network/frqtalnet/mainnet/rpc | 62789 | 32 |  |
 | TITANL | 24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S | https://subnets.avax.network/titan/mainnet/rpc | 84358 | 26 |  |
-| FIFABlockchain | SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E | https://subnets.avax.network/fifa/mainnet/rpc | 13322 | 114,154 |  |
+| FIFABlockchain | SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E | https://subnets.avax.network/fifa/mainnet/rpc | 13322 | 114,164 |  |
 | Animalia | QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk | https://subnets.avax.network/animalia/mainnet/rpc | 8787 | 6 |  |
 | Memoria | kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC | https://subnets.avax.network/memoria/mainnet/rpc | 1888 | 4,909 |  |
 | delaunch | 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv | https://subnets.avax.network/delaunch/mainnet/rpc | 96786 | 25 |  |
@@ -20,34 +20,34 @@
 | Blaze | 2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY | https://subnets.avax.network/blaze/mainnet/rpc | 46975 | 0 |  |
 | KOROSHIL | 26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ | https://subnets.avax.network/koroshi/mainnet/rpc | 379 | 242,106 |  |
 | Henesys | 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB | https://henesys-rpc.msu.io | Error | Error | The RPC URL is behind an aggressive Cloudflare Protection |
-| gunz | 2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML | https://subnets.avax.network/gunzilla/mainnet/rpc | 43419 | 2,744,137 |  |
-| KALICHAIN | TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3 | https://subnets.avax.network/kalichain/mainnet/rpc | 6533 | 112,681 |  |
+| gunz | 2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML | https://subnets.avax.network/gunzilla/mainnet/rpc | 43419 | 2,744,466 |  |
+| KALICHAIN | TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3 | https://subnets.avax.network/kalichain/mainnet/rpc | 6533 | 112,689 |  |
 | NUMINEMainnet | 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf | https://subnets.avax.network/numi/mainnet/rpc | 8021 | 39,172 |  |
 | EthixETX | 2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE | https://subnets.avax.network/etx/mainnet/rpc | 389 | 34 |  |
-| coqnet | 23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG | https://subnets.avax.network/coqnet/mainnet/rpc | 42069 | 1,559,767 |  |
-| thegrowthprotocol | 2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY | https://subnets.avax.network/tgp/mainnet/rpc | 61587 | 2,907,196 |  |
+| coqnet | 23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG | https://subnets.avax.network/coqnet/mainnet/rpc | 42069 | 1,559,913 |  |
+| thegrowthprotocol | 2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY | https://subnets.avax.network/tgp/mainnet/rpc | 61587 | 2,907,361 |  |
 | TradeXMarkets | 2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK | https://subnets.avax.network/trx/mainnet/rpc | 21024 | 1,630,852 |  |
-| QChain | 2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy | https://subnets.avax.network/qchain/mainnet/rpc | 12150 | 4,102,670 |  |
+| QChain | 2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy | https://subnets.avax.network/qchain/mainnet/rpc | 12150 | 4,102,805 |  |
 | feature | txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk | https://subnets.avax.network/feature/mainnet/rpc | 33311 | 2,567 |  |
 | intersect | 2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF | https://subnets.avax.network/intersect/mainnet/rpc | 1216 | 201,543 |  |
-| PLYRPHI | HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4 | https://subnets.avax.network/plyr/mainnet/rpc | 16180 | 961,667 |  |
+| PLYRPHI | HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4 | https://subnets.avax.network/plyr/mainnet/rpc | 16180 | 961,681 |  |
 | StraitsX | EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx | https://subnets.avax.network/straitsx/mainnet/rpc | 5566 | 112,788 |  |
-| Space | 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt | https://subnets.avax.network/space/mainnet/rpc | 8227 | 1,413,504 |  |
+| Space | 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt | https://subnets.avax.network/space/mainnet/rpc | 8227 | 1,413,537 |  |
 | Lamina1Identity | hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N | https://subnets.avax.network/lamina1id/mainnet/rpc | 10850 | 92,618 |  |
-| Lamina1 | UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ | https://subnets.avax.network/lamina1/mainnet/rpc | 10849 | 9,748,488 |  |
+| Lamina1 | UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ | https://subnets.avax.network/lamina1/mainnet/rpc | 10849 | 9,748,652 |  |
 | InnovoMarketsMainnet | vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe | https://subnets.avax.network/innovo/mainnet/rpc | 10036 | 1,012 |  |
-| HighOctane | 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp | https://subnets.avax.network/highoctane/mainnet/rpc | 1853 | 3,061,423 |  |
+| HighOctane | 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp | https://subnets.avax.network/highoctane/mainnet/rpc | 1853 | 3,061,445 |  |
 | zerooneMainnet | 2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1 | https://subnets.avax.network/zeroonemai/mainnet/rpc | 27827 | 337,889 |  |
-| Tiltyard | 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS | https://subnets.avax.network/tiltyard/mainnet/rpc | 710420 | 2,805,417 |  |
+| Tiltyard | 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS | https://subnets.avax.network/tiltyard/mainnet/rpc | 710420 | 2,805,419 |  |
 | BLITZ SUBNET | 2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj | https://subnets.avax.network/blitz/mainnet/rpc | 1344 | 162,225 |  |
-| beam | 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn | https://subnets.avax.network/beam/mainnet/rpc | 4337 | 4,934,875 |  |
-| PLAYA3ULL | k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1 | https://subnets.avax.network/playa3ull/mainnet/rpc | 3011 | 2,141,877 |  |
-| UPTN | 2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE | https://node-api.uptn.io/v1/ext/rpc | 6119 | 15,932,781 |  |
-| shrapnelnetwork | 2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9 | https://subnets.avax.network/shrapnel/mainnet/rpc | 2044 | 7,561,864 |  |
-| Pulsar | QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v | https://subnets.avax.network/pulsar/mainnet/rpc | 357 | 16,678,135 |  |
-| dexalotevm | 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E | https://subnets.avax.network/dexalot/mainnet/rpc | 432204 | 37,735,572 |  |
-| DFK Chain | q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi | https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc | 53935 | 48,860,178 |  |
-| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 63,941,478 |  |
+| beam | 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn | https://subnets.avax.network/beam/mainnet/rpc | 4337 | 4,934,938 |  |
+| PLAYA3ULL | k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1 | https://subnets.avax.network/playa3ull/mainnet/rpc | 3011 | 2,141,889 |  |
+| UPTN | 2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE | https://node-api.uptn.io/v1/ext/rpc | 6119 | 15,932,822 |  |
+| shrapnelnetwork | 2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9 | https://subnets.avax.network/shrapnel/mainnet/rpc | 2044 | 7,561,866 |  |
+| Pulsar | QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v | https://subnets.avax.network/pulsar/mainnet/rpc | 357 | 16,678,417 |  |
+| dexalotevm | 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E | https://subnets.avax.network/dexalot/mainnet/rpc | 432204 | 37,735,900 |  |
+| DFK Chain | q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi | https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc | 53935 | 48,860,333 |  |
+| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 63,941,688 |  |
 
 
 ## Chains without Public RPC URLs (91)

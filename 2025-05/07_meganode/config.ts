@@ -1,43 +1,6 @@
-// import pLimit from 'p-limit';
-// import pThrottle from 'p-throttle';
-// import { fetchAllChains, getCurrentValidators } from "./rpc"
-
-// const allChains = await fetchAllChains()
-
-// console.log(`Found ${allChains.length} chains`)
-
-// const validatedSubnets: Set<string> = new Set()
-// const unvalidatedSubnets: Set<string> = new Set()
-
-// const limit = pLimit(5);
-// const throttle = pThrottle({
-//     limit: 10,
-//     interval: 1000
-// });
-
-// const throttledGetValidators = throttle(getCurrentValidators);
-
-// let completed = 0
-// async function checkValidated(chainId: string, subnetId: string) {
-//     if (chainId === "11111111111111111111111111111111LpoYY") {
-//         return
-//     }
-//     const validators = await throttledGetValidators(subnetId)
-//     if (validators.length > 0) {
-//         validatedSubnets.add(subnetId)
-//     } else {
-//         unvalidatedSubnets.add(subnetId)
-//     }
-
-//     completed++
-//     console.log(`Completed ${completed} of ${allChains.length} chains`)
-// }
-
-
-// await Promise.all(allChains.map(chain => limit(() => checkValidated(chain.blockchainId, chain.subnetId))))
-
-// console.log(`Validated subnets: ${validatedSubnets.size}`)
-// console.log(`Unvalidated subnets: ${unvalidatedSubnets.size}`)
+import pLimit from 'p-limit';
+import pThrottle from 'p-throttle';
+import { fetchAllChains, getCurrentValidators } from "./rpc"
 
 const validatedSubnets = [
     "qCccbQ4CJekniXpdgfdoFinEAkUf4wys9T89JNTK9CuvcMW81",
@@ -154,8 +117,65 @@ const validatedSubnets = [
     "wenKDikJWAYQs3f2v9JhV86fC6kHZwkFZsuUBftnmgZ4QXPnu",
     "7f9jciLEX25NPJEaAz1X7XF44B1Q9UBwq6PdnCHm5mnUq1e1C",
     "Vn3aX6hNRstj5VHHm63TCgPNaeGnRSqCYXQqemSqDd2TQH4qJ",
-    "11111111111111111111111111111111LpoYY"
+    "11111111111111111111111111111111LpoYY",
+    "2QRKgBVT4zbcEWM4aXYRPNRazmas9on1QZodYakh1cF4RDrQE5",
+    "2FKZhsPScXjdoAqL6xf9z7Vgqyh3yRpkFFGeLTQfDeQ6JZzyEB",
+    "91HAifNFJZq1TaiurGA8jaFGnbA7pkYzJ3kcDSSEJarRwAt56",
+    "wuCkRgTHeMZyj7KCiQDpNZoAmFduLx8KRwNxzJYaK7RzVGR6z",
+    "2SWquk5bfTpXLrBihfFVLmg4QksBNAuDfFASAZbT2cHmbeaaQv"
 ]
 
 export const subnetIds = Array.from(validatedSubnets).filter(subnetId => subnetId !== "11111111111111111111111111111111LpoYY")
 console.log(JSON.stringify(subnetIds, null, 2))
+
+//Uncomment to add new subnets to the list
+// const fromGlacier = await getValidatedSubnetsFromGlacier()
+// let hasNew = false
+// for (const subnetId of fromGlacier) {
+//     if (!subnetIds.includes(subnetId) && subnetId !== "11111111111111111111111111111111LpoYY") {
+//         console.log(`New subnet: ${subnetId}`)
+//         hasNew = true
+//     }
+// }
+
+// if (hasNew) {
+//     process.exit(1)
+// }
+
+async function getValidatedSubnetsFromGlacier() {
+    const allChains = await fetchAllChains()
+
+    console.log(`Found ${allChains.length} chains`)
+
+    const validatedSubnets: Set<string> = new Set()
+    const unvalidatedSubnets: Set<string> = new Set()
+
+    const limit = pLimit(5);
+    const throttle = pThrottle({
+        limit: 10,
+        interval: 1000
+    });
+
+    const throttledGetValidators = throttle(getCurrentValidators);
+
+    let completed = 0
+    async function checkValidated(chainId: string, subnetId: string) {
+        if (chainId === "11111111111111111111111111111111LpoYY") {
+            return
+        }
+        const validators = await throttledGetValidators(subnetId)
+        if (validators.length > 0) {
+            validatedSubnets.add(subnetId)
+        } else {
+            unvalidatedSubnets.add(subnetId)
+        }
+
+        completed++
+        console.log(`Completed ${completed} of ${allChains.length} chains`)
+    }
+
+
+    await Promise.all(allChains.map(chain => limit(() => checkValidated(chain.blockchainId, chain.subnetId))))
+
+    return Array.from(validatedSubnets)
+}

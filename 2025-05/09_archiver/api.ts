@@ -111,6 +111,11 @@ GET /stats/icmOut/{interval}?limit=10
         /stats/icmOut/1d?limit=30
         /stats/icmOut/1w?limit=12
 
+GET /stats/tps/today
+    Get transactions per second for last 24 hours for ALL chains
+    Returns object with chain IDs as keys
+    Example: /stats/tps/today
+
 GET /{chainId}/stats/tps/today
     Get transactions per second for last 24 hours
     Example: /${exampleChainId}/stats/tps/today
@@ -372,6 +377,49 @@ Replace {chainId} with any supported format from the chains listed above.
         return result
     })
 
+    // Global TPS for last 24 hours (all chains)
+    fastify.get('/stats/tps/today', async function handler(request: any, reply) {
+        // Query all chains in parallel
+        const chainPromises = Array.from(indexers.entries()).map(async ([chainId, indexer]) => {
+            // Get last 24 hours of hourly data
+            const hourlyData = indexer.db.getTxCount('1h', 24)
+
+            if (hourlyData.length === 0) {
+                return { chainId, data: { tps: 0, totalTxs: 0, timeSpanSeconds: 0 } }
+            }
+
+            // Calculate total transactions
+            const totalTxs = hourlyData.reduce((sum, hour) => sum + hour.value, 0)
+
+            // Calculate exact time span
+            const now = Date.now()
+            const currentHourStart = Math.floor(now / (1000 * 60 * 60)) * (1000 * 60 * 60)
+            const secondsIntoCurrentHour = Math.floor((now - currentHourStart) / 1000)
+            const timeSpanSeconds = (24 * 60 * 60) - (60 * 60 - secondsIntoCurrentHour)
+
+            const tps = totalTxs / timeSpanSeconds
+
+            return {
+                chainId,
+                data: {
+                    tps: Number(tps.toFixed(6)),
+                    totalTxs,
+                    timeSpanSeconds,
+                }
+            }
+        })
+
+        const chainResults = await Promise.all(chainPromises)
+
+        // Build result object with chainIds as keys
+        const result: Record<string, { tps: number; totalTxs: number; timeSpanSeconds: number }> = {}
+        for (const { chainId, data } of chainResults) {
+            result[chainId] = data
+        }
+
+        return result
+    })
+
     // Catch-all for unhandled routes
     fastify.setNotFoundHandler(async function handler(request, reply) {
         return reply.code(404).send({
@@ -380,7 +428,7 @@ Replace {chainId} with any supported format from the chains listed above.
         })
     })
 
-    await fastify.listen({ port: 3000 })
+    await fastify.listen({ port: 3000, host: "0.0.0.0" })
 }
 
 async function fetchTxsFromBlocks(txHashes: Hex[], blockNumbers: number[], rpc: BatchRpc): Promise<{ transaction: Transaction; receipt: TransactionReceipt; blockNumber: bigint }[]> {

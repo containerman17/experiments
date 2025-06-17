@@ -37,7 +37,7 @@ interface ChainWithoutRpc extends ChainData {
 // Load comments from rpcComments.json
 function loadComments(): Record<string, string> {
     try {
-        const commentsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'rpcComments.json');
+        const commentsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'rpcComments.json');
         const commentsData = fs.readFileSync(commentsPath, 'utf8');
         return JSON.parse(commentsData);
     } catch (error) {
@@ -188,7 +188,7 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
 
     const allChains = [...chainsWithRpcDetails, ...chainsWithoutRpcDetails];
 
-    const chainsJsonPath = path.join(dirname(fileURLToPath(import.meta.url)), 'chains.json');
+    const chainsJsonPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'chains.json');
     fs.writeFileSync(chainsJsonPath, JSON.stringify(allChains, null, 2));
 }
 

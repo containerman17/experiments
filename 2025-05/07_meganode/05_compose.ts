@@ -9,6 +9,7 @@ interface ServiceConfig {
     httpPort: number
     stakingPort: number
     subnetIds: string[],
+    skipCChain: boolean
 }
 
 // Function to pad numbers with leading zeros
@@ -27,7 +28,7 @@ function generateService(config: ServiceConfig) {
             `~/.avalanchego_${config.folderSuffix}/:/root/.avalanchego`
         ],
         environment: [
-            'AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=true',
+            `AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=${config.skipCChain ? 'true' : 'false'}`,
             'AVAGO_PUBLIC_IP_RESOLUTION_SERVICE=opendns',
             'AVAGO_HTTP_HOST=0.0.0.0',
             `AVAGO_HTTP_PORT=${config.httpPort}`,
@@ -54,6 +55,8 @@ const composeObject: {
 
 import { subnetIds } from './config'
 import pThrottle from 'p-throttle'
+import { getAliveRpcUrls } from './check'
+import { getGlacierRpcUrls } from './glacier'
 
 // Function to chunk array into groups of specified size
 function chunk<T>(array: T[], size: number): T[][] {
@@ -90,10 +93,48 @@ for (let i = 0; i < subnetGroups.length; i++) {
         httpPort: nextHttpPort,
         stakingPort: nextHttpPort + 1,
         subnetIds: group,
+        skipCChain: i !== 0,
     })
 }
 
-// Stringify the object
-const generatedYaml = YAML.stringify(composeObject)
+const rpcUrls = await getAliveRpcUrls(YAML.stringify(composeObject))
 
-fs.writeFileSync('compose.yml', generatedYaml)
+const rpcUrlVars: string[] = [
+    'http://65.21.140.118:9002/ext/bc/C/rpc'
+]
+for (let i = 0; i < rpcUrls.length; i++) {
+    rpcUrlVars.push(`RPC_URL_${i}=${rpcUrls[i]}`)
+}
+
+const glacierRpcUrls = await getGlacierRpcUrls('mainnet')
+for (let i = 0; i < glacierRpcUrls.length; i++) {
+    if (glacierRpcUrls[i]) {
+        rpcUrlVars.push(`RPC_URL_${i + rpcUrls.length}=${glacierRpcUrls[i]?.rpcUrl}`)
+    }
+}
+
+composeObject.services['indexer'] = {
+    image: 'containerman17/indexer-dev:latest',
+    container_name: 'indexer',
+    pull_policy: 'always',
+    ports: [
+        '80:3000'
+    ],
+    restart: 'always',
+    volumes: [
+        `./indexer_data:/data`
+    ],
+    environment: [
+        ...rpcUrlVars,
+        `DATA_FOLDER=/data`,
+    ],
+    logging: {
+        driver: 'json-file',
+        options: {
+            'max-size': '50m',
+            'max-file': '3'
+        }
+    }
+}
+
+fs.writeFileSync('compose.yml', YAML.stringify(composeObject))

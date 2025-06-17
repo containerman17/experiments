@@ -1,6 +1,7 @@
 import SQLite from "better-sqlite3";
 import { toBytes, fromBytes } from 'viem';
 import type { Hex } from 'viem';
+import { DATA_FOLDER } from "../config";
 
 const schema = `
 PRAGMA page_size = 4096;
@@ -33,7 +34,7 @@ INSERT OR IGNORE INTO configs (key, value) VALUES ('latest_block_number', 0);
 `
 
 export function initializeDatabase(blockchainID: string): SQLite.Database {
-    const dbPath = `./data/${blockchainID}/index.sqlite`;
+    const dbPath = `${DATA_FOLDER}/${blockchainID}/index.sqlite`;
     const db = new SQLite(dbPath);
 
     db.exec(schema);

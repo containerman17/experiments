@@ -6,9 +6,8 @@ import { createPublicClient, http } from 'viem'
 import { fetchSubnet } from './rpc'
 
 // Parse compose.yml to extract subnet-to-port mapping
-function parseComposeFile(): Map<string, number> {
-    const composeContent = fs.readFileSync('compose.yml', 'utf8')
-    const compose = YAML.parse(composeContent)
+function parseComposeFile(yamlString: string): Map<string, number> {
+    const compose = YAML.parse(yamlString)
 
     const subnetToPort = new Map<string, number>()
 
@@ -43,43 +42,50 @@ async function getChainIdsForSubnet(subnetId: string): Promise<string[]> {
     return subnet.blockchains.map(blockchain => blockchain.blockchainId)
 }
 
-let successfulUrls: string[] = []
-async function checkChain(chainId: string, port: number) {
-    const url = `http://65.21.140.118:${port}/ext/bc/${chainId}/rpc`
+export async function getAliveRpcUrls(yamlString: string): Promise<string[]> {
+    let successfulUrls: Set<string> = new Set()
 
-    const client = createPublicClient({
-        transport: http(url)
-    })
-
-    try {
-        const block = await client.getBlockNumber()
-        console.log(`✅ ${url} block: ${Number(block).toLocaleString()}`)
-        successfulUrls.push(url)
-    } catch (error) {
-        console.log(`❌ ${url} not ready`)
+    const stringifyError = (error: any) => {
+        const message = typeof error === 'string' ? error : error.message
+        return message.slice(0, 100).replace(/\n/g, ' ')
     }
-}
 
-async function checkSubnet(subnetId: string, port: number) {
-    try {
-        const chainIds = await getChainIdsForSubnet(subnetId)
+    async function checkChain(chainId: string, port: number) {
+        const url = `http://65.21.140.118:${port}/ext/bc/${chainId}/rpc`
 
-        await Promise.all(
-            chainIds.map(chainId => checkChain(chainId, port))
+        const client = createPublicClient({
+            transport: http(url)
+        })
+
+        try {
+            const block = await client.getBlockNumber()
+            console.log(`✅ ${url} block: ${Number(block).toLocaleString()}`)
+            successfulUrls.add(url)
+        } catch (error) {
+            console.log(`❌ ${url} not ready: ${stringifyError(error)}`)
+        }
+    }
+
+
+    async function checkSubnet(subnetId: string, port: number) {
+        try {
+            const chainIds = await getChainIdsForSubnet(subnetId)
+
+            await Promise.all(
+                chainIds.map(chainId => checkChain(chainId, port))
+            )
+        } catch (error) {
+            // Silent fail for subnet fetch errors
+        }
+    }
+
+    const subnetToPort = parseComposeFile(yamlString)
+    await Promise.all(
+        Array.from(subnetToPort.entries()).map(([subnetId, port]) =>
+            checkSubnet(subnetId, port)
         )
-    } catch (error) {
-        // Silent fail for subnet fetch errors
-    }
+    )
+
+    return Array.from(successfulUrls)
 }
 
-// Main execution
-const subnetToPort = parseComposeFile()
-console.log(`Found ${subnetToPort.size} subnets to check`)
-
-await Promise.all(
-    Array.from(subnetToPort.entries()).map(([subnetId, port]) =>
-        checkSubnet(subnetId, port)
-    )
-)
-
-console.log(`RPC_URLS=${successfulUrls.join(',')}`)

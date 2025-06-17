@@ -1,10 +1,8 @@
-FROM node:22-alpine
+FROM node:22
 
 WORKDIR /app
 
-RUN npm i tsx -g
-
-COPY package* ./
+COPY package*.json ./
 
 RUN npm install
 

@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises';
 import { SqliteBlockStore } from "./rpc/sqliteCache.ts";
 import { startAPI } from "./api.ts";
 import { getGlacierRpcUrls } from "./glacier.ts";
-import { INCLUDE_GLACIER } from "./config.ts";
+import { DATA_FOLDER, INCLUDE_GLACIER, RPC_URLS } from "./config.ts";
 import { utils } from "@avalabs/avalanchejs";
 
 dotenv.config();
@@ -85,7 +85,7 @@ export class Indexer {
         const rawDb = initializeDatabase(blockchainID);
         this.db = new Database(rawDb);
 
-        const cacher = new SqliteBlockStore(`./data/${blockchainID}/blocks.sqlite`);
+        const cacher = new SqliteBlockStore(`${DATA_FOLDER}/${blockchainID}/blocks.sqlite`);
         const concurrency = this.isUnlimited ? 100 : 10;
 
         this.rpc = new BatchRpc({
@@ -171,13 +171,7 @@ export class Indexer {
 }
 
 async function main() {
-    const rpcUrls = process.env.RPC_URLS;
-    if (!rpcUrls) {
-        console.error("RPC_URLS environment variable is not set.");
-        process.exit(1);
-    }
-
-    const envRpcUrls = rpcUrls.split(',').map(url => url.trim())
+    const envRpcUrls = RPC_URLS
     const glacierRpcUrls = INCLUDE_GLACIER ? (await getGlacierRpcUrls()).map(url => url.rpcUrl) : []
 
     const indexers = new Map<string, Indexer>();
@@ -208,7 +202,7 @@ async function main() {
             return;
         }
 
-        await mkdir(`./data/${blockchainID}`, { recursive: true });
+        await mkdir(`${DATA_FOLDER}/${blockchainID}`, { recursive: true });
 
         const indexer = new Indexer(rpcUrl, blockchainID);
 

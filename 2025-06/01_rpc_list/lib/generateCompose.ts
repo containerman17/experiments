@@ -79,10 +79,34 @@ http {
     limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=600r/m;
     
     # Rate limit status
-    limit_req_status 429;${upstreams}
+    limit_req_status 429;
+    
+    # P-Chain upstream
+    upstream backend_p_chain {
+        server meganode01:9004;
+    }
+    
+    # C-Chain upstream  
+    upstream backend_c_chain {
+        server meganode00:9002;
+    }${upstreams}
     
     server {
-        listen 80;${locations}
+        listen 80;
+        
+        # Route P-Chain to meganode01
+        location /ext/bc/P {
+            limit_req zone=rpc_limit burst=100;
+            proxy_pass http://backend_p_chain;
+        }
+        
+        # Route C-Chain (anything starting with /ext/bc/C) to meganode00
+        location ~ ^/ext/bc/C {
+            limit_req zone=rpc_limit burst=100;
+            proxy_pass http://backend_c_chain;
+        }
+             
+        ${locations}
         
         location / {
             return 200 'RPC Gateway OK\\n';

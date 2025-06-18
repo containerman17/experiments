@@ -1,12 +1,8 @@
 import pThrottle from "p-throttle";
 
 const pChainEndpoints = [
-    "https://avalanche-p-chain-rpc.publicnode.com",
-    "https://ava-mainnet.public.blastapi.io/ext/P",
-    "https://lb.nodies.app/v1/105f8099e80f4123976b59df1ebfb433/ext/bc/P",
-    "https://1rpc.io/avax/p",
     "https://api.avax.network/ext/bc/P",
-    "http://65.21.140.118:9002/ext/bc/P"
+    "https://meganode.solokhin.com/ext/bc/P"
 ];
 
 

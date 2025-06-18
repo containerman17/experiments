@@ -67,6 +67,44 @@ async function getValidatedChains(): Promise<string[]> {
     return validatedResults.filter(Boolean).filter(chainId => !knownNonEvmChains.includes(chainId as string)) as string[];
 }
 
+// Test if an RPC URL is working
+async function testRpcUrl(rpcUrl: string): Promise<boolean> {
+    try {
+        await fetchEVMChainId(rpcUrl);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// Find working RPC URL for a chain
+async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string): Promise<string | undefined> {
+    const meganodeUrl = `https://meganode.solokhin.com/ext/bc/${blockchainId}/rpc`;
+    const candidates: { url: string, label: string }[] = [];
+
+    if (officialRpcUrl && officialRpcUrl.trim() !== '') {
+        candidates.push({ url: officialRpcUrl, label: '✅ official' });
+    }
+    candidates.push({ url: meganodeUrl, label: '🐊 Meganode' });
+
+    const tests = candidates.map(({ url, label }) =>
+        testRpcUrl(url).then(ok => ok ? { url, label } : null)
+    );
+
+    const winner = await Promise.any(tests.map(p => p.then(res => {
+        if (res) return res;
+        throw new Error();
+    }))).catch(() => null);
+
+    if (winner) {
+        console.log(`RPC for ${blockchainId}: ${winner.label}`);
+        return winner.url;
+    }
+
+    console.log(`RPC for ${blockchainId}: no working rpc found ❌`);
+    return undefined;
+}
+
 // Fetch EVM chain details for chains with RPC
 async function fetchChainDetails(rpcUrl: string): Promise<{ evmChainId: string; lastBlockNumber: string }> {
     let evmChainId = 'N/A';
@@ -90,18 +128,18 @@ async function fetchChainDetails(rpcUrl: string): Promise<{ evmChainId: string; 
 }
 
 // Split chains into those with and without RPC URLs
-function categorizeChains(
+async function categorizeChains(
     validatedChains: string[],
     blockchains: any[],
     officialRpcUrls: Map<string, string>,
     glacierChains: any[],
     comments: Record<string, string>
-): { withRpc: ChainData[], withoutRpc: ChainData[] } {
+): Promise<{ withRpc: ChainData[], withoutRpc: ChainData[] }> {
     const withRpc: ChainData[] = [];
     const withoutRpc: ChainData[] = [];
 
     for (const blockchainId of validatedChains) {
-        const rpcUrl = officialRpcUrls.get(blockchainId);
+        const officialRpcUrl = officialRpcUrls.get(blockchainId);
         const blockchain = blockchains.find(b => b.blockchainId === blockchainId);
         const chainName = blockchain?.blockchainName || 'Unknown';
         const subnetId = blockchain?.subnetId || 'Unknown';
@@ -116,8 +154,11 @@ function categorizeChains(
             comment
         };
 
-        if (rpcUrl && rpcUrl.trim() !== '') {
-            withRpc.push({ ...baseChain, rpcUrl });
+        // Try to find a working RPC URL (official first, then meganode)
+        const workingRpcUrl = await findWorkingRpcUrl(blockchainId, officialRpcUrl);
+
+        if (workingRpcUrl) {
+            withRpc.push({ ...baseChain, rpcUrl: workingRpcUrl });
         } else {
             withoutRpc.push(baseChain);
         }
@@ -204,7 +245,7 @@ try {
     const blockchains = await listAllBlockchains('mainnet');
     const validatedChains = await getValidatedChains();
 
-    const { withRpc, withoutRpc } = categorizeChains(
+    const { withRpc, withoutRpc } = await categorizeChains(
         validatedChains,
         blockchains,
         officialRpcUrls,

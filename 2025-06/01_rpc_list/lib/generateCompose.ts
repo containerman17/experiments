@@ -10,7 +10,6 @@ interface ServiceConfig {
     subnetIds: string[]
     blockchainIds: string[]
     skipCChain: boolean
-    domain: string
 }
 
 // Function to pad numbers with leading zeros
@@ -20,21 +19,13 @@ function padzero(num: number, size: number): string {
 
 // Function to generate a service configuration
 function generateService(config: ServiceConfig) {
-    const labels: { [key: string]: string } = {
-        [`caddy`]: config.domain
-    }
-    config.blockchainIds.forEach((blockchainId, index) => {
-        labels[`caddy.handle_path_${index}`] = `/ext/bc/${blockchainId}/rpc`
-        labels[`caddy.handle_path_${index}.0_reverse_proxy`] = `{{upstreams ${config.httpPort}}}`
-    })
-
     return {
         image: 'containerman17/subnet-evm-plus:latest',
         container_name: config.containerName,
         restart: 'always',
-        networks: ['caddy'],
+        networks: ['default'],
         ports: [
-            `${config.httpPort}:${config.httpPort}`,
+            `127.0.0.1:${config.httpPort}:${config.httpPort}`,
             `${config.stakingPort}:${config.stakingPort}`
         ],
         volumes: [
@@ -43,12 +34,12 @@ function generateService(config: ServiceConfig) {
         environment: [
             `AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=${config.skipCChain ? 'true' : 'false'}`,
             'AVAGO_PUBLIC_IP_RESOLUTION_SERVICE=opendns',
-            'AVAGO_HTTP_HOST=127.0.0.1',
+            'AVAGO_HTTP_HOST=0.0.0.0',
+            'AVAGO_HTTP_ALLOWED_HOSTS=*',
             `AVAGO_HTTP_PORT=${config.httpPort}`,
             `AVAGO_STAKING_PORT=${config.stakingPort}`,
             `AVAGO_TRACK_SUBNETS=${config.subnetIds.join(',')}`,
         ],
-        labels,
         logging: {
             driver: 'json-file',
             options: {
@@ -59,51 +50,66 @@ function generateService(config: ServiceConfig) {
     }
 }
 
+// Function to generate nginx configuration
+function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: number, blockchainIds: string[] }[]): string {
+    let upstreams = ''
+    let locations = ''
+
+    // Generate upstream blocks and location blocks
+    serviceConfigs.forEach(config => {
+        config.blockchainIds.forEach(blockchainId => {
+            const upstreamName = `backend_${blockchainId.replace(/-/g, '_')}`
+
+            upstreams += `
+    upstream ${upstreamName} {
+        server ${config.serviceName}:${config.httpPort};
+    }`
+
+            locations += `
+        location /ext/bc/${blockchainId}/rpc {
+            limit_req zone=rpc_limit burst=100;
+            proxy_pass http://${upstreamName};
+        }`
+        })
+    })
+
+    return `events {}
+http {
+    # Rate limiting zone: 600 requests per minute per IP
+    limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=600r/m;
+    
+    # Rate limit status
+    limit_req_status 429;${upstreams}
+    
+    server {
+        listen 80;${locations}
+        
+        location / {
+            return 200 'RPC Gateway OK\\n';
+            add_header Content-Type text/plain;
+        }
+        
+        # Custom error page for rate limiting
+        error_page 429 @rate_limit;
+        location @rate_limit {
+            return 429 '{"error":"Rate limit exceeded","message":"Too many requests"}\\n';
+            add_header Content-Type application/json;
+        }
+    }
+}`
+}
+
 export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnetsToBlockchainId: { [key: string]: string[] }, domain: string): string {
     const composeObject: {
         services: { [key: string]: any }
-        networks: { [key: string]: any }
-        volumes: { [key: string]: any }
+        configs: { [key: string]: any }
     } = {
         services: {},
-        networks: {
-            caddy: {
-                external: true
-            }
-        },
-        volumes: {
-            caddy_data: {}
-        }
+        configs: {}
     }
-
-    // Add Caddy service with global options based on domain scheme
-    const isHttpOnly = domain.startsWith('http://')
-    const caddyService: any = {
-        container_name: 'caddy',
-        image: 'lucaslorentz/caddy-docker-proxy:ci-alpine',
-        ports: [
-            '80:80',
-            '443:443'
-        ],
-        environment: [
-            'CADDY_INGRESS_NETWORKS=caddy'
-        ],
-        networks: ['caddy'],
-        volumes: [
-            '/var/run/docker.sock:/var/run/docker.sock',
-            'caddy_data:/data'
-        ],
-        restart: 'unless-stopped'
-    }
-
-    // Add global options for HTTP-only mode
-    if (isHttpOnly) {
-        caddyService.environment.push('CADDY_GLOBAL_OPTIONS={\n\tauto_https off\n}')
-    }
-
-    composeObject.services.caddy = caddyService
 
     let nextHttpPort = 9000
+    const serviceConfigs: { serviceName: string, httpPort: number, blockchainIds: string[] }[] = []
 
     // Generate services for each node
     Object.entries(nodeSubnets).forEach(([nodeId, subnets]) => {
@@ -128,9 +134,38 @@ export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnet
             subnetIds: subnets,
             blockchainIds: blockchainIds,
             skipCChain: parseInt(nodeId) !== 0, // Only node 0 syncs C-Chain
-            domain: domain
+        })
+
+        serviceConfigs.push({
+            serviceName,
+            httpPort: nextHttpPort,
+            blockchainIds
         })
     })
+
+    // Add nginx service
+    composeObject.services.nginx = {
+        image: 'nginx:1.25-alpine',
+        configs: [
+            {
+                source: 'nginx_conf',
+                target: '/etc/nginx/nginx.conf',
+                mode: '0444'
+            }
+        ],
+        ports: [
+            '80:80'
+        ],
+        restart: 'unless-stopped',
+        depends_on: Object.keys(composeObject.services)
+    }
+
+    // Add nginx config
+    composeObject.configs = {
+        nginx_conf: {
+            content: generateNginxConfig(serviceConfigs)
+        }
+    }
 
     return YAML.stringify(composeObject)
 }

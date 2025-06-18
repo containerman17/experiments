@@ -128,19 +128,19 @@ const validatedSubnets = [
 export const subnetIds = Array.from(validatedSubnets).filter(subnetId => subnetId !== "11111111111111111111111111111111LpoYY")
 console.log(JSON.stringify(subnetIds, null, 2))
 
-//Uncomment to add new subnets to the list
-// const fromGlacier = await getValidatedSubnetsFromGlacier()
-// let hasNew = false
-// for (const subnetId of fromGlacier) {
-//     if (!subnetIds.includes(subnetId) && subnetId !== "11111111111111111111111111111111LpoYY") {
-//         console.log(`New subnet: ${subnetId}`)
-//         hasNew = true
-//     }
-// }
+// Uncomment to add new subnets to the list
+const fromGlacier = await getValidatedSubnetsFromGlacier()
+let hasNew = false
+for (const subnetId of fromGlacier) {
+    if (!subnetIds.includes(subnetId) && subnetId !== "11111111111111111111111111111111LpoYY") {
+        console.log(`New subnet: ${subnetId}`)
+        hasNew = true
+    }
+}
 
-// if (hasNew) {
-//     process.exit(1)
-// }
+if (hasNew) {
+    process.exit(1)
+}
 
 async function getValidatedSubnetsFromGlacier() {
     const allChains = await fetchAllChains()

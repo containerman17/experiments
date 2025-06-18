@@ -25,7 +25,7 @@
     "subnetId": "VsxF67NQTACc2fLQL9fD3F8LzJ5eezcSGFNitGsk7VxKbPwcD",
     "rpcUrl": "https://subnets.avax.network/even/mainnet/rpc",
     "evmChainId": "33345",
-    "lastBlockNumber": "175636",
+    "lastBlockNumber": "175671",
     "glacierChainId": "33345",
     "comment": null
   },
@@ -65,7 +65,7 @@
     "subnetId": "h7egyVb6fKHMDpVaEsTEcy7YaEnXrayxZS4A1AEU4pyBzmwGp",
     "rpcUrl": "https://subnets.avax.network/fifa/mainnet/rpc",
     "evmChainId": "13322",
-    "lastBlockNumber": "121043",
+    "lastBlockNumber": "122254",
     "glacierChainId": "13322",
     "comment": null
   },
@@ -85,7 +85,7 @@
     "subnetId": "2sF5Pb165jhdeNSy2kT4WyDYazu3buh1WGh77oTBA9dDjBPtsy",
     "rpcUrl": "https://subnets.avax.network/memoria/mainnet/rpc",
     "evmChainId": "1888",
-    "lastBlockNumber": "4945",
+    "lastBlockNumber": "4969",
     "glacierChainId": "1888",
     "comment": null
   },
@@ -135,7 +135,7 @@
     "subnetId": "pchqewRRQHwx1B3XJEq9p2HGSdjrHsyv48YzVUWXZbrmH4TM6",
     "rpcUrl": "https://subnets.avax.network/koroshi/mainnet/rpc",
     "evmChainId": "379",
-    "lastBlockNumber": "242115",
+    "lastBlockNumber": "242118",
     "glacierChainId": "379",
     "comment": null
   },
@@ -155,7 +155,7 @@
     "subnetId": "2MbQjnTg3yxEtZBfnamboi7K9AajwNq7WExiwReBQSBtwbBVer",
     "rpcUrl": "https://subnets.avax.network/gunzilla/mainnet/rpc",
     "evmChainId": "43419",
-    "lastBlockNumber": "2818083",
+    "lastBlockNumber": "2832023",
     "glacierChainId": "43419",
     "comment": null
   },
@@ -165,7 +165,7 @@
     "subnetId": "x1C95jnFyLV3x8tiiCW7ZFRoRFgq9SX1Yprwfxx4GCTujggYB",
     "rpcUrl": "https://subnets.avax.network/kalichain/mainnet/rpc",
     "evmChainId": "6533",
-    "lastBlockNumber": "114245",
+    "lastBlockNumber": "114547",
     "glacierChainId": "6533",
     "comment": null
   },
@@ -175,7 +175,7 @@
     "subnetId": "2nCzBViQ5jxLaxkg9TABx6oXu1UGU7chM7G6XzPvW9ehP8RfrJ",
     "rpcUrl": "https://subnets.avax.network/numi/mainnet/rpc",
     "evmChainId": "8021",
-    "lastBlockNumber": "39373",
+    "lastBlockNumber": "39403",
     "glacierChainId": "8021",
     "comment": null
   },
@@ -195,7 +195,7 @@
     "subnetId": "5moznRzaAEhzWkNTQVdT1U4Kb9EU7dbsKZQNmHwtN5MGVQRyT",
     "rpcUrl": "https://subnets.avax.network/coqnet/mainnet/rpc",
     "evmChainId": "42069",
-    "lastBlockNumber": "1594283",
+    "lastBlockNumber": "1600642",
     "glacierChainId": "42069",
     "comment": null
   },
@@ -205,7 +205,7 @@
     "subnetId": "2eq3DtJp4cWzvGd8Q3ZFo8VpZmmD235Xoxgq6CmX8anZ69M54",
     "rpcUrl": "https://subnets.avax.network/tgp/mainnet/rpc",
     "evmChainId": "61587",
-    "lastBlockNumber": "2943660",
+    "lastBlockNumber": "2950741",
     "glacierChainId": "61587",
     "comment": null
   },
@@ -225,7 +225,7 @@
     "subnetId": "26wQKuvA5kjwrKDaje7nmuJAx6Ke2bGvDDr3EiypNr53rH1pMc",
     "rpcUrl": "https://subnets.avax.network/qchain/mainnet/rpc",
     "evmChainId": "12150",
-    "lastBlockNumber": "4136155",
+    "lastBlockNumber": "4142730",
     "glacierChainId": "12150",
     "comment": null
   },
@@ -255,7 +255,7 @@
     "subnetId": "axp7DUSPvFghTM883ug2B8btAReBAACxD1VyENmRDStH4Lfed",
     "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
     "evmChainId": "16180",
-    "lastBlockNumber": "965497",
+    "lastBlockNumber": "966139",
     "glacierChainId": "16180",
     "comment": null
   },
@@ -265,7 +265,7 @@
     "subnetId": "2W9sERL7Zf7NrWpz7Bzg3fKSEt46gSQaKAU7ntTMSShLy64yMz",
     "rpcUrl": "https://subnets.avax.network/straitsx/mainnet/rpc",
     "evmChainId": "5566",
-    "lastBlockNumber": "113119",
+    "lastBlockNumber": "113243",
     "glacierChainId": "5566",
     "comment": null
   },
@@ -275,7 +275,7 @@
     "subnetId": "hkugVjqegihrQcggCnScNW8yQctyY7Z7oj2Mj5tGxWGXNa5iQ",
     "rpcUrl": "https://subnets.avax.network/space/mainnet/rpc",
     "evmChainId": "8227",
-    "lastBlockNumber": "1420463",
+    "lastBlockNumber": "1421750",
     "glacierChainId": "8227",
     "comment": null
   },
@@ -295,7 +295,7 @@
     "subnetId": "2hoHzxcZktxrTNoqCZhR9bEctc5oCuBqSp6SpRn6uvwxzLkvnD",
     "rpcUrl": "https://subnets.avax.network/lamina1/mainnet/rpc",
     "evmChainId": "10849",
-    "lastBlockNumber": "9785813",
+    "lastBlockNumber": "9792925",
     "glacierChainId": "10849",
     "comment": null
   },
@@ -315,7 +315,7 @@
     "subnetId": "27mZh9HyNwGdqfkQDWabzo9BonhPSzh1qwdzaDsmPJDn1woCVV",
     "rpcUrl": "https://subnets.avax.network/highoctane/mainnet/rpc",
     "evmChainId": "1853",
-    "lastBlockNumber": "3066731",
+    "lastBlockNumber": "3067762",
     "glacierChainId": "1853",
     "comment": null
   },
@@ -325,7 +325,7 @@
     "subnetId": "nKJuE11HePLrmp391sfoFVqZR7Fw5VJ1XjyznsogsjebxwiAg",
     "rpcUrl": "https://subnets.avax.network/zeroonemai/mainnet/rpc",
     "evmChainId": "27827",
-    "lastBlockNumber": "338342",
+    "lastBlockNumber": "338390",
     "glacierChainId": "27827",
     "comment": null
   },
@@ -335,7 +335,7 @@
     "subnetId": "23LsHpx3wTPtNC4PUaTdtNQkaGbLxwiGimnZjHaUc28qLHs7Dn",
     "rpcUrl": "https://subnets.avax.network/tiltyard/mainnet/rpc",
     "evmChainId": "710420",
-    "lastBlockNumber": "2805634",
+    "lastBlockNumber": "2805662",
     "glacierChainId": "710420",
     "comment": null
   },
@@ -345,7 +345,7 @@
     "subnetId": "yPUx56ffTBML1QfomcBvwfBxfE3LSgqkBNfxTCpx5dr4NNFGB",
     "rpcUrl": "https://subnets.avax.network/blitz/mainnet/rpc",
     "evmChainId": "1344",
-    "lastBlockNumber": "162415",
+    "lastBlockNumber": "162441",
     "glacierChainId": "1344",
     "comment": null
   },
@@ -355,7 +355,7 @@
     "subnetId": "eYwmVU67LmSfZb1RwqCMhBYkFyG8ftxn6jAwqzFmxC9STBWLC",
     "rpcUrl": "https://subnets.avax.network/beam/mainnet/rpc",
     "evmChainId": "4337",
-    "lastBlockNumber": "4945606",
+    "lastBlockNumber": "4947505",
     "glacierChainId": "4337",
     "comment": null
   },
@@ -365,7 +365,7 @@
     "subnetId": "2wLe8Ma7YcUmxMJ57JVWETMSHz1mjXmJc5gmssvKm3Pw8GkcFq",
     "rpcUrl": "https://subnets.avax.network/playa3ull/mainnet/rpc",
     "evmChainId": "3011",
-    "lastBlockNumber": "2145103",
+    "lastBlockNumber": "2145664",
     "glacierChainId": "3011",
     "comment": null
   },
@@ -375,7 +375,7 @@
     "subnetId": "yDxaSh2hoVxQKRHmacV1xFpuSgHf6Q6cCMu4v3GoLQnqQWk6L",
     "rpcUrl": "https://node-api.uptn.io/v1/ext/rpc",
     "evmChainId": "6119",
-    "lastBlockNumber": "15947082",
+    "lastBlockNumber": "15948734",
     "glacierChainId": "6119",
     "comment": null
   },
@@ -385,7 +385,7 @@
     "subnetId": "Cv1gyKNUtPNAtFw8YcjbsD4a3HNRbNvinY7t2gnGK4J54rQK3",
     "rpcUrl": "https://subnets.avax.network/shrapnel/mainnet/rpc",
     "evmChainId": "2044",
-    "lastBlockNumber": "7562350",
+    "lastBlockNumber": "7562440",
     "glacierChainId": "2044",
     "comment": null
   },
@@ -395,7 +395,7 @@
     "subnetId": "DxanjptkyaeM1eUew2gzUMngHM3n5ttUyMj7BuHw9riXh9pJC",
     "rpcUrl": "https://subnets.avax.network/pulsar/mainnet/rpc",
     "evmChainId": "357",
-    "lastBlockNumber": "16742849",
+    "lastBlockNumber": "16754417",
     "glacierChainId": "357",
     "comment": null
   },
@@ -405,7 +405,7 @@
     "subnetId": "wenKDikJWAYQs3f2v9JhV86fC6kHZwkFZsuUBftnmgZ4QXPnu",
     "rpcUrl": "https://subnets.avax.network/dexalot/mainnet/rpc",
     "evmChainId": "432204",
-    "lastBlockNumber": "37810050",
+    "lastBlockNumber": "37824188",
     "glacierChainId": "432204",
     "comment": null
   },
@@ -415,7 +415,7 @@
     "subnetId": "Vn3aX6hNRstj5VHHm63TCgPNaeGnRSqCYXQqemSqDd2TQH4qJ",
     "rpcUrl": "https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc",
     "evmChainId": "53935",
-    "lastBlockNumber": "48896448",
+    "lastBlockNumber": "48903358",
     "glacierChainId": "53935",
     "comment": null
   },
@@ -425,7 +425,7 @@
     "subnetId": "11111111111111111111111111111111LpoYY",
     "rpcUrl": "https://api.avax.network/ext/bc/C/rpc",
     "evmChainId": "43114",
-    "lastBlockNumber": "63985128",
+    "lastBlockNumber": "63994225",
     "glacierChainId": "43114",
     "comment": null
   },

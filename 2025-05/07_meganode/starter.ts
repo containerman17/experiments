@@ -50,7 +50,7 @@ const chainConfig = {
     "pruning-enabled": false
 }
 
-for (const chainId of chainIds) {
+for (const chainId of [...chainIds, 'C']) {
     const chainConfigDir = join(configBaseDir, chainId)
     const configPath = join(chainConfigDir, 'config.json')
 

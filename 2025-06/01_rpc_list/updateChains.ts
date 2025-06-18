@@ -126,6 +126,8 @@ function categorizeChains(
     return { withRpc, withoutRpc };
 }
 
+
+
 // Generate table for chains with RPC URLs
 async function generateWithRpcTable(chainsWithRpc: ChainData[]): Promise<string> {
     let table = `\n\n## Chains with Public RPC URLs (${chainsWithRpc.length})\n\n| Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Last Block | Comment |\n|------------|---------------|---------|--------------|------------|---------|\n`;

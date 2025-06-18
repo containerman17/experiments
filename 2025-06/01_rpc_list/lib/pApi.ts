@@ -1,8 +1,12 @@
 import pThrottle from "p-throttle";
 
 const pChainEndpoints = [
+    "https://meganode.solokhin.com/ext/bc/P",
+    "https://avalanche-p-chain-rpc.publicnode.com",
+    "https://ava-mainnet.public.blastapi.io/ext/P",
+    "https://lb.nodies.app/v1/105f8099e80f4123976b59df1ebfb433/ext/bc/P",
+    "https://1rpc.io/avax/p",
     "https://api.avax.network/ext/bc/P",
-    "https://meganode.solokhin.com/ext/bc/P"
 ];
 
 
@@ -26,7 +30,7 @@ interface Validator {
 }
 
 const throttle = pThrottle({
-    limit: 50,
+    limit: 30,
     interval: 1000
 });
 
@@ -48,16 +52,11 @@ export async function isValidated(subnetId: string): Promise<boolean> {
 
 async function isValidatedUnthrottled(subnetId: string): Promise<boolean> {
     const validators = await getCurrentValidators(subnetId);
-    return validators.length > 0;
+    return validators.filter(val => val.balance !== "0").length > 0;
 }
 
 async function getCurrentValidators(subnetId: string): Promise<Validator[]> {
-    // Shuffle endpoints and take first 3
-    const shuffledEndpoints = [...pChainEndpoints].sort(() => Math.random() - 0.5).slice(0, 3);
-
-
-    // Try each endpoint up to 3 times
-    for (const endpoint of shuffledEndpoints) {
+    for (const endpoint of pChainEndpoints) {
         try {
             return await getCurrentValidatorsWithEndpoint(endpoint, subnetId);
         } catch (error) {

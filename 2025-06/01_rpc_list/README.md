@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (53)
+## Chains with Public RPC URLs (55)
 
 | Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Blocks Count | Comment |
 |------------|---------------|---------|--------------|-------------|---------|
@@ -17,6 +17,7 @@
 | FRQTALNETWORK | 2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB | https://subnets.avax.network/frqtalnet/mainnet/rpc | 62789 | 10+ |  |
 | TITANL | 24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S | https://subnets.avax.network/titan/mainnet/rpc | 84358 | 10+ |  |
 | FIFABlockchain | SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E | https://subnets.avax.network/fifa/mainnet/rpc | 13322 | 100k+ |  |
+| CodeNekt | ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK | https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc | 235235 | 0+ |  |
 | Animalia | QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk | https://subnets.avax.network/animalia/mainnet/rpc | 8787 | 0+ |  |
 | Memoria | kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC | https://subnets.avax.network/memoria/mainnet/rpc | 1888 | 1k+ |  |
 | delaunch | 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv | https://subnets.avax.network/delaunch/mainnet/rpc | 96786 | 10+ |  |
@@ -49,7 +50,7 @@
 | Tiltyard | 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS | https://subnets.avax.network/tiltyard/mainnet/rpc | 710420 | 1m+ |  |
 | BLITZ SUBNET | 2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj | https://subnets.avax.network/blitz/mainnet/rpc | 1344 | 100k+ |  |
 | Mirai | Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM | https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc | 2718 | 100k+ |  |
-| beam | 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn | https://subnets.avax.network/beam/mainnet/rpc | 4337 | 1m+ | Beam RPC responds with 503 on historical requests |
+| beam | 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn | https://subnets.avax.network/beam/mainnet/rpc | 4337 | 1m+ |  |
 | PLAYA3ULL | k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1 | https://subnets.avax.network/playa3ull/mainnet/rpc | 3011 | 1m+ |  |
 | UPTN | 2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE | https://node-api.uptn.io/v1/ext/rpc | 6119 | 10m+ |  |
 | shrapnelnetwork | 2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9 | https://subnets.avax.network/shrapnel/mainnet/rpc | 2044 | 1m+ |  |
@@ -57,29 +58,28 @@
 | Pulsar | QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v | https://subnets.avax.network/pulsar/mainnet/rpc | 357 | 10m+ |  |
 | numbersevm | 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE | https://meganode.solokhin.com/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc | 10507 | 100k+ |  |
 | dexalotevm | 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E | https://subnets.avax.network/dexalot/mainnet/rpc | 432204 | 10m+ |  |
+| StepNetwork | 2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1 | https://rpc.step.network | 1234 | 10m+ |  |
 | DFK Chain | q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi | https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc | 53935 | 10m+ |  |
 | C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 10m+ |  |
 
 
-## Chains without Public RPC URLs (18)
+## Chains without Public RPC URLs (16)
 
 | Chain Name | Blockchain ID | EVM Chain ID | Comment |
 |------------|---------------|--------------|----------|
-| ULALO | 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig | N/A | TODO: investigate |
-| BnryMainnet | J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ | N/A | TODO: investigate |
-| CodeNekt | ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK | N/A | TODO: investigate |
-| amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | N/A | TODO: investigate |
-| FIZIT | tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN | N/A | TODO: investigate |
+| ULALO | 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig | N/A | Looks like https://x.com/ulalo_io. No public mainnet RPC found. |
+| BnryMainnet | J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ | N/A | 8 hours left to sync, waing. TODO: remove this comment. |
+| amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | N/A | https://x.com/amichain_org Couldn't find an RPC, should ask on twitter, |
+| FIZIT | tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN | N/A | Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/ |
 | Henesys | 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB | 68414 | The RPC URL is behind an aggressive Cloudflare Protection |
-| STLINK | 2HR9yTVXBwxJjmejn9yt1UQnrBpQVQRpxUQe6YUtEaWh9yqnPN | N/A | TODO: investigate |
-| AIBTRUSTMainnet | 2FUHgWJcZ4j8FrEi1DsdGyq6vMWQXeQGbZLuzcU6sFAazvnrYd | N/A | TODO: investigate |
-| MUGEN | 2GiVhBPR19ZaHYQivmheYv8RkEBjfdu7AyDvSocbWWjR4gz1qf | N/A | TODO: investigate |
-| numine | 2vEit8MMxLNNfbMdoiBjvFP7MFwPwo1YmiLaBBxQU2YRGvdjJx | N/A | TODO: investigate |
-| CertaLink Subnet | 27xa71ERzSzir2KuPmmsAFkceVA74Xfh8Fys8SrmHjdKyj1vqd | N/A | TODO: investigate |
-| Rymedi Compliance Subnet | 2Zqzt687kQ4G7RiWYKypiWrid4ZPrFW3jg9Hy5SmNAVgebB2ph | N/A | TODO: investigate |
-| Rymedi Transaction Subnet | 2PKgDmUGYJEV3gSBkvM7ztJuSk3g7omGjDjHdQR28Tv8JSxFBK | N/A | TODO: investigate |
-| Rymedi Identity Subnet | HnECQEqpvvXcBF9Jup1ti1XMowQGrSWiQSkKdwcjxEbzmTHMC | N/A | TODO: investigate |
-| gunzilla | 222KARi6VgSZXbewFp1BvZgyuSKVa9JPb7swhbwN9fUHFKgxUD | N/A | TODO: investigate |
-| IntainMarkets | m4xWma3wWpxHAAKWyDXX6oqvzKUkqCXnTJTwKmTkReJpcEuS6 | N/A | TODO: investigate |
-| XANA Chain | 2MrmXmx4nrSn5BS3EAtWg5Pf9madiBoN7MRaByM88g49VArjDt | N/A | TODO: investigate |
-| StepNetwork | 2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1 | N/A | TODO: investigate |
+| STLINK | 2HR9yTVXBwxJjmejn9yt1UQnrBpQVQRpxUQe6YUtEaWh9yqnPN | N/A | Couldn't find any public info about this project. |
+| AIBTRUSTMainnet | 2FUHgWJcZ4j8FrEi1DsdGyq6vMWQXeQGbZLuzcU6sFAazvnrYd | N/A | Looks like a japanese company. Probably a private chain. |
+| MUGEN | 2GiVhBPR19ZaHYQivmheYv8RkEBjfdu7AyDvSocbWWjR4gz1qf | N/A | Probably a private chain. https://www.avax.network/about/blog/japans-mugen-chain-on-avalanche-records-1m-transactions-in-1-month |
+| numine | 2vEit8MMxLNNfbMdoiBjvFP7MFwPwo1YmiLaBBxQU2YRGvdjJx | N/A | Not sure which network is this, looks like NUMINEMainnet is the right one.  |
+| CertaLink Subnet | 27xa71ERzSzir2KuPmmsAFkceVA74Xfh8Fys8SrmHjdKyj1vqd | N/A | not connected to enough stake: connected to 60.000000%; required at least 80.000000% |
+| Rymedi Compliance Subnet | 2Zqzt687kQ4G7RiWYKypiWrid4ZPrFW3jg9Hy5SmNAVgebB2ph | N/A | See "Rymedi Transaction Subnet" |
+| Rymedi Transaction Subnet | 2PKgDmUGYJEV3gSBkvM7ztJuSk3g7omGjDjHdQR28Tv8JSxFBK | N/A | Seems private. Medical stuff managed by Zeeve. |
+| Rymedi Identity Subnet | HnECQEqpvvXcBF9Jup1ti1XMowQGrSWiQSkKdwcjxEbzmTHMC | N/A | See "Rymedi Transaction Subnet" |
+| gunzilla | 222KARi6VgSZXbewFp1BvZgyuSKVa9JPb7swhbwN9fUHFKgxUD | N/A | Probably a private chain. This is not the main Gunzilla Chain |
+| IntainMarkets | m4xWma3wWpxHAAKWyDXX6oqvzKUkqCXnTJTwKmTkReJpcEuS6 | N/A | No public RPC found. |
+| XANA Chain | 2MrmXmx4nrSn5BS3EAtWg5Pf9madiBoN7MRaByM88g49VArjDt | N/A | Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc |

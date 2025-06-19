@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { getGlacierChains, listAllBlockchains } from './lib/glacier.ts'
 import { isValidated } from './lib/pApi.ts';
-import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber } from './lib/evm.ts'
+import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber, fetchBlockchainIDFromPrecompile } from './lib/evm.ts'
 
 const ignoreChains = [
     "2oYMBNV4eNHyqk2fjjV5nVQLDbtmNJzq5s3qs3Lo6ftnC6FByM", // X-Chain
@@ -46,6 +46,18 @@ function loadComments(): Record<string, string> {
     }
 }
 
+// Load extra RPCs from extraRpcs.json
+function loadExtraRpcs(): Record<string, string> {
+    try {
+        const extraRpcsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'extraRpcs.json');
+        const extraRpcsData = fs.readFileSync(extraRpcsPath, 'utf8');
+        return JSON.parse(extraRpcsData);
+    } catch (error) {
+        console.warn('Could not load extraRpcs.json:', error);
+        return {};
+    }
+}
+
 // Format number with thousands separator
 function formatNumber(value: string): string {
     if (!isNaN(Number(value))) {
@@ -68,42 +80,55 @@ async function getValidatedChains(): Promise<string[]> {
 }
 
 // Test if an RPC URL is working
-async function testRpcUrl(rpcUrl: string): Promise<boolean> {
+async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise<boolean> {
     try {
         // First check if we can get chainId
         await fetchEVMChainId(rpcUrl);
 
         // Then check if we can get block 0x1 (block number 1)
         // This tests if the RPC has historical data
-        const block = await fetchBlockByNumber(rpcUrl, "0x0");
-        if (!block) {
-            return false; // No historical data, consider dead
+        // const block = await fetchBlockByNumber(rpcUrl, "latest");
+        // const latestBlockNumber = parseInt(block.number, 16)
+        // const midBlockNumber = latestBlockNumber / 2
+        // //checking if historical data is available
+        // await fetchBlockByNumber(rpcUrl, `0x${midBlockNumber.toString(16)}`)
+        const blockchainId = await fetchBlockchainIDFromPrecompile(rpcUrl);
+        const precompileIsAbsent = blockchainId === "45PJLL"
+
+        if (blockchainId !== expectedBlockchainId && !precompileIsAbsent) {
+            console.log(`Blockchain ID mismatch for ${rpcUrl}: ${blockchainId} !== ${expectedBlockchainId}`)
+            return false;
         }
 
         return true;
-    } catch {
+    } catch (error) {
+        // console.log(rpcUrl, error)
         return false;
     }
 }
 
 // Find working RPC URL for a chain
-async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string): Promise<string | undefined> {
+async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, extraRpcUrl?: string): Promise<string | undefined> {
     const meganodeUrl = `https://meganode.solokhin.com/ext/bc/${blockchainId}/rpc`;
     const candidates: { url: string, label: string }[] = [];
 
     if (officialRpcUrl && officialRpcUrl.trim() !== '') {
         candidates.push({ url: officialRpcUrl, label: '✅ official' });
     }
+    if (extraRpcUrl && extraRpcUrl.trim() !== '') {
+        candidates.push({ url: extraRpcUrl, label: '🔧 extra' });
+    }
     candidates.push({ url: meganodeUrl, label: '🐊 Meganode' });
 
     const tests = candidates.map(({ url, label }) =>
-        testRpcUrl(url).then(ok => ok ? { url, label } : null)
+        testRpcUrl(url, blockchainId).then(ok => ok ? { url, label } : null)
     );
 
     const winner = await Promise.any(tests.map(p => p.then(res => {
         if (res) return res;
         throw new Error();
     }))).catch(() => null);
+
 
     if (winner) {
         console.log(`RPC for ${blockchainId}: ${winner.label}`);
@@ -157,11 +182,13 @@ async function categorizeChains(
     validatedChains: string[],
     blockchains: any[],
     officialRpcUrls: Map<string, string>,
+    extraRpcUrls: Record<string, string>,
     glacierChains: any[],
     comments: Record<string, string>
 ): Promise<{ withRpc: ChainData[], withoutRpc: ChainData[] }> {
     const chainPromises = validatedChains.map(async (blockchainId) => {
         const officialRpcUrl = officialRpcUrls.get(blockchainId);
+        const extraRpcUrl = extraRpcUrls[blockchainId];
         const blockchain = blockchains.find(b => b.blockchainId === blockchainId);
         const chainName = blockchain?.blockchainName || 'Unknown';
         const subnetId = blockchain?.subnetId || 'Unknown';
@@ -176,8 +203,8 @@ async function categorizeChains(
             comment
         };
 
-        // Try to find a working RPC URL (official first, then meganode)
-        const workingRpcUrl = await findWorkingRpcUrl(blockchainId, officialRpcUrl);
+        // Try to find a working RPC URL (official first, then extra, then meganode)
+        const workingRpcUrl = await findWorkingRpcUrl(blockchainId, officialRpcUrl, extraRpcUrl);
 
         if (workingRpcUrl) {
             return { ...baseChain, rpcUrl: workingRpcUrl } as ChainData;
@@ -273,6 +300,7 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
 // Main execution
 try {
     const comments = loadComments();
+    const extraRpcs = loadExtraRpcs();
     const glacierChains = await getGlacierChains('mainnet');
     const officialRpcUrls: Map<string, string> = new Map(
         glacierChains.map(chain => [chain.platformChainId, chain.rpcUrl])
@@ -284,6 +312,7 @@ try {
         validatedChains,
         blockchains,
         officialRpcUrls,
+        extraRpcs,
         glacierChains,
         comments
     );

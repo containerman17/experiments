@@ -16,7 +16,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Probably a private chain. This is not the main Gunzilla Chain"
   },
   {
     "chainName": "Space",
@@ -103,7 +103,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "not connected to enough stake: connected to 60.000000%; required at least 80.000000%"
   },
   {
     "chainName": "GOODCARE",
@@ -172,7 +172,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Looks like a japanese company. Probably a private chain."
   },
   {
     "chainName": "MUGEN",
@@ -181,7 +181,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Probably a private chain. https://www.avax.network/about/blog/japans-mugen-chain-on-avalanche-records-1m-transactions-in-1-month"
   },
   {
     "chainName": "QChain",
@@ -200,7 +200,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Couldn't find any public info about this project."
   },
   {
     "chainName": "Monsoon",
@@ -225,10 +225,10 @@
     "chainName": "StepNetwork",
     "blockchainId": "2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1",
     "subnetId": "7f9jciLEX25NPJEaAz1X7XF44B1Q9UBwq6PdnCHm5mnUq1e1C",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "comment": "TODO: investigate"
+    "rpcUrl": "https://rpc.step.network",
+    "evmChainId": "1234",
+    "blocksCount": "10m+",
+    "comment": null
   },
   {
     "chainName": "TradeXMarkets",
@@ -267,7 +267,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc"
   },
   {
     "chainName": "numbersevm",
@@ -285,7 +285,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Seems private. Medical stuff managed by Zeeve."
   },
   {
     "chainName": "Blockticity",
@@ -364,7 +364,7 @@
     "evmChainId": "4337",
     "blocksCount": "1m+",
     "glacierChainId": "4337",
-    "comment": "Beam RPC responds with 503 on historical requests"
+    "comment": null
   },
   {
     "chainName": "UPTN",
@@ -383,7 +383,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Looks like https://x.com/ulalo_io. No public mainnet RPC found."
   },
   {
     "chainName": "numine",
@@ -392,7 +392,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Not sure which network is this, looks like NUMINEMainnet is the right one. "
   },
   {
     "chainName": "lucid",
@@ -411,7 +411,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,"
   },
   {
     "chainName": "deraalpha",
@@ -449,7 +449,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "See \"Rymedi Transaction Subnet\""
   },
   {
     "chainName": "delaunch",
@@ -487,7 +487,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "See \"Rymedi Transaction Subnet\""
   },
   {
     "chainName": "Lamina1Identity",
@@ -525,7 +525,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "8 hours left to sync, waing. TODO: remove this comment."
   },
   {
     "chainName": "PLAYA3ULL",
@@ -563,7 +563,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "No public RPC found."
   },
   {
     "chainName": "DFK Chain",
@@ -612,7 +612,7 @@
     "rpcUrl": null,
     "evmChainId": null,
     "blocksCount": null,
-    "comment": "TODO: investigate"
+    "comment": "Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/"
   },
   {
     "chainName": "KALICHAIN",
@@ -677,9 +677,9 @@
     "chainName": "CodeNekt",
     "blockchainId": "ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK",
     "subnetId": "o4Eariv2Cx1fTvPFXYofpJfS9KgwFaiGN8KFGcCeZM9t87GJr",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "comment": "TODO: investigate"
+    "rpcUrl": "https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc",
+    "evmChainId": "235235",
+    "blocksCount": "0+",
+    "comment": null
   }
 ]

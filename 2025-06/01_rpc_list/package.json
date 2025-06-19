@@ -4,6 +4,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@avalabs/avalanchejs": "^5.0.0",
     "@types/node": "^24.0.1",
     "dotenv": "^16.5.0",
     "node-fetch": "^3.3.2",

@@ -15,7 +15,22 @@ function getRps(endpoint: string) {
     }
 }
 
+const smallBatchEndpoints = [
+    "https://subnets.avax.network/beam/mainnet/rpc",
+    "https://subnets.avax.network/playa3ull/mainnet/rpc",
+    "https://subnets.avax.network/shrapnel/mainnet/rpc",
+    "https://subnets.avax.network/dexalot/mainnet/rpc",
+    "https://subnets.avax.network/coqnet/mainnet/rpc",
+    "https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc",
+    "https://subnets.avax.network/blitz/mainnet/rpc",
+    "https://subnets.avax.network/tiltyard/mainnet/rpc",
+    "https://api.avax.network/ext/bc/C/rpc",
+]
+
 function getBlocksPerBatch(endpoint: string) {
+    if (smallBatchEndpoints.includes(endpoint)) {
+        return 50//TODO: tune this value
+    }
     if (endpoint.includes("solokhin.com")) {
         return 10000
     } else {
@@ -24,10 +39,13 @@ function getBlocksPerBatch(endpoint: string) {
 }
 
 function getRequestBatchSize(endpoint: string) {
+    if (smallBatchEndpoints.includes(endpoint)) {
+        return 10//TODO: tune this value
+    }
     if (endpoint.includes("solokhin.com")) {
         return 1000
     } else {
-        return 300
+        return 100
     }
 }
 

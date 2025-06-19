@@ -1,543 +1,15 @@
 services:
-  indexer_WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6:
+  indexer_21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E:
     image: containerman17/lean-explorer-core:latest
-    container_name: indexer_WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6
+    container_name: indexer_21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E
     environment:
-      - RPC_URL=https://subnets.avax.network/qr0618t2ms/mainnet/rpc
-      - CHAIN_ID=WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6
+      - RPC_URL=https://subnets.avax.network/dexalot/mainnet/rpc
+      - CHAIN_ID=21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E
       - DATA_DIR=/data/
       - RPS=3
-      - REQUEST_BATCH_SIZE=300
+      - REQUEST_BATCH_SIZE=10
       - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
-    environment:
-      - RPC_URL=https://subnets.avax.network/marnisa/mainnet/rpc
-      - CHAIN_ID=2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
-      - CHAIN_ID=2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
-    environment:
-      - RPC_URL=https://subnets.avax.network/btic/mainnet/rpc
-      - CHAIN_ID=2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc
-      - CHAIN_ID=apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc
-      - CHAIN_ID=iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL
-    environment:
-      - RPC_URL=https://subnets.avax.network/even/mainnet/rpc
-      - CHAIN_ID=2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV
-    environment:
-      - RPC_URL=https://subnets.avax.network/cx/mainnet/rpc
-      - CHAIN_ID=25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB
-    environment:
-      - RPC_URL=https://subnets.avax.network/frqtalnet/mainnet/rpc
-      - CHAIN_ID=2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S
-    environment:
-      - RPC_URL=https://subnets.avax.network/titan/mainnet/rpc
-      - CHAIN_ID=24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E
-    environment:
-      - RPC_URL=https://subnets.avax.network/fifa/mainnet/rpc
-      - CHAIN_ID=SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
-    environment:
-      - RPC_URL=https://subnets.avax.network/animalia/mainnet/rpc
-      - CHAIN_ID=QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
-    environment:
-      - RPC_URL=https://subnets.avax.network/memoria/mainnet/rpc
-      - CHAIN_ID=kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
-    environment:
-      - RPC_URL=https://subnets.avax.network/delaunch/mainnet/rpc
-      - CHAIN_ID=8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
-    environment:
-      - RPC_URL=https://subnets.avax.network/goodcare/mainnet/rpc
-      - CHAIN_ID=2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
-    environment:
-      - RPC_URL=https://subnets.avax.network/lucid/mainnet/rpc
-      - CHAIN_ID=2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY
-    environment:
-      - RPC_URL=https://subnets.avax.network/blaze/mainnet/rpc
-      - CHAIN_ID=2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ
-    environment:
-      - RPC_URL=https://subnets.avax.network/koroshi/mainnet/rpc
-      - CHAIN_ID=26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
-      - CHAIN_ID=2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
-      - CHAIN_ID=2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML
-    environment:
-      - RPC_URL=https://subnets.avax.network/gunzilla/mainnet/rpc
-      - CHAIN_ID=2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
-    environment:
-      - RPC_URL=https://subnets.avax.network/kalichain/mainnet/rpc
-      - CHAIN_ID=TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
-    environment:
-      - RPC_URL=https://subnets.avax.network/numi/mainnet/rpc
-      - CHAIN_ID=2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE
-    environment:
-      - RPC_URL=https://subnets.avax.network/etx/mainnet/rpc
-      - CHAIN_ID=2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
-    environment:
-      - RPC_URL=https://subnets.avax.network/coqnet/mainnet/rpc
-      - CHAIN_ID=23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
-      - CHAIN_ID=YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY
-    environment:
-      - RPC_URL=https://subnets.avax.network/tgp/mainnet/rpc
-      - CHAIN_ID=2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK
-    environment:
-      - RPC_URL=https://subnets.avax.network/trx/mainnet/rpc
-      - CHAIN_ID=2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy
-    environment:
-      - RPC_URL=https://subnets.avax.network/qchain/mainnet/rpc
-      - CHAIN_ID=2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc
-      - CHAIN_ID=23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
-    environment:
-      - RPC_URL=https://subnets.avax.network/feature/mainnet/rpc
-      - CHAIN_ID=txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF
-    environment:
-      - RPC_URL=https://subnets.avax.network/intersect/mainnet/rpc
-      - CHAIN_ID=2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4
-    environment:
-      - RPC_URL=https://subnets.avax.network/plyr/mainnet/rpc
-      - CHAIN_ID=HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
-    environment:
-      - RPC_URL=https://subnets.avax.network/straitsx/mainnet/rpc
-      - CHAIN_ID=EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
+      - BLOCKS_PER_BATCH=50
     volumes:
       - /home/ilia/indexer_data:/data
     ports:
@@ -551,199 +23,7 @@ services:
       - CHAIN_ID=22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
       - DATA_DIR=/data/
       - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N
-    environment:
-      - RPC_URL=https://subnets.avax.network/lamina1id/mainnet/rpc
-      - CHAIN_ID=hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ
-    environment:
-      - RPC_URL=https://subnets.avax.network/lamina1/mainnet/rpc
-      - CHAIN_ID=UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
-    environment:
-      - RPC_URL=https://subnets.avax.network/innovo/mainnet/rpc
-      - CHAIN_ID=vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
-    environment:
-      - RPC_URL=https://subnets.avax.network/highoctane/mainnet/rpc
-      - CHAIN_ID=25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1
-    environment:
-      - RPC_URL=https://subnets.avax.network/zeroonemai/mainnet/rpc
-      - CHAIN_ID=2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
-    environment:
-      - RPC_URL=https://subnets.avax.network/tiltyard/mainnet/rpc
-      - CHAIN_ID=2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
-    environment:
-      - RPC_URL=https://subnets.avax.network/blitz/mainnet/rpc
-      - CHAIN_ID=2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
-    environment:
-      - RPC_URL=https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc
-      - CHAIN_ID=Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
-      - DATA_DIR=/data/
-      - RPS=50
-      - REQUEST_BATCH_SIZE=1000
-      - MAX_CONCURRENT=50
-      - BLOCKS_PER_BATCH=10000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn
-    environment:
-      - RPC_URL=https://subnets.avax.network/beam/mainnet/rpc
-      - CHAIN_ID=2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
-    environment:
-      - RPC_URL=https://subnets.avax.network/playa3ull/mainnet/rpc
-      - CHAIN_ID=k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE
-    environment:
-      - RPC_URL=https://node-api.uptn.io/v1/ext/rpc
-      - CHAIN_ID=2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE
-      - DATA_DIR=/data/
-      - RPS=10
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=10
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9
-    environment:
-      - RPC_URL=https://subnets.avax.network/shrapnel/mainnet/rpc
-      - CHAIN_ID=2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
+      - REQUEST_BATCH_SIZE=100
       - MAX_CONCURRENT=3
       - BLOCKS_PER_BATCH=1000
     volumes:
@@ -767,15 +47,287 @@ services:
     ports:
       - "3000"
     restart: on-failure:100
-  indexer_QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v:
+  indexer_23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG:
     image: containerman17/lean-explorer-core:latest
-    container_name: indexer_QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
+    container_name: indexer_23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
     environment:
-      - RPC_URL=https://subnets.avax.network/pulsar/mainnet/rpc
-      - CHAIN_ID=QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
+      - RPC_URL=https://subnets.avax.network/coqnet/mainnet/rpc
+      - CHAIN_ID=23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
       - DATA_DIR=/data/
       - RPS=3
-      - REQUEST_BATCH_SIZE=300
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc
+      - CHAIN_ID=23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S
+    environment:
+      - RPC_URL=https://subnets.avax.network/titan/mainnet/rpc
+      - CHAIN_ID=24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
+    environment:
+      - RPC_URL=https://subnets.avax.network/highoctane/mainnet/rpc
+      - CHAIN_ID=25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV
+    environment:
+      - RPC_URL=https://subnets.avax.network/cx/mainnet/rpc
+      - CHAIN_ID=25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ
+    environment:
+      - RPC_URL=https://subnets.avax.network/koroshi/mainnet/rpc
+      - CHAIN_ID=26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
+    environment:
+      - RPC_URL=https://subnets.avax.network/goodcare/mainnet/rpc
+      - CHAIN_ID=2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
+    environment:
+      - RPC_URL=https://subnets.avax.network/numi/mainnet/rpc
+      - CHAIN_ID=2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
+    environment:
+      - RPC_URL=https://subnets.avax.network/tiltyard/mainnet/rpc
+      - CHAIN_ID=2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
+    environment:
+      - RPC_URL=https://subnets.avax.network/marnisa/mainnet/rpc
+      - CHAIN_ID=2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY
+    environment:
+      - RPC_URL=https://subnets.avax.network/tgp/mainnet/rpc
+      - CHAIN_ID=2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF
+    environment:
+      - RPC_URL=https://subnets.avax.network/intersect/mainnet/rpc
+      - CHAIN_ID=2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy
+    environment:
+      - RPC_URL=https://subnets.avax.network/qchain/mainnet/rpc
+      - CHAIN_ID=2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
+      - CHAIN_ID=2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB
+    environment:
+      - RPC_URL=https://subnets.avax.network/frqtalnet/mainnet/rpc
+      - CHAIN_ID=2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1
+    environment:
+      - RPC_URL=https://rpc.step.network
+      - CHAIN_ID=2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1
+      - DATA_DIR=/data/
+      - RPS=10
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=10
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK
+    environment:
+      - RPC_URL=https://subnets.avax.network/trx/mainnet/rpc
+      - CHAIN_ID=2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML
+    environment:
+      - RPC_URL=https://subnets.avax.network/gunzilla/mainnet/rpc
+      - CHAIN_ID=2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
       - MAX_CONCURRENT=3
       - BLOCKS_PER_BATCH=1000
     volumes:
@@ -799,31 +351,15 @@ services:
     ports:
       - "3000"
     restart: on-failure:100
-  indexer_21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E:
+  indexer_2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc:
     image: containerman17/lean-explorer-core:latest
-    container_name: indexer_21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E
+    container_name: indexer_2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
     environment:
-      - RPC_URL=https://subnets.avax.network/dexalot/mainnet/rpc
-      - CHAIN_ID=21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E
+      - RPC_URL=https://subnets.avax.network/btic/mainnet/rpc
+      - CHAIN_ID=2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
       - DATA_DIR=/data/
       - RPS=3
-      - REQUEST_BATCH_SIZE=300
-      - MAX_CONCURRENT=3
-      - BLOCKS_PER_BATCH=1000
-    volumes:
-      - /home/ilia/indexer_data:/data
-    ports:
-      - "3000"
-    restart: on-failure:100
-  indexer_q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi:
-    image: containerman17/lean-explorer-core:latest
-    container_name: indexer_q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi
-    environment:
-      - RPC_URL=https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc
-      - CHAIN_ID=q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi
-      - DATA_DIR=/data/
-      - RPS=3
-      - REQUEST_BATCH_SIZE=300
+      - REQUEST_BATCH_SIZE=100
       - MAX_CONCURRENT=3
       - BLOCKS_PER_BATCH=1000
     volumes:
@@ -839,7 +375,503 @@ services:
       - CHAIN_ID=2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5
       - DATA_DIR=/data/
       - RPS=10
-      - REQUEST_BATCH_SIZE=300
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=10
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
+    environment:
+      - RPC_URL=https://subnets.avax.network/blitz/mainnet/rpc
+      - CHAIN_ID=2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE
+    environment:
+      - RPC_URL=https://subnets.avax.network/etx/mainnet/rpc
+      - CHAIN_ID=2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY
+    environment:
+      - RPC_URL=https://subnets.avax.network/blaze/mainnet/rpc
+      - CHAIN_ID=2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9
+    environment:
+      - RPC_URL=https://subnets.avax.network/shrapnel/mainnet/rpc
+      - CHAIN_ID=2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
+      - CHAIN_ID=2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn
+    environment:
+      - RPC_URL=https://subnets.avax.network/beam/mainnet/rpc
+      - CHAIN_ID=2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE
+    environment:
+      - RPC_URL=https://node-api.uptn.io/v1/ext/rpc
+      - CHAIN_ID=2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE
+      - DATA_DIR=/data/
+      - RPS=10
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=10
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
+    environment:
+      - RPC_URL=https://subnets.avax.network/lucid/mainnet/rpc
+      - CHAIN_ID=2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
+      - CHAIN_ID=2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1
+    environment:
+      - RPC_URL=https://subnets.avax.network/zeroonemai/mainnet/rpc
+      - CHAIN_ID=2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL
+    environment:
+      - RPC_URL=https://subnets.avax.network/even/mainnet/rpc
+      - CHAIN_ID=2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
+    environment:
+      - RPC_URL=https://subnets.avax.network/delaunch/mainnet/rpc
+      - CHAIN_ID=8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc
+      - CHAIN_ID=apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
+    environment:
+      - RPC_URL=https://subnets.avax.network/straitsx/mainnet/rpc
+      - CHAIN_ID=EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N
+    environment:
+      - RPC_URL=https://subnets.avax.network/lamina1id/mainnet/rpc
+      - CHAIN_ID=hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4
+    environment:
+      - RPC_URL=https://subnets.avax.network/plyr/mainnet/rpc
+      - CHAIN_ID=HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc
+      - CHAIN_ID=iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
+    environment:
+      - RPC_URL=https://subnets.avax.network/playa3ull/mainnet/rpc
+      - CHAIN_ID=k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
+    environment:
+      - RPC_URL=https://subnets.avax.network/memoria/mainnet/rpc
+      - CHAIN_ID=kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc
+      - CHAIN_ID=Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi
+    environment:
+      - RPC_URL=https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc
+      - CHAIN_ID=q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=10
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=50
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
+    environment:
+      - RPC_URL=https://subnets.avax.network/animalia/mainnet/rpc
+      - CHAIN_ID=QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
+    environment:
+      - RPC_URL=https://subnets.avax.network/pulsar/mainnet/rpc
+      - CHAIN_ID=QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E
+    environment:
+      - RPC_URL=https://subnets.avax.network/fifa/mainnet/rpc
+      - CHAIN_ID=SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
+    environment:
+      - RPC_URL=https://subnets.avax.network/kalichain/mainnet/rpc
+      - CHAIN_ID=TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
+    environment:
+      - RPC_URL=https://subnets.avax.network/feature/mainnet/rpc
+      - CHAIN_ID=txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ
+    environment:
+      - RPC_URL=https://subnets.avax.network/lamina1/mainnet/rpc
+      - CHAIN_ID=UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
+    environment:
+      - RPC_URL=https://subnets.avax.network/innovo/mainnet/rpc
+      - CHAIN_ID=vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6
+    environment:
+      - RPC_URL=https://subnets.avax.network/qr0618t2ms/mainnet/rpc
+      - CHAIN_ID=WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6
+      - DATA_DIR=/data/
+      - RPS=3
+      - REQUEST_BATCH_SIZE=100
+      - MAX_CONCURRENT=3
+      - BLOCKS_PER_BATCH=1000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn
+    environment:
+      - RPC_URL=https://meganode.solokhin.com/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
+      - CHAIN_ID=YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn
+      - DATA_DIR=/data/
+      - RPS=50
+      - REQUEST_BATCH_SIZE=1000
+      - MAX_CONCURRENT=50
+      - BLOCKS_PER_BATCH=10000
+    volumes:
+      - /home/ilia/indexer_data:/data
+    ports:
+      - "3000"
+    restart: on-failure:100
+  indexer_ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK:
+    image: containerman17/lean-explorer-core:latest
+    container_name: indexer_ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK
+    environment:
+      - RPC_URL=https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc
+      - CHAIN_ID=ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK
+      - DATA_DIR=/data/
+      - RPS=10
+      - REQUEST_BATCH_SIZE=100
       - MAX_CONCURRENT=10
       - BLOCKS_PER_BATCH=1000
     volumes:

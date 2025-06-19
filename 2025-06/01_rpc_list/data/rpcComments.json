@@ -1,3 +1,5 @@
 {
-    "2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB": "The RPC URL is behind an aggressive Cloudflare Protection"
+    "2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB": "The RPC URL is behind an aggressive Cloudflare Protection",
+    "2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du": "also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc",
+    "2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn": "Beam RPC responds with 503 on historical requests"
 }

@@ -96,7 +96,7 @@ async function getCurrentValidatorsWithEndpoint(endpoint: string, subnetId: stri
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 15 * 1000);
 
     const response = await fetch(endpoint, {
         method: "POST",

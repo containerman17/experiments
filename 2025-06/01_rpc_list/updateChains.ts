@@ -8,12 +8,11 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { getGlacierChains, listAllBlockchains } from './lib/glacier.ts'
 import { isValidated } from './lib/pApi.ts';
-import { fetchEVMChainId, fetchLastBlockNumber } from './lib/evm.ts'
+import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber } from './lib/evm.ts'
 
 const ignoreChains = [
     "2oYMBNV4eNHyqk2fjjV5nVQLDbtmNJzq5s3qs3Lo6ftnC6FByM", // X-Chain
     "11111111111111111111111111111111LpoYY", // P-Chain
-    "2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5", // C-Chain
 ]
 
 interface ChainData {
@@ -71,7 +70,16 @@ async function getValidatedChains(): Promise<string[]> {
 // Test if an RPC URL is working
 async function testRpcUrl(rpcUrl: string): Promise<boolean> {
     try {
+        // First check if we can get chainId
         await fetchEVMChainId(rpcUrl);
+
+        // Then check if we can get block 0x1 (block number 1)
+        // This tests if the RPC has historical data
+        const block = await fetchBlockByNumber(rpcUrl, "0x0");
+        if (!block) {
+            return false; // No historical data, consider dead
+        }
+
         return true;
     } catch {
         return false;
@@ -152,10 +160,7 @@ async function categorizeChains(
     glacierChains: any[],
     comments: Record<string, string>
 ): Promise<{ withRpc: ChainData[], withoutRpc: ChainData[] }> {
-    const withRpc: ChainData[] = [];
-    const withoutRpc: ChainData[] = [];
-
-    for (const blockchainId of validatedChains) {
+    const chainPromises = validatedChains.map(async (blockchainId) => {
         const officialRpcUrl = officialRpcUrls.get(blockchainId);
         const blockchain = blockchains.find(b => b.blockchainId === blockchainId);
         const chainName = blockchain?.blockchainName || 'Unknown';
@@ -175,9 +180,22 @@ async function categorizeChains(
         const workingRpcUrl = await findWorkingRpcUrl(blockchainId, officialRpcUrl);
 
         if (workingRpcUrl) {
-            withRpc.push({ ...baseChain, rpcUrl: workingRpcUrl });
+            return { ...baseChain, rpcUrl: workingRpcUrl } as ChainData;
         } else {
-            withoutRpc.push(baseChain);
+            return baseChain;
+        }
+    });
+
+    const results = await Promise.all(chainPromises);
+
+    const withRpc: ChainData[] = [];
+    const withoutRpc: ChainData[] = [];
+
+    for (const result of results) {
+        if (result.rpcUrl) {
+            withRpc.push(result);
+        } else {
+            withoutRpc.push(result);
         }
     }
 
@@ -244,6 +262,9 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
     }));
 
     const allChains = [...chainsWithRpcDetails, ...chainsWithoutRpcDetails];
+
+    // Sort by blockchainId
+    allChains.sort((a, b) => a.blockchainId.localeCompare(b.blockchainId));
 
     const chainsJsonPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'chains.json');
     fs.writeFileSync(chainsJsonPath, JSON.stringify(allChains, null, 2));

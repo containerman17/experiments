@@ -39,3 +39,9 @@ export async function fetchLastBlockNumber(rpcUrl: string) {
     const data = await response.json() as { result: string }
     return parseInt(data.result, 16)
 }
+
+export async function fetchBlockByNumber(rpcUrl: string, blockNumber: string) {
+    const response = await throttledFetch(rpcUrl, "eth_getBlockByNumber", [blockNumber, false])
+    const data = await response.json() as { result: any }
+    return data.result
+}

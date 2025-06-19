@@ -2,12 +2,16 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (47)
+## Chains with Public RPC URLs (53)
 
 | Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Blocks Count | Comment |
 |------------|---------------|---------|--------------|-------------|---------|
+| QRTMS | WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6 | https://subnets.avax.network/qr0618t2ms/mainnet/rpc | 86611 | 0+ |  |
 | Marnisa | 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK | https://subnets.avax.network/marnisa/mainnet/rpc | 5419 | 100+ |  |
+| Monsoon | 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK | https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc | 100610 | 10+ |  |
 | Blockticity | 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc | https://subnets.avax.network/btic/mainnet/rpc | 28530 | 10k+ |  |
+| Bitcoin Content Network | apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i | https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc | 71932 | 10+ |  |
+| bloodloop | iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA | https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc | 578 | 100+ |  |
 | even | 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL | https://subnets.avax.network/even/mainnet/rpc | 33345 | 100k+ |  |
 | CXChain | 25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV | https://subnets.avax.network/cx/mainnet/rpc | 737373 | 100+ |  |
 | FRQTALNETWORK | 2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB | https://subnets.avax.network/frqtalnet/mainnet/rpc | 62789 | 10+ |  |
@@ -20,6 +24,7 @@
 | lucid | 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb | https://subnets.avax.network/lucid/mainnet/rpc | 62521 | 10+ |  |
 | Blaze | 2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY | https://subnets.avax.network/blaze/mainnet/rpc | 46975 | 0+ |  |
 | KOROSHIL | 26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ | https://subnets.avax.network/koroshi/mainnet/rpc | 379 | 100k+ |  |
+| deraalpha | 2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du | https://meganode.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc | 20250320 | 1m+ | also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc |
 | Hatchyverse | 2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm | https://meganode.solokhin.com/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc | 8198 | 10k+ |  |
 | gunz | 2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML | https://subnets.avax.network/gunzilla/mainnet/rpc | 43419 | 1m+ |  |
 | KALICHAIN | TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3 | https://subnets.avax.network/kalichain/mainnet/rpc | 6533 | 100k+ |  |
@@ -44,7 +49,7 @@
 | Tiltyard | 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS | https://subnets.avax.network/tiltyard/mainnet/rpc | 710420 | 1m+ |  |
 | BLITZ SUBNET | 2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj | https://subnets.avax.network/blitz/mainnet/rpc | 1344 | 100k+ |  |
 | Mirai | Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM | https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc | 2718 | 100k+ |  |
-| beam | 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn | https://subnets.avax.network/beam/mainnet/rpc | 4337 | 1m+ |  |
+| beam | 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn | https://subnets.avax.network/beam/mainnet/rpc | 4337 | 1m+ | Beam RPC responds with 503 on historical requests |
 | PLAYA3ULL | k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1 | https://subnets.avax.network/playa3ull/mainnet/rpc | 3011 | 1m+ |  |
 | UPTN | 2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE | https://node-api.uptn.io/v1/ext/rpc | 6119 | 10m+ |  |
 | shrapnelnetwork | 2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9 | https://subnets.avax.network/shrapnel/mainnet/rpc | 2044 | 1m+ |  |
@@ -53,21 +58,19 @@
 | numbersevm | 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE | https://meganode.solokhin.com/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc | 10507 | 100k+ |  |
 | dexalotevm | 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E | https://subnets.avax.network/dexalot/mainnet/rpc | 432204 | 10m+ |  |
 | DFK Chain | q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi | https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc | 53935 | 10m+ |  |
+| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 10m+ |  |
 
 
-## Chains without Public RPC URLs (21)
+## Chains without Public RPC URLs (18)
 
 | Chain Name | Blockchain ID | EVM Chain ID | Comment |
 |------------|---------------|--------------|----------|
-| Monsoon | 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK | N/A | TODO: investigate |
-| Bitcoin Content Network | apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i | N/A | TODO: investigate |
-| bloodloop | iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA | N/A | TODO: investigate |
+| ULALO | 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig | N/A | TODO: investigate |
 | BnryMainnet | J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ | N/A | TODO: investigate |
 | CodeNekt | ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK | N/A | TODO: investigate |
 | amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | N/A | TODO: investigate |
 | FIZIT | tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN | N/A | TODO: investigate |
 | Henesys | 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB | 68414 | The RPC URL is behind an aggressive Cloudflare Protection |
-| deraalpha | 2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du | N/A | TODO: investigate |
 | STLINK | 2HR9yTVXBwxJjmejn9yt1UQnrBpQVQRpxUQe6YUtEaWh9yqnPN | N/A | TODO: investigate |
 | AIBTRUSTMainnet | 2FUHgWJcZ4j8FrEi1DsdGyq6vMWQXeQGbZLuzcU6sFAazvnrYd | N/A | TODO: investigate |
 | MUGEN | 2GiVhBPR19ZaHYQivmheYv8RkEBjfdu7AyDvSocbWWjR4gz1qf | N/A | TODO: investigate |

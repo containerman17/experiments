@@ -18,7 +18,7 @@ async function fetchBlocks(rpc: BatchRpc, blockStore: SqliteBlockStore, blockNum
     return allBlocks.sort((a, b) => parseInt(a.block.number, 16) - parseInt(b.block.number, 16))
 }
 
-const SLEEP_TIME_MS = 5 * 1000
+const SLEEP_TIME_MS = 20 * 1000
 
 export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[], blockStore: SqliteBlockStore, rpc: BatchRpc, blocksPerBatch: number) {
     for (const writer of writers) {

@@ -5,6 +5,32 @@ import YAML from 'yaml'
 // Build services object
 const services: Record<string, any> = {}
 
+function getRps(endpoint: string) {
+    if (endpoint.includes("solokhin.com")) {
+        return 50
+    } else if (endpoint.includes("subnets.avax.network")) {
+        return 3
+    } else {
+        return 10
+    }
+}
+
+function getBlocksPerBatch(endpoint: string) {
+    if (endpoint.includes("solokhin.com")) {
+        return 10000
+    } else {
+        return 1000
+    }
+}
+
+function getRequestBatchSize(endpoint: string) {
+    if (endpoint.includes("solokhin.com")) {
+        return 1000
+    } else {
+        return 300
+    }
+}
+
 for (const chain of chains) {
     // Only add service if rpcUrl is present and not empty/null
     if (chain.rpcUrl) {
@@ -15,17 +41,18 @@ for (const chain of chains) {
                 `RPC_URL=${chain.rpcUrl}`,
                 `CHAIN_ID=${chain.blockchainId}`,
                 "DATA_DIR=/data/",
-                "RPS=2",
-                "REQUEST_BATCH_SIZE=300",
-                "MAX_CONCURRENT=5",
-                "BLOCKS_PER_BATCH=100"
+                `RPS=${getRps(chain.rpcUrl)}`,
+                `REQUEST_BATCH_SIZE=${getRequestBatchSize(chain.rpcUrl)}`,
+                `MAX_CONCURRENT=${getRps(chain.rpcUrl)}`,//RPS is also max concurrent
+                `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`
             ],
             volumes: [
                 "/home/ilia/indexer_data:/data"
             ],
             ports: [
                 "3000" // random port
-            ]
+            ],
+            restart: "on-failure:100" // Add restart policy with sane limit
         }
     }
 }

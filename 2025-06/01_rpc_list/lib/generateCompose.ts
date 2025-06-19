@@ -67,7 +67,7 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
 
             locations += `
         location /ext/bc/${blockchainId}/rpc {
-            limit_req zone=rpc_limit burst=100;
+            limit_req zone=rpc_limit burst=1000;
             proxy_pass http://${upstreamName};
         }`
         })
@@ -75,8 +75,8 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
 
     return `events {}
 http {
-    # Rate limiting zone: 600 requests per minute per IP
-    limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=600r/m;
+    # Rate limiting zone: 10000 requests per minute per IP
+    limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=10000r/m;
     
     # Rate limit status
     limit_req_status 429;

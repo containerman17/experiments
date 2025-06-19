@@ -13,6 +13,7 @@ import { registerDocsRoutes } from "./apis/docs";
 import { BatchRpc } from "./rpc/BatchRpc";
 import { startIndexingLoop } from "./startIndexer";
 import { initIndexerDb } from "./system/initDb";
+import { createStatusIndexer } from "./subindexers/status";
 
 // Extract common database setup
 async function setupDatabases(dbFolder: string, chainId: string, readonly = false) {
@@ -60,6 +61,7 @@ const defaultIndexerFactories: IndexerFactory[] = [
     createTxIndexer,
     createBlockIndexer,
     createIcmIndexer,
+    createStatusIndexer,
 ]
 
 type APIConfig = {

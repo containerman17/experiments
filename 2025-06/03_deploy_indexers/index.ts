@@ -6,7 +6,7 @@ import YAML from 'yaml'
 const services: Record<string, any> = {}
 
 function getRps(endpoint: string) {
-    if (endpoint.includes("solokhin.com")) {
+    if (endpoint.includes("meganode.solokhin.com")) {
         return 50
     } else if (endpoint.includes("subnets.avax.network")) {
         return 3
@@ -31,7 +31,7 @@ function getBlocksPerBatch(endpoint: string) {
     if (smallBatchEndpoints.includes(endpoint)) {
         return 50//TODO: tune this value
     }
-    if (endpoint.includes("solokhin.com")) {
+    if (endpoint.includes("meganode.solokhin.com")) {
         return 10000
     } else {
         return 1000
@@ -42,7 +42,7 @@ function getRequestBatchSize(endpoint: string) {
     if (smallBatchEndpoints.includes(endpoint)) {
         return 10//TODO: tune this value
     }
-    if (endpoint.includes("solokhin.com")) {
+    if (endpoint.includes("meganode.solokhin.com")) {
         return 1000
     } else {
         return 100
@@ -67,14 +67,47 @@ for (const chain of chains) {
             volumes: [
                 "/home/ilia/indexer_data:/data"
             ],
+            networks: [
+                "caddy"
+            ],
             ports: [
                 "3000" // random port
             ],
+            labels: {
+                caddy: chain.blockchainId + "." + process.env.CADDY_DOMAIN,
+                "caddy.reverse_proxy": "{{upstreams 3000}}",
+            },
             restart: "on-failure:100" // Add restart policy with sane limit
         }
     }
 }
 
-const composeObject = { services }
+services["caddy"] = {
+    image: "lucaslorentz/caddy-docker-proxy:ci-alpine",
+    container_name: "caddy",
+    restart: "unless-stopped",
+    ports: [
+        "80:80",
+        "443:443"
+    ],
+    environment: [
+        "CADDY_INGRESS_NETWORKS=caddy"
+    ],
+    networks: [
+        "caddy"
+    ],
+    volumes: [
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "caddy_data:/data"
+    ]
+}
+
+const composeObject = {
+    services,
+    networks: { caddy: { external: true } },
+    volumes: {
+        caddy_data: {}
+    }
+}
 const yamlStr = YAML.stringify(composeObject)
 fs.writeFileSync('compose.yml', yamlStr)

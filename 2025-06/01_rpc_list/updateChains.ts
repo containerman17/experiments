@@ -58,13 +58,6 @@ function loadExtraRpcs(): Record<string, string> {
     }
 }
 
-// Format number with thousands separator
-function formatNumber(value: string): string {
-    if (!isNaN(Number(value))) {
-        return Number(value).toLocaleString();
-    }
-    return value;
-}
 
 // Get validated chains
 async function getValidatedChains(): Promise<string[]> {
@@ -96,8 +89,8 @@ async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise
         const precompileIsAbsent = blockchainId === "45PJLL"
 
         if (blockchainId !== expectedBlockchainId && !precompileIsAbsent) {
-            console.log(`Blockchain ID mismatch for ${rpcUrl}: ${blockchainId} !== ${expectedBlockchainId}`)
-            return false;
+            console.log(`❌❌❌ Blockchain ID mismatch for ${rpcUrl}: ${blockchainId} !== ${expectedBlockchainId}. This is not good.`)
+            process.exit(1);
         }
 
         return true;
@@ -302,6 +295,7 @@ try {
     const comments = loadComments();
     const extraRpcs = loadExtraRpcs();
     const glacierChains = await getGlacierChains('mainnet');
+
     const officialRpcUrls: Map<string, string> = new Map(
         glacierChains.map(chain => [chain.platformChainId, chain.rpcUrl])
     );

@@ -71,7 +71,7 @@ export class BatchRpc {
     private async makeHttpRequest(body: string): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
         const headers = {
             'Content-Type': 'application/json',
-            // 'Accept': 'application/json',
+            'Accept': 'application/json',
         };
 
         // console.log('Outgoing request headers:', headers);

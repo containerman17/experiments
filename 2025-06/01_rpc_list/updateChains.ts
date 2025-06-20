@@ -103,29 +103,36 @@ async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise
 // Find working RPC URL for a chain
 async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, extraRpcUrl?: string): Promise<string | undefined> {
     const meganodeUrl = `https://meganode.solokhin.com/ext/bc/${blockchainId}/rpc`;
-    const candidates: { url: string, label: string }[] = [];
 
-    if (officialRpcUrl && officialRpcUrl.trim() !== '') {
-        candidates.push({ url: officialRpcUrl, label: '✅ official' });
-    }
+    // Try extra RPC first
     if (extraRpcUrl && extraRpcUrl.trim() !== '') {
-        candidates.push({ url: extraRpcUrl, label: '🔧 extra' });
+        try {
+            const isWorking = await testRpcUrl(extraRpcUrl, blockchainId);
+            if (isWorking) {
+                console.log(`RPC for ${blockchainId}: 🔧 extra`);
+                return extraRpcUrl;
+            }
+        } catch { }
     }
-    candidates.push({ url: meganodeUrl, label: '🐊 Meganode' });
 
-    const tests = candidates.map(({ url, label }) =>
-        testRpcUrl(url, blockchainId).then(ok => ok ? { url, label } : null)
-    );
+    // Try meganode RPC second
+    try {
+        const isWorking = await testRpcUrl(meganodeUrl, blockchainId);
+        if (isWorking) {
+            console.log(`RPC for ${blockchainId}: 🐊 Meganode`);
+            return meganodeUrl;
+        }
+    } catch { }
 
-    const winner = await Promise.any(tests.map(p => p.then(res => {
-        if (res) return res;
-        throw new Error();
-    }))).catch(() => null);
-
-
-    if (winner) {
-        console.log(`RPC for ${blockchainId}: ${winner.label}`);
-        return winner.url;
+    // Try official RPC last
+    if (officialRpcUrl && officialRpcUrl.trim() !== '') {
+        try {
+            const isWorking = await testRpcUrl(officialRpcUrl, blockchainId);
+            if (isWorking) {
+                console.log(`RPC for ${blockchainId}: ✅ official`);
+                return officialRpcUrl;
+            }
+        } catch { }
     }
 
     console.log(`RPC for ${blockchainId}: no working rpc found ❌`);

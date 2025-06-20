@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (55)
+## Chains with Public RPC URLs (56)
 
 | Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Blocks Count | Comment |
 |------------|---------------|---------|--------------|-------------|---------|
@@ -12,6 +12,7 @@
 | Blockticity | 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc | https://subnets.avax.network/btic/mainnet/rpc | 28530 | 10k+ |  |
 | Bitcoin Content Network | apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i | https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc | 71932 | 10+ |  |
 | bloodloop | iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA | https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc | 578 | 100+ |  |
+| BnryMainnet | J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ | https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc | 836 | 100k+ | 8 hours left to sync, waing. TODO: remove this comment. |
 | even | 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL | https://subnets.avax.network/even/mainnet/rpc | 33345 | 100k+ |  |
 | CXChain | 25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV | https://subnets.avax.network/cx/mainnet/rpc | 737373 | 100+ |  |
 | FRQTALNETWORK | 2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB | https://subnets.avax.network/frqtalnet/mainnet/rpc | 62789 | 10+ |  |
@@ -60,15 +61,14 @@
 | dexalotevm | 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E | https://subnets.avax.network/dexalot/mainnet/rpc | 432204 | 10m+ |  |
 | StepNetwork | 2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1 | https://rpc.step.network | 1234 | 10m+ |  |
 | DFK Chain | q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi | https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc | 53935 | 10m+ |  |
-| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 10m+ |  |
+| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://meganode.solokhin.com/ext/bc/C/rpc | 43114 | 10m+ |  |
 
 
-## Chains without Public RPC URLs (16)
+## Chains without Public RPC URLs (15)
 
 | Chain Name | Blockchain ID | EVM Chain ID | Comment |
 |------------|---------------|--------------|----------|
 | ULALO | 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig | N/A | Looks like https://x.com/ulalo_io. No public mainnet RPC found. |
-| BnryMainnet | J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ | N/A | 8 hours left to sync, waing. TODO: remove this comment. |
 | amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | N/A | https://x.com/amichain_org Couldn't find an RPC, should ask on twitter, |
 | FIZIT | tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN | N/A | Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/ |
 | Henesys | 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB | 68414 | The RPC URL is behind an aggressive Cloudflare Protection |

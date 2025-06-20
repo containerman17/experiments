@@ -61,7 +61,7 @@
 | dexalotevm | 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E | https://subnets.avax.network/dexalot/mainnet/rpc | 432204 | 10m+ |  |
 | StepNetwork | 2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1 | https://rpc.step.network | 1234 | 10m+ |  |
 | DFK Chain | q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi | https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc | 53935 | 10m+ |  |
-| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://meganode.solokhin.com/ext/bc/C/rpc | 43114 | 10m+ |  |
+| C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 10m+ |  |
 
 
 ## Chains without Public RPC URLs (15)

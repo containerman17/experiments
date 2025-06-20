@@ -20,7 +20,6 @@ const smallBatchEndpoints = [
     "https://subnets.avax.network/playa3ull/mainnet/rpc",
     "https://subnets.avax.network/coqnet/mainnet/rpc",
     "https://subnets.avax.network/blitz/mainnet/rpc",
-    "https://api.avax.network/ext/bc/C/rpc",
     "https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc",
 ]
 
@@ -29,10 +28,11 @@ const extraSmallBatchEndpoints = [
     "https://subnets.avax.network/shrapnel/mainnet/rpc",
     "https://subnets.avax.network/dexalot/mainnet/rpc",
     "https://subnets.avax.network/tiltyard/mainnet/rpc",
+    "https://api.avax.network/ext/bc/C/rpc",
 ]
 
 function getBlocksPerBatch(endpoint: string) {
-    return getRequestBatchSize(endpoint) * 5
+    return getRequestBatchSize(endpoint) * 10
 }
 
 function getRequestBatchSize(endpoint: string) {

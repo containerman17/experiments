@@ -290,17 +290,26 @@ export class BatchRpc {
                     receipts: {}
                 };
 
+                const expectedTxCount = blockData.transactions?.length || 0;
+                let actualReceiptCount = 0;
+
                 // Populate receipts for this block
                 receiptResponses.forEach(receiptResponse => {
                     const receiptCorrelation = receiptResponse.idToCorrelate as { type: 'receipt_fetch', originalBlockIndex: number; txHash: string };
                     if (receiptCorrelation.originalBlockIndex === i) {
                         if (receiptResponse.result && !receiptResponse.error) {
                             currentStoredBlock.receipts[receiptCorrelation.txHash] = receiptResponse.result;
+                            actualReceiptCount++;
                         } else {
-                            console.warn(`Failed to fetch receipt for tx ${receiptCorrelation.txHash} in block (original index ${i}):`, receiptResponse.error || 'No result');
+                            throw new Error(`Failed to fetch receipt for tx ${receiptCorrelation.txHash} in block ${blockNumbers[i]}: ${receiptResponse.error?.message || 'No result'}`);
                         }
                     }
                 });
+
+                // Verify all receipts were fetched
+                if (actualReceiptCount !== expectedTxCount) {
+                    throw new Error(`Receipt count mismatch for block ${blockNumbers[i]}: expected ${expectedTxCount} receipts, got ${actualReceiptCount}`);
+                }
 
                 storedBlocksResult.push(currentStoredBlock);
             }

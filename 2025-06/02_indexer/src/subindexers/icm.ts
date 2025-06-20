@@ -56,6 +56,11 @@ class IcmIndexer extends Indexer {
     }
 
     protected _handleBlock = (block: StoredBlock) => {
+        if (block.block.transactions.length !== Object.keys(block.receipts).length) {
+            console.warn(`Block ${block.block.number} has ${block.block.transactions.length} transactions but ${Object.keys(block.receipts).length} receipts`)
+            throw new Error(`Block ${parseInt(block.block.number)} has ${block.block.transactions.length} transactions but ${Object.keys(block.receipts).length} receipts`)
+        }
+
         for (const tx of block.block.transactions) {
             const receipt = block.receipts[tx.hash]!
             for (const log of receipt.logs) {

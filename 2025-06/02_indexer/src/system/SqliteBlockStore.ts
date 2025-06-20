@@ -55,6 +55,23 @@ export class SqliteBlockStore {
             if (cachedData) {
                 // Decompress and parse the stored block
                 const storedBlock = await decompress<StoredBlock>(cachedData);
+
+                // Validate block integrity
+                const expectedTxCount = storedBlock.block.transactions?.length || 0;
+                const actualReceiptCount = Object.keys(storedBlock.receipts).length;
+
+                if (expectedTxCount !== actualReceiptCount) {
+                    console.warn(`Corrupted block ${blockNumber} in database: expected ${expectedTxCount} receipts, got ${actualReceiptCount}. Deleting corrupted block. This is not normal, you should investigate.`);
+
+                    // Delete the corrupted block from database
+                    const deleteStmt = this.db.prepare('DELETE FROM blocks WHERE block_number = ?');
+                    deleteStmt.run(blockNumber);
+
+                    missingBlockNumbers.push(blockNumber);
+                    missingIndexes.push(i);
+                    continue;
+                }
+
                 result[i] = storedBlock;
             } else {
                 missingBlockNumbers.push(blockNumber);

@@ -9,41 +9,39 @@ function getRps(endpoint: string) {
     if (endpoint.includes("meganode.solokhin.com")) {
         return 50
     } else if (endpoint.includes("subnets.avax.network")) {
-        return 3
+        return 6
     } else {
-        return 10
+        return 20
     }
 }
 
 const smallBatchEndpoints = [
     "https://subnets.avax.network/beam/mainnet/rpc",
     "https://subnets.avax.network/playa3ull/mainnet/rpc",
+    "https://subnets.avax.network/coqnet/mainnet/rpc",
+    "https://subnets.avax.network/blitz/mainnet/rpc",
+    "https://api.avax.network/ext/bc/C/rpc",
+    "https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc",
+]
+
+const extraSmallBatchEndpoints = [
+    "https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc",
     "https://subnets.avax.network/shrapnel/mainnet/rpc",
     "https://subnets.avax.network/dexalot/mainnet/rpc",
-    "https://subnets.avax.network/coqnet/mainnet/rpc",
-    "https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc",
-    "https://subnets.avax.network/blitz/mainnet/rpc",
     "https://subnets.avax.network/tiltyard/mainnet/rpc",
-    "https://api.avax.network/ext/bc/C/rpc",
 ]
 
 function getBlocksPerBatch(endpoint: string) {
-    if (smallBatchEndpoints.includes(endpoint)) {
-        return 50//TODO: tune this value
-    }
-    if (endpoint.includes("meganode.solokhin.com")) {
-        return 10000
-    } else {
-        return 1000
-    }
+    return getRequestBatchSize(endpoint) * 5
 }
 
 function getRequestBatchSize(endpoint: string) {
     if (smallBatchEndpoints.includes(endpoint)) {
-        return 10//TODO: tune this value
-    }
-    if (endpoint.includes("meganode.solokhin.com")) {
-        return 1000
+        return 50//TODO: tune this value
+    } else if (extraSmallBatchEndpoints.includes(endpoint)) {
+        return 20
+    } else if (endpoint.includes("meganode.solokhin.com")) {
+        return 100
     } else {
         return 100
     }
@@ -80,6 +78,22 @@ for (const chain of chains) {
             restart: "on-failure:100" // Add restart policy with sane limit
         }
     }
+}
+
+services["dashboard"] = {
+    image: "containerman17/indexer-dashboard",
+    container_name: "dashboard",
+    ports: [
+        "80"
+    ],
+    networks: [
+        "caddy"
+    ],
+    labels: {
+        caddy: process.env.CADDY_DOMAIN,
+        "caddy.reverse_proxy": "{{upstreams 80}}"
+    },
+    restart: "on-failure:100"
 }
 
 services["caddy"] = {

@@ -18,7 +18,7 @@ async function fetchBlocks(rpc: BatchRpc, blockStore: SqliteBlockStore, blockNum
     return allBlocks.sort((a, b) => parseInt(a.block.number, 16) - parseInt(b.block.number, 16))
 }
 
-const SLEEP_TIME_MS = 10 * 1000
+const SLEEP_TIME_MS = 20 * 1000
 
 
 export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[], blockStore: SqliteBlockStore, rpc: BatchRpc, blocksPerBatch: number) {
@@ -26,11 +26,23 @@ export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[]
         writer.initialize()
     }
 
-    let latestBlockNumber = await rpc.getCurrentBlockNumber()
-    let lastProcessedBlockNumber = config.getLastProcessedBlock(db)
-    let lastStatusUpdateTime = 0
+    // Retry initial setup until RPC is available
+    let latestBlockNumber: number
+    let lastProcessedBlockNumber: number
 
-    console.log(`Starting indexing loop from block ${lastProcessedBlockNumber.toLocaleString()} to ${latestBlockNumber.toLocaleString()}`)
+    while (true) {
+        try {
+            latestBlockNumber = await rpc.getCurrentBlockNumber()
+            lastProcessedBlockNumber = config.getLastProcessedBlock(db)
+            console.log(`Starting indexing loop from block ${lastProcessedBlockNumber.toLocaleString()} to ${latestBlockNumber.toLocaleString()}`)
+            break
+        } catch (error) {
+            console.error('Failed to initialize indexer, retrying in 10 seconds:', error)
+            await new Promise(resolve => setTimeout(resolve, SLEEP_TIME_MS))
+        }
+    }
+
+    let lastStatusUpdateTime = 0
 
     while (true) {
         try {

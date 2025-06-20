@@ -18,7 +18,8 @@ async function fetchBlocks(rpc: BatchRpc, blockStore: SqliteBlockStore, blockNum
     return allBlocks.sort((a, b) => parseInt(a.block.number, 16) - parseInt(b.block.number, 16))
 }
 
-const SLEEP_TIME_MS = 20 * 1000
+const SLEEP_TIME_MS = 10 * 1000
+
 
 export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[], blockStore: SqliteBlockStore, rpc: BatchRpc, blocksPerBatch: number) {
     for (const writer of writers) {
@@ -28,6 +29,8 @@ export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[]
     let latestBlockNumber = await rpc.getCurrentBlockNumber()
     let lastProcessedBlockNumber = config.getLastProcessedBlock(db)
     let lastStatusUpdateTime = 0
+
+    console.log(`Starting indexing loop from block ${lastProcessedBlockNumber.toLocaleString()} to ${latestBlockNumber.toLocaleString()}`)
 
     while (true) {
         try {
@@ -75,7 +78,7 @@ export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[]
             })()
             const processEnd = performance.now()
 
-            console.log(`Blocks ${startBlock} to ${endBlock}: fetched in ${((fetchEnd - fetchStart) / 1000).toFixed(3)}s, processed in ${((processEnd - processStart) / 1000).toFixed(3)}s`)
+            console.log(`Blocks ${startBlock.toLocaleString()} to ${endBlock.toLocaleString()}: fetched in ${((fetchEnd - fetchStart) / 1000).toFixed(3)}s, processed in ${((processEnd - processStart) / 1000).toFixed(3)}s`)
 
             // Update our local state after successful transaction
             lastProcessedBlockNumber = endBlock
@@ -84,8 +87,6 @@ export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[]
             console.error('Error in indexing loop:', error)
             // Sleep on error and continue (don't fail silently, but retry)
             await new Promise(resolve => setTimeout(resolve, SLEEP_TIME_MS))
-            // Re-throw to fail the batch as requested
-            throw error
         }
     }
 }

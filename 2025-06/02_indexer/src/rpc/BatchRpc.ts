@@ -2,6 +2,7 @@ import { utils } from "@avalabs/avalanchejs";
 import PQueue from 'p-queue';
 import type * as EVMTypes from '../evmTypes';
 import { request, Agent } from 'undici';
+import { DynamicBatchSizeManager } from './DynamicBatchSizeManager';
 
 // Define a type for the JSON-RPC request and response structures
 interface JsonRpcRequest {
@@ -31,6 +32,7 @@ export class BatchRpc {
     private rpcUrl: string;
     private queue: PQueue;
     private batchSize: number;
+    private dynamicBatchSizeManager: DynamicBatchSizeManager;
     private agent: Agent;
 
     constructor({
@@ -55,6 +57,7 @@ export class BatchRpc {
             intervalCap: rps
         });
         this.batchSize = batchSize;
+        this.dynamicBatchSizeManager = new DynamicBatchSizeManager(batchSize);
 
         // Create persistent connection pool
         this.agent = new Agent({
@@ -101,49 +104,66 @@ export class BatchRpc {
         requests: Array<{ method: string; params: any[]; originalIndex: number }>
     ): Promise<Array<{ originalIndex: number; result?: T; error?: any }>> {
         return await this.queue.add(async () => {
-            // Create JSON-RPC batch request
-            const jsonRpcRequests: JsonRpcRequest[] = requests.map((req, batchIndex) => ({
-                jsonrpc: "2.0",
-                id: batchIndex, // Local batch ID
-                method: req.method,
-                params: req.params
-            }));
+            try {
+                // Create JSON-RPC batch request
+                const jsonRpcRequests: JsonRpcRequest[] = requests.map((req, batchIndex) => ({
+                    jsonrpc: "2.0",
+                    id: batchIndex, // Local batch ID
+                    method: req.method,
+                    params: req.params
+                }));
 
-            const response = await this.makeHttpRequest(JSON.stringify(jsonRpcRequests));
+                const response = await this.makeHttpRequest(JSON.stringify(jsonRpcRequests));
 
-            if (!response.ok) {
-                const errorText = await response.text().catch(() => "Failed to get error text");
-                throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${response.status}: ${errorText}`);
-            }
-
-            const jsonData = await response.json();
-
-            // Handle both single response and array of responses
-            let responses: JsonRpcResponse[];
-            if (Array.isArray(jsonData)) {
-                responses = jsonData;
-            } else if (jsonData && typeof jsonData === 'object' && 'jsonrpc' in jsonData) {
-                responses = [jsonData as JsonRpcResponse];
-            } else {
-                throw new Error('Invalid JSON-RPC batch response format');
-            }
-
-            // Map responses back to original indices
-            const responseMap = new Map<number, JsonRpcResponse>();
-            responses.forEach(resp => {
-                if (typeof resp.id === 'number') {
-                    responseMap.set(resp.id, resp);
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => "Failed to get error text");
+                    this.dynamicBatchSizeManager.onError();
+                    throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${response.status}: ${errorText}`);
                 }
-            });
 
-            return requests.map((req, batchIndex) => {
-                const resp = responseMap.get(batchIndex);
-                return {
-                    originalIndex: req.originalIndex,
-                    result: resp?.result as T,
-                    error: resp?.error
-                };
-            });
+                const jsonData = await response.json();
+
+                // Handle both single response and array of responses
+                let responses: JsonRpcResponse[];
+                if (Array.isArray(jsonData)) {
+                    responses = jsonData;
+                } else if (jsonData && typeof jsonData === 'object' && 'jsonrpc' in jsonData) {
+                    responses = [jsonData as JsonRpcResponse];
+                } else {
+                    this.dynamicBatchSizeManager.onError();
+                    throw new Error('Invalid JSON-RPC batch response format');
+                }
+
+                // Map responses back to original indices
+                const responseMap = new Map<number, JsonRpcResponse>();
+                responses.forEach(resp => {
+                    if (typeof resp.id === 'number') {
+                        responseMap.set(resp.id, resp);
+                    }
+                });
+
+                const results = requests.map((req, batchIndex) => {
+                    const resp = responseMap.get(batchIndex);
+                    return {
+                        originalIndex: req.originalIndex,
+                        result: resp?.result as T,
+                        error: resp?.error
+                    };
+                });
+
+                // Check if any individual requests failed
+                const hasErrors = results.some(result => result.error);
+                if (hasErrors) {
+                    this.dynamicBatchSizeManager.onError();
+                } else {
+                    this.dynamicBatchSizeManager.onSuccess();
+                }
+
+                return results;
+            } catch (error) {
+                this.dynamicBatchSizeManager.onError();
+                throw error;
+            }
         }, { throwOnTimeout: true })
     }
 
@@ -165,10 +185,11 @@ export class BatchRpc {
             idToCorrelate: req.idToCorrelate
         }));
 
-        // Split into batches
+        // Split into batches using dynamic batch size
+        const currentBatchSize = this.dynamicBatchSizeManager.getCurrentBatchSize();
         const batches: Array<Array<typeof indexedRequests[0]>> = [];
-        for (let i = 0; i < indexedRequests.length; i += this.batchSize) {
-            batches.push(indexedRequests.slice(i, i + this.batchSize));
+        for (let i = 0; i < indexedRequests.length; i += currentBatchSize) {
+            batches.push(indexedRequests.slice(i, i + currentBatchSize));
         }
 
         // Send all batches in parallel
@@ -338,5 +359,12 @@ export class BatchRpc {
         const avalancheChainId = utils.base58check.encode(chainIdBytes);
 
         return avalancheChainId;
+    }
+
+    /**
+     * Get dynamic batch size statistics for monitoring
+     */
+    public getBatchSizeStats(): { current: number; min: number; utilizationRatio: number } {
+        return this.dynamicBatchSizeManager.getStats();
     }
 }

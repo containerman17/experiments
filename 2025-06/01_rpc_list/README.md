@@ -2,16 +2,17 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (56)
+## Chains with Public RPC URLs (58)
 
 | Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Blocks Count | Comment |
 |------------|---------------|---------|--------------|-------------|---------|
+| Artery | rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6 | https://subnets.avax.network/artery/mainnet/rpc | 4313 | 0+ |  |
 | QRTMS | WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6 | https://subnets.avax.network/qr0618t2ms/mainnet/rpc | 86611 | 0+ |  |
 | Marnisa | 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK | https://subnets.avax.network/marnisa/mainnet/rpc | 5419 | 100+ |  |
 | Monsoon | 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK | https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc | 100610 | 10+ |  |
 | Blockticity | 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc | https://subnets.avax.network/btic/mainnet/rpc | 28530 | 10k+ |  |
 | Bitcoin Content Network | apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i | https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc | 71932 | 10+ |  |
-| bloodloop | iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA | https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc | 578 | 100+ |  |
+| bloodloop | iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA | https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc | 578 | 1k+ |  |
 | BnryMainnet | J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ | https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc | 836 | 100k+ | 8 hours left to sync, waing. TODO: remove this comment. |
 | even | 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL | https://subnets.avax.network/even/mainnet/rpc | 33345 | 100k+ |  |
 | CXChain | 25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV | https://subnets.avax.network/cx/mainnet/rpc | 737373 | 100+ |  |
@@ -22,6 +23,7 @@
 | Animalia | QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk | https://subnets.avax.network/animalia/mainnet/rpc | 8787 | 0+ |  |
 | Memoria | kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC | https://subnets.avax.network/memoria/mainnet/rpc | 1888 | 1k+ |  |
 | delaunch | 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv | https://subnets.avax.network/delaunch/mainnet/rpc | 96786 | 10+ |  |
+| amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | https://rpc.amichain.org | 588785742 | 10+ | https://x.com/amichain_org Couldn't find an RPC, should ask on twitter, |
 | GOODCARE | 2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu | https://subnets.avax.network/goodcare/mainnet/rpc | 741741 | 100+ |  |
 | lucid | 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb | https://subnets.avax.network/lucid/mainnet/rpc | 62521 | 10+ |  |
 | Blaze | 2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY | https://subnets.avax.network/blaze/mainnet/rpc | 46975 | 0+ |  |
@@ -64,12 +66,11 @@
 | C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 10m+ |  |
 
 
-## Chains without Public RPC URLs (15)
+## Chains without Public RPC URLs (14)
 
 | Chain Name | Blockchain ID | EVM Chain ID | Comment |
 |------------|---------------|--------------|----------|
 | ULALO | 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig | N/A | Looks like https://x.com/ulalo_io. No public mainnet RPC found. |
-| amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | N/A | https://x.com/amichain_org Couldn't find an RPC, should ask on twitter, |
 | FIZIT | tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN | N/A | Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/ |
 | Henesys | 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB | 68414 | The RPC URL is behind an aggressive Cloudflare Protection |
 | STLINK | 2HR9yTVXBwxJjmejn9yt1UQnrBpQVQRpxUQe6YUtEaWh9yqnPN | N/A | Couldn't find any public info about this project. |

@@ -408,9 +408,9 @@
     "chainName": "amichainMainnet",
     "blockchainId": "2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc",
     "subnetId": "6uH9zL2ZhPLWB1W1qodgRRm42YfLWdPKtQe2xzAWjr5TAhkmm",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://rpc.amichain.org",
+    "evmChainId": "588785742",
+    "blocksCount": "10+",
     "comment": "https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,"
   },
   {
@@ -515,7 +515,7 @@
     "subnetId": "2QRKgBVT4zbcEWM4aXYRPNRazmas9on1QZodYakh1cF4RDrQE5",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
     "evmChainId": "578",
-    "blocksCount": "100+",
+    "blocksCount": "1k+",
     "comment": null
   },
   {
@@ -593,6 +593,16 @@
     "evmChainId": "357",
     "blocksCount": "10m+",
     "glacierChainId": "357",
+    "comment": null
+  },
+  {
+    "chainName": "Artery",
+    "blockchainId": "rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6",
+    "subnetId": "25VdGtdQPejyffNLpTqh4BH2NABXT8Zxup6ee3B4htrMryofUB",
+    "rpcUrl": "https://subnets.avax.network/artery/mainnet/rpc",
+    "evmChainId": "4313",
+    "blocksCount": "0+",
+    "glacierChainId": "4313",
     "comment": null
   },
   {

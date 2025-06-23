@@ -26,9 +26,11 @@ export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[]
         writer.initialize()
     }
 
-    // Retry initial setup until RPC is available
-    let latestBlockNumber: number
-    let lastProcessedBlockNumber: number
+    let lastProcessedBlockNumber = config.getLastProcessedBlock(db)
+
+    console.log(`Last processed block number: ${lastProcessedBlockNumber}`)
+
+    let latestBlockNumber = await rpc.getCurrentBlockNumber()
 
     while (true) {
         try {

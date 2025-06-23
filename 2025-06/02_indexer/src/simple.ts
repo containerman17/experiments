@@ -92,6 +92,7 @@ type RPCLimits = {
     maxConcurrent: number
     rps: number
     blocksPerBatch: number
+    enableBatchSizeGrowth: boolean
 }
 
 
@@ -102,10 +103,11 @@ type BackendConfig = {
     chainId: string
     extraIndexers?: IndexerFactory[]
     deleteDb?: boolean
+    cookieString?: string
 }
 
 export async function startBackend(config: BackendConfig) {
-    const { rpcLimits, rpcUrl, dbFolder, chainId, extraIndexers = [], deleteDb = false } = config
+    const { rpcLimits, rpcUrl, dbFolder, chainId, extraIndexers = [], deleteDb = false, cookieString } = config
 
     if (deleteDb && fs.existsSync(path.join(dbFolder, chainId))) {
         deleteWildcard(path.join(dbFolder, chainId), "indexer.sqlite")
@@ -115,7 +117,9 @@ export async function startBackend(config: BackendConfig) {
         rpcUrl,
         batchSize: rpcLimits.requestBatchSize,
         maxConcurrent: rpcLimits.maxConcurrent,
-        rps: rpcLimits.rps
+        rps: rpcLimits.rps,
+        enableBatchSizeGrowth: rpcLimits.enableBatchSizeGrowth,
+        cookieString
     })
 
     const indexers = [...defaultIndexerFactories, ...extraIndexers]

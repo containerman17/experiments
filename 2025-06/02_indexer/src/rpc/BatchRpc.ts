@@ -3,6 +3,10 @@ import PQueue from 'p-queue';
 import type * as EVMTypes from '../evmTypes';
 import { request, Agent } from 'undici';
 import { DynamicBatchSizeManager } from './DynamicBatchSizeManager';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // Define a type for the JSON-RPC request and response structures
 interface JsonRpcRequest {
@@ -32,19 +36,24 @@ export class BatchRpc {
     private rpcUrl: string;
     private queue: PQueue;
     private batchSize: number;
-    private dynamicBatchSizeManager: DynamicBatchSizeManager;
-    private agent: Agent;
+    private dynamicBatchSizeManager: DynamicBatchSizeManager | null;
+    private enableBatchSizeGrowth: boolean;
+    private cookieString: string | undefined;
 
     constructor({
         rpcUrl,
         batchSize,
         maxConcurrent,
         rps,
+        enableBatchSizeGrowth = false,
+        cookieString,
     }: {
         rpcUrl: string;
         batchSize: number;
         maxConcurrent: number;
         rps: number;
+        enableBatchSizeGrowth?: boolean;
+        cookieString?: string;
     }) {
         if (!rpcUrl) {
             throw new Error('RPC_URL is not set or empty');
@@ -57,44 +66,62 @@ export class BatchRpc {
             intervalCap: rps
         });
         this.batchSize = batchSize;
-        this.dynamicBatchSizeManager = new DynamicBatchSizeManager(batchSize);
+        this.enableBatchSizeGrowth = enableBatchSizeGrowth;
+        this.dynamicBatchSizeManager = enableBatchSizeGrowth ? new DynamicBatchSizeManager(batchSize) : null;
+        this.cookieString = cookieString;
+    }
 
-        // Create persistent connection pool
-        this.agent = new Agent({
-            keepAliveTimeout: 60000, // 60 seconds
-            keepAliveMaxTimeout: 300000, // 5 minutes
-            pipelining: 10, // Allow request pipelining
-            connections: maxConcurrent * 2, // More connections than concurrent requests
-        });
+    /**
+     * Make HTTP request using actual curl command
+     */
+    private async makeHttpRequestWithCurl(body: string): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+        };
+
+        let curlCmd = `curl -s -w "\\n%{http_code}" '${this.rpcUrl}' -X POST`;
+
+        // Add headers (excluding cookies)
+        for (const [key, value] of Object.entries(headers)) {
+            curlCmd += ` -H '${key}: ${value}'`;
+        }
+
+        if (this.cookieString) {
+            // Add cookies using -b flag like the working curl command
+            curlCmd += ` -b '${this.cookieString}'`;
+        }
+
+        // Add body
+        curlCmd += ` --data-raw '${body.replace(/'/g, "\\'")}'`;
+
+        try {
+            const { stdout, stderr } = await execAsync(curlCmd);
+
+            // Parse response (last line is status code)
+            const lines = stdout.trim().split('\n');
+            const statusCode = parseInt(lines[lines.length - 1]);
+            const responseText = lines.slice(0, -1).join('\n');
+
+            return {
+                ok: statusCode >= 200 && statusCode < 300,
+                status: statusCode,
+                json: () => Promise.resolve(JSON.parse(responseText)),
+                text: () => Promise.resolve(responseText)
+            };
+        } catch (error) {
+            throw new Error(`Curl command failed: ${error}`);
+        }
     }
 
     /**
      * Makes an HTTP request using undici with connection pooling and compression
+     * To use curl instead, replace the method call with makeHttpRequestWithCurl
      */
     private async makeHttpRequest(body: string): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        };
-
-        // console.log('Outgoing request headers:', headers);
-        // console.log('Request URL:', this.rpcUrl);
-
-        const response = await request(this.rpcUrl, {
-            method: 'POST',
-            headers,
-            body,
-            dispatcher: this.agent
-        });
-
-        const text = await response.body.text();
-
-        return {
-            ok: response.statusCode >= 200 && response.statusCode < 300,
-            status: response.statusCode,
-            json: () => Promise.resolve(JSON.parse(text)),
-            text: () => Promise.resolve(text)
-        };
+        // Use curl instead of undici:
+        return await this.makeHttpRequestWithCurl(body);
     }
 
     /**
@@ -117,7 +144,7 @@ export class BatchRpc {
 
                 if (!response.ok) {
                     const errorText = await response.text().catch(() => "Failed to get error text");
-                    this.dynamicBatchSizeManager.onError();
+                    this.dynamicBatchSizeManager?.onError();
                     throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${response.status}: ${errorText}`);
                 }
 
@@ -130,7 +157,7 @@ export class BatchRpc {
                 } else if (jsonData && typeof jsonData === 'object' && 'jsonrpc' in jsonData) {
                     responses = [jsonData as JsonRpcResponse];
                 } else {
-                    this.dynamicBatchSizeManager.onError();
+                    this.dynamicBatchSizeManager?.onError();
                     throw new Error('Invalid JSON-RPC batch response format');
                 }
 
@@ -154,14 +181,14 @@ export class BatchRpc {
                 // Check if any individual requests failed
                 const hasErrors = results.some(result => result.error);
                 if (hasErrors) {
-                    this.dynamicBatchSizeManager.onError();
+                    this.dynamicBatchSizeManager?.onError();
                 } else {
-                    this.dynamicBatchSizeManager.onSuccess();
+                    this.dynamicBatchSizeManager?.onSuccess();
                 }
 
                 return results;
             } catch (error) {
-                this.dynamicBatchSizeManager.onError();
+                this.dynamicBatchSizeManager?.onError();
                 throw error;
             }
         }, { throwOnTimeout: true })
@@ -185,8 +212,11 @@ export class BatchRpc {
             idToCorrelate: req.idToCorrelate
         }));
 
-        // Split into batches using dynamic batch size
-        const currentBatchSize = this.dynamicBatchSizeManager.getCurrentBatchSize();
+        // Split into batches using either dynamic or fixed batch size
+        const currentBatchSize = this.enableBatchSizeGrowth
+            ? this.dynamicBatchSizeManager!.getCurrentBatchSize()
+            : this.batchSize;
+
         const batches: Array<Array<typeof indexedRequests[0]>> = [];
         for (let i = 0; i < indexedRequests.length; i += currentBatchSize) {
             batches.push(indexedRequests.slice(i, i + currentBatchSize));
@@ -365,6 +395,13 @@ export class BatchRpc {
      * Get dynamic batch size statistics for monitoring
      */
     public getBatchSizeStats(): { current: number; min: number; utilizationRatio: number } {
+        if (!this.enableBatchSizeGrowth || !this.dynamicBatchSizeManager) {
+            return {
+                current: this.batchSize,
+                min: this.batchSize,
+                utilizationRatio: 1.0
+            };
+        }
         return this.dynamicBatchSizeManager.getStats();
     }
 }

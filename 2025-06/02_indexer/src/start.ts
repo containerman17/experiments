@@ -17,6 +17,10 @@ function requireTextEnv(name: string): string {
     return value
 }
 
+function optionalTextEnv(name: string): string | undefined {
+    return process.env[name]
+}
+
 function requireIntEnv(name: string, defaultValue?: number): number {
     if (!process.env[name] && defaultValue === undefined) {
         throw new Error(`${name} must be set`)
@@ -58,7 +62,8 @@ async function runWriter() {
         rpcUrl: requireTextEnv("RPC_URL"),
         dbFolder: requireTextEnv("DATA_DIR"),
         chainId: requireTextEnv("CHAIN_ID"),
-        deleteDb: !isProduction
+        deleteDb: !isProduction,
+        cookieString: optionalTextEnv("COOKIE_STRING")
     })
 }
 

@@ -6,8 +6,6 @@ import { DynamicBatchSizeManager } from './DynamicBatchSizeManager';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
-const initialCookieTempDev = `_ga_FVETEHL2GT=GS2.1.s1750319415$o1$g1$t1750319644$j38$l0$h0; _cfuvid=33hDNGcWh7DZR_9Y0nM22v28M9jBI_SxwtD2HCC926E-1750648055024-0.0.1.1-604800000; __cf_bm=ExpESSrCtiCziMkTOi7cAcif__tpm1Iqliw0cQ_5GFQ-1750649863-1.0.1.1-_MXukA8TUA1e_234t8xgK2aaR_jUUkIrFiOixHEzXAQEDthWH5O6kwQgxa1K84ZaxaCq5lzS.SBUdRow_FdSC.aoeQmg41yh.hEbU4Rf5Rk; OptanonConsent=isGpcEnabled=0&datestamp=Mon+Jun+23+2025+12%3A38%3A47+GMT%2B0900+(Japan+Standard+Time)&version=202405.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=134e9c32-57d8-4586-94ad-ad2686e47069&interactionCount=1&isAnonUser=1&landingPath=https%3A%2F%2Fmsu.io%2F&groups=C0001%3A1%2CC0003%3A0%2CC0002%3A0`
-
 const execAsync = promisify(exec);
 
 // Define a type for the JSON-RPC request and response structures
@@ -39,8 +37,8 @@ export class BatchRpc {
     private queue: PQueue;
     private batchSize: number;
     private dynamicBatchSizeManager: DynamicBatchSizeManager | null;
-    private agent: Agent;
     private enableBatchSizeGrowth: boolean;
+    private cookieString: string | undefined;
 
     constructor({
         rpcUrl,
@@ -48,12 +46,14 @@ export class BatchRpc {
         maxConcurrent,
         rps,
         enableBatchSizeGrowth = false,
+        cookieString,
     }: {
         rpcUrl: string;
         batchSize: number;
         maxConcurrent: number;
         rps: number;
         enableBatchSizeGrowth?: boolean;
+        cookieString?: string;
     }) {
         if (!rpcUrl) {
             throw new Error('RPC_URL is not set or empty');
@@ -68,15 +68,7 @@ export class BatchRpc {
         this.batchSize = batchSize;
         this.enableBatchSizeGrowth = enableBatchSizeGrowth;
         this.dynamicBatchSizeManager = enableBatchSizeGrowth ? new DynamicBatchSizeManager(batchSize) : null;
-
-        // Create persistent connection pool with curl-like behavior
-        this.agent = new Agent({
-            keepAliveTimeout: 60000, // 60 seconds
-            keepAliveMaxTimeout: 300000, // 5 minutes
-            pipelining: 0, // Disable request pipelining to match curl
-            connections: 1, // Use single connection like curl
-            allowH2: false, // Force HTTP/1.1 like curl default
-        });
+        this.cookieString = cookieString;
     }
 
     /**
@@ -96,8 +88,10 @@ export class BatchRpc {
             curlCmd += ` -H '${key}: ${value}'`;
         }
 
-        // Add cookies using -b flag like the working curl command
-        curlCmd += ` -b '${initialCookieTempDev}'`;
+        if (this.cookieString) {
+            // Add cookies using -b flag like the working curl command
+            curlCmd += ` -b '${this.cookieString}'`;
+        }
 
         // Add body
         curlCmd += ` --data-raw '${body.replace(/'/g, "\\'")}'`;
@@ -128,35 +122,6 @@ export class BatchRpc {
     private async makeHttpRequest(body: string): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
         // Use curl instead of undici:
         return await this.makeHttpRequestWithCurl(body);
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
-            'Connection': 'close', // Force fresh connection like curl
-        };
-
-        // Add hardcoded cookies
-        headers['Cookie'] = initialCookieTempDev;
-
-        const response = await request(this.rpcUrl, {
-            method: 'POST',
-            headers,
-            body,
-            dispatcher: this.agent,
-            throwOnError: false,
-            reset: true, // Reset connection after each request
-        });
-
-
-
-        const text = await response.body.text();
-
-        return {
-            ok: response.statusCode >= 200 && response.statusCode < 300,
-            status: response.statusCode,
-            json: () => Promise.resolve(JSON.parse(text)),
-            text: () => Promise.resolve(text)
-        };
     }
 
     /**

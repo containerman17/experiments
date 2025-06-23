@@ -92,6 +92,7 @@ type RPCLimits = {
     maxConcurrent: number
     rps: number
     blocksPerBatch: number
+    enableBatchSizeGrowth: boolean
 }
 
 
@@ -115,7 +116,8 @@ export async function startBackend(config: BackendConfig) {
         rpcUrl,
         batchSize: rpcLimits.requestBatchSize,
         maxConcurrent: rpcLimits.maxConcurrent,
-        rps: rpcLimits.rps
+        rps: rpcLimits.rps,
+        enableBatchSizeGrowth: rpcLimits.enableBatchSizeGrowth
     })
 
     const indexers = [...defaultIndexerFactories, ...extraIndexers]

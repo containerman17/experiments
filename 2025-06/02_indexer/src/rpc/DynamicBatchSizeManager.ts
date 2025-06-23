@@ -46,16 +46,23 @@ export class DynamicBatchSizeManager {
      */
     private adjustBatchSize(): void {
         const oldBatchSize = this.currentBatchSize;
+        const oldBatchSizeFlat = Math.floor(oldBatchSize);
 
         if (this.hasErrorsThisSecond) {
             // Had errors this second - decrease by 5%
             const newBatchSize = this.currentBatchSize * (1 - this.decreaseRate);
             this.currentBatchSize = Math.max(newBatchSize, this.minBatchSize);
-            console.log(`DEBUG: Batch size decreased from ${oldBatchSize.toFixed(2)} to ${this.currentBatchSize.toFixed(2)} (errors detected)`);
+
+            if (oldBatchSizeFlat !== Math.floor(this.currentBatchSize)) {
+                console.log(`DEBUG: Batch size decreased from ${oldBatchSize.toFixed(2)} to ${this.currentBatchSize.toFixed(2)} (errors detected)`);
+            }
         } else if (this.hasSuccessThisSecond) {
             // No errors but had successes - increase by 0.1%
             this.currentBatchSize = Math.min(this.currentBatchSize * (1 + this.increaseRate), SANE_MAX_BATCH_SIZE);
-            console.log(`DEBUG: Batch size increased from ${oldBatchSize.toFixed(2)} to ${this.currentBatchSize.toFixed(2)} (success without errors)`);
+
+            if (oldBatchSizeFlat !== Math.floor(this.currentBatchSize)) {
+                console.log(`DEBUG: Batch size increased from ${oldBatchSize.toFixed(2)} to ${this.currentBatchSize.toFixed(2)} (success without errors)`);
+            }
         }
         // If no errors and no successes, don't change anything
 
@@ -65,7 +72,6 @@ export class DynamicBatchSizeManager {
 
         // Log current stats
         const stats = this.getStats();
-        console.log(`DEBUG: Current batch size: ${stats.current}, Utilization: ${stats.utilizationRatio.toFixed(2)}x`);
     }
 
     /**

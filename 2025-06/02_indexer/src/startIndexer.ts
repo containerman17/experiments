@@ -26,8 +26,11 @@ export async function startIndexingLoop(db: SQLite3.Database, writers: Indexer[]
         writer.initialize()
     }
 
-    let latestBlockNumber = await rpc.getCurrentBlockNumber()
     let lastProcessedBlockNumber = config.getLastProcessedBlock(db)
+
+    console.log(`Last processed block number: ${lastProcessedBlockNumber}`)
+
+    let latestBlockNumber = await rpc.getCurrentBlockNumber()
     let lastStatusUpdateTime = 0
 
     console.log(`Starting indexing loop from block ${lastProcessedBlockNumber.toLocaleString()} to ${latestBlockNumber.toLocaleString()}`)

@@ -28,6 +28,18 @@ function requireIntEnv(name: string, defaultValue?: number): number {
     return value
 }
 
+function trueIfExistsFlag(name: string): boolean {
+    const value = process.env[name]
+    if (!value) return false
+
+    const lowerValue = value.toLowerCase()
+    if (lowerValue === 'n' || lowerValue === 'no' || lowerValue === 'not' || lowerValue === 'false') {
+        return false
+    }
+
+    return true
+}
+
 const isProduction = process.env.NODE_ENV !== "development"
 
 async function runWriter() {
@@ -40,7 +52,8 @@ async function runWriter() {
             requestBatchSize: requireIntEnv("REQUEST_BATCH_SIZE", 400),
             maxConcurrent: requireIntEnv("MAX_CONCURRENT", RPS),
             rps: RPS,
-            blocksPerBatch: requireIntEnv("BLOCKS_PER_BATCH", 100)
+            blocksPerBatch: requireIntEnv("BLOCKS_PER_BATCH", 100),
+            enableBatchSizeGrowth: trueIfExistsFlag("ENABLE_BATCH_SIZE_GROWTH")
         },
         rpcUrl: requireTextEnv("RPC_URL"),
         dbFolder: requireTextEnv("DATA_DIR"),

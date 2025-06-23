@@ -109,9 +109,6 @@ type BackendConfig = {
 export async function startBackend(config: BackendConfig) {
     const { rpcLimits, rpcUrl, dbFolder, chainId, extraIndexers = [], deleteDb = false, cookieString } = config
 
-    if (deleteDb && fs.existsSync(path.join(dbFolder, chainId))) {
-        deleteWildcard(path.join(dbFolder, chainId), "indexer.sqlite")
-    }
 
     const rpc = new BatchRpc({
         rpcUrl,
@@ -121,6 +118,18 @@ export async function startBackend(config: BackendConfig) {
         enableBatchSizeGrowth: rpcLimits.enableBatchSizeGrowth,
         cookieString
     })
+
+
+    if (deleteDb && fs.existsSync(path.join(dbFolder, chainId))) {
+        deleteWildcard(path.join(dbFolder, chainId), "indexer.sqlite")
+    }
+
+
+    const blockchainIdVerification = await rpc.fetchBlockchainIDFromPrecompile()
+    if (blockchainIdVerification !== chainId && blockchainIdVerification !== "45PJLL") {//45PJLL is zero bytes, meaning no precompile
+        throw new Error(`Blockchain ID verification failed: ${blockchainIdVerification} !== ${chainId}`)
+    }
+
 
     const indexers = [...defaultIndexerFactories, ...extraIndexers]
     const { context, blockStore } = await setupDatabases(dbFolder, chainId)

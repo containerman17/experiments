@@ -21,12 +21,88 @@ export function initialize(db: SQLite3.Database) {
 }
 
 export const Frequency = z.enum(['1h', '1d', '1w', '1m', 'total'])
-const bucketSizes = {
-    '1h': 3600,
-    '1d': 86400,
-    '1w': 604800,
-    '1m': 2592000, // 30 days in seconds
-    'total': 0 // Special case for total
+
+// Get Monday of the week containing the given timestamp
+function getMondayOfWeek(timestamp: number): number {
+    const date = new Date(timestamp * 1000)
+    const dayOfWeek = date.getUTCDay() // 0 = Sunday, 1 = Monday, etc.
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // Convert to Monday = 0
+    const monday = new Date(date)
+    monday.setUTCDate(date.getUTCDate() - daysToSubtract)
+    monday.setUTCHours(0, 0, 0, 0)
+    return Math.floor(monday.getTime() / 1000)
+}
+
+// Get week number since epoch (weeks starting on Monday)
+function getWeekNumber(timestamp: number): number {
+    const mondayTimestamp = getMondayOfWeek(timestamp)
+    // Epoch was Thursday Jan 1, 1970. First Monday was Jan 5, 1970
+    const firstMondayEpoch = 345600 // Jan 5, 1970 00:00:00 UTC
+    return Math.floor((mondayTimestamp - firstMondayEpoch) / (7 * 24 * 3600))
+}
+
+// Convert week number back to Monday timestamp
+function weekNumberToTimestamp(weekNumber: number): number {
+    const firstMondayEpoch = 345600 // Jan 5, 1970 00:00:00 UTC
+    return firstMondayEpoch + (weekNumber * 7 * 24 * 3600)
+}
+
+// Get month number since epoch
+function getMonthNumber(timestamp: number): number {
+    const date = new Date(timestamp * 1000)
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth()
+    return (year - 1970) * 12 + month
+}
+
+// Convert month number back to first day of month timestamp
+function monthNumberToTimestamp(monthNumber: number): number {
+    const year = 1970 + Math.floor(monthNumber / 12)
+    const month = monthNumber % 12
+    const firstOfMonth = new Date(Date.UTC(year, month, 1))
+    return Math.floor(firstOfMonth.getTime() / 1000)
+}
+
+function getBucketAndSize(frequency: z.infer<typeof Frequency>, timestamp: number): { bucket: number; size: number } {
+    switch (frequency) {
+        case '1h':
+            const hourBucket = Math.floor(timestamp / 3600) * 3600
+            return { bucket: hourBucket, size: 3600 }
+
+        case '1d':
+            const dayBucket = Math.floor(timestamp / 86400) * 86400
+            return { bucket: dayBucket, size: 86400 }
+
+        case '1w':
+            const weekNumber = getWeekNumber(timestamp)
+            return { bucket: weekNumber, size: 604800 }
+
+        case '1m':
+            const monthNumber = getMonthNumber(timestamp)
+            return { bucket: monthNumber, size: 2592000 } // Approximate for display
+
+        case 'total':
+            return { bucket: 0, size: 0 }
+
+        default:
+            throw new Error(`Unsupported frequency: ${frequency}`)
+    }
+}
+
+function bucketToTimestamp(frequency: z.infer<typeof Frequency>, bucket: number): number {
+    switch (frequency) {
+        case '1h':
+        case '1d':
+            return bucket
+        case '1w':
+            return weekNumberToTimestamp(bucket)
+        case '1m':
+            return monthNumberToTimestamp(bucket)
+        case 'total':
+            return 0
+        default:
+            throw new Error(`Unsupported frequency: ${frequency}`)
+    }
 }
 
 export function getMetrics(db: SQLite3.Database, frequency: z.infer<typeof Frequency>, dimensions: string[], limit: number) {
@@ -56,13 +132,20 @@ export function getMetrics(db: SQLite3.Database, frequency: z.infer<typeof Frequ
         }]
     }
 
-    // Calculate time range based on frequency
+    // Calculate current bucket info
     const now = Math.floor(Date.now() / 1000)
-    const bucketSize = bucketSizes[frequency]
+    const currentBucketInfo = getBucketAndSize(frequency, now)
 
-    // Align startTime to bucket boundary
-    const unalignedStartTime = now - (bucketSize * limit)
-    const startTime = Math.floor(unalignedStartTime / bucketSize) * bucketSize
+    // Calculate start bucket
+    let startBucket: number
+    if (frequency === '1w') {
+        startBucket = currentBucketInfo.bucket - limit + 1
+    } else if (frequency === '1m') {
+        startBucket = currentBucketInfo.bucket - limit + 1
+    } else {
+        // For 1h and 1d, calculate backwards from current bucket
+        startBucket = currentBucketInfo.bucket - (currentBucketInfo.size * (limit - 1))
+    }
 
     // Get existing metrics using cached statement
     const metrics = cacheStatement(db, `
@@ -76,15 +159,21 @@ export function getMetrics(db: SQLite3.Database, frequency: z.infer<typeof Frequ
         AND dimension4 = ?
         AND dimension5 = ?
         ORDER BY bucket ASC
-    `).all(frequency, startTime, ...paddedDimensions) as { bucket: number; value: number }[]
+    `).all(frequency, startBucket, ...paddedDimensions) as { bucket: number; value: number }[]
 
     // Create array of all timestamps
     const result = []
     for (let i = 0; i < limit; i++) {
-        const timestamp = startTime + (i * bucketSize)
-        const existingMetric = metrics.find(m => m.bucket === timestamp)
+        let bucket: number
+        if (frequency === '1w' || frequency === '1m') {
+            bucket = startBucket + i
+        } else {
+            bucket = startBucket + (i * currentBucketInfo.size)
+        }
+
+        const existingMetric = metrics.find(m => m.bucket === bucket)
         result.push({
-            timestamp,
+            timestamp: bucketToTimestamp(frequency, bucket),
             value: existingMetric ? existingMetric.value : 0
         })
     }
@@ -109,7 +198,7 @@ export function incrementMetric(db: SQLite3.Database, timestamp: number, dimensi
     `)
 
     for (const frequency of frequencies) {
-        const bucket = frequency === 'total' ? 0 : Math.floor(timestamp / bucketSizes[frequency]) * bucketSizes[frequency]
+        const { bucket } = getBucketAndSize(frequency, timestamp)
         statement.run(frequency, bucket, ...paddedDimensions, value)
     }
 }

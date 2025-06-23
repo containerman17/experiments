@@ -32,7 +32,7 @@ const extraSmallBatchEndpoints = [
 ]
 
 function getBlocksPerBatch(endpoint: string) {
-    return 100
+    return 200
 }
 
 function getRequestBatchSize(endpoint: string) {

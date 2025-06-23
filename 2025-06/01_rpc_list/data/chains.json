@@ -659,7 +659,7 @@
     "subnetId": "2hoHzxcZktxrTNoqCZhR9bEctc5oCuBqSp6SpRn6uvwxzLkvnD",
     "rpcUrl": "https://subnets.avax.network/lamina1/mainnet/rpc",
     "evmChainId": "10849",
-    "blocksCount": "1m+",
+    "blocksCount": "10m+",
     "glacierChainId": "10849",
     "comment": null
   },

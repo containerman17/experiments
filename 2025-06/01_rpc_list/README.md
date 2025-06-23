@@ -46,7 +46,7 @@
 | StraitsX | EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx | https://subnets.avax.network/straitsx/mainnet/rpc | 5566 | 100k+ |  |
 | Space | 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt | https://subnets.avax.network/space/mainnet/rpc | 8227 | 1m+ |  |
 | Lamina1Identity | hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N | https://subnets.avax.network/lamina1id/mainnet/rpc | 10850 | 10k+ |  |
-| Lamina1 | UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ | https://subnets.avax.network/lamina1/mainnet/rpc | 10849 | 1m+ |  |
+| Lamina1 | UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ | https://subnets.avax.network/lamina1/mainnet/rpc | 10849 | 10m+ |  |
 | InnovoMarketsMainnet | vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe | https://subnets.avax.network/innovo/mainnet/rpc | 10036 | 1k+ |  |
 | HighOctane | 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp | https://subnets.avax.network/highoctane/mainnet/rpc | 1853 | 1m+ |  |
 | zerooneMainnet | 2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1 | https://subnets.avax.network/zeroonemai/mainnet/rpc | 27827 | 100k+ |  |

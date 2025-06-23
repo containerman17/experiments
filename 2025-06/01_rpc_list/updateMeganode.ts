@@ -1,11 +1,14 @@
 import chains from './data/chains.json' assert { type: 'json' };
 import nodeSubnets from './data/nodeSubnets.json' assert { type: 'json' };
+import trackExtraChains from './data/trackExtraChains.json' assert { type: 'json' };
 import { writeFileSync } from 'fs';
 import { generateCompose } from './lib/generateCompose';
 import { config } from 'dotenv';
 config()
 
 const chainsWithoutRpc = chains.filter(chain => !chain.rpcUrl)
+const extraChainsToTrack = chains.filter(chain => trackExtraChains.includes(chain.blockchainId))
+const allChainsToTrack = [...chainsWithoutRpc, ...extraChainsToTrack]
 
 const subnetsToBlockchainId: Record<string, string[]> = {};
 for (const chain of chains) {
@@ -17,8 +20,8 @@ for (const chain of chains) {
     }
 }
 
-// All subnets that have chains without an RPC URL
-const subnetsToTrack = [...new Set(chainsWithoutRpc.map(chain => chain.subnetId))];
+// All subnets that have chains without an RPC URL or are explicitly tracked
+const subnetsToTrack = [...new Set(allChainsToTrack.map(chain => chain.subnetId))];
 
 // Get all currently assigned subnets across all nodes
 const currentlyAssigned = new Set();

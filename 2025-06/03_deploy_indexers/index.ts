@@ -9,7 +9,7 @@ function getRps(endpoint: string) {
     if (endpoint.includes("meganode.solokhin.com")) {
         return 50
     } else if (endpoint.includes("subnets.avax.network")) {
-        return 6
+        return 2//TODO: change to 6. UP: even 5 throws 429
     } else {
         return 20
     }
@@ -32,24 +32,26 @@ const extraSmallBatchEndpoints = [
 ]
 
 function getBlocksPerBatch(endpoint: string) {
-    return getRequestBatchSize(endpoint) * 10
+    return 100
 }
 
 function getRequestBatchSize(endpoint: string) {
-    if (smallBatchEndpoints.includes(endpoint)) {
-        return 50//TODO: tune this value
-    } else if (extraSmallBatchEndpoints.includes(endpoint)) {
-        return 20
-    } else if (endpoint.includes("meganode.solokhin.com")) {
-        return 100
-    } else {
-        return 100
-    }
+    return 10
+    // if (smallBatchEndpoints.includes(endpoint)) {
+    //     return 50//TODO: tune this value
+    // } else if (extraSmallBatchEndpoints.includes(endpoint)) {
+    //     return 20
+    // } else if (endpoint.includes("meganode.solokhin.com")) {
+    //     return 100
+    // } else {
+    //     return 100
+    // }
 }
 
 for (const chain of chains) {
     // Only add service if rpcUrl is present and not empty/null
     if (chain.rpcUrl) {
+
         services[`indexer_${chain.blockchainId}`] = {
             image: "containerman17/lean-explorer-core:latest",
             container_name: `indexer_${chain.blockchainId}`,

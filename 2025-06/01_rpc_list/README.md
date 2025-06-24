@@ -2,12 +2,11 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (58)
+## Chains with Public RPC URLs (56)
 
 | Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Blocks Count | Comment |
 |------------|---------------|---------|--------------|-------------|---------|
 | Artery | rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6 | https://subnets.avax.network/artery/mainnet/rpc | 4313 | 0+ |  |
-| QRTMS | WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6 | https://subnets.avax.network/qr0618t2ms/mainnet/rpc | 86611 | 0+ |  |
 | Marnisa | 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK | https://subnets.avax.network/marnisa/mainnet/rpc | 5419 | 100+ |  |
 | Monsoon | 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK | https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc | 100610 | 10+ |  |
 | Blockticity | 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc | https://subnets.avax.network/btic/mainnet/rpc | 28530 | 10k+ |  |
@@ -23,7 +22,6 @@
 | Animalia | QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk | https://subnets.avax.network/animalia/mainnet/rpc | 8787 | 0+ |  |
 | Memoria | kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC | https://subnets.avax.network/memoria/mainnet/rpc | 1888 | 1k+ |  |
 | delaunch | 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv | https://subnets.avax.network/delaunch/mainnet/rpc | 96786 | 10+ |  |
-| amichainMainnet | 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc | https://rpc.amichain.org | 588785742 | 10+ | https://x.com/amichain_org Couldn't find an RPC, should ask on twitter, |
 | GOODCARE | 2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu | https://subnets.avax.network/goodcare/mainnet/rpc | 741741 | 100+ |  |
 | lucid | 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb | https://subnets.avax.network/lucid/mainnet/rpc | 62521 | 10+ |  |
 | Blaze | 2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY | https://subnets.avax.network/blaze/mainnet/rpc | 46975 | 0+ |  |
@@ -66,12 +64,13 @@
 | C-Chain | 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5 | https://api.avax.network/ext/bc/C/rpc | 43114 | 10m+ |  |
 
 
-## Chains without Public RPC URLs (15)
+## Chains without Public RPC URLs (16)
 
 | Chain Name | Blockchain ID | EVM Chain ID | Comment |
 |------------|---------------|--------------|----------|
-| SSHIVANSH | 2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW | N/A | TODO: investigate |
+| Republic Chain | WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER | N/A | TODO: investigate |
 | ULALO | 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig | N/A | Looks like https://x.com/ulalo_io. No public mainnet RPC found. |
+| Unknown | AWJN2rFNhdj49QL8F6Nq5gUX7PDFCDGBZtXMjDw9sxZNGPFpc | N/A | TODO: investigate |
 | FIZIT | tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN | N/A | Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/ |
 | Henesys | 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB | 68414 | The RPC URL is behind an aggressive Cloudflare Protection |
 | STLINK | 2HR9yTVXBwxJjmejn9yt1UQnrBpQVQRpxUQe6YUtEaWh9yqnPN | N/A | Couldn't find any public info about this project. |

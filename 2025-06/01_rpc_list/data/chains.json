@@ -405,15 +405,6 @@
     "comment": null
   },
   {
-    "chainName": "amichainMainnet",
-    "blockchainId": "2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc",
-    "subnetId": "6uH9zL2ZhPLWB1W1qodgRRm42YfLWdPKtQe2xzAWjr5TAhkmm",
-    "rpcUrl": "https://rpc.amichain.org",
-    "evmChainId": "588785742",
-    "blocksCount": "10+",
-    "comment": "https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,"
-  },
-  {
     "chainName": "deraalpha",
     "blockchainId": "2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du",
     "subnetId": "B7hA9WibSJu2fKdHT2XZs2RYg1rZTtxwg6cMYBKYjvcJjbqsp",
@@ -431,15 +422,6 @@
     "blocksCount": "100k+",
     "glacierChainId": "27827",
     "comment": null
-  },
-  {
-    "chainName": "SSHIVANSH",
-    "blockchainId": "2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW",
-    "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "comment": "TODO: investigate"
   },
   {
     "chainName": "even",
@@ -478,6 +460,15 @@
     "evmChainId": "71932",
     "blocksCount": "10+",
     "comment": null
+  },
+  {
+    "chainName": "Unknown",
+    "blockchainId": "AWJN2rFNhdj49QL8F6Nq5gUX7PDFCDGBZtXMjDw9sxZNGPFpc",
+    "subnetId": "2fXwaoJwsBoujXgwEucfC1ZrZdbR59iMgcgsbwFb9JNZQjKPA2",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "comment": "TODO: investigate"
   },
   {
     "chainName": "StraitsX",
@@ -674,14 +665,13 @@
     "comment": null
   },
   {
-    "chainName": "QRTMS",
-    "blockchainId": "WSpXS5wxUG9EfjSdt1b5odPyp1VzUxiyWJvPzwVsWmtnJ2wN6",
-    "subnetId": "2Edt56XSexAyk59J7EvTNfNyYssERhASQRramxZNyvDiENmcmh",
-    "rpcUrl": "https://subnets.avax.network/qr0618t2ms/mainnet/rpc",
-    "evmChainId": "86611",
-    "blocksCount": "0+",
-    "glacierChainId": "86611",
-    "comment": null
+    "chainName": "Republic Chain",
+    "blockchainId": "WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER",
+    "subnetId": "hQmBhZEf78SgYasnNkjFLnRewn2cntY7C21sPEnhdaKnKUrhi",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "comment": "TODO: investigate"
   },
   {
     "chainName": "ApertumMainnet",

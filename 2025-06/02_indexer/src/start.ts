@@ -63,7 +63,6 @@ async function runWriter() {
         dbFolder: requireTextEnv("DATA_DIR"),
         chainId: requireTextEnv("CHAIN_ID"),
         deleteDb: !isProduction,
-        cookieString: optionalTextEnv("COOKIE_STRING")
     })
 }
 

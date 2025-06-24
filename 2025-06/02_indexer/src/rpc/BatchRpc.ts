@@ -1,12 +1,7 @@
 import { utils } from "@avalabs/avalanchejs";
 import PQueue from 'p-queue';
 import type * as EVMTypes from '../evmTypes';
-import { request, Agent } from 'undici';
 import { DynamicBatchSizeManager } from './DynamicBatchSizeManager';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
 
 // Define a type for the JSON-RPC request and response structures
 interface JsonRpcRequest {
@@ -38,7 +33,6 @@ export class BatchRpc {
     private batchSize: number;
     private dynamicBatchSizeManager: DynamicBatchSizeManager | null;
     private enableBatchSizeGrowth: boolean;
-    private cookieString: string | undefined;
 
     constructor({
         rpcUrl,
@@ -46,14 +40,12 @@ export class BatchRpc {
         maxConcurrent,
         rps,
         enableBatchSizeGrowth = false,
-        cookieString,
     }: {
         rpcUrl: string;
         batchSize: number;
         maxConcurrent: number;
         rps: number;
         enableBatchSizeGrowth?: boolean;
-        cookieString?: string;
     }) {
         if (!rpcUrl) {
             throw new Error('RPC_URL is not set or empty');
@@ -68,60 +60,28 @@ export class BatchRpc {
         this.batchSize = batchSize;
         this.enableBatchSizeGrowth = enableBatchSizeGrowth;
         this.dynamicBatchSizeManager = enableBatchSizeGrowth ? new DynamicBatchSizeManager(batchSize) : null;
-        this.cookieString = cookieString;
     }
 
     /**
-     * Make HTTP request using actual curl command
-     */
-    private async makeHttpRequestWithCurl(body: string): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
-        };
-
-        let curlCmd = `curl -s -w "\\n%{http_code}" '${this.rpcUrl}' -X POST`;
-
-        // Add headers (excluding cookies)
-        for (const [key, value] of Object.entries(headers)) {
-            curlCmd += ` -H '${key}: ${value}'`;
-        }
-
-        if (this.cookieString) {
-            // Add cookies using -b flag like the working curl command
-            curlCmd += ` -b '${this.cookieString}'`;
-        }
-
-        // Add body
-        curlCmd += ` --data-raw '${body.replace(/'/g, "\\'")}'`;
-
-        try {
-            const { stdout, stderr } = await execAsync(curlCmd);
-
-            // Parse response (last line is status code)
-            const lines = stdout.trim().split('\n');
-            const statusCode = parseInt(lines[lines.length - 1]);
-            const responseText = lines.slice(0, -1).join('\n');
-
-            return {
-                ok: statusCode >= 200 && statusCode < 300,
-                status: statusCode,
-                json: () => Promise.resolve(JSON.parse(responseText)),
-                text: () => Promise.resolve(responseText)
-            };
-        } catch (error) {
-            throw new Error(`Curl command failed: ${error}`);
-        }
-    }
-
-    /**
-     * Makes an HTTP request using undici with connection pooling and compression
-     * To use curl instead, replace the method call with makeHttpRequestWithCurl
+     * Makes an HTTP request using Node.js built-in fetch with automatic compression handling
      */
     private async makeHttpRequest(body: string): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
-        // Use curl instead of undici:
-        return await this.makeHttpRequestWithCurl(body);
+        const response = await fetch(this.rpcUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
+            body
+        });
+
+        return {
+            ok: response.ok,
+            status: response.status,
+            json: () => response.json(),
+            text: () => response.text()
+        };
     }
 
     /**
@@ -143,9 +103,8 @@ export class BatchRpc {
                 const response = await this.makeHttpRequest(JSON.stringify(jsonRpcRequests));
 
                 if (!response.ok) {
-                    const errorText = await response.text().catch(() => "Failed to get error text");
                     this.dynamicBatchSizeManager?.onError();
-                    throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${response.status}: ${errorText}`);
+                    throw new Error(`RPC batch request failed to ${this.rpcUrl} with status ${response.status}: ${await response.text().catch(() => "Failed to get error text")}`);
                 }
 
                 const jsonData = await response.json();

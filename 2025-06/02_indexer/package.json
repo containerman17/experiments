@@ -33,10 +33,10 @@
     "dotenv": "^16.5.0",
     "hono": "^4.7.10",
     "p-queue": "^8.1.0",
-    "tough-cookie": "^5.1.2",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
-    "undici": "^6.21.3"
+    "undici": "^6.21.3",
+    "zstd-napi": "^0.0.11"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13"

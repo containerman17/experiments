@@ -103,11 +103,10 @@ type BackendConfig = {
     chainId: string
     extraIndexers?: IndexerFactory[]
     deleteDb?: boolean
-    cookieString?: string
 }
 
 export async function startBackend(config: BackendConfig) {
-    const { rpcLimits, rpcUrl, dbFolder, chainId, extraIndexers = [], deleteDb = false, cookieString } = config
+    const { rpcLimits, rpcUrl, dbFolder, chainId, extraIndexers = [], deleteDb = false } = config
 
 
     const rpc = new BatchRpc({
@@ -116,7 +115,6 @@ export async function startBackend(config: BackendConfig) {
         maxConcurrent: rpcLimits.maxConcurrent,
         rps: rpcLimits.rps,
         enableBatchSizeGrowth: rpcLimits.enableBatchSizeGrowth,
-        cookieString
     })
 
 

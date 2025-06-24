@@ -6,6 +6,7 @@
 
 **C-Chain**
 - Blocks Count: 10m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 43114
 - Blockchain ID: 2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5
 - RPC URL: https://api.avax.network/ext/bc/C/rpc
@@ -13,6 +14,7 @@
 
 **DFK Chain**
 - Blocks Count: 10m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 53935
 - Blockchain ID: q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi
 - RPC URL: https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc
@@ -20,6 +22,7 @@
 
 **dexalotevm**
 - Blocks Count: 10m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 432204
 - Blockchain ID: 21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E
 - RPC URL: https://subnets.avax.network/dexalot/mainnet/rpc
@@ -27,6 +30,7 @@
 
 **Pulsar**
 - Blocks Count: 10m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 357
 - Blockchain ID: QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
 - RPC URL: https://subnets.avax.network/pulsar/mainnet/rpc
@@ -34,6 +38,7 @@
 
 **UPTN**
 - Blocks Count: 10m+
+- Estimated Tx Count: 10m+
 - EVM Chain ID: 6119
 - Blockchain ID: 2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE
 - RPC URL: https://node-api.uptn.io/v1/ext/rpc
@@ -41,6 +46,7 @@
 
 **StepNetwork**
 - Blocks Count: 10m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 1234
 - Blockchain ID: 2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1
 - RPC URL: https://rpc.step.network
@@ -48,6 +54,7 @@
 
 **Lamina1**
 - Blocks Count: 10m+
+- Estimated Tx Count: 10m+
 - EVM Chain ID: 10849
 - Blockchain ID: UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ
 - RPC URL: https://subnets.avax.network/lamina1/mainnet/rpc
@@ -55,6 +62,7 @@
 
 **shrapnelnetwork**
 - Blocks Count: 1m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 2044
 - Blockchain ID: 2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9
 - RPC URL: https://subnets.avax.network/shrapnel/mainnet/rpc
@@ -62,6 +70,7 @@
 
 **beam**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 4337
 - Blockchain ID: 2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn
 - RPC URL: https://subnets.avax.network/beam/mainnet/rpc
@@ -69,6 +78,7 @@
 
 **QChain**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 12150
 - Blockchain ID: 2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy
 - RPC URL: https://subnets.avax.network/qchain/mainnet/rpc
@@ -76,6 +86,7 @@
 
 **gunz**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 43419
 - Blockchain ID: 2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML
 - RPC URL: https://subnets.avax.network/gunzilla/mainnet/rpc
@@ -83,6 +94,7 @@
 
 **thegrowthprotocol**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 61587
 - Blockchain ID: 2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY
 - RPC URL: https://subnets.avax.network/tgp/mainnet/rpc
@@ -90,6 +102,7 @@
 
 **HighOctane**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 1853
 - Blockchain ID: 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
 - RPC URL: https://subnets.avax.network/highoctane/mainnet/rpc
@@ -97,6 +110,7 @@
 
 **deraalpha**
 - Blocks Count: 1m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 20250320
 - Blockchain ID: 2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du
 - RPC URL: https://meganode.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
@@ -105,6 +119,7 @@
 
 **Tiltyard**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 710420
 - Blockchain ID: 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
 - RPC URL: https://subnets.avax.network/tiltyard/mainnet/rpc
@@ -112,6 +127,7 @@
 
 **PLAYA3ULL**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 3011
 - Blockchain ID: k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
 - RPC URL: https://subnets.avax.network/playa3ull/mainnet/rpc
@@ -119,6 +135,7 @@
 
 **coqnet**
 - Blocks Count: 1m+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 42069
 - Blockchain ID: 23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
 - RPC URL: https://subnets.avax.network/coqnet/mainnet/rpc
@@ -126,6 +143,7 @@
 
 **TradeXMarkets**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 21024
 - Blockchain ID: 2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK
 - RPC URL: https://subnets.avax.network/trx/mainnet/rpc
@@ -133,6 +151,7 @@
 
 **DOS Chain**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 7979
 - Blockchain ID: 22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv
 - RPC URL: https://meganode.solokhin.com/ext/bc/22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv/rpc
@@ -140,6 +159,7 @@
 
 **Space**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 8227
 - Blockchain ID: 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
 - RPC URL: https://subnets.avax.network/space/mainnet/rpc
@@ -147,6 +167,7 @@
 
 **ApertumMainnet**
 - Blocks Count: 1m+
+- Estimated Tx Count: 1m+
 - EVM Chain ID: 2786
 - Blockchain ID: YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn
 - RPC URL: https://meganode.solokhin.com/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
@@ -154,6 +175,7 @@
 
 **PLYRPHI**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 16180
 - Blockchain ID: HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4
 - RPC URL: https://subnets.avax.network/plyr/mainnet/rpc
@@ -161,6 +183,7 @@
 
 **numbersevm**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 10507
 - Blockchain ID: 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE
 - RPC URL: https://meganode.solokhin.com/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
@@ -168,6 +191,7 @@
 
 **BnryMainnet**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100m+
 - EVM Chain ID: 836
 - Blockchain ID: J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ
 - RPC URL: https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
@@ -176,6 +200,7 @@
 
 **Mirai**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 2718
 - Blockchain ID: Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
 - RPC URL: https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc
@@ -183,6 +208,7 @@
 
 **zerooneMainnet**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 27827
 - Blockchain ID: 2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1
 - RPC URL: https://subnets.avax.network/zeroonemai/mainnet/rpc
@@ -190,6 +216,7 @@
 
 **KOROSHIL**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 379
 - Blockchain ID: 26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ
 - RPC URL: https://subnets.avax.network/koroshi/mainnet/rpc
@@ -197,6 +224,7 @@
 
 **intersect**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 1216
 - Blockchain ID: 2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF
 - RPC URL: https://subnets.avax.network/intersect/mainnet/rpc
@@ -204,6 +232,7 @@
 
 **even**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 33345
 - Blockchain ID: 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL
 - RPC URL: https://subnets.avax.network/even/mainnet/rpc
@@ -211,6 +240,7 @@
 
 **BLITZ SUBNET**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 1344
 - Blockchain ID: 2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
 - RPC URL: https://subnets.avax.network/blitz/mainnet/rpc
@@ -218,6 +248,7 @@
 
 **FIFABlockchain**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 13322
 - Blockchain ID: SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E
 - RPC URL: https://subnets.avax.network/fifa/mainnet/rpc
@@ -225,6 +256,7 @@
 
 **KALICHAIN**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 6533
 - Blockchain ID: TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
 - RPC URL: https://subnets.avax.network/kalichain/mainnet/rpc
@@ -232,6 +264,7 @@
 
 **StraitsX**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 5566
 - Blockchain ID: EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
 - RPC URL: https://subnets.avax.network/straitsx/mainnet/rpc
@@ -239,6 +272,7 @@
 
 **Blockticity**
 - Blocks Count: 100k+
+- Estimated Tx Count: 100k+
 - EVM Chain ID: 28530
 - Blockchain ID: 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
 - RPC URL: https://subnets.avax.network/btic/mainnet/rpc
@@ -246,6 +280,7 @@
 
 **Lamina1Identity**
 - Blocks Count: 10k+
+- Estimated Tx Count: 10k+
 - EVM Chain ID: 10850
 - Blockchain ID: hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N
 - RPC URL: https://subnets.avax.network/lamina1id/mainnet/rpc
@@ -253,6 +288,7 @@
 
 **NUMINEMainnet**
 - Blocks Count: 10k+
+- Estimated Tx Count: 10k+
 - EVM Chain ID: 8021
 - Blockchain ID: 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
 - RPC URL: https://subnets.avax.network/numi/mainnet/rpc
@@ -260,6 +296,7 @@
 
 **Hatchyverse**
 - Blocks Count: 10k+
+- Estimated Tx Count: 10k+
 - EVM Chain ID: 8198
 - Blockchain ID: 2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
 - RPC URL: https://meganode.solokhin.com/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
@@ -267,6 +304,7 @@
 
 **Memoria**
 - Blocks Count: 1k+
+- Estimated Tx Count: 10k+
 - EVM Chain ID: 1888
 - Blockchain ID: kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
 - RPC URL: https://subnets.avax.network/memoria/mainnet/rpc
@@ -274,6 +312,7 @@
 
 **feature**
 - Blocks Count: 1k+
+- Estimated Tx Count: 1k+
 - EVM Chain ID: 33311
 - Blockchain ID: txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
 - RPC URL: https://subnets.avax.network/feature/mainnet/rpc
@@ -281,6 +320,7 @@
 
 **bloodloop**
 - Blocks Count: 1k+
+- Estimated Tx Count: 1k+
 - EVM Chain ID: 578
 - Blockchain ID: iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
 - RPC URL: https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc
@@ -288,6 +328,7 @@
 
 **InnovoMarketsMainnet**
 - Blocks Count: 1k+
+- Estimated Tx Count: 1k+
 - EVM Chain ID: 10036
 - Blockchain ID: vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
 - RPC URL: https://subnets.avax.network/innovo/mainnet/rpc
@@ -295,6 +336,7 @@
 
 **CXChain**
 - Blocks Count: 100+
+- Estimated Tx Count: 100+
 - EVM Chain ID: 737373
 - Blockchain ID: 25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV
 - RPC URL: https://subnets.avax.network/cx/mainnet/rpc
@@ -302,6 +344,7 @@
 
 **Marnisa**
 - Blocks Count: 100+
+- Estimated Tx Count: 100+
 - EVM Chain ID: 5419
 - Blockchain ID: 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
 - RPC URL: https://subnets.avax.network/marnisa/mainnet/rpc
@@ -309,6 +352,7 @@
 
 **GOODCARE**
 - Blocks Count: 100+
+- Estimated Tx Count: 100+
 - EVM Chain ID: 741741
 - Blockchain ID: 2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
 - RPC URL: https://subnets.avax.network/goodcare/mainnet/rpc
@@ -316,6 +360,7 @@
 
 **ienium**
 - Blocks Count: 100+
+- Estimated Tx Count: 100+
 - EVM Chain ID: 2345
 - Blockchain ID: 23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
 - RPC URL: https://meganode.solokhin.com/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc
@@ -323,6 +368,7 @@
 
 **FRQTALNETWORK**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 62789
 - Blockchain ID: 2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB
 - RPC URL: https://subnets.avax.network/frqtalnet/mainnet/rpc
@@ -330,6 +376,7 @@
 
 **EthixETX**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 389
 - Blockchain ID: 2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE
 - RPC URL: https://subnets.avax.network/etx/mainnet/rpc
@@ -337,6 +384,7 @@
 
 **TITANL**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 84358
 - Blockchain ID: 24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S
 - RPC URL: https://subnets.avax.network/titan/mainnet/rpc
@@ -344,6 +392,7 @@
 
 **delaunch**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 96786
 - Blockchain ID: 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
 - RPC URL: https://subnets.avax.network/delaunch/mainnet/rpc
@@ -351,6 +400,7 @@
 
 **lucid**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 62521
 - Blockchain ID: 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
 - RPC URL: https://subnets.avax.network/lucid/mainnet/rpc
@@ -358,6 +408,7 @@
 
 **Monsoon**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 100610
 - Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
 - RPC URL: https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
@@ -365,6 +416,7 @@
 
 **Republic Chain**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 14594
 - Blockchain ID: WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER
 - RPC URL: https://meganode.solokhin.com/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc
@@ -372,6 +424,7 @@
 
 **Bitcoin Content Network**
 - Blocks Count: 10+
+- Estimated Tx Count: 10+
 - EVM Chain ID: 71932
 - Blockchain ID: apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
 - RPC URL: https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc
@@ -379,6 +432,7 @@
 
 **Animalia**
 - Blocks Count: 0+
+- Estimated Tx Count: 0+
 - EVM Chain ID: 8787
 - Blockchain ID: QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
 - RPC URL: https://subnets.avax.network/animalia/mainnet/rpc
@@ -386,6 +440,7 @@
 
 **Artery**
 - Blocks Count: 0+
+- Estimated Tx Count: 0+
 - EVM Chain ID: 4313
 - Blockchain ID: rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6
 - RPC URL: https://subnets.avax.network/artery/mainnet/rpc
@@ -393,6 +448,7 @@
 
 **ULALO**
 - Blocks Count: 0+
+- Estimated Tx Count: 0+
 - EVM Chain ID: 237007
 - Blockchain ID: 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig
 - RPC URL: https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc
@@ -401,6 +457,7 @@
 
 **CodeNekt**
 - Blocks Count: 0+
+- Estimated Tx Count: 0+
 - EVM Chain ID: 235235
 - Blockchain ID: ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK
 - RPC URL: https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc
@@ -408,6 +465,7 @@
 
 **Blaze**
 - Blocks Count: 0+
+- Estimated Tx Count: 0+
 - EVM Chain ID: 46975
 - Blockchain ID: 2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY
 - RPC URL: https://subnets.avax.network/blaze/mainnet/rpc

@@ -9,6 +9,7 @@ import { dirname } from 'path'
 import { getGlacierChains, listAllBlockchains } from './lib/glacier.ts'
 import { isValidated } from './lib/pApi.ts';
 import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber, fetchBlockchainIDFromPrecompile } from './lib/evm.ts'
+import { getIndexerStatus } from './lib/indexer.ts'
 
 const ignoreChains = [
     "2oYMBNV4eNHyqk2fjjV5nVQLDbtmNJzq5s3qs3Lo6ftnC6FByM", // X-Chain
@@ -98,33 +99,29 @@ async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, 
 
     // Try extra RPC first
     if (extraRpcUrl && extraRpcUrl.trim() !== '') {
-        try {
-            const isWorking = await testRpcUrl(extraRpcUrl, blockchainId);
-            if (isWorking) {
-                console.log(`RPC for ${blockchainId}: 🔧 extra`);
-                return extraRpcUrl;
-            }
-        } catch { }
+        const isWorking = await testRpcUrl(extraRpcUrl, blockchainId);
+        if (isWorking) {
+            console.log(`RPC for ${blockchainId}: 🔧 extra`);
+            return extraRpcUrl;
+        }
     }
 
     // Try meganode RPC second
-    try {
-        const isWorking = await testRpcUrl(meganodeUrl, blockchainId);
-        if (isWorking) {
-            console.log(`RPC for ${blockchainId}: 🐊 Meganode`);
-            return meganodeUrl;
-        }
-    } catch { }
+    const isWorking = await testRpcUrl(meganodeUrl, blockchainId);
+    if (isWorking) {
+        console.log(`RPC for ${blockchainId}: 🐊 Meganode`);
+        return meganodeUrl;
+    }
 
     // Try official RPC last
     if (officialRpcUrl && officialRpcUrl.trim() !== '') {
-        try {
-            const isWorking = await testRpcUrl(officialRpcUrl, blockchainId);
-            if (isWorking) {
-                console.log(`RPC for ${blockchainId}: ✅ official`);
-                return officialRpcUrl;
-            }
-        } catch { }
+        const isWorking = await testRpcUrl(officialRpcUrl, blockchainId);
+        if (isWorking) {
+            console.log(`RPC for ${blockchainId}: ✅ official`);
+            return officialRpcUrl;
+        } else {
+            console.log(`🤔 Weird, the official RPC is not working: ${officialRpcUrl}.`)
+        }
     }
 
     console.log(`RPC for ${blockchainId}: no working rpc found ❌`);
@@ -132,7 +129,7 @@ async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, 
 }
 
 // Convert block number to bucket string
-function blockNumberToBucket(blockNumber: string): string {
+function numberToBucket(blockNumber: string): string {
     const n = Number(blockNumber);
     if (isNaN(n) || n < 0) return '0+';
     if (n < 10) return '0+';
@@ -144,13 +141,25 @@ function blockNumberToBucket(blockNumber: string): string {
     if (n < 10000000) return '1m+';
     if (n < 100000000) return '10m+';
     if (n < 1000000000) return '100m+';
+    if (n < 10000000000) return '1b+';
     return '1b+';
 }
 
-
+// Calculate estimated transaction count from indexer status
+async function getEstimatedTxCount(blockchainId: string): Promise<string | null> {
+    try {
+        const status = await getIndexerStatus(blockchainId);
+        const estimatedTxCount = Math.round(
+            status.totalTxCount / (status.lastProcessedBlock || 1) * status.latestBlockNumber
+        );
+        return numberToBucket(estimatedTxCount.toString());
+    } catch (error) {
+        return null;
+    }
+}
 
 // Fetch EVM chain details for chains with RPC
-async function fetchChainDetails(rpcUrl: string): Promise<{ evmChainId: string; rawBlocksCount: number }> {
+async function fetchChainDetails(rpcUrl: string, blockchainId: string): Promise<{ evmChainId: string; rawBlocksCount: number; estimatedTxCount: string | null }> {
     let evmChainId = 'N/A';
     let rawBlocksCount = 0;
 
@@ -160,8 +169,9 @@ async function fetchChainDetails(rpcUrl: string): Promise<{ evmChainId: string; 
     const blockNumber = await fetchLastBlockNumber(rpcUrl);
     rawBlocksCount = Number(blockNumber?.toString() || '0');
 
+    const estimatedTxCount = await getEstimatedTxCount(blockchainId);
 
-    return { evmChainId, rawBlocksCount };
+    return { evmChainId, rawBlocksCount, estimatedTxCount };
 }
 
 // Split chains into those with and without RPC URLs
@@ -222,8 +232,8 @@ async function generateWithRpcTable(chainsWithRpc: ChainData[], officialExplorer
 
     const chainDetails = await Promise.all(
         chainsWithRpc.map(async (chain) => {
-            const { evmChainId, rawBlocksCount } = await fetchChainDetails(chain.rpcUrl!);
-            return { ...chain, evmChainId, rawBlocksCount } as ChainWithRpc;
+            const { evmChainId, rawBlocksCount, estimatedTxCount } = await fetchChainDetails(chain.rpcUrl!, chain.blockchainId);
+            return { ...chain, evmChainId, rawBlocksCount, estimatedTxCount } as ChainWithRpc & { estimatedTxCount: string | null };
         })
     );
 
@@ -233,10 +243,11 @@ async function generateWithRpcTable(chainsWithRpc: ChainData[], officialExplorer
     });
 
     for (const chain of chainDetails) {
-        const blocksCount = blockNumberToBucket(chain.rawBlocksCount.toString());
+        const blocksCount = numberToBucket(chain.rawBlocksCount.toString());
         const explorerUrl = officialExplorerUrls.get(chain.blockchainId) || '❌';
         content += `**${chain.chainName}**\n`;
         content += `- Blocks Count: ${blocksCount}\n`;
+        content += `- Estimated Tx Count: ${chain.estimatedTxCount || 'Unknown'}\n`;
         content += `- EVM Chain ID: ${chain.evmChainId}\n`;
         content += `- Blockchain ID: ${chain.blockchainId}\n`;
         content += `- RPC URL: ${chain.rpcUrl}\n`;
@@ -270,14 +281,15 @@ function generateWithoutRpcTable(chainsWithoutRpc: ChainData[]): string {
 async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: ChainData[]): Promise<void> {
     const chainsWithRpcDetails = await Promise.all(
         chainsWithRpc.map(async (chain) => {
-            const { evmChainId, rawBlocksCount } = await fetchChainDetails(chain.rpcUrl!);
+            const { evmChainId, rawBlocksCount, estimatedTxCount } = await fetchChainDetails(chain.rpcUrl!, chain.blockchainId);
             return {
                 chainName: chain.chainName,
                 blockchainId: chain.blockchainId,
                 subnetId: chain.subnetId,
                 rpcUrl: chain.rpcUrl,
                 evmChainId,
-                blocksCount: blockNumberToBucket(rawBlocksCount.toString()),
+                blocksCount: numberToBucket(rawBlocksCount.toString()),
+                estimatedTxCount,
                 glacierChainId: chain.glacierChainId,
                 comment: chain.comment || null
             };
@@ -291,6 +303,7 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
         rpcUrl: null,
         evmChainId: chain.glacierChainId || null,
         blocksCount: null,
+        estimatedTxCount: null,
         glacierChainId: chain.glacierChainId,
         comment: chain.comment || 'TODO: investigate'
     }));

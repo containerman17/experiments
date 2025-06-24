@@ -15,7 +15,7 @@ async function makeRpcCall<T>(rpcUrl: string, method: string, params: any[]): Pr
     });
 
     if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status} url: ${rpcUrl}`);
     }
 
     const data = await response.json();
@@ -48,4 +48,68 @@ export async function fetchBlockchainIDFromPrecompile(rpcUrl: string): Promise<s
     const avalancheChainId = utils.base58check.encode(chainIdBytes);
 
     return avalancheChainId;
+}
+
+export interface BlockTransaction {
+    blockHash: string;
+    blockNumber: string;
+    from: string;
+    gas: string;
+    gasPrice: string;
+    maxFeePerGas: string;
+    maxPriorityFeePerGas: string;
+    hash: string;
+    input: string;
+    nonce: string;
+    to: string;
+    transactionIndex: string;
+    value: string;
+    type: string;
+    accessList: any[];
+    chainId: string;
+    v: string;
+    r: string;
+    s: string;
+    yParity: string;
+}
+
+export interface BlockData {
+    baseFeePerGas: string;
+    blobGasUsed: string;
+    blockGasCost: string;
+    difficulty: string;
+    excessBlobGas: string;
+    extraData: string;
+    gasLimit: string;
+    gasUsed: string;
+    hash: string;
+    logsBloom: string;
+    miner: string;
+    mixHash: string;
+    nonce: string;
+    number: string;
+    parentBeaconBlockRoot: string;
+    parentHash: string;
+    receiptsRoot: string;
+    sha3Uncles: string;
+    size: string;
+    stateRoot: string;
+    timestamp: string;
+    totalDifficulty: string;
+    transactions: BlockTransaction[];
+    transactionsRoot: string;
+    uncles: any[];
+}
+
+export async function fetchBlockData(rpcUrl: string, blockNumber: number): Promise<BlockData> {
+    const result = await makeRpcCall<BlockData>(rpcUrl, 'eth_getBlockByNumber', [
+        `0x${blockNumber.toString(16)}`, // Convert to hex
+        true // Include full transaction objects
+    ]);
+
+    if (!result) {
+        throw new Error('Block not found');
+    }
+
+    return result;
 } 

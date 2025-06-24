@@ -1,10 +1,18 @@
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { parse } from 'yaml';
 import { IndexerClient } from './lib/indexer';
+import { stringify } from "csv-stringify/sync";
+import { fetchBlockchainIDFromPrecompile, fetchBlockData } from './lib/rpc';
+import { Avalanche } from "@avalanche-sdk/data";
+import { Blockchain } from '@avalanche-sdk/data/models/components/blockchain.js';
+import { getGlacierChains, GlacierBlockchain, GlacierChain, listAllBlockchains, listAllBlockchainsCached } from './lib/glacier';
 
 // Read and parse the compose.yml file
 const composeContent = readFileSync('./compose.yml', 'utf8');
 const composeData = parse(composeContent);
+
+const avalanche = new Avalanche({
+});
 
 // Extract local ports from all services
 
@@ -77,9 +85,54 @@ async function collectMetrics(rpcUrls: string) {
     }
 }
 
+let testNetChains: GlacierBlockchain[] = await listAllBlockchainsCached('testnet')
+let mainNetChains: GlacierBlockchain[] = await listAllBlockchainsCached('mainnet')
+
+// Collect all results first
+const results: string[][] = [];
+results.push(["Network", "Is testnet", "Indexer caught up", "Latest block number", "Tx April", "Tx May", "Tx June", "First block date"]);
+
 for (const url of allIndexerUrls) {
     const originalRPC = indexerUrlToOriginalRPC[url];
     const metrics = await collectMetrics(url);
-    const output = `${originalRPC} | Caught up: ${metrics["Caught up"]} | Latest block number: ${metrics["Latest block number"]} | Tx June: ${metrics["Tx June"]} | Tx May: ${metrics["Tx May"]} | Tx April: ${metrics["Tx April"]}`;
-    console.log(output);
+    let firstBlockDate = 'N/A';
+    if (metrics['Latest block number'] !== 0) {
+        try {
+            const blockData = await fetchBlockData(indexerUrlToOriginalRPC[url], 1);
+            const timestampNum = parseInt(blockData.timestamp, 16);
+            const date = new Date(timestampNum * 1000);
+            firstBlockDate = date.toISOString().slice(0, 10);
+        } catch (e) {
+            firstBlockDate = 'error';
+        }
+    }
+
+    let fromGlacier: GlacierBlockchain | undefined = undefined
+
+    const blockchainId = await fetchBlockchainIDFromPrecompile(indexerUrlToOriginalRPC[url]);
+    let netMode = "devnet"
+    if (testNetChains.find(chain => chain.blockchainId === blockchainId)) {
+        fromGlacier = testNetChains.find(chain => chain.blockchainId === blockchainId)
+        netMode = "testnet"
+    } else if (mainNetChains.find(chain => chain.blockchainId === blockchainId)) {
+        fromGlacier = mainNetChains.find(chain => chain.blockchainId === blockchainId)
+        netMode = "mainnet"
+    }
+
+    const chainName = fromGlacier?.blockchainName || originalRPC
+
+    results.push([
+        chainName,
+        netMode,
+        metrics["Caught up"],
+        metrics["Latest block number"].toString(),
+        metrics["Tx April"].toString(),
+        metrics["Tx May"].toString(),
+        metrics["Tx June"].toString(),
+        firstBlockDate,
+    ]);
 }
+
+// Output as CSV
+const csvOutput = stringify(results);
+writeFileSync('./results.csv', csvOutput);

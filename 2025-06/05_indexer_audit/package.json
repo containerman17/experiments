@@ -12,7 +12,9 @@
   "description": "",
   "dependencies": {
     "@avalabs/avalanchejs": "^5.0.0",
+    "@avalanche-sdk/data": "^0.2.6",
     "@types/node": "^24.0.3",
+    "csv-stringify": "^6.5.2",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "yaml": "^2.8.0"

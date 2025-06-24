@@ -27,7 +27,7 @@ interface ChainData {
 interface ChainWithRpc extends ChainData {
     rpcUrl: string;
     evmChainId: string;
-    blocksCount: string;
+    rawBlocksCount: number;
 }
 
 interface ChainWithoutRpc extends ChainData {
@@ -36,32 +36,24 @@ interface ChainWithoutRpc extends ChainData {
 
 // Load comments from rpcComments.json
 function loadComments(): Record<string, string> {
-    try {
-        const commentsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'rpcComments.json');
-        const commentsData = fs.readFileSync(commentsPath, 'utf8');
-        return JSON.parse(commentsData);
-    } catch (error) {
-        console.warn('Could not load rpcComments.json:', error);
-        return {};
-    }
+    const commentsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'rpcComments.json');
+    const commentsData = fs.readFileSync(commentsPath, 'utf8');
+    return JSON.parse(commentsData);
 }
 
 // Load extra RPCs from extraRpcs.json
 function loadExtraRpcs(): Record<string, string> {
-    try {
-        const extraRpcsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'extraRpcs.json');
-        const extraRpcsData = fs.readFileSync(extraRpcsPath, 'utf8');
-        return JSON.parse(extraRpcsData);
-    } catch (error) {
-        console.warn('Could not load extraRpcs.json:', error);
-        return {};
-    }
+    const extraRpcsPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'extraRpcs.json');
+    const extraRpcsData = fs.readFileSync(extraRpcsPath, 'utf8');
+    return JSON.parse(extraRpcsData);
+
 }
 
 
 // Get validated chains
 async function getValidatedChains(): Promise<string[]> {
     const blockchains = await listAllBlockchains('mainnet')
+
     const validatedResults = await Promise.all(
         blockchains.map(async (blockchain) => {
             const isValid = await isValidated(blockchain.subnetId);
@@ -155,26 +147,21 @@ function blockNumberToBucket(blockNumber: string): string {
     return '1b+';
 }
 
+
+
 // Fetch EVM chain details for chains with RPC
-async function fetchChainDetails(rpcUrl: string): Promise<{ evmChainId: string; blocksCount: string }> {
+async function fetchChainDetails(rpcUrl: string): Promise<{ evmChainId: string; rawBlocksCount: number }> {
     let evmChainId = 'N/A';
-    let blocksCount = '0+';
+    let rawBlocksCount = 0;
 
-    try {
-        const chainId = await fetchEVMChainId(rpcUrl);
-        evmChainId = chainId?.toString() || 'Error';
-    } catch {
-        evmChainId = 'Error';
-    }
+    const chainId = await fetchEVMChainId(rpcUrl);
+    evmChainId = chainId?.toString() || 'Error';
 
-    try {
-        const blockNumber = await fetchLastBlockNumber(rpcUrl);
-        blocksCount = blockNumberToBucket(blockNumber?.toString() || '0');
-    } catch {
-        blocksCount = '0+';
-    }
+    const blockNumber = await fetchLastBlockNumber(rpcUrl);
+    rawBlocksCount = Number(blockNumber?.toString() || '0');
 
-    return { evmChainId, blocksCount };
+
+    return { evmChainId, rawBlocksCount };
 }
 
 // Split chains into those with and without RPC URLs
@@ -230,47 +217,67 @@ async function categorizeChains(
 }
 
 // Generate table for chains with RPC URLs
-async function generateWithRpcTable(chainsWithRpc: ChainData[]): Promise<string> {
-    let table = `\n\n## Chains with Public RPC URLs (${chainsWithRpc.length})\n\n| Chain Name | Blockchain ID | RPC URL | EVM Chain ID | Blocks Count | Comment |\n|------------|---------------|---------|--------------|-------------|---------|\n`;
+async function generateWithRpcTable(chainsWithRpc: ChainData[], officialExplorerUrls: Map<string, string>): Promise<string> {
+    let content = `\n\n## Chains with Public RPC URLs (${chainsWithRpc.length})\n\n`;
 
     const chainDetails = await Promise.all(
         chainsWithRpc.map(async (chain) => {
-            const { evmChainId, blocksCount } = await fetchChainDetails(chain.rpcUrl!);
-            return { ...chain, evmChainId, blocksCount } as ChainWithRpc;
+            const { evmChainId, rawBlocksCount } = await fetchChainDetails(chain.rpcUrl!);
+            return { ...chain, evmChainId, rawBlocksCount } as ChainWithRpc;
         })
     );
 
+    // Sort by block count descending
+    chainDetails.sort((a, b) => {
+        return b.rawBlocksCount - a.rawBlocksCount;
+    });
+
     for (const chain of chainDetails) {
-        table += `| ${chain.chainName} | ${chain.blockchainId} | ${chain.rpcUrl} | ${chain.evmChainId} | ${chain.blocksCount} | ${chain.comment || ''} |\n`;
+        const blocksCount = blockNumberToBucket(chain.rawBlocksCount.toString());
+        const explorerUrl = officialExplorerUrls.get(chain.blockchainId) || '❌';
+        content += `**${chain.chainName}**\n`;
+        content += `- Blocks Count: ${blocksCount}\n`;
+        content += `- EVM Chain ID: ${chain.evmChainId}\n`;
+        content += `- Blockchain ID: ${chain.blockchainId}\n`;
+        content += `- RPC URL: ${chain.rpcUrl}\n`;
+        content += `- Explorer URL: ${explorerUrl}\n`;
+        if (chain.comment) {
+            content += `- Comment: ${chain.comment}\n`;
+        }
+        content += `\n`;
     }
 
-    return table;
+    return content;
 }
 
 // Generate table for chains without RPC URLs
 function generateWithoutRpcTable(chainsWithoutRpc: ChainData[]): string {
-    let table = `\n\n## Chains without Public RPC URLs (${chainsWithoutRpc.length})\n\n| Chain Name | Blockchain ID | EVM Chain ID | Comment |\n|------------|---------------|--------------|----------|\n`;
+    let content = `\n\n## Chains without Public RPC URLs (${chainsWithoutRpc.length})\n\n`;
 
     for (const chain of chainsWithoutRpc) {
         const comment = chain.comment || 'TODO: investigate';
-        table += `| ${chain.chainName} | ${chain.blockchainId} | ${chain.glacierChainId || 'N/A'} | ${comment} |\n`;
+        content += `**${chain.chainName}**\n`;
+        content += `- EVM Chain ID: ${chain.glacierChainId || 'N/A'}\n`;
+        content += `- Blockchain ID: ${chain.blockchainId}\n`;
+        content += `- Comment: ${comment}\n`;
+        content += `\n`;
     }
 
-    return table;
+    return content;
 }
 
 // Generate chains.json file
 async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: ChainData[]): Promise<void> {
     const chainsWithRpcDetails = await Promise.all(
         chainsWithRpc.map(async (chain) => {
-            const { evmChainId, blocksCount } = await fetchChainDetails(chain.rpcUrl!);
+            const { evmChainId, rawBlocksCount } = await fetchChainDetails(chain.rpcUrl!);
             return {
                 chainName: chain.chainName,
                 blockchainId: chain.blockchainId,
                 subnetId: chain.subnetId,
                 rpcUrl: chain.rpcUrl,
                 evmChainId,
-                blocksCount,
+                blocksCount: blockNumberToBucket(rawBlocksCount.toString()),
                 glacierChainId: chain.glacierChainId,
                 comment: chain.comment || null
             };
@@ -297,11 +304,16 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
     fs.writeFileSync(chainsJsonPath, JSON.stringify(allChains, null, 2));
 }
 
+
 // Main execution
 try {
     const comments = loadComments();
     const extraRpcs = loadExtraRpcs();
     const glacierChains = await getGlacierChains('mainnet');
+
+    const officialExplorerUrls: Map<string, string> = new Map(
+        glacierChains.map(chain => [chain.platformChainId, chain.explorerUrl])
+    );
 
     const officialRpcUrls: Map<string, string> = new Map(
         glacierChains.map(chain => [chain.platformChainId, chain.rpcUrl])
@@ -315,10 +327,10 @@ try {
         officialRpcUrls,
         extraRpcs,
         glacierChains,
-        comments
+        comments,
     );
 
-    readme += await generateWithRpcTable(withRpc);
+    readme += await generateWithRpcTable(withRpc, officialExplorerUrls);
     readme += generateWithoutRpcTable(withoutRpc);
 
     fs.writeFileSync(path.join(dirname(fileURLToPath(import.meta.url)), 'README.md'), readme);

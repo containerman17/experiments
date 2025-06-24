@@ -293,7 +293,7 @@
     "subnetId": "2Ypm6RVhddu5Ps8DEbb35Y1PgX4uXE76yyxn6JMhnZy8ftAFLW",
     "rpcUrl": "https://subnets.avax.network/btic/mainnet/rpc",
     "evmChainId": "28530",
-    "blocksCount": "10k+",
+    "blocksCount": "100k+",
     "glacierChainId": "28530",
     "comment": null
   },
@@ -380,9 +380,9 @@
     "chainName": "ULALO",
     "blockchainId": "2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig",
     "subnetId": "sopy3uXvCFVLorg4kmqQfZpqVg9GXzs8GmjSwM18GZJtf66h6",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc",
+    "evmChainId": "237007",
+    "blocksCount": "0+",
     "comment": "Looks like https://x.com/ulalo_io. No public mainnet RPC found."
   },
   {
@@ -668,10 +668,10 @@
     "chainName": "Republic Chain",
     "blockchainId": "WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER",
     "subnetId": "hQmBhZEf78SgYasnNkjFLnRewn2cntY7C21sPEnhdaKnKUrhi",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "comment": "TODO: investigate"
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc",
+    "evmChainId": "14594",
+    "blocksCount": "10+",
+    "comment": null
   },
   {
     "chainName": "ApertumMainnet",

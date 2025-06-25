@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (58)
+## Chains with Public RPC URLs (59)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -100,14 +100,6 @@
 - RPC URL: https://subnets.avax.network/tgp/mainnet/rpc
 - Explorer URL: https://subnets.avax.network/tgp
 
-**HighOctane**
-- Blocks Count: 1m+
-- Estimated Tx Count: 1m+
-- EVM Chain ID: 1853
-- Blockchain ID: 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
-- RPC URL: https://subnets.avax.network/highoctane/mainnet/rpc
-- Explorer URL: https://subnets.avax.network/highoctane
-
 **deraalpha**
 - Blocks Count: 1m+
 - Estimated Tx Count: 100m+
@@ -116,6 +108,14 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
 - Explorer URL: ❌
 - Comment: also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
+
+**HighOctane**
+- Blocks Count: 1m+
+- Estimated Tx Count: 1m+
+- EVM Chain ID: 1853
+- Blockchain ID: 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
+- RPC URL: https://subnets.avax.network/highoctane/mainnet/rpc
+- Explorer URL: https://subnets.avax.network/highoctane
 
 **Tiltyard**
 - Blocks Count: 1m+
@@ -132,14 +132,6 @@
 - Blockchain ID: k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
 - RPC URL: https://subnets.avax.network/playa3ull/mainnet/rpc
 - Explorer URL: https://subnets.avax.network/playa3ull
-
-**coqnet**
-- Blocks Count: 1m+
-- Estimated Tx Count: 100m+
-- EVM Chain ID: 42069
-- Blockchain ID: 23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
-- RPC URL: https://subnets.avax.network/coqnet/mainnet/rpc
-- Explorer URL: https://subnets.avax.network/coqnet
 
 **TradeXMarkets**
 - Blocks Count: 1m+
@@ -262,14 +254,6 @@
 - RPC URL: https://subnets.avax.network/kalichain/mainnet/rpc
 - Explorer URL: https://subnets.avax.network/kalichain
 
-**StraitsX**
-- Blocks Count: 100k+
-- Estimated Tx Count: 100k+
-- EVM Chain ID: 5566
-- Blockchain ID: EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
-- RPC URL: https://subnets.avax.network/straitsx/mainnet/rpc
-- Explorer URL: https://subnets.avax.network/straitsx
-
 **Blockticity**
 - Blocks Count: 100k+
 - Estimated Tx Count: 100k+
@@ -277,6 +261,14 @@
 - Blockchain ID: 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
 - RPC URL: https://subnets.avax.network/btic/mainnet/rpc
 - Explorer URL: https://subnets.avax.network/btic
+
+**StraitsX**
+- Blocks Count: 100k+
+- Estimated Tx Count: 100k+
+- EVM Chain ID: 5566
+- Blockchain ID: EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
+- RPC URL: https://subnets.avax.network/straitsx/mainnet/rpc
+- Explorer URL: https://subnets.avax.network/straitsx
 
 **Lamina1Identity**
 - Blocks Count: 10k+
@@ -446,6 +438,22 @@
 - RPC URL: https://subnets.avax.network/artery/mainnet/rpc
 - Explorer URL: https://subnets.avax.network/artery
 
+**MI0624T4MS**
+- Blocks Count: 0+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 87062
+- Blockchain ID: gsMae3bMogSUpn7i2ogeCJbY6HtrP4YY6sfv85BRa6Kyr5UUa
+- RPC URL: https://subnets.avax.network/mi0624t4ms/mainnet/rpc
+- Explorer URL: https://subnets.avax.network/mi0624t4ms
+
+**MI0624T3MS**
+- Blocks Count: 0+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 50476
+- Blockchain ID: 21Wm18bBxuvDgLfsCqBra8PRNVFBxLZzLxZ2j3JXDTdf6Sm8QM
+- RPC URL: https://subnets.avax.network/mi0624t3ms/mainnet/rpc
+- Explorer URL: https://subnets.avax.network/mi0624t3ms
+
 **ULALO**
 - Blocks Count: 0+
 - Estimated Tx Count: 0+
@@ -473,7 +481,7 @@
 
 
 
-## Chains without Public RPC URLs (14)
+## Chains without Public RPC URLs (15)
 
 **Unknown**
 - EVM Chain ID: N/A
@@ -489,6 +497,11 @@
 - EVM Chain ID: 68414
 - Blockchain ID: 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB
 - Comment: The RPC URL is behind an aggressive Cloudflare Protection
+
+**coqnet**
+- EVM Chain ID: N/A
+- Blockchain ID: 23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG
+- Comment: TODO: investigate
 
 **STLINK**
 - EVM Chain ID: N/A

@@ -11,6 +11,17 @@
     "comment": null
   },
   {
+    "chainName": "MI0624T3MS",
+    "blockchainId": "21Wm18bBxuvDgLfsCqBra8PRNVFBxLZzLxZ2j3JXDTdf6Sm8QM",
+    "subnetId": "JAvcXjdGsBHr8uPgvGaVvQzVCBpbv3nxAJrJUd7X38cupD2tY",
+    "rpcUrl": "https://subnets.avax.network/mi0624t3ms/mainnet/rpc",
+    "evmChainId": "50476",
+    "blocksCount": "0+",
+    "estimatedTxCount": null,
+    "glacierChainId": "50476",
+    "comment": null
+  },
+  {
     "chainName": "gunzilla",
     "blockchainId": "222KARi6VgSZXbewFp1BvZgyuSKVa9JPb7swhbwN9fUHFKgxUD",
     "subnetId": "9ewhue9Lyryt1G4H1icgZotc6wRVwiPgmiVemSN24JXwg91JH",
@@ -45,12 +56,11 @@
     "chainName": "coqnet",
     "blockchainId": "23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG",
     "subnetId": "5moznRzaAEhzWkNTQVdT1U4Kb9EU7dbsKZQNmHwtN5MGVQRyT",
-    "rpcUrl": "https://subnets.avax.network/coqnet/mainnet/rpc",
-    "evmChainId": "42069",
-    "blocksCount": "1m+",
-    "estimatedTxCount": "100m+",
-    "glacierChainId": "42069",
-    "comment": null
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate"
   },
   {
     "chainName": "ienium",
@@ -528,6 +538,17 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "5566",
+    "comment": null
+  },
+  {
+    "chainName": "MI0624T4MS",
+    "blockchainId": "gsMae3bMogSUpn7i2ogeCJbY6HtrP4YY6sfv85BRa6Kyr5UUa",
+    "subnetId": "VHnb3J3W1tSPkRdMFSMgaskKyYd4fSfkjCBB6W8nKdDj2hEnz",
+    "rpcUrl": "https://subnets.avax.network/mi0624t4ms/mainnet/rpc",
+    "evmChainId": "87062",
+    "blocksCount": "0+",
+    "estimatedTxCount": null,
+    "glacierChainId": "87062",
     "comment": null
   },
   {

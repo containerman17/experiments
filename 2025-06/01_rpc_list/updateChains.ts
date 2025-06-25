@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { getGlacierChains, listAllBlockchains } from './lib/glacier.ts'
 import { isValidated } from './lib/pApi.ts';
-import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber, fetchBlockchainIDFromPrecompile } from './lib/evm.ts'
+import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber, fetchBlockchainIDFromPrecompile, testDebugFunctionality } from './lib/evm.ts'
 import { getIndexerStatus } from './lib/indexer.ts'
 
 const ignoreChains = [
@@ -23,16 +23,19 @@ interface ChainData {
     rpcUrl?: string;
     glacierChainId?: string;
     comment?: string;
+    debugEnabled?: boolean;
 }
 
 interface ChainWithRpc extends ChainData {
     rpcUrl: string;
     evmChainId: string;
     rawBlocksCount: number;
+    debugEnabled: boolean;
 }
 
 interface ChainWithoutRpc extends ChainData {
     glacierChainId?: string;
+    debugEnabled?: boolean;
 }
 
 // Load comments from rpcComments.json
@@ -65,19 +68,12 @@ async function getValidatedChains(): Promise<string[]> {
     return validatedResults.filter(Boolean).filter(chainId => !ignoreChains.includes(chainId as string)) as string[];
 }
 
-// Test if an RPC URL is working
-async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise<boolean> {
+// Test if an RPC URL is working and if it supports debug functionality
+async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise<{ isWorking: boolean; debugEnabled: boolean }> {
     try {
         // First check if we can get chainId
         await fetchEVMChainId(rpcUrl);
 
-        // Then check if we can get block 0x1 (block number 1)
-        // This tests if the RPC has historical data
-        // const block = await fetchBlockByNumber(rpcUrl, "latest");
-        // const latestBlockNumber = parseInt(block.number, 16)
-        // const midBlockNumber = latestBlockNumber / 2
-        // //checking if historical data is available
-        // await fetchBlockByNumber(rpcUrl, `0x${midBlockNumber.toString(16)}`)
         const blockchainId = await fetchBlockchainIDFromPrecompile(rpcUrl);
         const precompileIsAbsent = blockchainId === "45PJLL"
 
@@ -86,39 +82,42 @@ async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise
             process.exit(1);
         }
 
-        return true;
+        // Test debug functionality
+        const debugEnabled = await testDebugFunctionality(rpcUrl);
+
+        return { isWorking: true, debugEnabled };
     } catch (error) {
         // console.log(rpcUrl, error)
-        return false;
+        return { isWorking: false, debugEnabled: false };
     }
 }
 
 // Find working RPC URL for a chain
-async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, extraRpcUrl?: string): Promise<string | undefined> {
+async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, extraRpcUrl?: string): Promise<{ rpcUrl: string; debugEnabled: boolean } | undefined> {
     const meganodeUrl = `https://meganode.solokhin.com/ext/bc/${blockchainId}/rpc`;
 
     // Try extra RPC first
     if (extraRpcUrl && extraRpcUrl.trim() !== '') {
-        const isWorking = await testRpcUrl(extraRpcUrl, blockchainId);
+        const { isWorking, debugEnabled } = await testRpcUrl(extraRpcUrl, blockchainId);
         if (isWorking) {
-            console.log(`RPC for ${blockchainId}: 🔧 extra`);
-            return extraRpcUrl;
+            console.log(`RPC for ${blockchainId}: 🔧 extra${debugEnabled ? ' (debug enabled)' : ''}`);
+            return { rpcUrl: extraRpcUrl, debugEnabled };
         }
     }
 
     // Try meganode RPC second
-    const isWorking = await testRpcUrl(meganodeUrl, blockchainId);
-    if (isWorking) {
-        console.log(`RPC for ${blockchainId}: 🐊 Meganode`);
-        return meganodeUrl;
+    const { isWorking: meganodeWorking, debugEnabled: meganodeDebug } = await testRpcUrl(meganodeUrl, blockchainId);
+    if (meganodeWorking) {
+        console.log(`RPC for ${blockchainId}: 🐊 Meganode${meganodeDebug ? ' (debug enabled)' : ''}`);
+        return { rpcUrl: meganodeUrl, debugEnabled: meganodeDebug };
     }
 
     // Try official RPC last
     if (officialRpcUrl && officialRpcUrl.trim() !== '') {
-        const isWorking = await testRpcUrl(officialRpcUrl, blockchainId);
+        const { isWorking, debugEnabled } = await testRpcUrl(officialRpcUrl, blockchainId);
         if (isWorking) {
-            console.log(`RPC for ${blockchainId}: ✅ official`);
-            return officialRpcUrl;
+            console.log(`RPC for ${blockchainId}: ✅ official${debugEnabled ? ' (debug enabled)' : ''}`);
+            return { rpcUrl: officialRpcUrl, debugEnabled };
         } else {
             console.log(`🤔 Weird, the official RPC is not working: ${officialRpcUrl}.`)
         }
@@ -197,14 +196,15 @@ async function categorizeChains(
             blockchainId,
             subnetId,
             glacierChainId: glacierChain?.chainId,
-            comment
+            comment,
+            debugEnabled: false
         };
 
         // Try to find a working RPC URL (official first, then extra, then meganode)
         const workingRpcUrl = await findWorkingRpcUrl(blockchainId, officialRpcUrl, extraRpcUrl);
 
         if (workingRpcUrl) {
-            return { ...baseChain, rpcUrl: workingRpcUrl } as ChainData;
+            return { ...baseChain, rpcUrl: workingRpcUrl.rpcUrl, debugEnabled: workingRpcUrl.debugEnabled } as ChainData;
         } else {
             return baseChain;
         }
@@ -251,6 +251,7 @@ async function generateWithRpcTable(chainsWithRpc: ChainData[], officialExplorer
         content += `- EVM Chain ID: ${chain.evmChainId}\n`;
         content += `- Blockchain ID: ${chain.blockchainId}\n`;
         content += `- RPC URL: ${chain.rpcUrl}\n`;
+        content += `- Debug Enabled: ${chain.debugEnabled ? '✅' : '❌'}\n`;
         content += `- Explorer URL: ${explorerUrl}\n`;
         if (chain.comment) {
             content += `- Comment: ${chain.comment}\n`;
@@ -291,7 +292,8 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
                 blocksCount: numberToBucket(rawBlocksCount.toString()),
                 estimatedTxCount,
                 glacierChainId: chain.glacierChainId,
-                comment: chain.comment || null
+                comment: chain.comment || null,
+                debugEnabled: chain.debugEnabled
             };
         })
     );
@@ -305,7 +307,8 @@ async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: 
         blocksCount: null,
         estimatedTxCount: null,
         glacierChainId: chain.glacierChainId,
-        comment: chain.comment || 'TODO: investigate'
+        comment: chain.comment || 'TODO: investigate',
+        debugEnabled: chain.debugEnabled
     }));
 
     const allChains = [...chainsWithRpcDetails, ...chainsWithoutRpcDetails];

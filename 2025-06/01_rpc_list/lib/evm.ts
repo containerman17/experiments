@@ -105,3 +105,17 @@ export async function fetchBlockchainIDFromPrecompile(rpcUrl: string): Promise<s
 
     return avalancheChainId;
 }
+
+export async function testDebugFunctionality(rpcUrl: string): Promise<boolean> {
+    try {
+        // Try to use debug_traceBlockByNumber on block 0 (genesis block) to test if RPC supports debug functionality
+        const response = await throttledFetch(rpcUrl, "debug_traceBlockByNumber", ["0x1", {}]);
+        const data = await response.json() as { result?: any, error?: any };
+
+        // If we get a result without error, debug functionality is available
+        return !data.error && data.result !== undefined;
+    } catch (error) {
+        // If any error occurs, debug functionality is not available
+        return false;
+    }
+}

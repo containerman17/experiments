@@ -8,7 +8,8 @@
     "blocksCount": "10m+",
     "estimatedTxCount": "100m+",
     "glacierChainId": "432204",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "MI0624T3MS",
@@ -19,7 +20,8 @@
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
     "glacierChainId": "50476",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "gunzilla",
@@ -29,7 +31,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Probably a private chain. This is not the main Gunzilla Chain"
+    "comment": "Probably a private chain. This is not the main Gunzilla Chain",
+    "debugEnabled": false
   },
   {
     "chainName": "Space",
@@ -40,7 +43,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "8227",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "DOS Chain",
@@ -50,7 +54,8 @@
     "evmChainId": "7979",
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "coqnet",
@@ -60,7 +65,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "TODO: investigate"
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "ienium",
@@ -70,7 +76,8 @@
     "evmChainId": "2345",
     "blocksCount": "100+",
     "estimatedTxCount": "100+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "TITANL",
@@ -81,7 +88,8 @@
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "84358",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "HighOctane",
@@ -92,7 +100,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "1853",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "CXChain",
@@ -103,7 +112,8 @@
     "blocksCount": "100+",
     "estimatedTxCount": "100+",
     "glacierChainId": "737373",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "KOROSHIL",
@@ -114,7 +124,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "379",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "CertaLink Subnet",
@@ -124,7 +135,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "not connected to enough stake: connected to 60.000000%; required at least 80.000000%"
+    "comment": "not connected to enough stake: connected to 60.000000%; required at least 80.000000%",
+    "debugEnabled": false
   },
   {
     "chainName": "GOODCARE",
@@ -135,7 +147,8 @@
     "blocksCount": "100+",
     "estimatedTxCount": "100+",
     "glacierChainId": "741741",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "NUMINEMainnet",
@@ -146,7 +159,8 @@
     "blocksCount": "10k+",
     "estimatedTxCount": "10k+",
     "glacierChainId": "8021",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "Tiltyard",
@@ -157,7 +171,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "710420",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Marnisa",
@@ -168,7 +183,8 @@
     "blocksCount": "100+",
     "estimatedTxCount": "100+",
     "glacierChainId": "5419",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "thegrowthprotocol",
@@ -179,7 +195,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "61587",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "intersect",
@@ -190,7 +207,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "1216",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "AIBTRUSTMainnet",
@@ -200,7 +218,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Looks like a japanese company. Probably a private chain."
+    "comment": "Looks like a japanese company. Probably a private chain.",
+    "debugEnabled": false
   },
   {
     "chainName": "MUGEN",
@@ -210,7 +229,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Probably a private chain. https://www.avax.network/about/blog/japans-mugen-chain-on-avalanche-records-1m-transactions-in-1-month"
+    "comment": "Probably a private chain. https://www.avax.network/about/blog/japans-mugen-chain-on-avalanche-records-1m-transactions-in-1-month",
+    "debugEnabled": false
   },
   {
     "chainName": "QChain",
@@ -221,7 +241,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "12150",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "STLINK",
@@ -231,7 +252,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Couldn't find any public info about this project."
+    "comment": "Couldn't find any public info about this project.",
+    "debugEnabled": false
   },
   {
     "chainName": "Monsoon",
@@ -241,7 +263,8 @@
     "evmChainId": "100610",
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "FRQTALNETWORK",
@@ -252,7 +275,8 @@
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "62789",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "StepNetwork",
@@ -262,7 +286,8 @@
     "evmChainId": "1234",
     "blocksCount": "10m+",
     "estimatedTxCount": "100m+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "TradeXMarkets",
@@ -273,7 +298,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "21024",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Henesys",
@@ -284,7 +310,8 @@
     "blocksCount": null,
     "estimatedTxCount": null,
     "glacierChainId": "68414",
-    "comment": "The RPC URL is behind an aggressive Cloudflare Protection"
+    "comment": "The RPC URL is behind an aggressive Cloudflare Protection",
+    "debugEnabled": false
   },
   {
     "chainName": "gunz",
@@ -295,7 +322,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "43419",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "XANA Chain",
@@ -305,7 +333,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc"
+    "comment": "Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc",
+    "debugEnabled": false
   },
   {
     "chainName": "numbersevm",
@@ -315,7 +344,8 @@
     "evmChainId": "10507",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "Rymedi Transaction Subnet",
@@ -325,7 +355,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Seems private. Medical stuff managed by Zeeve."
+    "comment": "Seems private. Medical stuff managed by Zeeve.",
+    "debugEnabled": false
   },
   {
     "chainName": "Blockticity",
@@ -336,7 +367,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "28530",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "C-Chain",
@@ -347,7 +379,8 @@
     "blocksCount": "10m+",
     "estimatedTxCount": "100m+",
     "glacierChainId": "43114",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "BLITZ SUBNET",
@@ -358,7 +391,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "1344",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "EthixETX",
@@ -369,7 +403,8 @@
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "389",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Blaze",
@@ -380,7 +415,8 @@
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
     "glacierChainId": "46975",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "shrapnelnetwork",
@@ -391,7 +427,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "100m+",
     "glacierChainId": "2044",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Hatchyverse",
@@ -401,7 +438,8 @@
     "evmChainId": "8198",
     "blocksCount": "10k+",
     "estimatedTxCount": "10k+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "beam",
@@ -412,7 +450,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "4337",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "UPTN",
@@ -423,7 +462,8 @@
     "blocksCount": "10m+",
     "estimatedTxCount": "10m+",
     "glacierChainId": "6119",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "ULALO",
@@ -433,7 +473,8 @@
     "evmChainId": "237007",
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
-    "comment": "Looks like https://x.com/ulalo_io. No public mainnet RPC found."
+    "comment": "Looks like https://x.com/ulalo_io. No public mainnet RPC found.",
+    "debugEnabled": false
   },
   {
     "chainName": "numine",
@@ -443,7 +484,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Not sure which network is this, looks like NUMINEMainnet is the right one. "
+    "comment": "Not sure which network is this, looks like NUMINEMainnet is the right one. ",
+    "debugEnabled": false
   },
   {
     "chainName": "lucid",
@@ -454,7 +496,8 @@
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "62521",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "deraalpha",
@@ -464,7 +507,8 @@
     "evmChainId": "20250320",
     "blocksCount": "1m+",
     "estimatedTxCount": "100m+",
-    "comment": "also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc"
+    "comment": "also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc",
+    "debugEnabled": true
   },
   {
     "chainName": "zerooneMainnet",
@@ -475,7 +519,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "27827",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "even",
@@ -486,7 +531,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "33345",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Rymedi Compliance Subnet",
@@ -496,7 +542,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "See \"Rymedi Transaction Subnet\""
+    "comment": "See \"Rymedi Transaction Subnet\"",
+    "debugEnabled": false
   },
   {
     "chainName": "delaunch",
@@ -507,7 +554,8 @@
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "96786",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Bitcoin Content Network",
@@ -517,7 +565,8 @@
     "evmChainId": "71932",
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "Unknown",
@@ -527,7 +576,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "TODO: investigate"
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "StraitsX",
@@ -538,7 +588,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "5566",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "MI0624T4MS",
@@ -549,7 +600,8 @@
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
     "glacierChainId": "87062",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Rymedi Identity Subnet",
@@ -559,7 +611,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "See \"Rymedi Transaction Subnet\""
+    "comment": "See \"Rymedi Transaction Subnet\"",
+    "debugEnabled": false
   },
   {
     "chainName": "Lamina1Identity",
@@ -570,7 +623,8 @@
     "blocksCount": "10k+",
     "estimatedTxCount": "10k+",
     "glacierChainId": "10850",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "PLYRPHI",
@@ -581,7 +635,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "16180",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "bloodloop",
@@ -591,7 +646,8 @@
     "evmChainId": "578",
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "BnryMainnet",
@@ -601,7 +657,8 @@
     "evmChainId": "836",
     "blocksCount": "100k+",
     "estimatedTxCount": "100m+",
-    "comment": "8 hours left to sync, waing. TODO: remove this comment."
+    "comment": "8 hours left to sync, waing. TODO: remove this comment.",
+    "debugEnabled": true
   },
   {
     "chainName": "PLAYA3ULL",
@@ -612,7 +669,8 @@
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "3011",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Memoria",
@@ -623,7 +681,8 @@
     "blocksCount": "1k+",
     "estimatedTxCount": "10k+",
     "glacierChainId": "1888",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Mirai",
@@ -633,7 +692,8 @@
     "evmChainId": "2718",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "IntainMarkets",
@@ -643,7 +703,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "No public RPC found."
+    "comment": "No public RPC found.",
+    "debugEnabled": false
   },
   {
     "chainName": "DFK Chain",
@@ -654,7 +715,8 @@
     "blocksCount": "10m+",
     "estimatedTxCount": "100m+",
     "glacierChainId": "53935",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Animalia",
@@ -665,7 +727,8 @@
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
     "glacierChainId": "8787",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Pulsar",
@@ -676,7 +739,8 @@
     "blocksCount": "10m+",
     "estimatedTxCount": "100m+",
     "glacierChainId": "357",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Artery",
@@ -687,7 +751,8 @@
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
     "glacierChainId": "4313",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "FIFABlockchain",
@@ -698,7 +763,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "13322",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "FIZIT",
@@ -708,7 +774,8 @@
     "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": "Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/"
+    "comment": "Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/",
+    "debugEnabled": false
   },
   {
     "chainName": "KALICHAIN",
@@ -719,7 +786,8 @@
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "6533",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "feature",
@@ -730,7 +798,8 @@
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",
     "glacierChainId": "33311",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Lamina1",
@@ -741,7 +810,8 @@
     "blocksCount": "10m+",
     "estimatedTxCount": "10m+",
     "glacierChainId": "10849",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "InnovoMarketsMainnet",
@@ -752,7 +822,8 @@
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",
     "glacierChainId": "10036",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "Republic Chain",
@@ -762,7 +833,8 @@
     "evmChainId": "14594",
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "ApertumMainnet",
@@ -772,7 +844,8 @@
     "evmChainId": "2786",
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "CodeNekt",
@@ -782,6 +855,7 @@
     "evmChainId": "235235",
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
-    "comment": null
+    "comment": null,
+    "debugEnabled": false
   }
 ]

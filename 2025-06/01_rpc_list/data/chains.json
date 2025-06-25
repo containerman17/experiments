@@ -141,7 +141,7 @@
     "chainName": "NUMINEMainnet",
     "blockchainId": "2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf",
     "subnetId": "2nCzBViQ5jxLaxkg9TABx6oXu1UGU7chM7G6XzPvW9ehP8RfrJ",
-    "rpcUrl": "https://subnets.avax.network/numi/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf/rpc",
     "evmChainId": "8021",
     "blocksCount": "10k+",
     "estimatedTxCount": "10k+",

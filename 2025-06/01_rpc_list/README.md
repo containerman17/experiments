@@ -283,7 +283,7 @@
 - Estimated Tx Count: 10k+
 - EVM Chain ID: 8021
 - Blockchain ID: 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
-- RPC URL: https://subnets.avax.network/numi/mainnet/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf/rpc
 - Explorer URL: https://subnets.avax.network/numi
 
 **Hatchyverse**

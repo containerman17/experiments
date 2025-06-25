@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import LatestBlocks from "./Home/LatestBlocks";
-import LatestTransactions from "./Home/LatestTransactions";
+import LatestBlocks from "./LatestBlocks";
+import LatestTransactions from "./LatestTransactions";
 import { Avalanche } from "@avalanche-sdk/data";
 import type { EvmBlock, NativeTransaction } from "@avalanche-sdk/data/models/components";
 

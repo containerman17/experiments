@@ -1,4 +1,4 @@
-import TimeAgo from "javascript-time-ago"
+import TimeAgo, { type FormatStyleName } from "javascript-time-ago"
 import { useEffect } from "react"
 import { useState } from "react"
 import en from "javascript-time-ago/locale/en"
@@ -6,12 +6,12 @@ import en from "javascript-time-ago/locale/en"
 TimeAgo.addDefaultLocale(en)
 const timeAgo = new TimeAgo('en-US')
 
-function ago(timestamp: number) {
+function ago(timestamp: number, format: FormatStyleName = "mini") {
     const date = new Date(timestamp)
-    return timeAgo.format(date, 'mini')
+    return timeAgo.format(date, format)
 }
 
-export default function Ago({ timestamp }: { timestamp: number }) {
+export default function Ago({ timestamp, format = "mini" }: { timestamp: number, format?: FormatStyleName }) {
     const [, setCurrentTime] = useState(Date.now())
 
     useEffect(() => {
@@ -43,6 +43,6 @@ export default function Ago({ timestamp }: { timestamp: number }) {
     }, [timestamp])
 
     return <time dateTime={new Date(timestamp).toISOString()} className="font-mono">
-        {ago(timestamp)}
+        {ago(timestamp, format)}
     </time>
 }

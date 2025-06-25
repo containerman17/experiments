@@ -1,0 +1,23 @@
+{
+  "name": "07_lmdb_based",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@avalabs/avalanchejs": "^5.0.0",
+    "@types/node": "^24.0.4",
+    "node-lmdb": "^0.10.1",
+    "p-queue": "^8.1.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

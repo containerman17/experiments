@@ -46,7 +46,7 @@ export interface Transaction {
     s: string;
     maxFeePerGas?: string;
     maxPriorityFeePerGas?: string;
-    accessList?: any[];
+    accessList?: string[];
     yParity?: string;
 }
 

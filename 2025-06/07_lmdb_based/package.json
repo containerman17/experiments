@@ -11,6 +11,8 @@
   "description": "",
   "dependencies": {
     "@avalabs/avalanchejs": "^5.0.0",
+    "@ethereumjs/rlp": "^10.0.0",
+    "@noble/curves": "^1.9.2",
     "@types/node": "^24.0.4",
     "node-lmdb": "^0.10.1",
     "p-queue": "^8.1.0",

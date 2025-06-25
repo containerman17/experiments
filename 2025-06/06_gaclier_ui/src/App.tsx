@@ -2,6 +2,7 @@ import { Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home/Home'
 import Block from './pages/Block/Block'
 import NotFound from './components/NotFound'
+import Tx from './pages/Tx/Tx'
 
 function App() {
     return (
@@ -30,6 +31,7 @@ function App() {
                 <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/block/:blockId" element={<Block />} />
+                    <Route path="/tx/:txHash" element={<Tx />} />
                     <Route path="/404" element={<NotFound />} />
                     <Route path="*" element={<NotFound />} />
                 </Routes>

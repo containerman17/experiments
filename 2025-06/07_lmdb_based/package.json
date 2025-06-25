@@ -14,6 +14,7 @@
     "@ethereumjs/rlp": "^10.0.0",
     "@noble/curves": "^1.9.2",
     "@types/node": "^24.0.4",
+    "lz4-napi": "^2.8.0",
     "node-lmdb": "^0.10.1",
     "p-queue": "^8.1.0",
     "tsx": "^4.20.3",

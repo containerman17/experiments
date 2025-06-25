@@ -254,37 +254,126 @@ if (txWithTo) {
 }
 
 // Compression comparison
-import { compress } from './compressor'
+import { compress, decompress, compressLZ4, compressRaw, compressRawLZ4, decompressRaw } from './compressor'
 
 async function compareCompression() {
-    console.log('\n=== COMPRESSION COMPARISON ===')
+    console.log('\n=== COMPREHENSIVE BENCHMARK ===')
 
     // Original data sizes
     const jsonData = JSON.stringify(block)
     const rlpData = encoded
+    const jsonBuffer = Buffer.from(jsonData, 'utf8')
+    const rlpBuffer = Buffer.from(rlpData)
 
     console.log('Original sizes:')
     console.log('  JSON size:', jsonData.length, 'bytes')
     console.log('  RLP size:', rlpData.length, 'bytes')
-    console.log('  RLP vs JSON ratio:', (rlpData.length / jsonData.length * 100).toFixed(1) + '%')
+    console.log('')
 
-    // Test compression levels 1 and 18
-    for (const level of [1, 18]) {
-        console.log(`\nCompression level ${level}:`)
+    const numRuns = 10000
 
-        // Compress JSON
-        const compressedJson = await compress(block, level)
-        console.log('  JSON compressed:', compressedJson.length, 'bytes')
-        console.log('  JSON compression ratio:', (compressedJson.length / jsonData.length * 100).toFixed(1) + '%')
-
-        // Compress RLP (need to convert to object that compress function can handle)
-        const rlpAsBuffer = Buffer.from(rlpData)
-        const compressedRlp = await compress(Array.from(rlpAsBuffer), level)
-        console.log('  RLP compressed:', compressedRlp.length, 'bytes')
-        console.log('  RLP compression ratio:', (compressedRlp.length / rlpData.length * 100).toFixed(1) + '%')
-
-        console.log('  Best format: RLP compressed is', (compressedRlp.length / compressedJson.length * 100).toFixed(1) + '% of JSON compressed')
+    // Pre-compress all formats
+    const formats = {
+        'JSON+plain': { data: jsonBuffer, size: jsonBuffer.length },
+        'JSON+lz4': { data: await compressLZ4(block), size: (await compressLZ4(block)).length },
+        'JSON+zstd': { data: await compress(block, 1), size: (await compress(block, 1)).length },
+        'RLP+plain': { data: rlpBuffer, size: rlpBuffer.length },
+        'RLP+lz4': { data: await compressRawLZ4(rlpBuffer), size: (await compressRawLZ4(rlpBuffer)).length },
+        'RLP+zstd': { data: await compressRaw(rlpBuffer, 1), size: (await compressRaw(rlpBuffer, 1)).length }
     }
+
+    const results: Array<{
+        format: string;
+        time: number;
+        avgTime: string;
+        size: number;
+    }> = []
+
+    for (const [formatName, format] of Object.entries(formats)) {
+        console.log(`Testing ${formatName}...`)
+
+        let totalTime = 0
+
+        if (formatName.startsWith('JSON+plain')) {
+            // JSON plain: just parse JSON
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(() =>
+                Promise.resolve(JSON.parse(format.data.toString('utf8')))
+            )
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+
+        } else if (formatName.startsWith('JSON+')) {
+            // JSON compressed: decompress + parse JSON
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(async () => {
+                return await decompress(format.data)
+            })
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+
+        } else if (formatName.startsWith('RLP+plain')) {
+            // RLP plain: decode RLP + decode block
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(() =>
+                Promise.resolve(decodeBlock(format.data))
+            )
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+
+        } else if (formatName.startsWith('RLP+')) {
+            // RLP compressed: decompress + decode RLP + decode block
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(async () => {
+                const decompressed = await decompressRaw(format.data)
+                return decodeBlock(decompressed)
+            })
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+        }
+
+        results.push({
+            format: formatName,
+            time: totalTime,
+            avgTime: (totalTime / numRuns).toFixed(3),
+            size: format.size
+        })
+    }
+
+    // Create table
+    console.log('\n=== RESULTS TABLE ===')
+    console.log('Format'.padEnd(12), 'Time (ms)'.padEnd(10), 'Avg (ms)'.padEnd(10), 'Size (bytes)'.padEnd(12), 'Size Ratio')
+    console.log('-'.repeat(70))
+
+    for (const result of results) {
+        const sizeRatio = ((result.size / jsonData.length) * 100).toFixed(1) + '%'
+        console.log(
+            result.format.padEnd(12),
+            result.time.toString().padEnd(10),
+            result.avgTime.padEnd(10),
+            result.size.toString().padEnd(12),
+            sizeRatio
+        )
+    }
+
+    // Performance analysis
+    console.log('\n=== PERFORMANCE ANALYSIS ===')
+    const jsonPlain = results.find(r => r.format === 'JSON+plain')
+    const rlpPlain = results.find(r => r.format === 'RLP+plain')
+    const jsonLz4 = results.find(r => r.format === 'JSON+lz4')
+    const rlpLz4 = results.find(r => r.format === 'RLP+lz4')
+    const jsonZstd = results.find(r => r.format === 'JSON+zstd')
+    const rlpZstd = results.find(r => r.format === 'RLP+zstd')
+
+    console.log('Fastest overall:', results.reduce((min, curr) => curr.time < min.time ? curr : min).format)
+    console.log('Smallest size:', results.reduce((min, curr) => curr.size < min.size ? curr : min).format)
+
+    console.log('\nFormat decode speed comparison (plain formats):')
+    console.log(`  RLP decode is ${(rlpPlain?.time ?? 0 / (jsonPlain?.time ?? 0) * 100).toFixed(1)}% of JSON parse time`)
+
+    console.log('\nBest compressed options:')
+    console.log(`  Speed: ${results.sort((a, b) => a.time - b.time)[0].format} (${results[0].avgTime}ms avg)`)
+    console.log(`  Size: ${results.sort((a, b) => a.size - b.size)[0].format} (${results.sort((a, b) => a.size - b.size)[0].size} bytes)`)
 }
 
 compareCompression().catch(console.error)

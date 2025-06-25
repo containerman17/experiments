@@ -30,6 +30,10 @@ export const serializeHex = (hex: string): Uint8Array => {
     return bytes;
 }
 
+export const serializeNumber = (number: number): Uint8Array => {
+    return serializeHex(number.toString(16))
+}
+
 export const deserializeNumber = (bytes: Uint8Array): number => {
     let result = 0;
     for (let i = 0; i < bytes.length; i++) {
@@ -52,7 +56,7 @@ export const deserializeFixedLenHex = (bytes: Uint8Array): string => {
         .join('');
 }
 
-export const deserializeVariableLenHex = (bytes: Uint8Array): string => {
+export const deserializeHex = (bytes: Uint8Array): string => {
     const hex = Array.from(bytes)
         .map(byte => byte.toString(16).padStart(2, '0'))
         .join('');

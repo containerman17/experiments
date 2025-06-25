@@ -2,6 +2,8 @@ import { RLP } from '@ethereumjs/rlp'
 import assert from 'assert'
 import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from '@noble/curves/abstract/utils';
 import { Block } from './blockFetcher/evmTypes';
+import { serializeHex, serializeFixedLenHex, serializeNumber, deserializeHex, deserializeFixedLenHex, deserializeNumber } from './blockFetcher/serialize';
+import { Buffer } from 'buffer';
 
 
 function encodeBlock(block: Block) {
@@ -75,6 +77,17 @@ function encodeBlock(block: Block) {
 
 import block from './blockFetcher/data/block.example.json'
 const encoded = encodeBlock(block)
+const customEncoded = encodeBlockCustom(block)
+
+console.log('RLP encoded size:', encoded.length, 'bytes')
+console.log('Custom encoded size:', customEncoded.length, 'bytes')
+console.log('Custom vs RLP ratio:', (customEncoded.length / encoded.length * 100).toFixed(1) + '%')
+
+// Test custom decoding
+const customRestored = decodeBlockCustom(customEncoded)
+console.log('Custom decode test - transactions match:',
+    customRestored.transactions.length === block.transactions.length &&
+    customRestored.transactions[0]?.to === block.transactions[0]?.to)
 
 const decoded = RLP.decode(encoded) as Uint8Array[]
 
@@ -230,8 +243,6 @@ const restoredJSON = JSON.stringify(restoredBlock)
 console.log('Blocks match:', originalJSON.toLowerCase() === restoredJSON.toLowerCase())
 console.log('JSON lengths - Original:', originalJSON.length, 'Restored:', restoredJSON.length)
 
-console.log(JSON.stringify(block))
-console.log(JSON.stringify(restoredBlock))
 
 
 // More detailed comparison
@@ -279,7 +290,10 @@ async function compareCompression() {
         'JSON+zstd': { data: await compress(block, 1), size: (await compress(block, 1)).length },
         'RLP+plain': { data: rlpBuffer, size: rlpBuffer.length },
         'RLP+lz4': { data: await compressRawLZ4(rlpBuffer), size: (await compressRawLZ4(rlpBuffer)).length },
-        'RLP+zstd': { data: await compressRaw(rlpBuffer, 1), size: (await compressRaw(rlpBuffer, 1)).length }
+        'RLP+zstd': { data: await compressRaw(rlpBuffer, 1), size: (await compressRaw(rlpBuffer, 1)).length },
+        'CUSTOM+plain': { data: Buffer.from(customEncoded), size: customEncoded.length },
+        'CUSTOM+lz4': { data: await compressRawLZ4(Buffer.from(customEncoded)), size: (await compressRawLZ4(Buffer.from(customEncoded))).length },
+        'CUSTOM+zstd': { data: await compressRaw(Buffer.from(customEncoded), 1), size: (await compressRaw(Buffer.from(customEncoded), 1)).length }
     }
 
     const results: Array<{
@@ -330,6 +344,24 @@ async function compareCompression() {
             })
             await Promise.all(promises)
             totalTime = Date.now() - start
+        } else if (formatName.startsWith('CUSTOM+plain')) {
+            // CUSTOM plain: decode CUSTOM + decode block
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(() =>
+                Promise.resolve(decodeBlockCustom(format.data))
+            )
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+
+        } else if (formatName.startsWith('CUSTOM+')) {
+            // CUSTOM compressed: decompress + decode CUSTOM + decode block
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(async () => {
+                const decompressed = await decompressRaw(format.data)
+                return decodeBlockCustom(decompressed)
+            })
+            await Promise.all(promises)
+            totalTime = Date.now() - start
         }
 
         results.push({
@@ -369,7 +401,7 @@ async function compareCompression() {
     console.log('Smallest size:', results.reduce((min, curr) => curr.size < min.size ? curr : min).format)
 
     console.log('\nFormat decode speed comparison (plain formats):')
-    console.log(`  RLP decode is ${(rlpPlain?.time ?? 0 / (jsonPlain?.time ?? 0) * 100).toFixed(1)}% of JSON parse time`)
+    console.log(`  RLP decode is ${((rlpPlain?.time ?? 0) / (jsonPlain?.time ?? 1) * 100).toFixed(1)}% of JSON parse time`)
 
     console.log('\nBest compressed options:')
     console.log(`  Speed: ${results.sort((a, b) => a.time - b.time)[0].format} (${results[0].avgTime}ms avg)`)
@@ -377,3 +409,199 @@ async function compareCompression() {
 }
 
 compareCompression().catch(console.error)
+
+function encodeBlockCustom(block: Block): Uint8Array {
+    const parts: Buffer[] = []
+
+    // Helper to write length-prefixed variable data
+    const writeVariableBytes = (data: Uint8Array) => {
+        if (data.length > 255) throw new Error('Variable data too long')
+        parts.push(Buffer.from([data.length]))
+        parts.push(data as Buffer)
+    }
+
+    // Serialize all block fields with length prefixes for variable data
+    writeVariableBytes(serializeHex(block.baseFeePerGas ?? '0x0'))
+    writeVariableBytes(serializeHex(block.blobGasUsed ?? '0x0'))
+    writeVariableBytes(serializeHex(block.blockGasCost ?? '0x0'))
+    writeVariableBytes(serializeHex(block.difficulty))
+    writeVariableBytes(serializeHex(block.excessBlobGas ?? '0x0'))
+    writeVariableBytes(serializeHex(block.extraData))
+    writeVariableBytes(serializeHex(block.gasLimit))
+    writeVariableBytes(serializeHex(block.gasUsed))
+    parts.push(serializeFixedLenHex(block.hash, 32))
+    parts.push(serializeFixedLenHex(block.logsBloom, 256))
+    parts.push(serializeFixedLenHex(block.miner, 20))
+    parts.push(serializeFixedLenHex(block.mixHash, 32))
+    parts.push(serializeFixedLenHex(block.nonce, 8))
+    writeVariableBytes(serializeHex(block.number))
+    parts.push(serializeFixedLenHex(block.parentBeaconBlockRoot ?? '0x'.padEnd(66, '0'), 32))
+    parts.push(serializeFixedLenHex(block.parentHash, 32))
+    parts.push(serializeFixedLenHex(block.receiptsRoot, 32))
+    parts.push(serializeFixedLenHex(block.sha3Uncles, 32))
+    writeVariableBytes(serializeHex(block.size))
+    parts.push(serializeFixedLenHex(block.stateRoot, 32))
+    writeVariableBytes(serializeHex(block.timestamp))
+    writeVariableBytes(serializeHex(block.totalDifficulty))
+    parts.push(serializeFixedLenHex(block.transactionsRoot, 32))
+
+    // Serialize uncles count and uncles
+    writeVariableBytes(serializeNumber(block.uncles.length))
+    for (const uncle of block.uncles) {
+        writeVariableBytes(serializeHex(uncle))
+    }
+
+    // Serialize transactions count and transactions
+    writeVariableBytes(serializeNumber(block.transactions.length))
+    for (const tx of block.transactions) {
+        parts.push(serializeFixedLenHex(tx.blockHash, 32))
+        writeVariableBytes(serializeHex(tx.blockNumber))
+        parts.push(serializeFixedLenHex(tx.from, 20))
+        writeVariableBytes(serializeHex(tx.gas))
+        writeVariableBytes(serializeHex(tx.gasPrice))
+        writeVariableBytes(serializeHex(tx.maxFeePerGas ?? '0x0'))
+        writeVariableBytes(serializeHex(tx.maxPriorityFeePerGas ?? '0x0'))
+        parts.push(serializeFixedLenHex(tx.hash, 32))
+        writeVariableBytes(serializeHex(tx.input))
+        writeVariableBytes(serializeHex(tx.nonce))
+
+        // Handle conditional 'to' field
+        if (tx.to) {
+            parts.push(Buffer.from([1])) // has 'to'
+            parts.push(serializeFixedLenHex(tx.to, 20))
+        } else {
+            parts.push(Buffer.from([0])) // no 'to'
+        }
+
+        writeVariableBytes(serializeHex(tx.transactionIndex))
+        writeVariableBytes(serializeHex(tx.value))
+        writeVariableBytes(serializeHex(tx.type))
+
+        // Serialize access list
+        writeVariableBytes(serializeNumber(tx.accessList?.length ?? 0))
+        for (const address of tx.accessList ?? []) {
+            writeVariableBytes(serializeHex(address))
+        }
+
+        writeVariableBytes(serializeHex(tx.chainId))
+        writeVariableBytes(serializeHex(tx.v))
+        parts.push(serializeFixedLenHex(tx.r, 32))
+        parts.push(serializeFixedLenHex(tx.s, 32))
+        writeVariableBytes(serializeHex(tx.yParity ?? '0x0'))
+    }
+
+    // Calculate total length and create result buffer
+    // Concatenate all parts into a single Buffer
+    return Buffer.concat(parts)
+}
+
+function decodeBlockCustom(data: Uint8Array): Block {
+    let offset = 0
+
+    const readVariableBytes = (): Uint8Array => {
+        const length = data[offset]
+        offset++
+        const result = data.slice(offset, offset + length)
+        offset += length
+        return result
+    }
+
+    const readFixedBytes = (length: number): Uint8Array => {
+        const result = data.slice(offset, offset + length)
+        offset += length
+        return result
+    }
+
+    const readVariableHex = (): string => {
+        return deserializeHex(readVariableBytes())
+    }
+
+    const readFixedHex = (length: number): string => {
+        return deserializeFixedLenHex(readFixedBytes(length))
+    }
+
+    const readNumber = (): number => {
+        return deserializeNumber(readVariableBytes())
+    }
+
+    // Decode block fields
+    const block: Block = {
+        baseFeePerGas: readVariableHex(),
+        blobGasUsed: readVariableHex(),
+        blockGasCost: readVariableHex(),
+        difficulty: readVariableHex(),
+        excessBlobGas: readVariableHex(),
+        extraData: readVariableHex(),
+        gasLimit: readVariableHex(),
+        gasUsed: readVariableHex(),
+        hash: readFixedHex(32),
+        logsBloom: readFixedHex(256),
+        miner: readFixedHex(20),
+        mixHash: readFixedHex(32),
+        nonce: readFixedHex(8),
+        number: readVariableHex(),
+        parentBeaconBlockRoot: readFixedHex(32),
+        parentHash: readFixedHex(32),
+        receiptsRoot: readFixedHex(32),
+        sha3Uncles: readFixedHex(32),
+        size: readVariableHex(),
+        stateRoot: readFixedHex(32),
+        timestamp: readVariableHex(),
+        totalDifficulty: readVariableHex(),
+        transactionsRoot: readFixedHex(32),
+        uncles: [],
+        transactions: []
+    }
+
+    // Decode uncles
+    const uncleCount = readNumber()
+    for (let i = 0; i < uncleCount; i++) {
+        block.uncles.push(readVariableHex())
+    }
+
+    // Decode transactions
+    const txCount = readNumber()
+    for (let i = 0; i < txCount; i++) {
+        const transaction: any = {
+            blockHash: readFixedHex(32),
+            blockNumber: readVariableHex(),
+            from: readFixedHex(20),
+            gas: readVariableHex(),
+            gasPrice: readVariableHex(),
+            maxFeePerGas: readVariableHex(),
+            maxPriorityFeePerGas: readVariableHex(),
+            hash: readFixedHex(32),
+            input: readVariableHex(),
+            nonce: readVariableHex()
+        }
+
+        // Handle conditional 'to' field
+        const hasTo = data[offset++]
+        if (hasTo === 1) {
+            transaction.to = readFixedHex(20)
+        } else {
+            transaction.to = null
+        }
+
+        transaction.transactionIndex = readVariableHex()
+        transaction.value = readVariableHex()
+        transaction.type = readVariableHex()
+
+        // Decode access list
+        const accessListLength = readNumber()
+        transaction.accessList = []
+        for (let j = 0; j < accessListLength; j++) {
+            transaction.accessList.push(readVariableHex())
+        }
+
+        transaction.chainId = readVariableHex()
+        transaction.v = readVariableHex()
+        transaction.r = readFixedHex(32)
+        transaction.s = readFixedHex(32)
+        transaction.yParity = readVariableHex()
+
+        block.transactions.push(transaction)
+    }
+
+    return block
+}

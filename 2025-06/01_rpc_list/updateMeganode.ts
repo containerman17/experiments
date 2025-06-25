@@ -6,10 +6,6 @@ import { generateCompose } from './lib/generateCompose';
 import { config } from 'dotenv';
 config()
 
-const chainsWithoutRpc = chains.filter(chain => !chain.rpcUrl)
-const extraChainsToTrack = chains.filter(chain => trackExtraChains.includes(chain.blockchainId))
-const allChainsToTrack = [...chainsWithoutRpc, ...extraChainsToTrack]
-
 const subnetsToBlockchainId: Record<string, string[]> = {};
 for (const chain of chains) {
     if (!subnetsToBlockchainId[chain.subnetId]) {
@@ -20,8 +16,9 @@ for (const chain of chains) {
     }
 }
 
-// All subnets that have chains without an RPC URL or are explicitly tracked
-const subnetsToTrack = [...new Set(allChainsToTrack.map(chain => chain.subnetId))];
+// All subnets from all chains
+const PRIMARY_SUBNET_ID = "11111111111111111111111111111111LpoYY"
+const subnetsToTrack = [...new Set(chains.map(chain => chain.subnetId))].filter(subnet => subnet !== PRIMARY_SUBNET_ID)
 
 // Get all currently assigned subnets across all nodes
 const currentlyAssigned = new Set();

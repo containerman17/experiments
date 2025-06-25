@@ -331,7 +331,7 @@
 - Estimated Tx Count: 100+
 - EVM Chain ID: 737373
 - Blockchain ID: 25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV
-- RPC URL: https://subnets.avax.network/cx/mainnet/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV/rpc
 - Explorer URL: https://subnets.avax.network/cx
 
 **Marnisa**
@@ -339,7 +339,7 @@
 - Estimated Tx Count: 100+
 - EVM Chain ID: 5419
 - Blockchain ID: 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
-- RPC URL: https://subnets.avax.network/marnisa/mainnet/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK/rpc
 - Explorer URL: https://subnets.avax.network/marnisa
 
 **GOODCARE**
@@ -347,7 +347,7 @@
 - Estimated Tx Count: 100+
 - EVM Chain ID: 741741
 - Blockchain ID: 2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
-- RPC URL: https://subnets.avax.network/goodcare/mainnet/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu/rpc
 - Explorer URL: https://subnets.avax.network/goodcare
 
 **ienium**
@@ -440,7 +440,7 @@
 
 **MI0624T4MS**
 - Blocks Count: 0+
-- Estimated Tx Count: Unknown
+- Estimated Tx Count: 0+
 - EVM Chain ID: 87062
 - Blockchain ID: gsMae3bMogSUpn7i2ogeCJbY6HtrP4YY6sfv85BRa6Kyr5UUa
 - RPC URL: https://subnets.avax.network/mi0624t4ms/mainnet/rpc
@@ -448,10 +448,10 @@
 
 **MI0624T3MS**
 - Blocks Count: 0+
-- Estimated Tx Count: Unknown
+- Estimated Tx Count: 0+
 - EVM Chain ID: 50476
 - Blockchain ID: 21Wm18bBxuvDgLfsCqBra8PRNVFBxLZzLxZ2j3JXDTdf6Sm8QM
-- RPC URL: https://subnets.avax.network/mi0624t3ms/mainnet/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/21Wm18bBxuvDgLfsCqBra8PRNVFBxLZzLxZ2j3JXDTdf6Sm8QM/rpc
 - Explorer URL: https://subnets.avax.network/mi0624t3ms
 
 **ULALO**

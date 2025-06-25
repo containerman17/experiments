@@ -170,6 +170,7 @@ export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnet
     // Add nginx service
     composeObject.services.nginx = {
         image: 'nginx:1.25-alpine',
+        container_name: 'nginx',
         configs: [
             {
                 source: 'nginx_conf',

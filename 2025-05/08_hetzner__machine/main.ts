@@ -58,29 +58,23 @@ interface HetznerData {
 const response = await fetch("https://www.hetzner.com/_resources/app/data/app/live_data_sb_USD.json");
 const data: HetznerData = await response.json();
 
-// Sort servers by total NVMe + SATA disk size in descending order
+const desiredCpus = ["AMD Ryzen 9 5950X", "Intel Core i9-12900K", "Intel Core i5-12500"];
+
+// Sort servers by total NVMe size descending, then by price ascending
 data.server.sort((a, b) => {
-    const totalDiskA = a.serverDiskData.nvme.reduce((sum, size) => sum + size, 0) + a.serverDiskData.sata.reduce((sum, size) => sum + size, 0);
-    const totalDiskB = b.serverDiskData.nvme.reduce((sum, size) => sum + size, 0) + b.serverDiskData.sata.reduce((sum, size) => sum + size, 0);
+    const nvmeSizeA = a.serverDiskData.nvme.reduce((sum, size) => sum + size, 0);
+    const nvmeSizeB = b.serverDiskData.nvme.reduce((sum, size) => sum + size, 0);
 
+    if (nvmeSizeA !== nvmeSizeB) {
+        return nvmeSizeB - nvmeSizeA; // Descending by NVMe size
+    }
 
-    // if (totalDiskA > totalDiskB) {
-    //     return -1;
-    // } else if (totalDiskA < totalDiskB) {
-    //     return 1;
-    // } else {
-    //     return a.price - b.price;
-    // }
-
-    const coefA = totalDiskA / a.price;
-    const coefB = totalDiskB / b.price;
-
-    return coefB - coefA;
+    return a.price - b.price; // Ascending by price if NVMe sizes are equal
 });
 
 // Create table
 const table = new Table({
-    title: "Top 20 Hetzner Servers by Disk/Price Ratio",
+    title: "Hetzner Servers (Sorted by NVMe Size, then Price)",
     columns: [
         { name: 'datacenter', title: 'Datacenter', alignment: 'left' },
         { name: 'cpu', title: 'CPU', alignment: 'left' },
@@ -92,12 +86,7 @@ const table = new Table({
     ]
 });
 
-const desiredCpus = ["AMD Ryzen 9 5950X", "Intel Core i9-12900K", "Intel Core i5-12500"];
-
 data.server.forEach(server => {
-    if (!desiredCpus.includes(server.cpu)) {
-        return;
-    }
 
     const totalDiskSize = server.serverDiskData.nvme.reduce((sum, size) => sum + size, 0)
         + server.serverDiskData.sata.reduce((sum, size) => sum + size, 0);
@@ -125,9 +114,12 @@ data.server.forEach(server => {
     const allDisks = [nvmeDisks, sataDisks, hddDisks].filter(Boolean).join(" + ");
     const ratio = (totalDiskSize / server.price).toFixed(1);
 
+    const cpuEmoji = desiredCpus.includes(server.cpu) ? "⭐" : "💩";
+    const displayCpu = `${cpuEmoji} ${server.cpu}`;
+
     table.addRow({
         datacenter: server.datacenter,
-        cpu: server.cpu,
+        cpu: displayCpu,
         ram: server.ram_size,
         totalDisk: totalDiskSize,
         price: server.price,
@@ -137,8 +129,3 @@ data.server.forEach(server => {
 });
 
 table.printTable();
-
-
-
-const allCpus = [...new Set(data.server.map(server => server.cpu))].sort();
-console.log(`Desired CPUs: ${desiredCpus.join(", ")}. Undesired CPUs: ${allCpus.join(", ")}`);

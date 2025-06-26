@@ -99,13 +99,13 @@
 - Estimated Tx Count: 1m+
 - EVM Chain ID: 43419
 - Blockchain ID: 2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML
-- RPC URL: https://subnets.avax.network/gunzilla/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/gunzilla
 
 **thegrowthprotocol**
 - Blocks Count: 1m+
-- Estimated Tx Count: 1m+
+- Estimated Tx Count: 10m+
 - EVM Chain ID: 61587
 - Blockchain ID: 2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY
 - RPC URL: https://subnets.avax.network/tgp/mainnet/rpc
@@ -127,8 +127,8 @@
 - Estimated Tx Count: 1m+
 - EVM Chain ID: 1853
 - Blockchain ID: 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
-- RPC URL: https://subnets.avax.network/highoctane/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/highoctane
 
 **Tiltyard**
@@ -136,8 +136,8 @@
 - Estimated Tx Count: 1m+
 - EVM Chain ID: 710420
 - Blockchain ID: 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
-- RPC URL: https://subnets.avax.network/tiltyard/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/tiltyard
 
 **PLAYA3ULL**
@@ -154,8 +154,8 @@
 - Estimated Tx Count: 1m+
 - EVM Chain ID: 21024
 - Blockchain ID: 2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK
-- RPC URL: https://subnets.avax.network/trx/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/trx
 
 **DOS Chain**
@@ -172,8 +172,8 @@
 - Estimated Tx Count: 1m+
 - EVM Chain ID: 8227
 - Blockchain ID: 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
-- RPC URL: https://subnets.avax.network/space/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/space
 
 **ApertumMainnet**
@@ -190,8 +190,8 @@
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 16180
 - Blockchain ID: HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4
-- RPC URL: https://subnets.avax.network/plyr/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/plyr
 
 **numbersevm**
@@ -227,8 +227,8 @@
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 27827
 - Blockchain ID: 2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1
-- RPC URL: https://subnets.avax.network/zeroonemai/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/zeroonemai
 
 **KOROSHIL**
@@ -254,8 +254,8 @@
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 33345
 - Blockchain ID: 2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL
-- RPC URL: https://subnets.avax.network/even/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/even
 
 **BLITZ SUBNET**
@@ -263,8 +263,8 @@
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 1344
 - Blockchain ID: 2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
-- RPC URL: https://subnets.avax.network/blitz/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/blitz
 
 **FIFABlockchain**
@@ -272,35 +272,35 @@
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 13322
 - Blockchain ID: SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E
-- RPC URL: https://subnets.avax.network/fifa/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/fifa
-
-**KALICHAIN**
-- Blocks Count: 100k+
-- Estimated Tx Count: 100k+
-- EVM Chain ID: 6533
-- Blockchain ID: TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
-- RPC URL: https://subnets.avax.network/kalichain/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/kalichain
 
 **Blockticity**
 - Blocks Count: 100k+
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 28530
 - Blockchain ID: 2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc
-- RPC URL: https://subnets.avax.network/btic/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/btic
+
+**KALICHAIN**
+- Blocks Count: 100k+
+- Estimated Tx Count: 100k+
+- EVM Chain ID: 6533
+- Blockchain ID: TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
+- RPC URL: https://meganode.solokhin.com/ext/bc/TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3/rpc
+- Debug Enabled: ✅
+- Explorer URL: https://subnets.avax.network/kalichain
 
 **StraitsX**
 - Blocks Count: 100k+
 - Estimated Tx Count: 100k+
 - EVM Chain ID: 5566
 - Blockchain ID: EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx
-- RPC URL: https://subnets.avax.network/straitsx/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/straitsx
 
 **Lamina1Identity**
@@ -308,8 +308,8 @@
 - Estimated Tx Count: 10k+
 - EVM Chain ID: 10850
 - Blockchain ID: hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N
-- RPC URL: https://subnets.avax.network/lamina1id/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/lamina1id
 
 **NUMINEMainnet**
@@ -344,8 +344,8 @@
 - Estimated Tx Count: 1k+
 - EVM Chain ID: 33311
 - Blockchain ID: txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
-- RPC URL: https://subnets.avax.network/feature/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/feature
 
 **bloodloop**
@@ -362,8 +362,8 @@
 - Estimated Tx Count: 1k+
 - EVM Chain ID: 10036
 - Blockchain ID: vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
-- RPC URL: https://subnets.avax.network/innovo/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/innovo
 
 **CXChain**
@@ -383,6 +383,15 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK/rpc
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/marnisa
+
+**BangoL**
+- Blocks Count: 100+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 5506
+- Blockchain ID: QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4
+- RPC URL: https://subnets.avax.network/bangochain/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/bangochain
 
 **GOODCARE**
 - Blocks Count: 100+
@@ -407,8 +416,8 @@
 - Estimated Tx Count: 10+
 - EVM Chain ID: 62789
 - Blockchain ID: 2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB
-- RPC URL: https://subnets.avax.network/frqtalnet/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/frqtalnet
 
 **EthixETX**
@@ -416,8 +425,8 @@
 - Estimated Tx Count: 10+
 - EVM Chain ID: 389
 - Blockchain ID: 2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE
-- RPC URL: https://subnets.avax.network/etx/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/etx
 
 **TITANL**
@@ -434,8 +443,8 @@
 - Estimated Tx Count: 10+
 - EVM Chain ID: 96786
 - Blockchain ID: 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
-- RPC URL: https://subnets.avax.network/delaunch/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/delaunch
 
 **lucid**
@@ -443,9 +452,19 @@
 - Estimated Tx Count: 10+
 - EVM Chain ID: 62521
 - Blockchain ID: 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
-- RPC URL: https://subnets.avax.network/lucid/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/lucid
+
+**amichainMainnet**
+- Blocks Count: 10+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 588785742
+- Blockchain ID: 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc
+- RPC URL: https://rpc.amichain.org
+- Debug Enabled: ❌
+- Explorer URL: ❌
+- Comment: https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,
 
 **Monsoon**
 - Blocks Count: 10+
@@ -479,8 +498,8 @@
 - Estimated Tx Count: 0+
 - EVM Chain ID: 8787
 - Blockchain ID: QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
-- RPC URL: https://subnets.avax.network/animalia/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/animalia
 
 **Artery**
@@ -488,27 +507,9 @@
 - Estimated Tx Count: 0+
 - EVM Chain ID: 4313
 - Blockchain ID: rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6
-- RPC URL: https://subnets.avax.network/artery/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/artery
-
-**MI0624T4MS**
-- Blocks Count: 0+
-- Estimated Tx Count: 0+
-- EVM Chain ID: 87062
-- Blockchain ID: gsMae3bMogSUpn7i2ogeCJbY6HtrP4YY6sfv85BRa6Kyr5UUa
-- RPC URL: https://subnets.avax.network/mi0624t4ms/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/mi0624t4ms
-
-**MI0624T3MS**
-- Blocks Count: 0+
-- Estimated Tx Count: 0+
-- EVM Chain ID: 50476
-- Blockchain ID: 21Wm18bBxuvDgLfsCqBra8PRNVFBxLZzLxZ2j3JXDTdf6Sm8QM
-- RPC URL: https://meganode.solokhin.com/ext/bc/21Wm18bBxuvDgLfsCqBra8PRNVFBxLZzLxZ2j3JXDTdf6Sm8QM/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/mi0624t3ms
 
 **ULALO**
 - Blocks Count: 0+
@@ -534,7 +535,7 @@
 - Estimated Tx Count: 0+
 - EVM Chain ID: 46975
 - Blockchain ID: 2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY
-- RPC URL: https://subnets.avax.network/blaze/mainnet/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/blaze
 
@@ -542,9 +543,9 @@
 
 ## Chains without Public RPC URLs (15)
 
-**Unknown**
+**SSHIVANSH**
 - EVM Chain ID: N/A
-- Blockchain ID: AWJN2rFNhdj49QL8F6Nq5gUX7PDFCDGBZtXMjDw9sxZNGPFpc
+- Blockchain ID: 2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW
 - Comment: TODO: investigate
 
 **FIZIT**

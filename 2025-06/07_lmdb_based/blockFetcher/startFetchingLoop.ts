@@ -33,12 +33,30 @@ export async function startFetchingLoop(blockDB: BlockDB, batchRpc: BatchRpc, bl
         const startBlock = lastStoredBlock + 1;
         const endBlock = Math.min(startBlock + blocksPerBatch - 1, latestRemoteBlock);
         try {
-            const blocks = await batchRpc.getBlocksWithReceipts([startBlock, endBlock]);
+            const start = performance.now();
+            const blockNumbers = Array.from({ length: endBlock - startBlock + 1 }, (_, i) => startBlock + i);
+            const blocks = await batchRpc.getBlocksWithReceipts(blockNumbers);
             blockDB.storeBlocks(blocks);
             lastStoredBlock = endBlock;
+            const end = performance.now();
+            const blocksLeft = latestRemoteBlock - endBlock;
+            const blocksPerSecond = blocks.length / (end - start) * 1000;
+            const secondsLeft = blocksLeft / blocksPerSecond;
+            console.log(`Fetched ${blocks.length} blocks in ${Math.round(end - start)}ms, that's ~${Math.round(blocksPerSecond)} blocks/s, ${blocksLeft} blocks left, ~${formatSeconds(secondsLeft)} left`);
         } catch (error) {
             console.error(error);
             await new Promise(resolve => setTimeout(resolve, ERROR_PAUSE_TIME));
         }
     }
-}   
+}
+
+function formatSeconds(seconds: number) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = Math.round(seconds) % 60;
+    if (days > 0) return `${days}d${hours}h${minutes}m${remainingSeconds}s`;
+    if (hours > 0) return `${hours}h${minutes}m${remainingSeconds}s`;
+    if (minutes > 0) return `${minutes}m${remainingSeconds}s`;
+    return `${hours}h${minutes}m${remainingSeconds}s`;
+}

@@ -23,11 +23,11 @@ if (cluster.isPrimary) {
         const batchRpc = new BatchRpc({
             rpcUrl: RPC_URL,
             batchSize: 100,
-            maxConcurrent: 10,
-            rps: 10,
+            maxConcurrent: 100,
+            rps: 100,
             enableBatchSizeGrowth: false,
         });
-        startFetchingLoop(blocksDb, batchRpc, 10);
+        startFetchingLoop(blocksDb, batchRpc, 1000);
     } else {
         throw new Error('unknown role');
     }

@@ -232,7 +232,6 @@ export class BatchRpc {
 
     //TODO: implement priority queue pushing earlier blocks to the front of the queue
     public async getBlocksWithReceipts(blockNumbers: number[]): Promise<StoredBlock[]> {
-        console.log('getBlocksWithReceipts', blockNumbers);
         if (!blockNumbers || blockNumbers.length === 0) {
             return [];
         }

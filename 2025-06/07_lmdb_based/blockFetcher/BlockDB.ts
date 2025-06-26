@@ -22,7 +22,6 @@ export class BlockDB {
     getLastStoredBlockNumber(): number {
         const selectMax = this.prepQuery('SELECT MAX(id) as max_id FROM blocks');
         const result = selectMax.get() as { max_id: number | null } | undefined;
-        console.log('getLastStoredBlockNumber result:', result); // Debug log
         return result?.max_id ?? -1; // Return -1 if no blocks stored
     }
 
@@ -31,13 +30,10 @@ export class BlockDB {
         if (batch.length === 0) return;
 
         let lastStoredBlockNum = this.getLastStoredBlockNumber();
-        console.log('lastStoredBlockNum before transaction:', lastStoredBlockNum); // Debug log
-        console.log('Batch contents:', batch.map(b => b.block.number)); // Debug log
 
         const insertMany = this.db.transaction((batch: StoredBlock[]) => {
             for (let i = 0; i < batch.length; i++) {
                 const block = batch[i]!;
-                console.log(`Checking block ${block.block.number}, expected ${lastStoredBlockNum + 1}`); // Debug log
                 if (Number(block.block.number) !== lastStoredBlockNum + 1) {
                     throw new Error(`Batch not sorted or has gaps: expected ${lastStoredBlockNum + 1}, got ${block.block.number}`);
                 }

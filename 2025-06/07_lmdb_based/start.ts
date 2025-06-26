@@ -5,8 +5,8 @@ import { BlockDB } from './blockFetcher/BlockDB';
 import { startFetchingLoop } from './blockFetcher/startFetchingLoop';
 import { BatchRpc } from './blockFetcher/BatchRpc';
 
-const RPC_URL = 'https://meganode.solokhin.com/ext/bc/25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp/rpc'
-const CHAIN_ID = '25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp'
+const RPC_URL = 'https://meganode.solokhin.com/ext/bc/2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj/rpc'
+const CHAIN_ID = '2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj'
 
 const blocksDbPath = path.join("database", CHAIN_ID, 'blocks.db');
 if (!fs.existsSync(blocksDbPath)) {
@@ -22,12 +22,12 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB(blocksDbPath, true);
         const batchRpc = new BatchRpc({
             rpcUrl: RPC_URL,
-            batchSize: 100,
-            maxConcurrent: 100,
-            rps: 100,
+            batchSize: 200,
+            maxConcurrent: 400,
+            rps: 400,
             enableBatchSizeGrowth: false,
         });
-        startFetchingLoop(blocksDb, batchRpc, 1000);
+        startFetchingLoop(blocksDb, batchRpc, 10000);
     } else {
         throw new Error('unknown role');
     }

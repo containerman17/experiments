@@ -42,7 +42,7 @@ export async function startFetchingLoop(blockDB: BlockDB, batchRpc: BatchRpc, bl
             const blocksLeft = latestRemoteBlock - endBlock;
             const blocksPerSecond = blocks.length / (end - start) * 1000;
             const secondsLeft = blocksLeft / blocksPerSecond;
-            console.log(`Fetched ${blocks.length} blocks in ${Math.round(end - start)}ms, that's ~${Math.round(blocksPerSecond)} blocks/s, ${blocksLeft} blocks left, ~${formatSeconds(secondsLeft)} left`);
+            console.log(`Fetched ${blocks.length} blocks in ${Math.round(end - start)}ms, that's ~${Math.round(blocksPerSecond)} blocks/s, ${blocksLeft.toLocaleString()} blocks left, ~${formatSeconds(secondsLeft)} left`);
         } catch (error) {
             console.error(error);
             await new Promise(resolve => setTimeout(resolve, ERROR_PAUSE_TIME));

@@ -47,97 +47,97 @@ export class LazyBlock {
     /* lazy-cached getters */
     #hash?: string
     get hash() {
-        return this.#hash ??= deserializeFixedHex(this.parts[0])
+        return this.#hash ??= deserializeFixedHex(this.parts[0]!)
     }
 
     #number?: string
     get number() {
-        return this.#number ??= deserializeHex(this.parts[1])
+        return this.#number ??= deserializeHex(this.parts[1]!)
     }
 
     #parentHash?: string
     get parentHash() {
-        return this.#parentHash ??= deserializeFixedHex(this.parts[2])
+        return this.#parentHash ??= deserializeFixedHex(this.parts[2]!)
     }
 
     #timestamp?: string
     get timestamp() {
-        return this.#timestamp ??= deserializeHex(this.parts[3])
+        return this.#timestamp ??= deserializeHex(this.parts[3]!)
     }
 
     #gasLimit?: string
     get gasLimit() {
-        return this.#gasLimit ??= deserializeHex(this.parts[4])
+        return this.#gasLimit ??= deserializeHex(this.parts[4]!)
     }
 
     #gasUsed?: string
     get gasUsed() {
-        return this.#gasUsed ??= deserializeHex(this.parts[5])
+        return this.#gasUsed ??= deserializeHex(this.parts[5]!)
     }
 
     #baseFeePerGas?: string
     get baseFeePerGas() {
-        return this.#baseFeePerGas ??= deserializeHex(this.parts[6])
+        return this.#baseFeePerGas ??= deserializeHex(this.parts[6]!)
     }
 
     #miner?: string
     get miner() {
-        return this.#miner ??= deserializeFixedHex(this.parts[7])
+        return this.#miner ??= deserializeFixedHex(this.parts[7]!)
     }
 
     #difficulty?: string
     get difficulty() {
-        return this.#difficulty ??= deserializeHex(this.parts[8])
+        return this.#difficulty ??= deserializeHex(this.parts[8]!)
     }
 
     #totalDifficulty?: string
     get totalDifficulty() {
-        return this.#totalDifficulty ??= deserializeHex(this.parts[9])
+        return this.#totalDifficulty ??= deserializeHex(this.parts[9]!)
     }
 
     #size?: string
     get size() {
-        return this.#size ??= deserializeHex(this.parts[10])
+        return this.#size ??= deserializeHex(this.parts[10]!)
     }
 
     #stateRoot?: string
     get stateRoot() {
-        return this.#stateRoot ??= deserializeFixedHex(this.parts[11])
+        return this.#stateRoot ??= deserializeFixedHex(this.parts[11]!)
     }
 
     #transactionsRoot?: string
     get transactionsRoot() {
-        return this.#transactionsRoot ??= deserializeFixedHex(this.parts[12])
+        return this.#transactionsRoot ??= deserializeFixedHex(this.parts[12]!)
     }
 
     #receiptsRoot?: string
     get receiptsRoot() {
-        return this.#receiptsRoot ??= deserializeFixedHex(this.parts[13])
+        return this.#receiptsRoot ??= deserializeFixedHex(this.parts[13]!)
     }
 
     #logsBloom?: string
     get logsBloom() {
-        return this.#logsBloom ??= deserializeFixedHex(this.parts[14])
+        return this.#logsBloom ??= deserializeFixedHex(this.parts[14]!)
     }
 
     #extraData?: string
     get extraData() {
-        return this.#extraData ??= deserializeFixedHex(this.parts[15])
+        return this.#extraData ??= deserializeFixedHex(this.parts[15]!)
     }
 
     #mixHash?: string
     get mixHash() {
-        return this.#mixHash ??= deserializeFixedHex(this.parts[16])
+        return this.#mixHash ??= deserializeFixedHex(this.parts[16]!)
     }
 
     #nonce?: string
     get nonce() {
-        return this.#nonce ??= deserializeFixedHex(this.parts[17])
+        return this.#nonce ??= deserializeFixedHex(this.parts[17]!)
     }
 
     #sha3Uncles?: string
     get sha3Uncles() {
-        return this.#sha3Uncles ??= deserializeFixedHex(this.parts[18])
+        return this.#sha3Uncles ??= deserializeFixedHex(this.parts[18]!)
     }
 
     #uncles?: string[]
@@ -150,7 +150,7 @@ export class LazyBlock {
     #transactionCount?: number
     get transactionCount() {
         if (this.#transactionCount !== undefined) return this.#transactionCount
-        return this.#transactionCount = deserializeNumber(this.parts[20])
+        return this.#transactionCount = deserializeNumber(this.parts[20]!)
     }
 
     #blobGasUsed?: string | undefined
@@ -206,7 +206,7 @@ export const encodeLazyBlock = (i: Block): Uint8Array => {
         }
 
         for (const field of expectedFields) {
-            if (i[field] === undefined && !optionalFields.has(field)) {
+            if (i[field as keyof Block] === undefined && !optionalFields.has(field)) {
                 throw new Error(`encodeLazyBlock development: Missing field: ${field}`)
             }
         }

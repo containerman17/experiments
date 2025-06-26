@@ -197,11 +197,11 @@ export class BatchRpc {
 
         batchResults.forEach(batchResult => {
             batchResult.forEach(item => {
-                const originalRequest = indexedRequests[item.originalIndex];
+                const originalRequest = indexedRequests[item.originalIndex]!;
                 results[item.originalIndex] = {
                     idToCorrelate: originalRequest.idToCorrelate,
-                    result: item.result,
-                    error: item.error
+                    ...(item.result !== undefined && { result: item.result }),
+                    ...(item.error !== undefined && { error: item.error })
                 };
             });
         });

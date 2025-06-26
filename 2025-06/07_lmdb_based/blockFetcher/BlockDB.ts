@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { StoredBlock } from './BatchRpc';
 import { encodeLazyBlock, LazyBlock } from './LazyBlock';
 import { encodeLazyTx, LazyTx } from './LazyTx';
+import { compress as lz4Compress, uncompress as lz4Uncompress } from 'lz4-napi';
 
 export class BlockDB {
     private db: InstanceType<typeof Database>;
@@ -44,18 +45,24 @@ export class BlockDB {
         insertMany(batch);
     }
 
-    getBlock(n: number): LazyBlock {
+    async getBlock(n: number): Promise<LazyBlock> {
         const selectBlock = this.prepQuery('SELECT data FROM blocks WHERE id = ?');
         const result = selectBlock.get(n) as { data: Buffer } | undefined;
         if (!result) throw new Error(`Block ${n} not found`);
-        return new LazyBlock(result.data);
+
+        // Decompress the data
+        const decompressedData = await lz4Uncompress(result.data);
+        return new LazyBlock(decompressedData);
     }
 
-    getTx(n: number, ix: number): LazyTx {
+    async getTx(n: number, ix: number): Promise<LazyTx> {
         const selectTx = this.prepQuery('SELECT data FROM txs WHERE block_id = ? AND tx_ix = ?');
         const result = selectTx.get(n, ix) as { data: Buffer } | undefined;
         if (!result) throw new Error(`Tx ${n}:${ix} not found`);
-        return new LazyTx(result.data);
+
+        // Decompress the data
+        const decompressedData = await lz4Uncompress(result.data);
+        return new LazyTx(decompressedData);
     }
 
     setBlockchainLatestBlockNum(blockNumber: number) {
@@ -81,18 +88,26 @@ export class BlockDB {
         return prepped;
     }
 
-    private storeBlock(b: StoredBlock) {
+    private async storeBlock(b: StoredBlock) {
         const insertBlock = this.prepQuery('INSERT INTO blocks(id, data) VALUES (?, ?)');
         const insertTx = this.prepQuery('INSERT INTO txs(block_id, tx_ix, data) VALUES (?, ?, ?)');
 
         const blockNumber = Number(b.block.number);
 
-        insertBlock.run(blockNumber, encodeLazyBlock(b.block));
+        // Compress block data before storing
+        const blockData = encodeLazyBlock(b.block);
+        const compressedBlockData = await lz4Compress(Buffer.from(blockData));
+        insertBlock.run(blockNumber, compressedBlockData);
+
         for (let i = 0; i < b.block.transactions.length; ++i) {
             const tx = b.block.transactions[i]!;
             const receipt = b.receipts[tx.hash];
             if (!receipt) throw new Error(`Receipt not found for tx ${tx.hash}`);
-            insertTx.run(blockNumber, i, encodeLazyTx(tx, receipt));
+
+            // Compress transaction data before storing
+            const txData = encodeLazyTx(tx, receipt);
+            const compressedTxData = await lz4Compress(Buffer.from(txData));
+            insertTx.run(blockNumber, i, compressedTxData);
         }
     }
 

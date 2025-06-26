@@ -1,5 +1,5 @@
+import { Buffer } from 'node:buffer';
 import { StoredBlock } from "./BatchRpc";
-import { Buffer } from 'buffer';
 
 export const serializeFixedLenHex = (hex: string, expectedLengthBytes: number): Buffer => {
     const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;

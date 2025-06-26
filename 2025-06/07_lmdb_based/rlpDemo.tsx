@@ -4,7 +4,70 @@ import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from '@noble/curves/
 import { Block } from './blockFetcher/evmTypes';
 import { serializeHex, serializeFixedLenHex, serializeNumber, deserializeHex, deserializeFixedLenHex, deserializeNumber } from './blockFetcher/serialize';
 import { Buffer } from 'buffer';
+import { Packr } from 'msgpackr';
 
+// Create structured msgpackr with record definitions
+const structuredPackr = new Packr({
+    useRecords: true,
+    structures: [
+        // Transaction structure - define field order
+        {
+            Class: 'Transaction',
+            fields: [
+                'blockHash', 'blockNumber', 'from', 'gas', 'gasPrice',
+                'maxFeePerGas', 'maxPriorityFeePerGas', 'hash', 'input',
+                'nonce', 'to', 'transactionIndex', 'value', 'type',
+                'accessList', 'chainId', 'v', 'r', 's', 'yParity'
+            ]
+        },
+        // Block structure - define field order  
+        {
+            Class: 'Block',
+            fields: [
+                'baseFeePerGas', 'blobGasUsed', 'blockGasCost', 'difficulty',
+                'excessBlobGas', 'extraData', 'gasLimit', 'gasUsed', 'hash',
+                'logsBloom', 'miner', 'mixHash', 'nonce', 'number',
+                'parentBeaconBlockRoot', 'parentHash', 'receiptsRoot',
+                'sha3Uncles', 'size', 'stateRoot', 'timestamp',
+                'totalDifficulty', 'transactionsRoot', 'uncles', 'transactions'
+            ]
+        }
+    ]
+})
+
+function encodeBlockMsgpack(block: Block): Uint8Array {
+    // Transform transactions to have consistent structure for msgpackr
+    const structuredBlock = {
+        ...block,
+        transactions: block.transactions.map(tx => ({
+            blockHash: tx.blockHash,
+            blockNumber: tx.blockNumber,
+            from: tx.from,
+            gas: tx.gas,
+            gasPrice: tx.gasPrice,
+            maxFeePerGas: tx.maxFeePerGas,
+            maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+            hash: tx.hash,
+            input: tx.input,
+            nonce: tx.nonce,
+            to: tx.to,
+            transactionIndex: tx.transactionIndex,
+            value: tx.value,
+            type: tx.type,
+            accessList: tx.accessList,
+            chainId: tx.chainId,
+            v: tx.v,
+            r: tx.r,
+            s: tx.s,
+            yParity: tx.yParity
+        }))
+    }
+    return structuredPackr.pack(structuredBlock)
+}
+
+function decodeBlockMsgpack(data: Uint8Array): Block {
+    return structuredPackr.unpack(data) as Block
+}
 
 function encodeBlock(block: Block) {
     const data = [
@@ -78,16 +141,25 @@ function encodeBlock(block: Block) {
 import block from './blockFetcher/data/block.example.json'
 const encoded = encodeBlock(block)
 const customEncoded = encodeBlockCustom(block)
+const msgpackEncoded = encodeBlockMsgpack(block)
 
 console.log('RLP encoded size:', encoded.length, 'bytes')
 console.log('Custom encoded size:', customEncoded.length, 'bytes')
+console.log('Msgpack encoded size:', msgpackEncoded.length, 'bytes')
 console.log('Custom vs RLP ratio:', (customEncoded.length / encoded.length * 100).toFixed(1) + '%')
+console.log('Msgpack vs RLP ratio:', (msgpackEncoded.length / encoded.length * 100).toFixed(1) + '%')
 
 // Test custom decoding
 const customRestored = decodeBlockCustom(customEncoded)
 console.log('Custom decode test - transactions match:',
     customRestored.transactions.length === block.transactions.length &&
     customRestored.transactions[0]?.to === block.transactions[0]?.to)
+
+// Test msgpack decoding
+const msgpackRestored = decodeBlockMsgpack(msgpackEncoded)
+console.log('Msgpack decode test - transactions match:',
+    msgpackRestored.transactions.length === block.transactions.length &&
+    msgpackRestored.transactions[0]?.to === block.transactions[0]?.to)
 
 const decoded = RLP.decode(encoded) as Uint8Array[]
 
@@ -131,6 +203,10 @@ function safeToHex(data: any, preserveLength: boolean = false): string {
 function decodeBlock(encoded: Uint8Array): Block {
     const decoded = RLP.decode(encoded) as any[]
     let index = 0
+
+    const safeToHex2 = (data: any, preserveLength: boolean = false): string => {
+        return data ?? '0x0'
+    }
 
     // Decode block fields
     const block: Block = {
@@ -284,6 +360,7 @@ async function compareCompression() {
     const numRuns = 10000
 
     // Pre-compress all formats
+    const msgpackBuffer = Buffer.from(msgpackEncoded)
     const formats = {
         'JSON+plain': { data: jsonBuffer, size: jsonBuffer.length },
         'JSON+lz4': { data: await compressLZ4(block), size: (await compressLZ4(block)).length },
@@ -293,7 +370,10 @@ async function compareCompression() {
         'RLP+zstd': { data: await compressRaw(rlpBuffer, 1), size: (await compressRaw(rlpBuffer, 1)).length },
         'CUSTOM+plain': { data: Buffer.from(customEncoded), size: customEncoded.length },
         'CUSTOM+lz4': { data: await compressRawLZ4(Buffer.from(customEncoded)), size: (await compressRawLZ4(Buffer.from(customEncoded))).length },
-        'CUSTOM+zstd': { data: await compressRaw(Buffer.from(customEncoded), 1), size: (await compressRaw(Buffer.from(customEncoded), 1)).length }
+        'CUSTOM+zstd': { data: await compressRaw(Buffer.from(customEncoded), 1), size: (await compressRaw(Buffer.from(customEncoded), 1)).length },
+        'MSGPACK+plain': { data: msgpackBuffer, size: msgpackBuffer.length },
+        'MSGPACK+lz4': { data: await compressRawLZ4(msgpackBuffer), size: (await compressRawLZ4(msgpackBuffer)).length },
+        'MSGPACK+zstd': { data: await compressRaw(msgpackBuffer, 1), size: (await compressRaw(msgpackBuffer, 1)).length }
     }
 
     const results: Array<{
@@ -359,6 +439,24 @@ async function compareCompression() {
             const promises = Array(numRuns).fill(0).map(async () => {
                 const decompressed = await decompressRaw(format.data)
                 return decodeBlockCustom(decompressed)
+            })
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+        } else if (formatName.startsWith('MSGPACK+plain')) {
+            // MSGPACK plain: decode MSGPACK + decode block
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(() =>
+                Promise.resolve(decodeBlockMsgpack(format.data))
+            )
+            await Promise.all(promises)
+            totalTime = Date.now() - start
+
+        } else if (formatName.startsWith('MSGPACK+')) {
+            // MSGPACK compressed: decompress + decode MSGPACK + decode block
+            const start = Date.now()
+            const promises = Array(numRuns).fill(0).map(async () => {
+                const decompressed = await decompressRaw(format.data)
+                return decodeBlockMsgpack(decompressed)
             })
             await Promise.all(promises)
             totalTime = Date.now() - start

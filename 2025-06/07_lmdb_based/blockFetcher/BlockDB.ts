@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { StoredBlock } from './BatchRpc';
 import { encodeLazyBlock, LazyBlock } from './LazyBlock';
 import { encodeLazyTx, LazyTx } from './LazyTx';
-import { compress as lz4Compress, uncompress as lz4Uncompress } from 'lz4-napi';
+import { compressSync as lz4CompressSync, uncompressSync as lz4UncompressSync } from 'lz4-napi';
 
 export class BlockDB {
     private db: InstanceType<typeof Database>;
@@ -23,7 +23,8 @@ export class BlockDB {
     getLastStoredBlockNumber(): number {
         const selectMax = this.prepQuery('SELECT MAX(id) as max_id FROM blocks');
         const result = selectMax.get() as { max_id: number | null } | undefined;
-        return result?.max_id ?? -1; // Return -1 if no blocks stored
+        const result2 = result?.max_id ?? -1;
+        return result2;
     }
 
     storeBlocks(batch: StoredBlock[]) {
@@ -36,7 +37,7 @@ export class BlockDB {
             for (let i = 0; i < batch.length; i++) {
                 const block = batch[i]!;
                 if (Number(block.block.number) !== lastStoredBlockNum + 1) {
-                    throw new Error(`Batch not sorted or has gaps: expected ${lastStoredBlockNum + 1}, got ${block.block.number}`);
+                    throw new Error(`Batch not sorted or has gaps: expected ${lastStoredBlockNum + 1}, got ${Number(block.block.number)}`);
                 }
                 this.storeBlock(block);
                 lastStoredBlockNum++;
@@ -45,23 +46,23 @@ export class BlockDB {
         insertMany(batch);
     }
 
-    async getBlock(n: number): Promise<LazyBlock> {
+    getBlock(n: number): LazyBlock {
         const selectBlock = this.prepQuery('SELECT data FROM blocks WHERE id = ?');
         const result = selectBlock.get(n) as { data: Buffer } | undefined;
         if (!result) throw new Error(`Block ${n} not found`);
 
         // Decompress the data
-        const decompressedData = await lz4Uncompress(result.data);
+        const decompressedData = lz4UncompressSync(result.data);
         return new LazyBlock(decompressedData);
     }
 
-    async getTx(n: number, ix: number): Promise<LazyTx> {
+    getTx(n: number, ix: number): LazyTx {
         const selectTx = this.prepQuery('SELECT data FROM txs WHERE block_id = ? AND tx_ix = ?');
         const result = selectTx.get(n, ix) as { data: Buffer } | undefined;
         if (!result) throw new Error(`Tx ${n}:${ix} not found`);
 
         // Decompress the data
-        const decompressedData = await lz4Uncompress(result.data);
+        const decompressedData = lz4UncompressSync(result.data);
         return new LazyTx(decompressedData);
     }
 
@@ -88,7 +89,7 @@ export class BlockDB {
         return prepped;
     }
 
-    private async storeBlock(b: StoredBlock) {
+    private storeBlock(b: StoredBlock) {
         const insertBlock = this.prepQuery('INSERT INTO blocks(id, data) VALUES (?, ?)');
         const insertTx = this.prepQuery('INSERT INTO txs(block_id, tx_ix, data) VALUES (?, ?, ?)');
 
@@ -96,7 +97,7 @@ export class BlockDB {
 
         // Compress block data before storing
         const blockData = encodeLazyBlock(b.block);
-        const compressedBlockData = await lz4Compress(Buffer.from(blockData));
+        const compressedBlockData = lz4CompressSync(Buffer.from(blockData));
         insertBlock.run(blockNumber, compressedBlockData);
 
         for (let i = 0; i < b.block.transactions.length; ++i) {
@@ -106,7 +107,7 @@ export class BlockDB {
 
             // Compress transaction data before storing
             const txData = encodeLazyTx(tx, receipt);
-            const compressedTxData = await lz4Compress(Buffer.from(txData));
+            const compressedTxData = lz4CompressSync(Buffer.from(txData));
             insertTx.run(blockNumber, i, compressedTxData);
         }
     }

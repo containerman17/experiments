@@ -1,6 +1,6 @@
 import { RLP } from "@ethereumjs/rlp"
 import { bytesToHex } from '@noble/curves/abstract/utils'
-import { Transaction, Receipt, Log } from "./evmTypes"
+import { Transaction, Receipt, Log, AccessListEntry } from "./evmTypes"
 import { IS_DEVELOPMENT } from '../config'
 
 const TX_SIG_V1 = 0x01 as const
@@ -202,13 +202,19 @@ export class LazyTx {
         return this.#maxPriorityFeePerGas ??= deserializeOptionalHex(this.parts[17])
     }
 
-    #accessList?: string[] | undefined
+    #accessList?: AccessListEntry[] | undefined
     get accessList() {
         if (this.#accessList !== undefined) return this.#accessList
         if (!this.parts[18]) throw new Error('Missing accessList data')
         const accessListPart = this.parts[18] as unknown as Uint8Array[]
-        return this.#accessList = accessListPart.length === 0 ? undefined :
-            accessListPart.map(item => deserializeFixedHex(item))
+        if (accessListPart.length === 0) {
+            return this.#accessList = undefined
+        }
+
+        return this.#accessList = (accessListPart as unknown as Uint8Array[][]).map(entry => ({
+            address: deserializeFixedHex(entry[0]!),
+            storageKeys: (entry[1] as unknown as Uint8Array[]).map(key => deserializeFixedHex(key))
+        }))
     }
 
     #yParity?: string | undefined
@@ -299,6 +305,11 @@ export const encodeLazyTx = (tx: Transaction, receipt: Receipt): Uint8Array => {
         }
     }
 
+    // Encode access list properly
+    const encodedAccessList = tx.accessList ?
+        tx.accessList.map(entry => [entry.address, entry.storageKeys]) :
+        []
+
     const data = [
         // Transaction fields
         tx.hash,
@@ -319,7 +330,7 @@ export const encodeLazyTx = (tx: Transaction, receipt: Receipt): Uint8Array => {
         tx.s,
         tx.maxFeePerGas || '',
         tx.maxPriorityFeePerGas || '',
-        tx.accessList || [],
+        encodedAccessList,
         tx.yParity || '',
         // Receipt fields
         receipt.contractAddress || '',

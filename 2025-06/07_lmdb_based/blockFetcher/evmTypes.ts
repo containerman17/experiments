@@ -10,6 +10,11 @@ export interface Log {
     removed: boolean;
 }
 
+export interface AccessListEntry {
+    address: string;
+    storageKeys: string[];
+}
+
 export interface Receipt {
     blockHash: string;
     blockNumber: string;
@@ -46,7 +51,7 @@ export interface Transaction {
     s: string;
     maxFeePerGas?: string;
     maxPriorityFeePerGas?: string;
-    accessList?: string[];
+    accessList?: AccessListEntry[];
     yParity?: string;
 }
 

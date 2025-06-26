@@ -30,8 +30,11 @@ export const deserializeNumber = (bytes: Uint8Array): number => {
 
 export const deserializeBigInt = (bytes: Uint8Array): bigint => {
     if (bytes.length === 0) return 0n;
-    const buf = Buffer.from(bytes)
-    return buf.readBigUIntBE(0, buf.length);
+    let result = 0n;
+    for (let i = 0; i < bytes.length; i++) {
+        result = (result << 8n) | BigInt(bytes[i]);
+    }
+    return result;
 }
 
 export const deserializeFixedLenHex = (bytes: Uint8Array): string => {

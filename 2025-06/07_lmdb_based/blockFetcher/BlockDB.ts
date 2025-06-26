@@ -1,119 +1,95 @@
-import { open } from 'lmdb';
+import Database from 'better-sqlite3';
 import { Block, Transaction } from './evmTypes';
 import { StoredBlock } from './BatchRpc';
-
-const MAX_UINT32 = 4294967295;
-const MAX_UINT16 = 65535;
+import { QueryPrepper } from '../utils/prepQuery';
 
 export class BlockDB {
-    private db: any;
+    private db: Database;
+
+    private prepper: QueryPrepper;
 
     constructor(path: string) {
-        this.db = open({
-            path: path,
-            encoding: 'binary', // We'll handle our own encoding/decoding
-            compression: true, // Enable compression for better storage efficiency
-            pageSize: 8192,
+        this.db = new Database(path);
+        this.initPragmas();
+        this.initSchema();
+        this.prepper = new QueryPrepper(this.db);
+    }
+
+    /* ---------- public API ---------- */
+
+    storeBlocks(batch: StoredBlock[]) {
+        const insertMany = this.db.transaction((blocks: StoredBlock[]) => {
+            for (const b of blocks) this.storeBlock(b);
         });
+        insertMany(batch);
     }
 
-    async storeBlocks(blocks: StoredBlock[]) {
-        await this.db.transaction(() => {
-            for (const block of blocks) {
-                this.storeBlock(block);
-            }
-        });
+    getBlock(n: number): Block {
+        const selectBlock = this.prepper.prepare('SELECT data FROM blocks WHERE id = ?').pluck();
+        const buf = selectBlock.get(n) as Buffer | undefined;
+        if (!buf) throw new Error(`Block ${n} not found`);
+        return decodeBlock(buf);
     }
 
-    private storeBlock(block: StoredBlock) {
-        const blockNumber = Number(block.block.number);
-        if (blockNumber > MAX_UINT32) {
-            throw new Error("Block number too large");
-        }
-
-        const blockKey = getBlockKey(blockNumber);
-        const blockData = encodeBlock(block.block);
-        this.db.put(blockKey, blockData);
-
-        for (let i = 0; i < block.block.transactions.length; i++) {
-            const txKey = getTxKey(blockNumber, i);
-            const txData = encodeTx(block.block.transactions[i]);
-            this.db.put(txKey, txData);
-        }
-    }
-
-    getBlock(blockNumber: number): Block {
-        if (blockNumber > MAX_UINT32) {
-            throw new Error("Block number too large");
-        }
-
-        const blockKey = getBlockKey(blockNumber);
-        const blockData = this.db.get(blockKey);
-        if (!blockData) {
-            throw new Error(`Block ${blockNumber} not found`);
-        }
-        return decodeBlock(blockData);
-    }
-
-    getTx(blockNumber: number, txIndex: number): Transaction {
-        if (blockNumber > MAX_UINT32) {
-            throw new Error("Block number too large");
-        }
-        if (txIndex > MAX_UINT16) {
-            throw new Error("Transaction index too large");
-        }
-
-        const txKey = getTxKey(blockNumber, txIndex);
-        const txData = this.db.get(txKey);
-        if (!txData) {
-            throw new Error(`Transaction ${blockNumber}:${txIndex} not found`);
-        }
-        return decodeTx(txData);
+    getTx(n: number, ix: number): Transaction {
+        const selectTx = this.prepper.prepare('SELECT data FROM txs WHERE block_id = ? AND tx_ix = ?').pluck();
+        const buf = selectTx.get(n, ix) as Buffer | undefined;
+        if (!buf) throw new Error(`Tx ${n}:${ix} not found`);
+        return decodeTx(buf);
     }
 
     close() {
         this.db.close();
     }
-}
 
-function getBlockKey(blockNumber: number): Buffer {
-    if (blockNumber > MAX_UINT32) {
-        throw new Error("Block number too large");
+    /* ---------- internals ---------- */
+
+    private storeBlock(b: StoredBlock) {
+        const insertBlock = this.prepper.prepare('INSERT INTO blocks(id, data) VALUES (?, ?)');
+        const insertTx = this.prepper.prepare('INSERT INTO txs(block_id, tx_ix, data) VALUES (?, ?, ?)');
+
+        const blockNumber = Number(b.block.number);
+
+        insertBlock.run(blockNumber, encodeBlock(b.block));
+        for (let i = 0; i < b.block.transactions.length; ++i) {
+            insertTx.run(blockNumber, i, encodeTx(b.block.transactions[i]));
+        }
     }
-    const buffer = new ArrayBuffer(5);
-    const view = new DataView(buffer);
-    view.setUint8(0, 0); // 0 prefix for blocks
-    view.setUint32(1, blockNumber, false); // false for big-endian
-    return Buffer.from(buffer);
-}
 
-function getTxKey(blockNumber: number, txIndex: number): Buffer {
-    if (blockNumber > MAX_UINT32) {
-        throw new Error("Block number too large");
+    private initSchema() {
+        this.db.exec(`
+      CREATE TABLE IF NOT EXISTS blocks (
+        id   INTEGER PRIMARY KEY,
+        data BLOB NOT NULL
+      ) WITHOUT ROWID;
+
+      CREATE TABLE IF NOT EXISTS txs (
+        block_id INTEGER NOT NULL,
+        tx_ix    INTEGER NOT NULL,
+        data     BLOB NOT NULL,
+        PRIMARY KEY (block_id, tx_ix)
+      ) WITHOUT ROWID;
+    `);
     }
-    if (txIndex > MAX_UINT16) {
-        throw new Error("Transaction index too large");
+
+    private initPragmas() {
+        this.db.pragma('journal_mode = WAL');
+        this.db.pragma('synchronous  = NORMAL');
+        this.db.pragma('mmap_size    = 1073741824'); // 1 GiB
+        this.db.pragma('cache_size   = -1048576'); // 1 GiB
     }
-    const buffer = new ArrayBuffer(7);
-    const view = new DataView(buffer);
-    view.setUint8(0, 1); // 1 prefix for transactions  
-    view.setUint32(1, blockNumber, false); // false for big-endian
-    view.setUint16(5, txIndex, false); // false for big-endian
-    return Buffer.from(buffer);
 }
 
-function encodeBlock(block: Block): Buffer {
-    throw new Error("Not implemented");
+/* ---------- stubs ---------- */
+function encodeBlock(b: Block): Buffer {
+    throw new Error('not impl');
 }
-
-function encodeTx(tx: Transaction): Buffer {
-    throw new Error("Not implemented");
+function encodeTx(t: Transaction): Buffer {
+    throw new Error('not impl');
 }
-
-function decodeBlock(block: Buffer): Block {
-    throw new Error("Not implemented");
+function decodeBlock(b: Buffer): Block {
+    throw new Error('not impl');
 }
-
-function decodeTx(tx: Buffer): Transaction {
-    throw new Error("Not implemented");
+function decodeTx(b: Buffer): Transaction {
+    throw new Error('not impl');
 }

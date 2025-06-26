@@ -72,8 +72,8 @@ export interface Block {
     sha3Uncles: string;
     uncles: string[];
     transactions: Transaction[];
-    blobGasUsed?: string;
-    excessBlobGas?: string;
-    parentBeaconBlockRoot?: string;
-    blockGasCost?: string;
+    blobGasUsed: string;
+    excessBlobGas: string;
+    parentBeaconBlockRoot: string;
+    blockGasCost: string;
 }

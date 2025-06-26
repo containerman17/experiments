@@ -15,6 +15,7 @@
     "@ethersproject/rlp": "^5.8.0",
     "@noble/curves": "^1.9.2",
     "@types/node": "^24.0.4",
+    "better-sqlite3": "^12.1.1",
     "lmdb": "^3.4.0",
     "lz4-napi": "^2.8.0",
     "msgpackr": "^1.11.4",

@@ -1,8 +1,7 @@
 import { RLP } from '@ethereumjs/rlp'
-import assert from 'assert'
-import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from '@noble/curves/abstract/utils';
-import { Block } from './blockFetcher/evmTypes';
-import { serializeHex, serializeFixedLenHex, serializeNumber, deserializeHex, deserializeFixedLenHex, deserializeNumber } from './blockFetcher/serialize';
+import { bytesToHex } from '@noble/curves/abstract/utils';
+import { Block } from '../blockFetcher/evmTypes';
+import { serializeHex, serializeFixedLenHex, serializeNumber, deserializeHex, deserializeFixedLenHex, deserializeNumber } from './serialize';
 import { Buffer } from 'buffer';
 import { Packr } from 'msgpackr';
 
@@ -138,7 +137,7 @@ function encodeBlock(block: Block) {
     return encoded
 }
 
-import block from './blockFetcher/data/block.example.json'
+import block from './data/block.example.json'
 const encoded = encodeBlock(block)
 const customEncoded = encodeBlockCustom(block)
 const msgpackEncoded = encodeBlockMsgpack(block)
@@ -341,7 +340,7 @@ if (txWithTo) {
 }
 
 // Compression comparison
-import { compress, decompress, compressLZ4, compressRaw, compressRawLZ4, decompressRaw } from './compressor'
+import { compress, decompress, compressLZ4, compressRaw, compressRawLZ4, decompressRaw } from '../compressor'
 
 async function compareCompression() {
     console.log('\n=== COMPREHENSIVE BENCHMARK ===')

@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
-import { Block, Transaction } from './evmTypes';
 import { StoredBlock } from './BatchRpc';
 import { QueryPrepper } from '../utils/prepQuery';
+import { encodeLazyBlock, LazyBlock } from './LazyBlock';
+import { encodeLazyTx, LazyTx } from './LazyTx';
 
 export class BlockDB {
     private db: Database;
@@ -24,18 +25,18 @@ export class BlockDB {
         insertMany(batch);
     }
 
-    getBlock(n: number): Block {
+    getBlock(n: number): LazyBlock {
         const selectBlock = this.prepper.prepare('SELECT data FROM blocks WHERE id = ?').pluck();
         const buf = selectBlock.get(n) as Buffer | undefined;
         if (!buf) throw new Error(`Block ${n} not found`);
-        return decodeBlock(buf);
+        return new LazyBlock(buf);
     }
 
-    getTx(n: number, ix: number): Transaction {
+    getTx(n: number, ix: number): LazyTx {
         const selectTx = this.prepper.prepare('SELECT data FROM txs WHERE block_id = ? AND tx_ix = ?').pluck();
         const buf = selectTx.get(n, ix) as Buffer | undefined;
         if (!buf) throw new Error(`Tx ${n}:${ix} not found`);
-        return decodeTx(buf);
+        return new LazyTx(buf);
     }
 
     close() {
@@ -50,9 +51,9 @@ export class BlockDB {
 
         const blockNumber = Number(b.block.number);
 
-        insertBlock.run(blockNumber, encodeBlock(b.block));
+        insertBlock.run(blockNumber, encodeLazyBlock(b.block));
         for (let i = 0; i < b.block.transactions.length; ++i) {
-            insertTx.run(blockNumber, i, encodeTx(b.block.transactions[i]));
+            insertTx.run(blockNumber, i, encodeLazyTx(b.block.transactions[i], b.receipts[b.block.transactions[i].hash]));
         }
     }
 
@@ -78,18 +79,4 @@ export class BlockDB {
         this.db.pragma('mmap_size    = 1073741824'); // 1 GiB
         this.db.pragma('cache_size   = -1048576'); // 1 GiB
     }
-}
-
-/* ---------- stubs ---------- */
-function encodeBlock(b: Block): Buffer {
-    throw new Error('not impl');
-}
-function encodeTx(t: Transaction): Buffer {
-    throw new Error('not impl');
-}
-function decodeBlock(b: Buffer): Block {
-    throw new Error('not impl');
-}
-function decodeTx(b: Buffer): Transaction {
-    throw new Error('not impl');
 }

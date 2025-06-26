@@ -4,7 +4,7 @@ import { bytesToHex } from '@noble/curves/abstract/utils'
 import { Block } from './evmTypes'
 import { IS_DEVELOPMENT } from '../config'
 
-export const SIG_V1 = 0x01 as const
+const BLOCK_SIG_V1 = 0x01 as const
 
 const deserializeNumber = (b: Uint8Array) => {
     let n = 0n
@@ -29,7 +29,7 @@ export class LazyBlock {
     private parts: readonly Uint8Array[]
 
     constructor(private blob: Uint8Array) {
-        if (blob[0] !== SIG_V1) throw new Error('bad sig')
+        if (blob[0] !== BLOCK_SIG_V1) throw new Error('bad sig')
         // skip sig (1 byte) – cheap, produces views not copies
         this.parts = RLP.decode(blob.subarray(1)) as Uint8Array[]
     }
@@ -225,7 +225,7 @@ export const encodeLazyBlock = (i: Block): Uint8Array => {
 
     const rlp = RLP.encode(data)
     const out = new Uint8Array(1 + rlp.length)
-    out[0] = SIG_V1
+    out[0] = BLOCK_SIG_V1
     out.set(rlp, 1)
     return out
 }

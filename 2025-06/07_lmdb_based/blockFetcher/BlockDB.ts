@@ -13,15 +13,16 @@ export class BlockDB {
         this.db = new Database(path, {
             readonly: !isWriter,
         });
-        this.initPragmas();
+        this.isWriter = isWriter;
+        this.initPragmas(isWriter);
         this.initSchema();
         this.prepped = new Map();
-        this.isWriter = isWriter;
     }
 
     getLastStoredBlockNumber(): number {
         const selectMax = this.prepQuery('SELECT MAX(id) as max_id FROM blocks');
         const result = selectMax.get() as { max_id: number | null } | undefined;
+        console.log('getLastStoredBlockNumber result:', result); // Debug log
         return result?.max_id ?? -1; // Return -1 if no blocks stored
     }
 
@@ -29,11 +30,14 @@ export class BlockDB {
         if (!this.isWriter) throw new Error('BlockDB is not a writer');
         if (batch.length === 0) return;
 
-        const insertMany = this.db.transaction((batch: StoredBlock[]) => {
-            let lastStoredBlockNum = this.getLastStoredBlockNumber();
+        let lastStoredBlockNum = this.getLastStoredBlockNumber();
+        console.log('lastStoredBlockNum before transaction:', lastStoredBlockNum); // Debug log
+        console.log('Batch contents:', batch.map(b => b.block.number)); // Debug log
 
+        const insertMany = this.db.transaction((batch: StoredBlock[]) => {
             for (let i = 0; i < batch.length; i++) {
                 const block = batch[i]!;
+                console.log(`Checking block ${block.block.number}, expected ${lastStoredBlockNum + 1}`); // Debug log
                 if (Number(block.block.number) !== lastStoredBlockNum + 1) {
                     throw new Error(`Batch not sorted or has gaps: expected ${lastStoredBlockNum + 1}, got ${block.block.number}`);
                 }
@@ -56,6 +60,18 @@ export class BlockDB {
         const result = selectTx.get(n, ix) as { data: Buffer } | undefined;
         if (!result) throw new Error(`Tx ${n}:${ix} not found`);
         return new LazyTx(result.data);
+    }
+
+    setBlockchainLatestBlockNum(blockNumber: number) {
+        if (!this.isWriter) throw new Error('BlockDB is not a writer');
+        const upsert = this.prepQuery('INSERT OR REPLACE INTO kv_int (key, value) VALUES (?, ?)');
+        upsert.run('blockchain_latest_block', blockNumber);
+    }
+
+    getBlockchainLatestBlockNum(): number {
+        const select = this.prepQuery('SELECT value FROM kv_int WHERE key = ?');
+        const result = select.get('blockchain_latest_block') as { value: number } | undefined;
+        return result?.value ?? -1;
     }
 
     close() {
@@ -98,25 +114,33 @@ export class BlockDB {
         data     BLOB NOT NULL,
         PRIMARY KEY (block_id, tx_ix)
       ) WITHOUT ROWID;
+
+      CREATE TABLE IF NOT EXISTS kv_int (
+        key   TEXT PRIMARY KEY,
+        value INTEGER NOT NULL
+      ) WITHOUT ROWID;
     `);
     }
 
-    private initPragmas() {
-        this.db.pragma('page_size = 8192'); // 8 KiB
+    private initPragmas(isWriter: boolean) {
+        // 8 KiB pages = good balance for sequential writes & mmap reads
+        this.db.pragma('page_size = 8192');
 
-        if (this.isWriter) {
-            // Writer connection pragmas
-            this.db.pragma('journal_mode = WAL');          // enables concurrent read-write
-            this.db.pragma('synchronous  = NORMAL');       // good durability/latency trade-off
-            this.db.pragma('wal_autocheckpoint = 10000');  // ~10 MB WAL before auto-checkpoint
-            this.db.pragma('mmap_size    = 1073741824');   // 1 GiB virtual map (harmless)
-            this.db.pragma('cache_size   = -262144');      // 256 MiB page cache is enough here
+        if (isWriter) {
+            // *** WRITER: fire-and-forget speed ***
+            this.db.pragma('journal_mode      = WAL');         // enables concurrent readers
+            this.db.pragma('synchronous       = OFF');         // lose at most one commit on crash
+            this.db.pragma('wal_autocheckpoint = 20000');      // ~80 MB before checkpoint pause
+            this.db.pragma('mmap_size         = 0');           // writer gains nothing from mmap
+            this.db.pragma('cache_size        = -262144');     // 256 MiB page cache
+            this.db.pragma('temp_store        = MEMORY');      // keep temp B-trees off disk
         } else {
-            // Reader connection pragmas
-            this.db.pragma('query_only      = TRUE');      // belt-and-suspenders read-only
-            this.db.pragma('read_uncommitted= TRUE');      // see new pages sooner, still safe in WAL
-            this.db.pragma('mmap_size       = 1073741824');// map reads straight from the file
-            this.db.pragma('cache_size      = -1048576');  // give the reader the big cache (1 GiB)
+            // *** READER: turbo random look-ups ***
+            this.db.pragma('query_only         = TRUE');       // hard-lock to read-only
+            this.db.pragma('read_uncommitted   = TRUE');       // skip commit window wait
+            this.db.pragma('mmap_size          = 1099511627776'); // 1 TB
+            this.db.pragma('cache_size         = -1048576');   // 1 GiB page cache
+            this.db.pragma('busy_timeout       = 0');          // fail fast if writer stalls
         }
     }
 }

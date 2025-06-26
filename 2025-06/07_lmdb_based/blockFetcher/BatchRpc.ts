@@ -213,11 +213,11 @@ export class BatchRpc {
         const results = await this.batchRpcRequests<T>([{ method, params }]);
         const firstResult = results[0];
 
-        if (firstResult.error) {
+        if (firstResult?.error) {
             throw firstResult.error;
         }
 
-        return firstResult.result!;
+        return firstResult?.result!;
     }
 
     public async getCurrentBlockNumber(): Promise<number> {
@@ -232,6 +232,7 @@ export class BatchRpc {
 
     //TODO: implement priority queue pushing earlier blocks to the front of the queue
     public async getBlocksWithReceipts(blockNumbers: number[]): Promise<StoredBlock[]> {
+        console.log('getBlocksWithReceipts', blockNumbers);
         if (!blockNumbers || blockNumbers.length === 0) {
             return [];
         }
@@ -324,6 +325,9 @@ export class BatchRpc {
                 storedBlocksResult.push(currentStoredBlock);
             }
         }
+
+        // Sort by block number before returning
+        storedBlocksResult.sort((a, b) => parseInt(a.block.number, 16) - parseInt(b.block.number, 16));
 
         return storedBlocksResult;
     }

@@ -6,7 +6,15 @@ import { IS_DEVELOPMENT } from '../config'
 
 const BLOCK_SIG_V1 = 0x01 as const
 
+const deserializeOptionalHex = (b: Uint8Array | undefined): string | undefined => {
+    if (!b) return undefined
+    // Check if it's exactly [0xc0] (empty RLP list)
+    if (b.length === 1 && b[0] === 0xc0) return undefined
+    return deserializeHex(b)
+}
+
 const deserializeNumber = (b: Uint8Array) => {
+    if (!b) throw new Error('Missing required field')
     let n = 0n
     for (const byte of b) n = (n << 8n) | BigInt(byte)
     if (n > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('overflow')
@@ -14,6 +22,7 @@ const deserializeNumber = (b: Uint8Array) => {
 }
 
 const deserializeHex = (b: Uint8Array) => {
+    if (!b) throw new Error('Missing required field')
     if (b.length === 0) return '0x0'
     // Remove leading zeros but keep at least one digit
     let start = 0
@@ -22,6 +31,7 @@ const deserializeHex = (b: Uint8Array) => {
 }
 
 const deserializeFixedHex = (b: Uint8Array) => {
+    if (!b) throw new Error('Missing required field')
     return '0x' + bytesToHex(b)
 }
 
@@ -143,24 +153,28 @@ export class LazyBlock {
         return this.#transactionCount = deserializeNumber(this.parts[20])
     }
 
-    #blobGasUsed?: string
+    #blobGasUsed?: string | undefined
     get blobGasUsed() {
-        return this.#blobGasUsed ??= deserializeHex(this.parts[21])
+        if (this.#blobGasUsed !== undefined) return this.#blobGasUsed
+        return this.#blobGasUsed = deserializeOptionalHex(this.parts[21])
     }
 
-    #excessBlobGas?: string
+    #excessBlobGas?: string | undefined
     get excessBlobGas() {
-        return this.#excessBlobGas ??= deserializeHex(this.parts[22])
+        if (this.#excessBlobGas !== undefined) return this.#excessBlobGas
+        return this.#excessBlobGas = deserializeOptionalHex(this.parts[22])
     }
 
-    #parentBeaconBlockRoot?: string
+    #parentBeaconBlockRoot?: string | undefined
     get parentBeaconBlockRoot() {
-        return this.#parentBeaconBlockRoot ??= deserializeFixedHex(this.parts[23])
+        if (this.#parentBeaconBlockRoot !== undefined) return this.#parentBeaconBlockRoot
+        return this.#parentBeaconBlockRoot = deserializeOptionalHex(this.parts[23])
     }
 
-    #blockGasCost?: string
+    #blockGasCost?: string | undefined
     get blockGasCost() {
-        return this.#blockGasCost ??= deserializeHex(this.parts[24])
+        if (this.#blockGasCost !== undefined) return this.#blockGasCost
+        return this.#blockGasCost = deserializeOptionalHex(this.parts[24])
     }
 
     /* if you ever need full RLP again */
@@ -177,19 +191,22 @@ export const encodeLazyBlock = (i: Block): Uint8Array => {
             'hash', 'number', 'parentHash', 'timestamp', 'gasLimit', 'gasUsed',
             'baseFeePerGas', 'miner', 'difficulty', 'totalDifficulty', 'size',
             'stateRoot', 'transactionsRoot', 'receiptsRoot', 'logsBloom',
-            'extraData', 'mixHash', 'nonce', 'sha3Uncles', 'uncles', 'transactions',
+            'extraData', 'mixHash', 'nonce', 'sha3Uncles', 'uncles', 'transactions'
+        ])
+
+        const optionalFields = new Set([
             'blobGasUsed', 'excessBlobGas', 'parentBeaconBlockRoot', 'blockGasCost'
         ])
 
         const actualFields = new Set(Object.keys(i))
-        const unusedFields = [...actualFields].filter(field => !expectedFields.has(field))
+        const unusedFields = [...actualFields].filter(field => !expectedFields.has(field) && !optionalFields.has(field))
 
         if (unusedFields.length > 0) {
             throw new Error(`encodeLazyBlock development: Unused fields in block: ${unusedFields.join(', ')}`)
         }
 
         for (const field of expectedFields) {
-            if (i[field] === undefined) {
+            if (i[field] === undefined && !optionalFields.has(field)) {
                 throw new Error(`encodeLazyBlock development: Missing field: ${field}`)
             }
         }
@@ -217,10 +234,10 @@ export const encodeLazyBlock = (i: Block): Uint8Array => {
         i.sha3Uncles,
         i.uncles,
         i.transactions.length,
-        i.blobGasUsed,
-        i.excessBlobGas,
-        i.parentBeaconBlockRoot,
-        i.blockGasCost
+        i.blobGasUsed || new Uint8Array(),
+        i.excessBlobGas || new Uint8Array(),
+        i.parentBeaconBlockRoot || new Uint8Array(),
+        i.blockGasCost || new Uint8Array()
     ]
 
     const rlp = RLP.encode(data)

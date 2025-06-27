@@ -23,8 +23,8 @@ interface JsonRpcResponse {
 }
 
 export interface StoredBlock {
-    block: EVMTypes.Block;
-    receipts: Record<string, EVMTypes.Receipt>;
+    block: EVMTypes.RpcBlock;
+    receipts: Record<string, EVMTypes.RpcTxReceipt>;
 }
 
 export class BatchRpc {
@@ -243,9 +243,9 @@ export class BatchRpc {
             idToCorrelate: { type: 'block_fetch', blockNumber: num, originalBlockIndex: index }
         }));
 
-        const blockResponses = await this.batchRpcRequests<EVMTypes.Block | null>(blockOperations);
+        const blockResponses = await this.batchRpcRequests<EVMTypes.RpcBlock | null>(blockOperations);
 
-        const successfullyFetchedBlocksMap = new Map<number, EVMTypes.Block>();
+        const successfullyFetchedBlocksMap = new Map<number, EVMTypes.RpcBlock>();
         const receiptOperations: Array<{ method: string; params: [string]; idToCorrelate: { type: 'receipt_fetch', originalBlockIndex: number; txHash: string } }> = [];
 
         // Process block responses and collect transaction hashes
@@ -287,7 +287,7 @@ export class BatchRpc {
 
         // Stage 2: Fetch all receipts in batches
         const receiptResponses = receiptOperations.length > 0
-            ? await this.batchRpcRequests<EVMTypes.Receipt>(receiptOperations)
+            ? await this.batchRpcRequests<EVMTypes.RpcTxReceipt>(receiptOperations)
             : [];
 
         // Stage 3: Assemble StoredBlock results

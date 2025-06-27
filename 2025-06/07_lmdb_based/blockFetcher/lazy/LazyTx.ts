@@ -1,7 +1,7 @@
 import { RLP } from "@ethereumjs/rlp"
 import { RpcBlockTransaction, RpcTxReceipt, RpcAccessListEntry } from "../evmTypes"
 import { IS_DEVELOPMENT } from '../../config'
-import { deserializeFixedHex, deserializeHex, deserializeOptionalHex } from "./LazyBlock"
+import { deserializeFixedHex, deserializeHex, deserializeNumber, deserializeOptionalHex } from "./LazyBlock"
 
 const TX_SIG_V1 = 0x01 as const
 
@@ -89,10 +89,10 @@ export class LazyTx {
         return this.#blockHash ??= deserializeFixedHex(this.parts[1])
     }
 
-    #blockNumber?: string
+    #blockNumber?: number
     get blockNumber() {
         if (!this.parts[2]) throw new Error('Missing blockNumber data')
-        return this.#blockNumber ??= deserializeHex(this.parts[2])
+        return this.#blockNumber ??= deserializeNumber(this.parts[2])
     }
 
     #transactionIndex?: string
@@ -346,7 +346,7 @@ export function lazyTxToTx(lazyTx: LazyTx): RpcBlockTransaction {
     return {
         hash: lazyTx.hash,
         blockHash: lazyTx.blockHash,
-        blockNumber: lazyTx.blockNumber,
+        blockNumber: '0x' + lazyTx.blockNumber.toString(16),
         transactionIndex: lazyTx.transactionIndex,
         from: lazyTx.from,
         to: lazyTx.to,
@@ -370,7 +370,7 @@ export function lazyTxToTx(lazyTx: LazyTx): RpcBlockTransaction {
 export function lazyTxToReceipt(lazyTx: LazyTx): RpcTxReceipt {
     return {
         blockHash: lazyTx.blockHash,
-        blockNumber: lazyTx.blockNumber,
+        blockNumber: '0x' + lazyTx.blockNumber.toString(16),
         contractAddress: lazyTx.contractAddress,
         cumulativeGasUsed: lazyTx.cumulativeGasUsed,
         effectiveGasPrice: lazyTx.effectiveGasPrice,

@@ -8,17 +8,103 @@ export class BlockDB {
     private db: InstanceType<typeof Database>;
 
     private prepped: Map<string, any>;
-    private isWriter: boolean;
+    private isReadonly: boolean;
 
-    constructor(path: string, isWriter: boolean) {
+    constructor({ path, isReadonly }: { path: string, isReadonly: boolean }) {
         this.db = new Database(path, {
-            readonly: !isWriter,
+            readonly: isReadonly,
         });
-        this.isWriter = isWriter;
-        this.initPragmas(isWriter);
-        this.initSchema();
+        this.isReadonly = isReadonly;
+        this.initPragmas(isReadonly);
+        if (!isReadonly) {
+            this.initSchema();
+        }
         this.prepped = new Map();
     }
+
+    //TODO: redo this to be more efficient
+    getBlocks(start: number, maxTransactions: number): { block: LazyBlock, txs: LazyTx[] }[] {
+        const totalStart = performance.now();
+        let queryTime = 0;
+        let decodingTime = 0;
+
+        // First, efficiently find which blocks to fetch based on transaction count
+        const planStart = performance.now();
+        const selectTxCounts = this.prepQuery(`
+            SELECT block_id, COUNT(*) as tx_count 
+            FROM txs 
+            WHERE block_id >= ? 
+            GROUP BY block_id 
+            ORDER BY block_id 
+            LIMIT 2000
+        `);
+        const txCounts = selectTxCounts.all(start) as { block_id: number, tx_count: number }[];
+
+        let totalTxs = 0;
+        let blocksToFetch: number[] = [];
+        for (const { block_id, tx_count } of txCounts) {
+            if (totalTxs + tx_count > maxTransactions && blocksToFetch.length > 0) {
+                break;
+            }
+            blocksToFetch.push(block_id);
+            totalTxs += tx_count;
+            if (totalTxs >= maxTransactions) {
+                break;
+            }
+        }
+
+        const planTime = performance.now() - planStart;
+        queryTime += planTime;
+
+        if (blocksToFetch.length === 0) {
+            console.log(`getBlocks(${start}, ${maxTransactions}): no blocks found`);
+            return [];
+        }
+
+        let result: { block: LazyBlock, txs: LazyTx[] }[] = [];
+
+        for (const blockNumber of blocksToFetch) {
+            // Time block query
+            const blockQueryStart = performance.now();
+            const selectBlock = this.prepQuery('SELECT data FROM blocks WHERE id = ?');
+            const blockResult = selectBlock.get(blockNumber) as { data: Buffer } | undefined;
+            queryTime += performance.now() - blockQueryStart;
+
+            if (!blockResult) throw new Error(`Block ${blockNumber} not found`);
+
+            // Time block decoding
+            const blockDecodeStart = performance.now();
+            const decompressedBlockData = lz4UncompressSync(blockResult.data);
+            const block = new LazyBlock(decompressedBlockData);
+            decodingTime += performance.now() - blockDecodeStart;
+
+            const txs: LazyTx[] = [];
+            for (let txIndex = 0; txIndex < block.transactionCount; txIndex++) {
+                // Time tx query
+                const txQueryStart = performance.now();
+                const selectTx = this.prepQuery('SELECT data FROM txs WHERE block_id = ? AND tx_ix = ?');
+                const txResult = selectTx.get(blockNumber, txIndex) as { data: Buffer } | undefined;
+                queryTime += performance.now() - txQueryStart;
+
+                if (!txResult) throw new Error(`Tx ${blockNumber}:${txIndex} not found`);
+
+                // Time tx decoding
+                const txDecodeStart = performance.now();
+                const decompressedTxData = lz4UncompressSync(txResult.data);
+                const tx = new LazyTx(decompressedTxData);
+                decodingTime += performance.now() - txDecodeStart;
+
+                txs.push(tx);
+            }
+            result.push({ block, txs });
+        }
+
+        const totalTime = performance.now() - totalStart;
+        console.log(`getBlocks(${start}, max ${maxTransactions} txs): got ${totalTxs} txs in ${blocksToFetch.length} blocks, total=${Math.round(totalTime)}ms, query=${Math.round(queryTime)}ms, decode=${Math.round(decodingTime)}ms`);
+
+        return result;
+    }
+
 
     getLastStoredBlockNumber(): number {
         const selectMax = this.prepQuery('SELECT MAX(id) as max_id FROM blocks');
@@ -28,7 +114,7 @@ export class BlockDB {
     }
 
     storeBlocks(batch: StoredBlock[]) {
-        if (!this.isWriter) throw new Error('BlockDB is not a writer');
+        if (this.isReadonly) throw new Error('BlockDB is readonly');
         if (batch.length === 0) return;
 
         let lastStoredBlockNum = this.getLastStoredBlockNumber();
@@ -67,7 +153,7 @@ export class BlockDB {
     }
 
     setBlockchainLatestBlockNum(blockNumber: number) {
-        if (!this.isWriter) throw new Error('BlockDB is not a writer');
+        if (this.isReadonly) throw new Error('BlockDB is readonly');
         const upsert = this.prepQuery('INSERT OR REPLACE INTO kv_int (key, value) VALUES (?, ?)');
         upsert.run('blockchain_latest_block', blockNumber);
     }
@@ -113,7 +199,6 @@ export class BlockDB {
     }
 
     private initSchema() {
-        if (!this.isWriter) return;
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS blocks (
         id   INTEGER PRIMARY KEY,
@@ -134,11 +219,11 @@ export class BlockDB {
     `);
     }
 
-    private initPragmas(isWriter: boolean) {
+    private initPragmas(isReadonly: boolean) {
         // 8 KiB pages = good balance for sequential writes & mmap reads
         this.db.pragma('page_size = 8192');
 
-        if (isWriter) {
+        if (!isReadonly) {
             // *** WRITER: fire-and-forget speed ***
             this.db.pragma('journal_mode      = WAL');         // enables concurrent readers
             this.db.pragma('synchronous       = OFF');         // lose at most one commit on crash

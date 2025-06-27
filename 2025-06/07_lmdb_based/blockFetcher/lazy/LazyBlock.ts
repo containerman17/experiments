@@ -26,7 +26,7 @@ const deserializeOptionalFixedHex = (b: Uint8Array | undefined): string | undefi
 }
 
 
-const deserializeNumber = (b: Uint8Array) => {
+export const deserializeNumber = (b: Uint8Array) => {
     if (!b) throw new Error('Missing required field')
     let n = 0n
     for (const byte of b) n = (n << 8n) | BigInt(byte)
@@ -70,9 +70,9 @@ export class LazyBlock {
         return this.#hash ??= deserializeFixedHex(this.parts[0]!)
     }
 
-    #number?: string
+    #number?: number
     get number() {
-        return this.#number ??= deserializeHex(this.parts[1]!)
+        return this.#number ??= deserializeNumber(this.parts[1]!)
     }
 
     #parentHash?: string
@@ -271,7 +271,7 @@ export const encodeLazyBlock = (i: RpcBlock): Uint8Array => {
 export function lazyBlockToBlock(lazyBlock: LazyBlock, transactions: LazyTx[]): RpcBlock {
     return {
         hash: lazyBlock.hash,
-        number: lazyBlock.number,
+        number: '0x' + lazyBlock.number.toString(16),
         parentHash: lazyBlock.parentHash,
         timestamp: lazyBlock.timestamp,
         gasLimit: lazyBlock.gasLimit,

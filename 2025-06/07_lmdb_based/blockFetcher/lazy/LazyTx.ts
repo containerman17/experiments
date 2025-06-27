@@ -368,5 +368,30 @@ export function lazyTxToTx(lazyTx: LazyTx): RpcBlockTransaction {
 }
 
 export function lazyTxToReceipt(lazyTx: LazyTx): RpcTxReceipt {
-    throw "lazyTxToReceipt Not implemented"
+    return {
+        blockHash: lazyTx.blockHash,
+        blockNumber: lazyTx.blockNumber,
+        contractAddress: lazyTx.contractAddress,
+        cumulativeGasUsed: lazyTx.cumulativeGasUsed,
+        effectiveGasPrice: lazyTx.effectiveGasPrice,
+        from: lazyTx.from,
+        gasUsed: lazyTx.gasUsed,
+        logs: lazyTx.logs.map(log => ({
+            address: log.address,
+            topics: log.topics,
+            data: log.data,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            transactionIndex: log.transactionIndex,
+            blockHash: log.blockHash,
+            logIndex: log.logIndex,
+            removed: log.removed
+        })),
+        logsBloom: lazyTx.logsBloom,
+        status: lazyTx.status,
+        to: lazyTx.to!,
+        transactionHash: lazyTx.hash,
+        transactionIndex: lazyTx.transactionIndex,
+        type: lazyTx.type
+    }
 }

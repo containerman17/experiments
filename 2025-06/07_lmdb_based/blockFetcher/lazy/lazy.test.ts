@@ -2,7 +2,7 @@ import { encodeLazyBlock, LazyBlock, lazyBlockToBlock } from "./LazyBlock";
 import { RpcBlock, RpcTxReceipt } from "../evmTypes";
 import assert from "assert";
 import test from "node:test";
-import { encodeLazyTx, LazyTx } from "./LazyTx";
+import { encodeLazyTx, LazyTx, lazyTxToReceipt } from "./LazyTx";
 
 const preCancunBlock: RpcBlock =
 {
@@ -108,7 +108,7 @@ const preCancunReceipt: RpcTxReceipt = {
     "from": "0xb235b4e38d3843550c352c44f7b300c33fb3bf08",
     "gasUsed": "0x5208",
     "logs": [],
-    "logsBloom": "0x000000000000000000000",//shortened for brevity
+    "logsBloom": "0x0000000000000000000000",//shortened for brevity
     "status": "0x1",
     "to": "0xb235b4e38d3843550c352c44f7b300c33fb3bf08",
     "transactionHash": "0x6a3e3765260cc511acd7b573689a1537f2b7e3ea5b25907268de5ad6ef86f550",
@@ -140,7 +140,7 @@ const postCancunReceipt: RpcTxReceipt = {
             "removed": false
         }
     ],
-    "logsBloom": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000010",//shortened for brevity
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000010",//shortened for brevity
     "status": "0x1",
     "to": "0xf6a6d210e45930b81d5ad6fd3dfe2ed30f3b8e72",
     "transactionHash": "0xe90d4049a0ecf26cac310b6c758c65a66efee9343e6c3f7e89d1b5be177427ea",
@@ -152,12 +152,16 @@ test("lazy block encode decode - pre cancun", () => {
     const lazyBlockData = encodeLazyBlock(preCancunBlock);
     const lazyTxData = encodeLazyTx(preCancunBlock.transactions[0]!, preCancunReceipt);
     const block = lazyBlockToBlock(new LazyBlock(lazyBlockData), [new LazyTx(lazyTxData)]);
+    const receipt = lazyTxToReceipt(new LazyTx(lazyTxData));
     assert.deepStrictEqual(block, preCancunBlock);
+    assert.deepStrictEqual(receipt, preCancunReceipt);
 });
 
 test("lazy block encode decode - post cancun", () => {
     const lazyBlock = encodeLazyBlock(postCancunBlock);
     const lazyTxData = encodeLazyTx(postCancunBlock.transactions[0]!, postCancunReceipt);
     const block = lazyBlockToBlock(new LazyBlock(lazyBlock), [new LazyTx(lazyTxData)]);
+    const receipt = lazyTxToReceipt(new LazyTx(lazyTxData));
     assert.deepStrictEqual(block, postCancunBlock);
+    assert.deepStrictEqual(receipt, postCancunReceipt);
 });

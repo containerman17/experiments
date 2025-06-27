@@ -7,12 +7,21 @@ import { LazyTx, lazyTxToTx } from './LazyTx'
 
 const BLOCK_SIG_V1 = 0x01 as const
 
-const deserializeOptionalHex = (b: Uint8Array | undefined): string | undefined => {
+export const deserializeOptionalHex = (b: Uint8Array | undefined): string | undefined => {
     if (!b) return undefined
     // Check if it's exactly [0xc0] (empty RLP list)
     if (b.length === 1 && b[0] === 0xc0) return undefined
     return deserializeHex(b)
 }
+
+
+const deserializeOptionalFixedHex = (b: Uint8Array | undefined): string | undefined => {
+    if (!b) return undefined
+    // Check if it's exactly [0xc0] (empty RLP list)
+    if (b.length === 1 && b[0] === 0xc0) return undefined
+    return deserializeFixedHex(b)
+}
+
 
 const deserializeNumber = (b: Uint8Array) => {
     if (!b) throw new Error('Missing required field')
@@ -22,18 +31,26 @@ const deserializeNumber = (b: Uint8Array) => {
     return Number(n)
 }
 
-const deserializeHex = (b: Uint8Array) => {
+const compactBytesToHex = (b: Uint8Array) => {
+    const result = bytesToHex(b)
+    if (result[0] === '0') return result.slice(1)
+    return result
+}
+
+export const deserializeHex = (b: Uint8Array) => {
+    console.log('deserializeHex', b)
     if (!b) throw new Error('Missing required field')
     if (b.length === 0) return '0x0'
     // Remove leading zeros but keep at least one digit
     let start = 0
     while (start < b.length - 1 && b[start] === 0) start++
-    return '0x' + bytesToHex(b.slice(start))
+    return '0x' + compactBytesToHex(b.slice(start))
 }
 
-const deserializeFixedHex = (b: Uint8Array) => {
+export const deserializeFixedHex = (b: Uint8Array) => {
     if (!b) throw new Error('Missing required field')
-    return '0x' + bytesToHex(b)
+    const result = '0x' + bytesToHex(b)
+    return result
 }
 
 export class LazyBlock {
@@ -123,7 +140,7 @@ export class LazyBlock {
 
     #extraData?: string
     get extraData() {
-        return this.#extraData ??= deserializeFixedHex(this.parts[15]!)
+        return this.#extraData ??= deserializeHex(this.parts[15]!)
     }
 
     #mixHash?: string
@@ -169,7 +186,8 @@ export class LazyBlock {
     #parentBeaconBlockRoot?: string | undefined
     get parentBeaconBlockRoot() {
         if (this.#parentBeaconBlockRoot !== undefined) return this.#parentBeaconBlockRoot
-        return this.#parentBeaconBlockRoot = deserializeOptionalHex(this.parts[23])
+        const result = this.#parentBeaconBlockRoot = deserializeOptionalFixedHex(this.parts[23])
+        return result
     }
 
     #blockGasCost?: string | undefined
@@ -249,7 +267,6 @@ export const encodeLazyBlock = (i: RpcBlock): Uint8Array => {
 }
 
 export function lazyBlockToBlock(lazyBlock: LazyBlock, transactions: LazyTx[]): RpcBlock {
-    throw new Error('not implemented')
     return {
         hash: lazyBlock.hash,
         number: lazyBlock.number,

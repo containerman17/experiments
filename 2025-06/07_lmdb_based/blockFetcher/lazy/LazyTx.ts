@@ -2,27 +2,11 @@ import { RLP } from "@ethereumjs/rlp"
 import { bytesToHex } from '@noble/curves/abstract/utils'
 import { RpcBlockTransaction, RpcTxReceipt, RpcReceiptLog, RpcAccessListEntry } from "../evmTypes"
 import { IS_DEVELOPMENT } from '../../config'
+import { deserializeFixedHex, deserializeHex, deserializeOptionalHex } from "./LazyBlock"
 
 const TX_SIG_V1 = 0x01 as const
 
-
-const deserializeHex = (b: Uint8Array) => {
-    if (b.length === 0) return '0x0'
-    // Remove leading zeros but keep at least one digit
-    let start = 0
-    while (start < b.length - 1 && b[start] === 0) start++
-    return '0x' + bytesToHex(b.slice(start))
-}
-
-const deserializeFixedHex = (b: Uint8Array) => {
-    return '0x' + bytesToHex(b)
-}
-
-const deserializeOptionalHex = (b: Uint8Array) => {
-    return b.length === 0 ? undefined : deserializeHex(b)
-}
-
-const deserializeNullableAddress = (b: Uint8Array) => {
+const deserializeNullableAddress = (b: Uint8Array): string | null => {
     return b.length === 0 ? null : deserializeFixedHex(b)
 }
 
@@ -181,13 +165,13 @@ export class LazyTx {
     #r?: string
     get r() {
         if (!this.parts[14]) throw new Error('Missing r data')
-        return this.#r ??= deserializeFixedHex(this.parts[14])
+        return this.#r ??= deserializeHex(this.parts[14])
     }
 
     #s?: string
     get s() {
         if (!this.parts[15]) throw new Error('Missing s data')
-        return this.#s ??= deserializeFixedHex(this.parts[15])
+        return this.#s ??= deserializeHex(this.parts[15])
     }
 
     #maxFeePerGas?: string | undefined
@@ -328,12 +312,12 @@ export const encodeLazyTx = (tx: RpcBlockTransaction, receipt: RpcTxReceipt): Ui
         tx.v,
         tx.r,
         tx.s,
-        tx.maxFeePerGas || '',
-        tx.maxPriorityFeePerGas || '',
+        tx.maxFeePerGas || new Uint8Array(),
+        tx.maxPriorityFeePerGas || new Uint8Array(),
         encodedAccessList,
-        tx.yParity || '',
+        tx.yParity || new Uint8Array(),
         // Receipt fields
-        receipt.contractAddress || '',
+        receipt.contractAddress || new Uint8Array(),
         receipt.cumulativeGasUsed,
         receipt.effectiveGasPrice,
         receipt.gasUsed,
@@ -346,7 +330,7 @@ export const encodeLazyTx = (tx: RpcBlockTransaction, receipt: RpcTxReceipt): Ui
             log.transactionIndex,
             log.blockHash,
             log.logIndex,
-            log.removed ? [1] : [0]
+            log.removed ? 1 : 0
         ]),
         receipt.logsBloom,
         receipt.status
@@ -360,7 +344,28 @@ export const encodeLazyTx = (tx: RpcBlockTransaction, receipt: RpcTxReceipt): Ui
 }
 
 export function lazyTxToTx(lazyTx: LazyTx): RpcBlockTransaction {
-    throw "lazyTxToTx Not implemented"
+    return {
+        hash: lazyTx.hash,
+        blockHash: lazyTx.blockHash,
+        blockNumber: lazyTx.blockNumber,
+        transactionIndex: lazyTx.transactionIndex,
+        from: lazyTx.from,
+        to: lazyTx.to,
+        value: lazyTx.value,
+        gas: lazyTx.gas,
+        gasPrice: lazyTx.gasPrice,
+        input: lazyTx.input,
+        nonce: lazyTx.nonce,
+        type: lazyTx.type,
+        chainId: lazyTx.chainId,
+        v: lazyTx.v,
+        r: lazyTx.r,
+        s: lazyTx.s,
+        ...(lazyTx.maxFeePerGas !== undefined && { maxFeePerGas: lazyTx.maxFeePerGas }),
+        ...(lazyTx.maxPriorityFeePerGas !== undefined && { maxPriorityFeePerGas: lazyTx.maxPriorityFeePerGas }),
+        ...(lazyTx.accessList !== undefined && { accessList: lazyTx.accessList }),
+        ...(lazyTx.yParity !== undefined && { yParity: lazyTx.yParity })
+    }
 }
 
 export function lazyTxToReceipt(lazyTx: LazyTx): RpcTxReceipt {

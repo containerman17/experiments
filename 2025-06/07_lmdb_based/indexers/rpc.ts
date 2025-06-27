@@ -36,6 +36,10 @@ class RPCIndexer implements Indexer {
             result: "method was " + request.method
         }
     }
+
+    getVersionPrefix(): string {
+        return 'v1';
+    }
 }
 export const createRPCIndexer: CreateIndexerFunction = (blocksDb, indexingDb) => {
     return new RPCIndexer(blocksDb, indexingDb);

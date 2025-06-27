@@ -52,6 +52,8 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true });
         const indexingDb = new Database(indexingDbPath, { readonly: true });
 
+        const evmChainId = await waitForChainId(blocksDb);
+
         await executePragmas({ db: indexingDb, isReadonly: true });
 
         const fastifyApp = Fastify({
@@ -71,7 +73,10 @@ if (cluster.isPrimary) {
 
         for (const indexerFactory of indexerFactories) {
             const indexer = indexerFactory(blocksDb, indexingDb);
-            fastifyApp.register((fastify, options) => indexer.registerRoutes(fastify, options));
+            //metrics are v2, data is v1
+            fastifyApp.register((fastify, options) => indexer.registerRoutes(fastify, options), {
+                prefix: `/${indexer.getVersionPrefix()}/chains/${evmChainId}`
+            });
         }
 
         fastifyApp.listen({ port: 3000 }, (err, address) => {
@@ -95,10 +100,8 @@ if (cluster.isPrimary) {
 
         await executePragmas({ db: indexingDb, isReadonly: false });
 
-
         let hadSomethingToIndex = false;
 
-        // Create the transaction function ONCE
         const runIndexing = indexingDb.transaction((lastIndexedBlock) => {
             const getStart = performance.now();
             const blocks = blocksDb.getBlocks(lastIndexedBlock + 1, 10000);
@@ -130,6 +133,17 @@ if (cluster.isPrimary) {
     }
 }
 
+async function waitForChainId(blocksDb: BlockDB, maxAttempts: number = 10): Promise<number> {
+    let attempts = 0;
+    while (blocksDb.getEvmChainId() === -1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+        if (attempts > maxAttempts) {
+            throw new Error('Failed to get chain id');
+        }
+    }
+    return blocksDb.getEvmChainId();
+}
 
 async function awaitFileExists(path: string, maxMs: number = 3 * 1000, intervalMs: number = 100) {
     const startTime = Date.now();

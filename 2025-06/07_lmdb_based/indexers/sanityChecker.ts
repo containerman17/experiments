@@ -26,6 +26,10 @@ class SanityChecker implements Indexer {
     }
 
     registerRoutes(fastify: FastifyInstance, options: FastifyPluginOptions): void { }
+
+    getVersionPrefix(): string {
+        return 'v1';
+    }
 }
 export const createSanityChecker: CreateIndexerFunction = (blocksDb: BlockDB, indexingDb: SQLite.Database) => {
     return new SanityChecker();

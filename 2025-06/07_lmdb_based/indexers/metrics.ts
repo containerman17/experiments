@@ -52,6 +52,9 @@ class MetricsIndexer implements Indexer {
     }
 
     registerRoutes(fastify: FastifyInstance, options: FastifyPluginOptions): void { }
+    getVersionPrefix(): string {
+        return 'v2';
+    }
 }
 export const createMetricsIndexer: CreateIndexerFunction = (blocksDb: BlockDB, indexingDb: SQLite.Database) => {
     return new MetricsIndexer(blocksDb, indexingDb);

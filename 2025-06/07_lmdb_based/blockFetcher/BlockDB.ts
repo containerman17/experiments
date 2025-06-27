@@ -104,6 +104,16 @@ export class BlockDB {
         return result;
     }
 
+    getEvmChainId(): number {
+        const select = this.prepQuery('SELECT value FROM kv_int WHERE key = ?');
+        const result = select.get('evm_chain_id') as { value: number } | undefined;
+        return result?.value ?? -1;
+    }
+
+    setEvmChainId(chainId: number) {
+        const upsert = this.prepQuery('INSERT OR REPLACE INTO kv_int (key, value) VALUES (?, ?)');
+        upsert.run('evm_chain_id', chainId);
+    }
 
     getLastStoredBlockNumber(): number {
         const selectMax = this.prepQuery('SELECT MAX(id) as max_id FROM blocks');

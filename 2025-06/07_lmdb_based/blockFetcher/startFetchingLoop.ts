@@ -15,6 +15,12 @@ export async function startFetchingLoop(blockDB: BlockDB, batchRpc: BatchRpc, bl
 
     let lastStoredBlock = blockDB.getLastStoredBlockNumber();
 
+
+    if (blockDB.getEvmChainId() === -1) {
+        const newEvmChainId = await batchRpc.getEvmChainId();
+        blockDB.setEvmChainId(newEvmChainId);
+    }
+
     while (true) {
         // Check if we've caught up to the latest remote block
         if (lastStoredBlock >= latestRemoteBlock) {

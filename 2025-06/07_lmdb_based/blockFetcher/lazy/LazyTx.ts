@@ -1,7 +1,7 @@
 import { RLP } from "@ethereumjs/rlp"
 import { bytesToHex } from '@noble/curves/abstract/utils'
-import { Transaction, Receipt, Log, AccessListEntry } from "./evmTypes"
-import { IS_DEVELOPMENT } from '../config'
+import { RpcBlockTransaction, RpcTxReceipt, RpcReceiptLog, RpcAccessListEntry } from "../evmTypes"
+import { IS_DEVELOPMENT } from '../../config'
 
 const TX_SIG_V1 = 0x01 as const
 
@@ -202,7 +202,7 @@ export class LazyTx {
         return this.#maxPriorityFeePerGas ??= deserializeOptionalHex(this.parts[17])
     }
 
-    #accessList?: AccessListEntry[] | undefined
+    #accessList?: RpcAccessListEntry[] | undefined
     get accessList() {
         if (this.#accessList !== undefined) return this.#accessList
         if (!this.parts[18]) throw new Error('Missing accessList data')
@@ -274,7 +274,7 @@ export class LazyTx {
     }
 }
 
-export const encodeLazyTx = (tx: Transaction, receipt: Receipt): Uint8Array => {
+export const encodeLazyTx = (tx: RpcBlockTransaction, receipt: RpcTxReceipt): Uint8Array => {
     if (IS_DEVELOPMENT) {
         // Validate transaction fields
         const expectedTxFields = new Set([
@@ -357,4 +357,12 @@ export const encodeLazyTx = (tx: Transaction, receipt: Receipt): Uint8Array => {
     out[0] = TX_SIG_V1
     out.set(rlp, 1)
     return out
+}
+
+export function lazyTxToTx(lazyTx: LazyTx): RpcBlockTransaction {
+    throw "lazyTxToTx Not implemented"
+}
+
+export function lazyTxToReceipt(lazyTx: LazyTx): RpcTxReceipt {
+    throw "lazyTxToReceipt Not implemented"
 }

@@ -1,4 +1,4 @@
-export interface Log {
+export interface RpcReceiptLog {
     address: string;
     topics: string[];
     data: string;
@@ -10,12 +10,12 @@ export interface Log {
     removed: boolean;
 }
 
-export interface AccessListEntry {
+export interface RpcAccessListEntry {
     address: string;
     storageKeys: string[];
 }
 
-export interface Receipt {
+export interface RpcTxReceipt {
     blockHash: string;
     blockNumber: string;
     contractAddress: string | null;
@@ -23,7 +23,7 @@ export interface Receipt {
     effectiveGasPrice: string;
     from: string;
     gasUsed: string;
-    logs: Log[];
+    logs: RpcReceiptLog[];
     logsBloom: string;
     status: string;
     to: string;
@@ -32,7 +32,7 @@ export interface Receipt {
     type: string;
 }
 
-export interface Transaction {
+export interface RpcBlockTransaction {
     hash: string;
     blockHash: string;
     blockNumber: string;
@@ -51,11 +51,11 @@ export interface Transaction {
     s: string;
     maxFeePerGas?: string;
     maxPriorityFeePerGas?: string;
-    accessList?: AccessListEntry[];
+    accessList?: RpcAccessListEntry[];
     yParity?: string;
 }
 
-export interface Block {
+export interface RpcBlock {
     hash: string;
     number: string;
     parentHash: string;
@@ -76,9 +76,9 @@ export interface Block {
     nonce: string;
     sha3Uncles: string;
     uncles: string[];
-    transactions: Transaction[];
-    blobGasUsed: string;
-    excessBlobGas: string;
-    parentBeaconBlockRoot: string;
-    blockGasCost: string;
+    transactions: RpcBlockTransaction[];
+    blobGasUsed?: string;
+    excessBlobGas?: string;
+    parentBeaconBlockRoot?: string;
+    blockGasCost?: string;
 }

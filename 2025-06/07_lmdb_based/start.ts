@@ -5,7 +5,7 @@ import { BlockDB } from './blockFetcher/BlockDB';
 import { startFetchingLoop } from './blockFetcher/startFetchingLoop';
 import { BatchRpc } from './blockFetcher/BatchRpc';
 import { createRPCIndexer } from './indexers/rpc';
-import fastify from 'fastify';
+import Fastify from 'fastify';
 import Database from 'better-sqlite3';
 
 const RPC_URL = 'http://65.21.140.118/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc'
@@ -25,8 +25,8 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB(blocksDbPath, true);
         const batchRpc = new BatchRpc({
             rpcUrl: RPC_URL,
-            batchSize: 100,
-            maxConcurrent: 100,
+            batchSize: 500,
+            maxConcurrent: 10,
             rps: 100,
             enableBatchSizeGrowth: false,
         });
@@ -35,7 +35,20 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB(blocksDbPath, false);
         const indexingDb = new Database(path.join("database", CHAIN_ID, 'indexing.db'));
         const indexerFactories = [createRPCIndexer];
-        const fastifyApp = fastify({ logger: true });
+        const fastifyApp = Fastify({
+            logger: {
+                transport: {
+                    // plain-text output, colourised, one line per log
+                    target: 'pino-pretty',
+                    options: {
+                        translateTime: 'HH:MM:ss',
+                        singleLine: true,
+                        ignore: 'pid,hostname'   // keep it short
+                    }
+                },
+                level: process.env['LOG_LEVEL'] || 'info'
+            }
+        })
 
         for (const indexerFactory of indexerFactories) {
             const indexer = indexerFactory(blocksDb, indexingDb);

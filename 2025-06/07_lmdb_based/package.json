@@ -7,7 +7,6 @@
     "build": "tsc",
     "dev": "tsx watch --clear-screen=false .",
     "start": "node dist/index.js",
-    "test": "vitest",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -30,6 +29,6 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "vitest": "^3.2.4"
+    "pino-pretty": "^13.0.0"
   }
 }

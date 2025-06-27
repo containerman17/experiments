@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { StoredBlock } from './BatchRpc';
-import { encodeLazyBlock, LazyBlock } from './LazyBlock';
-import { encodeLazyTx, LazyTx } from './LazyTx';
+import { encodeLazyBlock, LazyBlock } from './lazy/LazyBlock';
+import { encodeLazyTx, LazyTx } from './lazy/LazyTx';
 import { compressSync as lz4CompressSync, uncompressSync as lz4UncompressSync } from 'lz4-napi';
 
 export class BlockDB {

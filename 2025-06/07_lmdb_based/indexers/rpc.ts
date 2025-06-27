@@ -1,8 +1,8 @@
 import SQLite from "better-sqlite3";
 import { BlockDB } from "../blockFetcher/BlockDB";
 import { CreateIndexerFunction, Indexer } from "./types";
-import { LazyTx } from "../blockFetcher/LazyTx";
-import { LazyBlock } from "../blockFetcher/LazyBlock";
+import { LazyTx } from "../blockFetcher/lazy/LazyTx";
+import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
 
 class RPCIndexer implements Indexer {

@@ -1,8 +1,9 @@
 // LazyBlock.ts
 import { RLP } from '@ethereumjs/rlp'
 import { bytesToHex } from '@noble/curves/abstract/utils'
-import { Block } from './evmTypes'
-import { IS_DEVELOPMENT } from '../config'
+import { RpcBlock } from '../evmTypes'
+import { IS_DEVELOPMENT } from '../../config'
+import { LazyTx, lazyTxToTx } from './LazyTx'
 
 const BLOCK_SIG_V1 = 0x01 as const
 
@@ -184,7 +185,7 @@ export class LazyBlock {
 }
 
 /* ── encoder ─────────────────────────────────────────────── */
-export const encodeLazyBlock = (i: Block): Uint8Array => {
+export const encodeLazyBlock = (i: RpcBlock): Uint8Array => {
     if (IS_DEVELOPMENT) {
         // Validate no unused fields
         const expectedFields = new Set([
@@ -206,7 +207,7 @@ export const encodeLazyBlock = (i: Block): Uint8Array => {
         }
 
         for (const field of expectedFields) {
-            if (i[field as keyof Block] === undefined && !optionalFields.has(field)) {
+            if (i[field as keyof RpcBlock] === undefined && !optionalFields.has(field)) {
                 throw new Error(`encodeLazyBlock development: Missing field: ${field}`)
             }
         }
@@ -246,3 +247,34 @@ export const encodeLazyBlock = (i: Block): Uint8Array => {
     out.set(rlp, 1)
     return out
 }
+
+export function lazyBlockToBlock(lazyBlock: LazyBlock, transactions: LazyTx[]): RpcBlock {
+    throw new Error('not implemented')
+    return {
+        hash: lazyBlock.hash,
+        number: lazyBlock.number,
+        parentHash: lazyBlock.parentHash,
+        timestamp: lazyBlock.timestamp,
+        gasLimit: lazyBlock.gasLimit,
+        gasUsed: lazyBlock.gasUsed,
+        baseFeePerGas: lazyBlock.baseFeePerGas,
+        miner: lazyBlock.miner,
+        difficulty: lazyBlock.difficulty,
+        totalDifficulty: lazyBlock.totalDifficulty,
+        size: lazyBlock.size,
+        stateRoot: lazyBlock.stateRoot,
+        transactionsRoot: lazyBlock.transactionsRoot,
+        receiptsRoot: lazyBlock.receiptsRoot,
+        logsBloom: lazyBlock.logsBloom,
+        extraData: lazyBlock.extraData,
+        mixHash: lazyBlock.mixHash,
+        nonce: lazyBlock.nonce,
+        sha3Uncles: lazyBlock.sha3Uncles,
+        uncles: lazyBlock.uncles,
+        transactions: transactions.map(tx => lazyTxToTx(tx)),
+        blobGasUsed: lazyBlock.blobGasUsed,
+        excessBlobGas: lazyBlock.excessBlobGas,
+        parentBeaconBlockRoot: lazyBlock.parentBeaconBlockRoot,
+        blockGasCost: lazyBlock.blockGasCost,
+    }
+}       

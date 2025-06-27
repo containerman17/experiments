@@ -49,12 +49,12 @@
     "chainName": "coqnet",
     "blockchainId": "23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG",
     "subnetId": "5moznRzaAEhzWkNTQVdT1U4Kb9EU7dbsKZQNmHwtN5MGVQRyT",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG/rpc",
+    "evmChainId": "42069",
+    "blocksCount": "1m+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "ienium",
@@ -224,13 +224,13 @@
     "chainName": "QChain",
     "blockchainId": "2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy",
     "subnetId": "26wQKuvA5kjwrKDaje7nmuJAx6Ke2bGvDDr3EiypNr53rH1pMc",
-    "rpcUrl": "https://subnets.avax.network/qchain/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy/rpc",
     "evmChainId": "12150",
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "12150",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "STLINK",
@@ -494,7 +494,7 @@
     "rpcUrl": "https://rpc.amichain.org",
     "evmChainId": "588785742",
     "blocksCount": "10+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "10+",
     "comment": "https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,",
     "debugEnabled": false
   },
@@ -525,11 +525,11 @@
     "chainName": "SSHIVANSH",
     "blockchainId": "2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW",
     "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
+    "evmChainId": "222345",
+    "blocksCount": "0+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
+    "comment": null,
     "debugEnabled": false
   },
   {
@@ -577,6 +577,18 @@
     "estimatedTxCount": "10+",
     "comment": null,
     "debugEnabled": true
+  },
+  {
+    "chainName": "TixChain",
+    "blockchainId": "Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj",
+    "subnetId": "2BLtazsGwYAFEHpvZQGQUPavjQZ2YUqpvfYPdAdTtKpJ1m3eRK",
+    "rpcUrl": "https://subnets.avax.network/tixchain/mainnet/rpc",
+    "evmChainId": "13790",
+    "blocksCount": "100+",
+    "estimatedTxCount": null,
+    "glacierChainId": "13790",
+    "comment": null,
+    "debugEnabled": false
   },
   {
     "chainName": "StraitsX",
@@ -721,13 +733,13 @@
     "chainName": "BangoL",
     "blockchainId": "QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4",
     "subnetId": "4Wuefof5Lp2v5KfmJRnsGJz9HPX4UzWP7DZC5SyhQcXRQkyPp",
-    "rpcUrl": "https://subnets.avax.network/bangochain/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4/rpc",
     "evmChainId": "5506",
     "blocksCount": "100+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "100+",
     "glacierChainId": "5506",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "Pulsar",

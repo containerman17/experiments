@@ -22,7 +22,7 @@ export class BlockDB {
         this.prepped = new Map();
     }
 
-    //TODO: redo this to be more efficient
+    //TODO: could be more efficient, but decoding is 60% of the time now. So 2x faster queries would improve the overall performance only by 20%.
     getBlocks(start: number, maxTransactions: number): { block: LazyBlock, txs: LazyTx[] }[] {
         const totalStart = performance.now();
         let queryTime = 0;
@@ -36,7 +36,7 @@ export class BlockDB {
             WHERE block_id >= ? 
             GROUP BY block_id 
             ORDER BY block_id 
-            LIMIT 2000
+            LIMIT ${Number(maxTransactions)}
         `);
         const txCounts = selectTxCounts.all(start) as { block_id: number, tx_count: number }[];
 
@@ -57,7 +57,6 @@ export class BlockDB {
         queryTime += planTime;
 
         if (blocksToFetch.length === 0) {
-            console.log(`getBlocks(${start}, ${maxTransactions}): no blocks found`);
             return [];
         }
 

@@ -80,9 +80,9 @@ export class LazyBlock {
         return this.#parentHash ??= deserializeFixedHex(this.parts[2]!)
     }
 
-    #timestamp?: string
+    #timestamp?: number
     get timestamp() {
-        return this.#timestamp ??= deserializeHex(this.parts[3]!)
+        return this.#timestamp ??= deserializeNumber(this.parts[3]!)
     }
 
     #gasLimit?: string
@@ -273,7 +273,7 @@ export function lazyBlockToBlock(lazyBlock: LazyBlock, transactions: LazyTx[]): 
         hash: lazyBlock.hash,
         number: '0x' + lazyBlock.number.toString(16),
         parentHash: lazyBlock.parentHash,
-        timestamp: lazyBlock.timestamp,
+        timestamp: '0x' + lazyBlock.timestamp.toString(16),
         gasLimit: lazyBlock.gasLimit,
         gasUsed: lazyBlock.gasUsed,
         baseFeePerGas: lazyBlock.baseFeePerGas,

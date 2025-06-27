@@ -7,13 +7,15 @@ import { BatchRpc } from './blockFetcher/BatchRpc';
 import { createRPCIndexer } from './indexers/rpc';
 import Fastify from 'fastify';
 import Database from 'better-sqlite3';
-import { IndexingDbHelper } from './indexers/dbHelper';
+import { executePragmas, IndexingDbHelper } from './indexers/dbHelper';
 import { config } from 'node:process';
 import { IS_DEVELOPMENT } from './config';
 import { createSanityChecker } from './indexers/sanityChecker';
+import { createMetricsIndexer } from './indexers/metrics';
+import { Indexer } from './indexers/types';
 
-const RPC_URL = 'http://65.21.140.118/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc'
-const CHAIN_ID = '2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du'
+const RPC_URL = 'http://65.21.140.118/ext/bc/22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt/rpc'
+const CHAIN_ID = '22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt'
 
 const blocksDbPath = path.join("database", CHAIN_ID, 'blocks.db');
 const indexingDbPath = path.join(path.dirname(blocksDbPath), 'indexing.db');
@@ -21,7 +23,7 @@ if (!fs.existsSync(blocksDbPath)) {
     fs.mkdirSync(path.dirname(blocksDbPath), { recursive: true });
 }
 
-const indexerFactories = [createRPCIndexer];
+const indexerFactories = [createRPCIndexer, createMetricsIndexer];
 if (IS_DEVELOPMENT) {
     indexerFactories.push(createSanityChecker);
 }
@@ -37,11 +39,11 @@ if (cluster.isPrimary) {
         const batchRpc = new BatchRpc({
             rpcUrl: RPC_URL,
             batchSize: 500,
-            maxConcurrent: 10,
+            maxConcurrent: 100,
             rps: 100,
             enableBatchSizeGrowth: false,
         });
-        startFetchingLoop(blocksDb, batchRpc, 1000);
+        startFetchingLoop(blocksDb, batchRpc, 10000);
     } else if (process.env['ROLE'] === 'api') {
         //awaits both files as it is read only for both
         await awaitFileExists(indexingDbPath);
@@ -49,6 +51,8 @@ if (cluster.isPrimary) {
 
         const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true });
         const indexingDb = new Database(indexingDbPath, { readonly: true });
+
+        await executePragmas({ db: indexingDb, isReadonly: true });
 
         const fastifyApp = Fastify({
             logger: {
@@ -83,7 +87,14 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true });
         const indexingDb = new Database(indexingDbPath, { readonly: false });
         const indexingDbHelper = new IndexingDbHelper(indexingDb);
-        const indexers = indexerFactories.map(factory => factory(blocksDb, indexingDb));
+        const indexers: Indexer[] = indexerFactories.map(factory => {
+            const indexer = factory(blocksDb, indexingDb);
+            indexer.initialize();
+            return indexer;
+        });
+
+        await executePragmas({ db: indexingDb, isReadonly: false });
+
 
         let hadSomethingToIndex = false;
 

@@ -2,13 +2,8 @@
   "name": "07_lmdb_based",
   "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch --clear-screen=false .",
-    "start": "node dist/index.js",
-    "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "dev": "rm -f ./database/*/indexing.db*; tsx watch --clear-screen=false start.ts"
   },
   "keywords": [],
   "author": "",

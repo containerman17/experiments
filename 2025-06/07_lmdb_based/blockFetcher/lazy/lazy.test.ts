@@ -11,7 +11,7 @@ const preCancunBlock: RpcBlock =
     "blockGasCost": "0x0",
     "difficulty": "0x1",
     "excessBlobGas": "0x0",
-    "extraData": "0xfff000fff",//shortened for brevity
+    "extraData": "0x0fff000fff",//shortened for brevity
     "gasLimit": "0xe4e1c0",
     "gasUsed": "0x5208",
     "hash": "0x203fbcf52fbc44d38f08e5653b4846d516501b0a71e5bf9efa8d86b892ab8a8d",
@@ -155,8 +155,9 @@ test("lazy block encode decode - pre cancun", () => {
     assert.deepStrictEqual(block, preCancunBlock);
 });
 
-// test("lazy block encode decode - post cancun", () => {
-//     const lazyBlock = encodeLazyBlock(postCancunBlock);
-//     const block = lazyBlockToBlock(new LazyBlock(lazyBlock), []);
-//     assert.deepStrictEqual(block, postCancunBlock);
-// });
+test("lazy block encode decode - post cancun", () => {
+    const lazyBlock = encodeLazyBlock(postCancunBlock);
+    const lazyTxData = encodeLazyTx(postCancunBlock.transactions[0]!, postCancunReceipt);
+    const block = lazyBlockToBlock(new LazyBlock(lazyBlock), [new LazyTx(lazyTxData)]);
+    assert.deepStrictEqual(block, postCancunBlock);
+});

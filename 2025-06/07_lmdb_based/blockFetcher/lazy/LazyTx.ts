@@ -1,6 +1,5 @@
 import { RLP } from "@ethereumjs/rlp"
-import { bytesToHex } from '@noble/curves/abstract/utils'
-import { RpcBlockTransaction, RpcTxReceipt, RpcReceiptLog, RpcAccessListEntry } from "../evmTypes"
+import { RpcBlockTransaction, RpcTxReceipt, RpcAccessListEntry } from "../evmTypes"
 import { IS_DEVELOPMENT } from '../../config'
 import { deserializeFixedHex, deserializeHex, deserializeOptionalHex } from "./LazyBlock"
 

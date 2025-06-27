@@ -5,20 +5,23 @@ import { RpcBlock } from '../evmTypes'
 import { IS_DEVELOPMENT } from '../../config'
 import { LazyTx, lazyTxToTx } from './LazyTx'
 
+//we treat RLP_EMPTY_LIST_BYTE as an absent value
 const BLOCK_SIG_V1 = 0x01 as const
 
+const RLP_EMPTY_LIST_BYTE = RLP.encode(new Uint8Array())[0]
+
 export const deserializeOptionalHex = (b: Uint8Array | undefined): string | undefined => {
-    if (!b) return undefined
+    if (!b || b.length === 0) return undefined
     // Check if it's exactly [0xc0] (empty RLP list)
-    if (b.length === 1 && b[0] === 0xc0) return undefined
+    if (b.length === 1 && b[0] === RLP_EMPTY_LIST_BYTE) return undefined
     return deserializeHex(b)
 }
 
 
 const deserializeOptionalFixedHex = (b: Uint8Array | undefined): string | undefined => {
-    if (!b) return undefined
+    if (!b || b.length === 0) return undefined
     // Check if it's exactly [0xc0] (empty RLP list)
-    if (b.length === 1 && b[0] === 0xc0) return undefined
+    if (b.length === 1 && b[0] === RLP_EMPTY_LIST_BYTE) return undefined
     return deserializeFixedHex(b)
 }
 
@@ -38,7 +41,6 @@ const compactBytesToHex = (b: Uint8Array) => {
 }
 
 export const deserializeHex = (b: Uint8Array) => {
-    console.log('deserializeHex', b)
     if (!b) throw new Error('Missing required field')
     if (b.length === 0) return '0x0'
     // Remove leading zeros but keep at least one digit
@@ -140,7 +142,7 @@ export class LazyBlock {
 
     #extraData?: string
     get extraData() {
-        return this.#extraData ??= deserializeHex(this.parts[15]!)
+        return this.#extraData ??= deserializeFixedHex(this.parts[15]!)
     }
 
     #mixHash?: string
@@ -289,9 +291,9 @@ export function lazyBlockToBlock(lazyBlock: LazyBlock, transactions: LazyTx[]): 
         sha3Uncles: lazyBlock.sha3Uncles,
         uncles: lazyBlock.uncles,
         transactions: transactions.map(tx => lazyTxToTx(tx)),
-        blobGasUsed: lazyBlock.blobGasUsed,
-        excessBlobGas: lazyBlock.excessBlobGas,
-        parentBeaconBlockRoot: lazyBlock.parentBeaconBlockRoot,
-        blockGasCost: lazyBlock.blockGasCost,
+        ...(lazyBlock.blobGasUsed !== undefined && { blobGasUsed: lazyBlock.blobGasUsed }),
+        ...(lazyBlock.excessBlobGas !== undefined && { excessBlobGas: lazyBlock.excessBlobGas }),
+        ...(lazyBlock.parentBeaconBlockRoot !== undefined && { parentBeaconBlockRoot: lazyBlock.parentBeaconBlockRoot }),
+        ...(lazyBlock.blockGasCost !== undefined && { blockGasCost: lazyBlock.blockGasCost }),
     }
 }       

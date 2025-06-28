@@ -52,7 +52,7 @@
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG/rpc",
     "evmChainId": "42069",
     "blocksCount": "1m+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "100m+",
     "comment": null,
     "debugEnabled": true
   },
@@ -413,7 +413,7 @@
     "rpcUrl": "https://subnets.avax.network/shrapnel/mainnet/rpc",
     "evmChainId": "2044",
     "blocksCount": "1m+",
-    "estimatedTxCount": "100m+",
+    "estimatedTxCount": "10m+",
     "glacierChainId": "2044",
     "comment": null,
     "debugEnabled": false
@@ -445,13 +445,13 @@
     "chainName": "UPTN",
     "blockchainId": "2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE",
     "subnetId": "yDxaSh2hoVxQKRHmacV1xFpuSgHf6Q6cCMu4v3GoLQnqQWk6L",
-    "rpcUrl": "https://node-api.uptn.io/v1/ext/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE/rpc",
     "evmChainId": "6119",
     "blocksCount": "10m+",
     "estimatedTxCount": "10m+",
     "glacierChainId": "6119",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "ULALO",
@@ -528,9 +528,9 @@
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
     "evmChainId": "222345",
     "blocksCount": "0+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "0+",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "even",
@@ -585,7 +585,7 @@
     "rpcUrl": "https://subnets.avax.network/tixchain/mainnet/rpc",
     "evmChainId": "13790",
     "blocksCount": "100+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "100+",
     "glacierChainId": "13790",
     "comment": null,
     "debugEnabled": false
@@ -759,8 +759,8 @@
     "subnetId": "25VdGtdQPejyffNLpTqh4BH2NABXT8Zxup6ee3B4htrMryofUB",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
     "evmChainId": "4313",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
+    "blocksCount": "1k+",
+    "estimatedTxCount": "1k+",
     "glacierChainId": "4313",
     "comment": null,
     "debugEnabled": true

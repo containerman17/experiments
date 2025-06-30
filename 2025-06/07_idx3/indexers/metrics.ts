@@ -108,7 +108,7 @@ class MetricsIndexer implements Indexer {
             }
 
             if (pageToken) {
-                query += ` AND timestamp > ?`;
+                query += ` AND timestamp < ?`;
                 params.push(parseInt(pageToken));
             }
 
@@ -123,11 +123,13 @@ class MetricsIndexer implements Indexer {
                 results.pop(); // Remove the extra result
             }
 
-            // No need to convert timestamps anymore
+            // Backfill missing periods with zero values to match Glacier behavior
+            const backfilledResults = this.backfillZeros(results, timeIntervalId, startTimestamp, endTimestamp);
+
             const response: any = {
-                results: results,
-                nextPageToken: hasNextPage && results.length > 0
-                    ? results[results.length - 1]!.timestamp.toString()
+                results: backfilledResults.slice(0, validPageSize),
+                nextPageToken: hasNextPage && backfilledResults.length > 0
+                    ? backfilledResults[Math.min(validPageSize - 1, backfilledResults.length - 1)]!.timestamp.toString()
                     : undefined
             };
 
@@ -150,6 +152,48 @@ class MetricsIndexer implements Indexer {
             case 'week': return TIME_INTERVAL_WEEK;
             case 'month': return TIME_INTERVAL_MONTH;
             default: return -1;
+        }
+    }
+
+    private backfillZeros(results: MetricResult[], timeInterval: number, startTimestamp?: number, endTimestamp?: number): MetricResult[] {
+        if (results.length === 0) return results;
+
+        const backfilled: MetricResult[] = [];
+        const resultMap = new Map(results.map(r => [r.timestamp, r.value]));
+
+        const oldest = results[results.length - 1]!.timestamp;
+        const newest = results[0]!.timestamp;
+
+        const start = startTimestamp ? Math.max(startTimestamp, oldest) : oldest;
+        const end = endTimestamp ? Math.min(endTimestamp, newest) : newest;
+
+        let current = newest;
+        while (current >= start) {
+            backfilled.push({
+                timestamp: current,
+                value: resultMap.get(current) || 0
+            });
+            current = this.getPreviousTimestamp(current, timeInterval);
+        }
+
+        return backfilled;
+    }
+
+    private getPreviousTimestamp(timestamp: number, timeInterval: number): number {
+        const date = new Date(timestamp * 1000);
+
+        switch (timeInterval) {
+            case TIME_INTERVAL_HOUR:
+                return timestamp - 3600;
+            case TIME_INTERVAL_DAY:
+                return timestamp - 86400;
+            case TIME_INTERVAL_WEEK:
+                return timestamp - 604800;
+            case TIME_INTERVAL_MONTH:
+                date.setUTCMonth(date.getUTCMonth() - 1);
+                return Math.floor(date.getTime() / 1000);
+            default:
+                return timestamp;
         }
     }
 }

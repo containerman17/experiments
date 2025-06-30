@@ -49,8 +49,6 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true });
         const indexingDb = new Database(indexingDbPath, { readonly: true });
 
-        const evmChainId = await waitForChainId(blocksDb);
-
         await executePragmas({ db: indexingDb, isReadonly: true });
 
         const fastifyApp = Fastify({
@@ -128,17 +126,6 @@ if (cluster.isPrimary) {
     }
 }
 
-async function waitForChainId(blocksDb: BlockDB, maxAttempts: number = 10): Promise<number> {
-    let attempts = 0;
-    while (blocksDb.getEvmChainId() === -1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-        if (attempts > maxAttempts) {
-            throw new Error('Failed to get chain id');
-        }
-    }
-    return blocksDb.getEvmChainId();
-}
 
 async function awaitFileExists(path: string, maxMs: number = 3 * 1000, intervalMs: number = 100) {
     const startTime = Date.now();

@@ -1,4 +1,4 @@
-const evmChainId = 13322//await getEvmChainId('http://localhost:3000/rpc');
+const evmChainId = await getEvmChainId('http://localhost:3000/rpc');
 console.log(evmChainId);
 
 type MetricsResponse = {
@@ -9,33 +9,33 @@ type MetricsResponse = {
     nextPageToken: string;
 }
 
-// async function getEvmChainId(url: string) {
-//     const response = await fetch(url, {
-//         method: 'POST',
-//         headers: {
-//             'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//             jsonrpc: '2.0',
-//             method: 'eth_chainId',
-//             params: [],
-//             id: 1,
-//         }),
-//     });
+async function getEvmChainId(url: string) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'eth_chainId',
+            params: [],
+            id: 1,
+        }),
+    });
 
-//     if (!response.ok) {
-//         throw new Error(`HTTP error! status: ${response.status}`);
-//     }
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-//     const data = await response.json() as { result: string, error?: { message: string } };
+    const data = await response.json() as { result: string, error?: { message: string } };
 
-//     if (data.error) {
-//         throw new Error(`RPC error: ${data.error.message}`);
-//     }
+    if (data.error) {
+        throw new Error(`RPC error: ${data.error.message}`);
+    }
 
-//     // Convert hex string to number
-//     return parseInt(data.result, 16);
-// }
+    // Convert hex string to number
+    return parseInt(data.result, 16);
+}
 
 async function compareResponses(queryString: string, pages: number = 1) {
     let glacierUrl = `https://metrics.avax.network/v2/chains/${evmChainId}/metrics/txCount${queryString}`;
@@ -81,19 +81,28 @@ async function compareResponses(queryString: string, pages: number = 1) {
             if (!glacierPageToken && !localPageToken) break;
         }
 
-        console.log('\n=== OVERALL COMPARISON ===');
+        console.log('\n=== ⚖️ OVERALL COMPARISON ===');
         console.log(`Query: ${queryString}, Pages: ${pages}`);
         console.log(`Glacier total results: ${allGlacierResults.length}`);
         console.log(`Local total results: ${allLocalResults.length}`);
 
-        // Deep comparison of all results
-        const resultsMatch = JSON.stringify(allGlacierResults) === JSON.stringify(allLocalResults);
-        console.log(`Results match: ${resultsMatch}`);
+        // Count matching results
+        let matchingCount = 0;
+        const maxLength = Math.max(allGlacierResults.length, allLocalResults.length);
 
-        if (!resultsMatch) {
-            console.log('\n--- DIFFERENCES ---');
-            const maxLength = Math.max(allGlacierResults.length, allLocalResults.length);
+        for (let i = 0; i < maxLength; i++) {
+            const glacier = allGlacierResults[i];
+            const local = allLocalResults[i];
 
+            if (glacier && local && glacier.timestamp === local.timestamp && glacier.value === local.value) {
+                matchingCount++;
+            }
+        }
+
+        console.log(`💪 Results Matching: ${matchingCount}/${maxLength}`);
+
+        if (matchingCount < maxLength) {
+            console.log('\n 🔥 DIFFERENCES 🔥');
             for (let i = 0; i < maxLength; i++) {
                 const glacier = allGlacierResults[i];
                 const local = allLocalResults[i];

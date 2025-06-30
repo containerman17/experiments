@@ -34,7 +34,7 @@ class RPCIndexer implements Indexer {
 
     private handleRPCRequest(request: RPCRequest): any {
         if (request.method === 'eth_chainId') {
-            return { result: this.blocksDb.getEvmChainId() };
+            return { result: '0x' + this.blocksDb.getEvmChainId().toString(16) };
         } else if (request.method === 'eth_getTransactionReceipt') {//tx receipt
             return { error: { code: -32015, message: 'eth_getTransactionReceipt is not implemented yet - no hash to tx number lookup table. TODO: implement' } };
         } else if (request.method === 'eth_getBlockByNumber') {

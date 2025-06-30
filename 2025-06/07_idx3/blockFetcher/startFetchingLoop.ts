@@ -15,7 +15,6 @@ export async function startFetchingLoop(blockDB: BlockDB, batchRpc: BatchRpc, bl
 
     let lastStoredBlock = blockDB.getLastStoredBlockNumber();
 
-
     if (blockDB.getEvmChainId() === -1) {
         const newEvmChainId = await batchRpc.getEvmChainId();
         blockDB.setEvmChainId(newEvmChainId);

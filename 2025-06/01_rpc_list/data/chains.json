@@ -461,8 +461,8 @@
     "evmChainId": "237007",
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
-    "comment": "Looks like https://x.com/ulalo_io. No public mainnet RPC found.",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "numine",
@@ -495,7 +495,7 @@
     "evmChainId": "588785742",
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
-    "comment": "https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,",
+    "comment": null,
     "debugEnabled": false
   },
   {
@@ -656,7 +656,7 @@
     "evmChainId": "836",
     "blocksCount": "100k+",
     "estimatedTxCount": "100m+",
-    "comment": "8 hours left to sync, waing. TODO: remove this comment.",
+    "comment": null,
     "debugEnabled": true
   },
   {
@@ -760,7 +760,7 @@
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
     "evmChainId": "4313",
     "blocksCount": "1k+",
-    "estimatedTxCount": "1k+",
+    "estimatedTxCount": "10k+",
     "glacierChainId": "4313",
     "comment": null,
     "debugEnabled": true

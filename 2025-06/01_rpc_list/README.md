@@ -220,7 +220,6 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
-- Comment: 8 hours left to sync, waing. TODO: remove this comment.
 
 **Mirai**
 - Blocks Count: 100k+
@@ -339,6 +338,15 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
+**Artery**
+- Blocks Count: 1k+
+- Estimated Tx Count: 10k+
+- EVM Chain ID: 4313
+- Blockchain ID: rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6
+- RPC URL: https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc
+- Debug Enabled: ✅
+- Explorer URL: https://subnets.avax.network/artery
+
 **Memoria**
 - Blocks Count: 1k+
 - Estimated Tx Count: 10k+
@@ -347,15 +355,6 @@
 - RPC URL: https://subnets.avax.network/memoria/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/memoria
-
-**feature**
-- Blocks Count: 1k+
-- Estimated Tx Count: 1k+
-- EVM Chain ID: 33311
-- Blockchain ID: txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
-- RPC URL: https://meganode.solokhin.com/ext/bc/txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/feature
 
 **bloodloop**
 - Blocks Count: 1k+
@@ -366,6 +365,15 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
+**feature**
+- Blocks Count: 1k+
+- Estimated Tx Count: 1k+
+- EVM Chain ID: 33311
+- Blockchain ID: txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk
+- RPC URL: https://meganode.solokhin.com/ext/bc/txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk/rpc
+- Debug Enabled: ✅
+- Explorer URL: https://subnets.avax.network/feature
+
 **InnovoMarketsMainnet**
 - Blocks Count: 1k+
 - Estimated Tx Count: 1k+
@@ -374,15 +382,6 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe/rpc
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/innovo
-
-**Artery**
-- Blocks Count: 1k+
-- Estimated Tx Count: 1k+
-- EVM Chain ID: 4313
-- Blockchain ID: rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6
-- RPC URL: https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/artery
 
 **CXChain**
 - Blocks Count: 100+
@@ -393,15 +392,6 @@
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/cx
 
-**Marnisa**
-- Blocks Count: 100+
-- Estimated Tx Count: 100+
-- EVM Chain ID: 5419
-- Blockchain ID: 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
-- RPC URL: https://meganode.solokhin.com/ext/bc/2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/marnisa
-
 **BangoL**
 - Blocks Count: 100+
 - Estimated Tx Count: 100+
@@ -410,6 +400,15 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4/rpc
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/bangochain
+
+**Marnisa**
+- Blocks Count: 100+
+- Estimated Tx Count: 100+
+- EVM Chain ID: 5419
+- Blockchain ID: 2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK
+- RPC URL: https://meganode.solokhin.com/ext/bc/2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK/rpc
+- Debug Enabled: ✅
+- Explorer URL: https://subnets.avax.network/marnisa
 
 **GOODCARE**
 - Blocks Count: 100+
@@ -491,7 +490,6 @@
 - RPC URL: https://rpc.amichain.org
 - Debug Enabled: ❌
 - Explorer URL: ❌
-- Comment: https://x.com/amichain_org Couldn't find an RPC, should ask on twitter,
 
 **Monsoon**
 - Blocks Count: 10+
@@ -544,9 +542,8 @@
 - EVM Chain ID: 237007
 - Blockchain ID: 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig
 - RPC URL: https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc
-- Debug Enabled: ❌
+- Debug Enabled: ✅
 - Explorer URL: ❌
-- Comment: Looks like https://x.com/ulalo_io. No public mainnet RPC found.
 
 **CodeNekt**
 - Blocks Count: 0+

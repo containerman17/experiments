@@ -15,7 +15,7 @@ class RPCIndexer implements Indexer {
         // No init - just use existing tables
     }
 
-    indexBlocks(blocks: { block: LazyBlock, txs: LazyTx[] }[]): void {
+    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
         //No actual indexing, just raw block ops
     }
 

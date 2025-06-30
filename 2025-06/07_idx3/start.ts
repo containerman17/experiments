@@ -105,7 +105,7 @@ if (cluster.isPrimary) {
                 for (const { block, txs } of blocks) {
                     debugTxCount += txs.length;
                     for (const indexer of indexers) {
-                        indexer.indexBlocks([{ block, txs }]);
+                        indexer.indexBlock(block, txs);
                     }
                 }
                 const indexingFinish = performance.now();

@@ -10,19 +10,17 @@ let lastBlockIndexed = -1
 class SanityChecker implements Indexer {
     initialize(): void { }
 
-    indexBlocks(blocks: { block: LazyBlock, txs: LazyTx[] }[]): void {
-        for (const { block, txs } of blocks) {
-            if (lastBlockIndexed !== -1 && (lastBlockIndexed + 1) !== (block.number)) {
-                throw new Error(`Sanity checker failed: Block ${block.number} is not the next block after ${lastBlockIndexed}`);
-            }
-            lastBlockIndexed = Number(block.number);
-            if (block.transactionCount !== txs.length) {
-                throw new Error(`Sanity checker failed: Block ${block.number} has ${block.transactionCount} transactions, but ${txs.length} were provided`);
-            }
-            for (const tx of txs) {
-                if (tx.blockNumber !== block.number) {
-                    throw new Error(`Sanity checker failed: Tx ${tx.hash} has block number ${tx.blockNumber}, but block ${block.number} was provided`);
-                }
+    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
+        if (lastBlockIndexed !== -1 && (lastBlockIndexed + 1) !== (block.number)) {
+            throw new Error(`Sanity checker failed: Block ${block.number} is not the next block after ${lastBlockIndexed}`);
+        }
+        lastBlockIndexed = Number(block.number);
+        if (block.transactionCount !== txs.length) {
+            throw new Error(`Sanity checker failed: Block ${block.number} has ${block.transactionCount} transactions, but ${txs.length} were provided`);
+        }
+        for (const tx of txs) {
+            if (tx.blockNumber !== block.number) {
+                throw new Error(`Sanity checker failed: Tx ${tx.hash} has block number ${tx.blockNumber}, but block ${block.number} was provided`);
             }
         }
     }

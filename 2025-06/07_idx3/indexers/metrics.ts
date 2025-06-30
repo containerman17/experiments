@@ -33,17 +33,15 @@ class MetricsIndexer implements Indexer {
         `);
     }
 
-    indexBlocks(blocks: { block: LazyBlock, txs: LazyTx[] }[]): void {
-        for (const { block, txs } of blocks) {
-            const blockTimestamp = block.timestamp; // Keep in seconds, don't multiply by 1000
-            const txCount = txs.length;
+    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
+        const blockTimestamp = block.timestamp; // Keep in seconds, don't multiply by 1000
+        const txCount = txs.length;
 
-            // Update metrics for all time intervals
-            this.updateMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
-            this.updateMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_txCount, txCount);
-            this.updateMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
-            this.updateMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
-        }
+        // Update metrics for all time intervals
+        this.updateMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
+        this.updateMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_txCount, txCount);
+        this.updateMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
+        this.updateMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
     }
 
     private updateMetric(timeInterval: number, timestamp: number, metric: number, increment: number): void {

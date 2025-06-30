@@ -1,4 +1,6 @@
 export const IS_DEVELOPMENT = process.env['NODE_ENV'] !== 'production';
+import dotenv from 'dotenv';
+dotenv.config();
 
 function requiredEnvString(name: string): string {
     const value = process.env[name];

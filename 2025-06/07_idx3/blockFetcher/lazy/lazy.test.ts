@@ -1,8 +1,10 @@
 import { encodeLazyBlock, LazyBlock, lazyBlockToBlock } from "./LazyBlock";
-import { RpcBlock, RpcTxReceipt } from "../evmTypes";
+import { RpcBlock, RpcTxReceipt, RpcTraceResult } from "../evmTypes";
 import assert from "assert";
 import test from "node:test";
 import { encodeLazyTx, LazyTx, lazyTxToReceipt } from "./LazyTx";
+import { encodeLazyTrace, lazyTraceToTrace } from "./LazyTrace";
+import { LazyTrace } from "./LazyTrace";
 
 const preCancunBlock: RpcBlock =
 {
@@ -148,6 +150,53 @@ const postCancunReceipt: RpcTxReceipt = {
     "type": "0x0"
 }
 
+const lazyTrace: RpcTraceResult[] = [
+    {
+        "txHash": "0x38a63c299e76bca44acbeadc828a96d82be96497d1236fe756e5ba4f074cf126",
+        "result": {
+            "from": "0x90cd26d481d3b756c4134647235c3e1b4547af30",
+            "gas": "0x113b9b",
+            "gasUsed": "0xf5ce9",
+            "to": "0x2ea363d4e8b7efe5270f744a1ce4d39b9c3038dd",
+            "input": "0x0bc0abeb",
+            "calls": [
+                {
+                    "from": "0x2ea363d4e8b7efe5270f744a1ce4d39b9c3038dd",
+                    "gas": "0x10616e",
+                    "gasUsed": "0xec527",
+                    "to": "0xc033ee7dca293cdf9e8600840d54106fdec3ca67",
+                    "input": "0x0bc0abeb30000000000000000000000004ac6378f60b624db304d1fd0691",
+                    "calls": [
+                        {
+                            "from": "0x2ea363d4e8b7efe5270f744a1ce4d39b9c3038dd",
+                            "gas": "0xfd6fc",
+                            "gasUsed": "0x250b4",
+                            "to": "0xf2ea2c5d75e30e4a1a25862968d4a1b0086fb50b",
+                            "input": "0x008598df00000000000000000000000004ac6378f60b624db304d1fd",
+                            "value": "0x0",
+                            "type": "CALL",
+                        },
+                        {
+                            "from": "0x2ea363d4e8b7efe5270f744a1ce4d39b9c3038dd",
+                            "gas": "0xd6b17",
+                            "gasUsed": "0x246f0",
+                            "to": "0xd705090af5d33c50b6e7d787b11aeb717da7f21e",
+                            "input": "0x008598df00000000000000000000000004ac",
+                            "value": "0x0",
+                            "type": "CALL",
+                            "calls": [],
+                        },
+                    ],
+                    "value": "0x0",
+                    "type": "DELEGATECALL"
+                }
+            ],
+            "value": "0x0",
+            "type": "CALL"
+        }
+    }
+]
+
 test("lazy block encode decode - pre cancun", () => {
     const lazyBlockData = encodeLazyBlock(preCancunBlock);
     const lazyTxData = encodeLazyTx(preCancunBlock.transactions[0]!, preCancunReceipt);
@@ -165,3 +214,9 @@ test("lazy block encode decode - post cancun", () => {
     assert.deepStrictEqual(block, postCancunBlock);
     assert.deepStrictEqual(receipt, postCancunReceipt);
 });
+
+test("lazy trace encode decode", () => {
+    const lazyTraceData = encodeLazyTrace(lazyTrace[0]!);
+    const trace = lazyTraceToTrace(new LazyTrace(lazyTraceData));
+    assert.deepStrictEqual(trace, lazyTrace[0]);
+}); 

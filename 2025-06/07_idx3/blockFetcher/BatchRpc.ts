@@ -25,6 +25,7 @@ interface JsonRpcResponse {
 export interface StoredBlock {
     block: EVMTypes.RpcBlock;
     receipts: Record<string, EVMTypes.RpcTxReceipt>;
+    traces?: EVMTypes.RpcTraceResult[];
 }
 
 export class BatchRpc {
@@ -33,18 +34,21 @@ export class BatchRpc {
     private batchSize: number;
     private dynamicBatchSizeManager: DynamicBatchSizeManager | null;
     private enableBatchSizeGrowth: boolean;
+    private rpcSupportsDebug: boolean;
 
     constructor({
         rpcUrl,
         batchSize,
         maxConcurrent,
         rps,
+        rpcSupportsDebug,
         enableBatchSizeGrowth = false,
     }: {
         rpcUrl: string;
         batchSize: number;
         maxConcurrent: number;
         rps: number;
+        rpcSupportsDebug: boolean;
         enableBatchSizeGrowth?: boolean;
     }) {
         if (!rpcUrl) {
@@ -59,6 +63,7 @@ export class BatchRpc {
         });
         this.batchSize = batchSize;
         this.enableBatchSizeGrowth = enableBatchSizeGrowth;
+        this.rpcSupportsDebug = rpcSupportsDebug;
         this.dynamicBatchSizeManager = enableBatchSizeGrowth ? new DynamicBatchSizeManager(batchSize) : null;
     }
 
@@ -290,6 +295,20 @@ export class BatchRpc {
             ? await this.batchRpcRequests<EVMTypes.RpcTxReceipt>(receiptOperations)
             : [];
 
+        // Stage 2.5: Fetch traces for blocks if debug is supported
+        let traceResponses: Array<{ idToCorrelate?: any; result?: EVMTypes.RpcTraceResult[]; error?: any }> = [];
+        if (this.rpcSupportsDebug) {
+            const traceOperations = Array.from(successfullyFetchedBlocksMap.entries()).map(([originalBlockIndex, block]) => ({
+                method: 'debug_traceBlockByNumber',
+                params: [block.number, { tracer: 'callTracer', timeout: '20s' }],
+                idToCorrelate: { originalBlockIndex, blockNumber: parseInt(block.number, 16) }
+            }));
+
+            if (traceOperations.length > 0) {
+                traceResponses = await this.batchRpcRequests<EVMTypes.RpcTraceResult[]>(traceOperations);
+            }
+        }
+
         // Stage 3: Assemble StoredBlock results
         const storedBlocksResult: StoredBlock[] = [];
         for (let i = 0; i < blockNumbers.length; i++) {
@@ -299,6 +318,16 @@ export class BatchRpc {
                     block: blockData,
                     receipts: {}
                 };
+
+                // Add traces if available
+                if (this.rpcSupportsDebug) {
+                    const traceResponse = traceResponses.find(tr => tr.idToCorrelate?.originalBlockIndex === i);
+                    if (traceResponse?.result && !traceResponse.error) {
+                        currentStoredBlock.traces = traceResponse.result;
+                    } else if (traceResponse?.error) {
+                        console.warn(`Failed to fetch traces for block ${blockNumbers[i]}:`, traceResponse.error);
+                    }
+                }
 
                 const expectedTxCount = blockData.transactions?.length || 0;
                 let actualReceiptCount = 0;
@@ -365,5 +394,17 @@ export class BatchRpc {
             };
         }
         return this.dynamicBatchSizeManager.getStats();
+    }
+
+    /**
+     * Trace a block by number using debug_traceBlockByNumber
+     */
+    public async traceBlockByNumber(
+        blockNumber: number | string,
+        tracerConfig: { tracer: string; timeout?: string } = { tracer: 'callTracer', timeout: '20s' }
+    ): Promise<EVMTypes.RpcTraceResult[]> {
+        const blockHex = typeof blockNumber === 'number' ? `0x${blockNumber.toString(16)}` : blockNumber;
+        const result = await this.makeRpcCall<EVMTypes.RpcTraceResult[]>('debug_traceBlockByNumber', [blockHex, tracerConfig]);
+        return result;
     }
 }

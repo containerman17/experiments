@@ -82,3 +82,37 @@ export interface RpcBlock {
     parentBeaconBlockRoot?: string;
     blockGasCost?: string;
 }
+
+export const TRACE_CALL_TYPES = [
+    'CALL',
+    'DELEGATECALL',
+    'STATICCALL',
+    'CALLCODE',
+    'CREATE',
+    'CREATE2',
+    'SELFDESTRUCT',
+    'SUICIDE',
+    'REWARD'
+] as const;
+
+export interface RpcTraceCall {
+    from: string;
+    gas: string;
+    gasUsed: string;
+    to: string;
+    input: string;
+    value: string;
+    type: (typeof TRACE_CALL_TYPES)[number];
+    calls?: RpcTraceCall[];
+}
+
+export interface RpcTraceResult {
+    txHash: string;
+    result: RpcTraceCall;
+}
+
+export interface RpcTraceResponse {
+    jsonrpc: string;
+    id: number;
+    result: RpcTraceResult[];
+}

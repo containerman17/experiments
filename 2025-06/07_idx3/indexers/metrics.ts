@@ -11,7 +11,7 @@ const TIME_INTERVAL_WEEK = 2
 const TIME_INTERVAL_MONTH = 3
 
 const METRIC_txCount = 0
-const METRIC_cumulativeTxCount = 1
+const METRIC_cumulativeContracts = 1
 
 interface MetricResult {
     timestamp: number;
@@ -19,7 +19,7 @@ interface MetricResult {
 }
 
 class MetricsIndexer implements Indexer {
-    private cumulativeTxCount = 0;
+    private cumulativeContractCount = 0;
 
     constructor(private blocksDb: BlockDB, private indexingDb: SQLite.Database) { }
 
@@ -34,22 +34,19 @@ class MetricsIndexer implements Indexer {
             ) WITHOUT ROWID
         `);
 
-        // Initialize cumulative tx count from existing data
+        // Initialize cumulative contract count from existing data
         const result = this.indexingDb.prepare(`
             SELECT MAX(value) as maxValue 
             FROM metrics 
             WHERE metric = ? AND timeInterval = ?
-        `).get(METRIC_cumulativeTxCount, TIME_INTERVAL_HOUR) as { maxValue: number | null };
+        `).get(METRIC_cumulativeContracts, TIME_INTERVAL_HOUR) as { maxValue: number | null };
 
-        this.cumulativeTxCount = result?.maxValue || 0;
+        this.cumulativeContractCount = result?.maxValue || 0;
     }
 
     indexBlock(block: LazyBlock, txs: LazyTx[]): void {
         const blockTimestamp = block.timestamp;
         const txCount = txs.length;
-
-        // Update cumulative transaction count
-        this.cumulativeTxCount += txCount;
 
         // Update incremental metrics (txCount)
         this.updateIncrementalMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
@@ -57,11 +54,19 @@ class MetricsIndexer implements Indexer {
         this.updateIncrementalMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
         this.updateIncrementalMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
 
-        // Update cumulative metrics (cumulativeTxCount)
-        this.updateCumulativeMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
-        this.updateCumulativeMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
-        this.updateCumulativeMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
-        this.updateCumulativeMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
+        // Count contract deployments in this block
+        const contractCount = this.countContractDeployments(txs);
+        this.cumulativeContractCount += contractCount;
+
+        // Update cumulative metrics (cumulativeContracts)
+        this.updateCumulativeMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
+        this.updateCumulativeMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
+        this.updateCumulativeMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
+        this.updateCumulativeMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
+    }
+
+    private countContractDeployments(txs: LazyTx[]): number {
+        return txs.filter(tx => tx.contractAddress).length;
     }
 
     private updateIncrementalMetric(timeInterval: number, timestamp: number, metric: number, increment: number): void {
@@ -169,7 +174,7 @@ class MetricsIndexer implements Indexer {
     private getMetricId(metricName: string): number {
         switch (metricName) {
             case 'txCount': return METRIC_txCount;
-            case 'cumulativeTxCount': return METRIC_cumulativeTxCount;
+            case 'cumulativeContracts': return METRIC_cumulativeContracts;
             default: return -1;
         }
     }

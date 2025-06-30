@@ -124,7 +124,8 @@ async function compareResponses(queryString: string, pages: number = 1) {
 
 const metrics = [
     // 'txCount',
-    'cumulativeTxCount',
+    // 'cumulativeTxCount',
+    'cumulativeContracts',
 ]
 
 for (const metric of metrics) {

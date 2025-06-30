@@ -9,13 +9,13 @@ import Fastify from 'fastify';
 import Database from 'better-sqlite3';
 import { executePragmas, IndexingDbHelper } from './indexers/dbHelper';
 
-import { IS_DEVELOPMENT, RPC_URL, CHAIN_ID, DATA_DIR, RPS, REQUEST_BATCH_SIZE, MAX_CONCURRENT, BLOCKS_PER_BATCH } from './config';
+import { IS_DEVELOPMENT, RPC_URL, CHAIN_ID, DATA_DIR, RPS, REQUEST_BATCH_SIZE, MAX_CONCURRENT, BLOCKS_PER_BATCH, DEBUG_RPC_AVAILABLE } from './config';
 import { createSanityChecker } from './indexers/sanityChecker';
 import { createMetricsIndexer } from './indexers/metrics';
 import { Indexer } from './indexers/types';
 
-const blocksDbPath = path.join(DATA_DIR, CHAIN_ID, 'blocks.db');
-const indexingDbPath = path.join(path.dirname(blocksDbPath), 'indexing.db');
+const blocksDbPath = path.join(DATA_DIR, CHAIN_ID, DEBUG_RPC_AVAILABLE ? 'blocks.db' : 'blocks_no_dbg.db');
+const indexingDbPath = path.join(path.dirname(blocksDbPath), DEBUG_RPC_AVAILABLE ? 'indexing.db' : 'indexing_no_dbg.db');
 if (!fs.existsSync(blocksDbPath)) {
     fs.mkdirSync(path.dirname(blocksDbPath), { recursive: true });
 }
@@ -32,7 +32,7 @@ if (cluster.isPrimary) {
     cluster.fork({ ROLE: 'indexer' });
 } else {
     if (process.env['ROLE'] === 'fetcher') {
-        const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: false });
+        const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: false, hasDebug: DEBUG_RPC_AVAILABLE });
         const batchRpc = new BatchRpc({
             rpcUrl: RPC_URL,
             batchSize: REQUEST_BATCH_SIZE,
@@ -46,7 +46,7 @@ if (cluster.isPrimary) {
         await awaitFileExists(indexingDbPath);
         await awaitFileExists(blocksDbPath);
 
-        const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true });
+        const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true, hasDebug: DEBUG_RPC_AVAILABLE });
         const indexingDb = new Database(indexingDbPath, { readonly: true });
 
         await executePragmas({ db: indexingDb, isReadonly: true });
@@ -82,7 +82,7 @@ if (cluster.isPrimary) {
     } else if (process.env['ROLE'] === 'indexer') {
         await awaitFileExists(blocksDbPath);
 
-        const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true });
+        const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: true, hasDebug: DEBUG_RPC_AVAILABLE });
         const indexingDb = new Database(indexingDbPath, { readonly: false });
         const indexingDbHelper = new IndexingDbHelper(indexingDb);
         const indexers: Indexer[] = indexerFactories.map(factory => {

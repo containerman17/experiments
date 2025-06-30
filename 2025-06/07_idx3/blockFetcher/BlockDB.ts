@@ -9,8 +9,9 @@ export class BlockDB {
 
     private prepped: Map<string, any>;
     private isReadonly: boolean;
+    private hasDebug: boolean;
 
-    constructor({ path, isReadonly }: { path: string, isReadonly: boolean }) {
+    constructor({ path, isReadonly, hasDebug }: { path: string, isReadonly: boolean, hasDebug: boolean }) {
         this.db = new Database(path, {
             readonly: isReadonly,
         });
@@ -20,7 +21,26 @@ export class BlockDB {
             this.initSchema();
         }
         this.prepped = new Map();
+
+        // Check and validate hasDebug setting
+        const storedHasDebug = this.getHasDebug();
+        console.log('storedHasDebug', storedHasDebug, 'hasDebug', hasDebug);
+        if (storedHasDebug === -1) {
+            // Never set before, set it now
+            if (!isReadonly) {
+                this.setHasDebug(hasDebug);
+            }
+        } else {
+            // Already set, must match
+            const storedBool = storedHasDebug === 1;
+            if (storedBool !== hasDebug) {
+                throw new Error(`Database hasDebug mismatch: stored=${storedBool}, provided=${hasDebug}`);
+            }
+        }
+
+        this.hasDebug = hasDebug;
     }
+
 
     //TODO: could be more efficient, but decoding is 60% of the time now. So 2x faster queries would improve the overall performance only by 20%.
     getBlocks(start: number, maxTransactions: number): { block: LazyBlock, txs: LazyTx[] }[] {
@@ -274,5 +294,16 @@ export class BlockDB {
             this.db.pragma('cache_size         = -1048576');   // 1 GiB page cache
             this.db.pragma('busy_timeout       = 0');          // fail fast if writer stalls
         }
+    }
+
+    getHasDebug(): number {
+        const select = this.prepQuery('SELECT value FROM kv_int WHERE key = ?');
+        const result = select.get('hasDebug') as { value: number } | undefined;
+        return result?.value ?? -1;
+    }
+
+    setHasDebug(hasDebug: boolean) {
+        const upsert = this.prepQuery('INSERT OR REPLACE INTO kv_int (key, value) VALUES (?, ?)');
+        upsert.run('hasDebug', hasDebug ? 1 : 0);
     }
 }

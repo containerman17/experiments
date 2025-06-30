@@ -389,8 +389,8 @@
 - Estimated Tx Count: 1k+
 - EVM Chain ID: 10036
 - Blockchain ID: vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe
-- RPC URL: https://meganode.solokhin.com/ext/bc/vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe/rpc
-- Debug Enabled: ✅
+- RPC URL: https://subnets.avax.network/innovo/mainnet/rpc
+- Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/innovo
 
 **CXChain**
@@ -434,8 +434,8 @@
 - Estimated Tx Count: 100+
 - EVM Chain ID: 13790
 - Blockchain ID: Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj
-- RPC URL: https://subnets.avax.network/tixchain/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/tixchain
 
 **ienium**
@@ -533,8 +533,8 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 17177
 - Blockchain ID: 2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC
-- RPC URL: https://subnets.avax.network/lylty/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/lylty
 
 **Animalia**

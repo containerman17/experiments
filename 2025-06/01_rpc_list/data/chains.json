@@ -293,13 +293,13 @@
     "chainName": "TheLYLTYEconomy",
     "blockchainId": "2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC",
     "subnetId": "2iumcj2wiV9BQ96LRHpYNpD1SHhb8Vcvm8YUebZSqcFeJakTo6",
-    "rpcUrl": "https://subnets.avax.network/lylty/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc",
     "evmChainId": "17177",
     "blocksCount": "0+",
     "estimatedTxCount": null,
     "glacierChainId": "17177",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "Henesys",
@@ -606,13 +606,13 @@
     "chainName": "TixChain",
     "blockchainId": "Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj",
     "subnetId": "2BLtazsGwYAFEHpvZQGQUPavjQZ2YUqpvfYPdAdTtKpJ1m3eRK",
-    "rpcUrl": "https://subnets.avax.network/tixchain/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj/rpc",
     "evmChainId": "13790",
     "blocksCount": "100+",
     "estimatedTxCount": "100+",
     "glacierChainId": "13790",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "StraitsX",
@@ -852,13 +852,13 @@
     "chainName": "InnovoMarketsMainnet",
     "blockchainId": "vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe",
     "subnetId": "oerPWBbtbe13eWbo3AegYUrHuSETeTwyNy7szoHJJ1QQBL9nu",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe/rpc",
+    "rpcUrl": "https://subnets.avax.network/innovo/mainnet/rpc",
     "evmChainId": "10036",
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",
     "glacierChainId": "10036",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Republic Chain",

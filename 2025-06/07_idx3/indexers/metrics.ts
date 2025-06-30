@@ -33,15 +33,17 @@ class MetricsIndexer implements Indexer {
         `);
     }
 
-    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
-        const blockTimestamp = block.timestamp * 1000; // Convert to milliseconds
-        const txCount = txs.length;
+    indexBlocks(blocks: { block: LazyBlock, txs: LazyTx[] }[]): void {
+        for (const { block, txs } of blocks) {
+            const blockTimestamp = block.timestamp; // Keep in seconds, don't multiply by 1000
+            const txCount = txs.length;
 
-        // Update metrics for all time intervals
-        this.updateMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
-        this.updateMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_txCount, txCount);
-        this.updateMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
-        this.updateMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
+            // Update metrics for all time intervals
+            this.updateMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
+            this.updateMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_txCount, txCount);
+            this.updateMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
+            this.updateMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
+        }
     }
 
     private updateMetric(timeInterval: number, timestamp: number, metric: number, increment: number): void {
@@ -61,7 +63,7 @@ class MetricsIndexer implements Indexer {
             const {
                 startTimestamp,
                 endTimestamp,
-                timeInterval = 'day',
+                timeInterval = 'hour',
                 pageSize = 100,
                 pageToken
             } = request.query as {
@@ -121,14 +123,13 @@ class MetricsIndexer implements Indexer {
                 results.pop(); // Remove the extra result
             }
 
+            // No need to convert timestamps anymore
             const response: any = {
-                data: results,
-                pageSize: validPageSize
+                results: results,
+                nextPageToken: hasNextPage && results.length > 0
+                    ? results[results.length - 1]!.timestamp.toString()
+                    : undefined
             };
-
-            if (hasNextPage && results.length > 0) {
-                response.nextPageToken = results[results.length - 1]!.timestamp.toString();
-            }
 
             return response;
         });
@@ -151,10 +152,6 @@ class MetricsIndexer implements Indexer {
             default: return -1;
         }
     }
-
-    getVersionPrefix(): string {
-        return 'v2';
-    }
 }
 export const createMetricsIndexer: CreateIndexerFunction = (blocksDb: BlockDB, indexingDb: SQLite.Database) => {
     return new MetricsIndexer(blocksDb, indexingDb);
@@ -162,25 +159,24 @@ export const createMetricsIndexer: CreateIndexerFunction = (blocksDb: BlockDB, i
 
 
 function normalizeTimestamp(timestamp: number, timeInterval: number): number {
-    const date = new Date(timestamp);
+    const date = new Date(timestamp * 1000); // Convert to milliseconds for Date constructor
 
     switch (timeInterval) {
         case TIME_INTERVAL_HOUR:
-            return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours());
+            return Math.floor(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours()) / 1000);
 
         case TIME_INTERVAL_DAY:
-            return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+            return Math.floor(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) / 1000);
 
         case TIME_INTERVAL_WEEK:
-            // Find Monday of this week in GMT
-            const dayOfWeek = date.getUTCDay(); // 0=Sunday, 1=Monday, etc
-            const daysToMonday = (dayOfWeek === 0) ? 6 : dayOfWeek - 1; // Convert Sunday=0 to 6 days back
+            const dayOfWeek = date.getUTCDay();
+            const daysToMonday = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
             const monday = new Date(date);
             monday.setUTCDate(date.getUTCDate() - daysToMonday);
-            return Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate());
+            return Math.floor(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()) / 1000);
 
         case TIME_INTERVAL_MONTH:
-            return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+            return Math.floor(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1) / 1000);
 
         default:
             throw new Error(`Unknown time interval: ${timeInterval}`);

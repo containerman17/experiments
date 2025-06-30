@@ -1,9 +1,10 @@
 import SQLite from "better-sqlite3";
 import { BlockDB } from "../blockFetcher/BlockDB";
 import { CreateIndexerFunction, Indexer } from "./types";
-import { LazyTx } from "../blockFetcher/lazy/LazyTx";
+import { LazyTx, lazyTxToReceipt } from "../blockFetcher/lazy/LazyTx";
 import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
+import { lazyBlockToBlock } from "../blockFetcher/lazy/LazyBlock";
 
 class RPCIndexer implements Indexer {
     constructor(private blocksDb: BlockDB, private indexingDb: SQLite.Database) {
@@ -14,7 +15,7 @@ class RPCIndexer implements Indexer {
         // No init - just use existing tables
     }
 
-    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
+    indexBlocks(blocks: { block: LazyBlock, txs: LazyTx[] }[]): void {
         //No actual indexing, just raw block ops
     }
 
@@ -32,13 +33,17 @@ class RPCIndexer implements Indexer {
     }
 
     private handleRPCRequest(request: RPCRequest): any {
-        return {
-            result: "method was " + request.method
+        if (request.method === 'eth_chainId') {
+            return { result: this.blocksDb.getEvmChainId() };
+        } else if (request.method === 'eth_getTransactionReceipt') {//tx receipt
+            return { error: { code: -32015, message: 'eth_getTransactionReceipt is not implemented yet - no hash to tx number lookup table. TODO: implement' } };
+        } else if (request.method === 'eth_getBlockByNumber') {
+            const blockNumber = request.params[0];
+            const { block, txs } = this.blocksDb.getBlockWithTransactions(blockNumber);
+            return { result: lazyBlockToBlock(block, txs) };
+        } else {
+            return { error: { code: -32601, message: 'Method not found. Implement it in ./indexers/rpc.ts' } };
         }
-    }
-
-    getVersionPrefix(): string {
-        return 'v1';
     }
 }
 export const createRPCIndexer: CreateIndexerFunction = (blocksDb, indexingDb) => {

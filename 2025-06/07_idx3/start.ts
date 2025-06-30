@@ -71,9 +71,7 @@ if (cluster.isPrimary) {
         for (const indexerFactory of indexerFactories) {
             const indexer = indexerFactory(blocksDb, indexingDb);
             //metrics are v2, data is v1
-            fastifyApp.register((fastify, options) => indexer.registerRoutes(fastify, options), {
-                prefix: `/${indexer.getVersionPrefix()}/chains/${evmChainId}`
-            });
+            fastifyApp.register((fastify, options) => indexer.registerRoutes(fastify, options));
         }
 
         fastifyApp.listen({ port: 3000 }, (err, address) => {
@@ -101,7 +99,7 @@ if (cluster.isPrimary) {
 
         const runIndexing = indexingDb.transaction((lastIndexedBlock) => {
             const getStart = performance.now();
-            const blocks = blocksDb.getBlocks(lastIndexedBlock + 1, BLOCKS_PER_BATCH);
+            const blocks = blocksDb.getBlocks(lastIndexedBlock + 1, 10 * 1000);//batches of 10k txs
             const indexingStart = performance.now();
             hadSomethingToIndex = blocks.length > 0;
             let debugTxCount = 0
@@ -109,7 +107,7 @@ if (cluster.isPrimary) {
                 for (const { block, txs } of blocks) {
                     debugTxCount += txs.length;
                     for (const indexer of indexers) {
-                        indexer.indexBlock(block, txs);
+                        indexer.indexBlocks([{ block, txs }]);
                     }
                 }
                 const indexingFinish = performance.now();

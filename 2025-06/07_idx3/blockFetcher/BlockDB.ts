@@ -161,6 +161,32 @@ export class BlockDB {
         return new LazyTx(decompressedData);
     }
 
+    getBlockWithTransactions(blockNumber: number): { block: LazyBlock, txs: LazyTx[] } {
+        // Get the block first
+        const block = this.getBlock(blockNumber);
+
+        // Query all transactions for this block at once, ordered by tx_ix
+        const selectTxs = this.prepQuery('SELECT data FROM txs WHERE block_id = ? ORDER BY tx_ix');
+        const results = selectTxs.all(blockNumber) as { data: Buffer }[];
+
+        if (results.length !== block.transactionCount) {
+            throw new Error(`Expected ${block.transactionCount} transactions for block ${blockNumber}, but found ${results.length}`);
+        }
+
+        // Decompress and create LazyTx objects
+        const txs: LazyTx[] = [];
+        for (const result of results) {
+            const decompressedData = lz4UncompressSync(result.data);
+            txs.push(new LazyTx(decompressedData));
+        }
+
+        return { block, txs };
+    }
+
+    getBlockTransactions(blockNumber: number): LazyTx[] {
+        return this.getBlockWithTransactions(blockNumber).txs;
+    }
+
     setBlockchainLatestBlockNum(blockNumber: number) {
         if (this.isReadonly) throw new Error('BlockDB is readonly');
         const upsert = this.prepQuery('INSERT OR REPLACE INTO kv_int (key, value) VALUES (?, ?)');

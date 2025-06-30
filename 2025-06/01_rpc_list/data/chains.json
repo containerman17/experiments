@@ -290,12 +290,24 @@
     "debugEnabled": true
   },
   {
+    "chainName": "TheLYLTYEconomy",
+    "blockchainId": "2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC",
+    "subnetId": "2iumcj2wiV9BQ96LRHpYNpD1SHhb8Vcvm8YUebZSqcFeJakTo6",
+    "rpcUrl": "https://subnets.avax.network/lylty/mainnet/rpc",
+    "evmChainId": "17177",
+    "blocksCount": "0+",
+    "estimatedTxCount": null,
+    "glacierChainId": "17177",
+    "comment": null,
+    "debugEnabled": false
+  },
+  {
     "chainName": "Henesys",
     "blockchainId": "2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB",
     "subnetId": "jmLmezoViv3F72XLzpdmSNk3qLEGb72g5EYkp3ij4wHXPF2KN",
-    "rpcUrl": null,
+    "rpcUrl": "https://henesys-rpc.msu.io",
     "evmChainId": "68414",
-    "blocksCount": null,
+    "blocksCount": "1m+",
     "estimatedTxCount": null,
     "glacierChainId": "68414",
     "comment": "The RPC URL is behind an aggressive Cloudflare Protection",
@@ -556,6 +568,18 @@
     "debugEnabled": false
   },
   {
+    "chainName": "oumla",
+    "blockchainId": "3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr",
+    "subnetId": "HXtMMwc6UwS8zK1G3kA9u6NGtUHrm56cnPm2WZBCU1bs2hHsM",
+    "rpcUrl": "https://subnets.avax.network/oumla/mainnet/rpc",
+    "evmChainId": "58166",
+    "blocksCount": "0+",
+    "estimatedTxCount": null,
+    "glacierChainId": "58166",
+    "comment": null,
+    "debugEnabled": false
+  },
+  {
     "chainName": "delaunch",
     "blockchainId": "8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv",
     "subnetId": "2ocjsdpN9czPYmHqS4Tc5Aydj4zk2WWVdX9jdXtqvMjQuf9pgV",
@@ -687,12 +711,12 @@
     "chainName": "Mirai",
     "blockchainId": "Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM",
     "subnetId": "2kyZRnEHakKriNufphojbeFR5hi247bJeTjFDgQgo7VRRjoqyq",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc",
+    "evmChainId": "2718",
+    "blocksCount": "100k+",
+    "estimatedTxCount": "100k+",
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "IntainMarkets",

@@ -4,6 +4,7 @@ import { CreateIndexerFunction, Indexer } from "./types";
 import { LazyTx } from "../blockFetcher/lazy/LazyTx";
 import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
+import { LazyTraces, LazyTraceCall } from "../blockFetcher/lazy/LazyTrace";
 
 const TIME_INTERVAL_HOUR = 0
 const TIME_INTERVAL_DAY = 1
@@ -44,7 +45,7 @@ class MetricsIndexer implements Indexer {
         this.cumulativeContractCount = result?.maxValue || 0;
     }
 
-    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
+    indexBlock(block: LazyBlock, txs: LazyTx[], traces: LazyTraces | undefined): void {
         const blockTimestamp = block.timestamp;
         const txCount = txs.length;
 
@@ -55,18 +56,43 @@ class MetricsIndexer implements Indexer {
         this.updateIncrementalMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
 
         // Count contract deployments in this block
-        const contractCount = this.countContractDeployments(txs);
+        const contractCount = this.countContractDeployments(txs, traces);
         this.cumulativeContractCount += contractCount;
 
-        // Update cumulative metrics (cumulativeContracts)
-        this.updateCumulativeMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
+        // Update cumulative metrics (cumulativeContracts) - only day interval supported
         this.updateCumulativeMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
-        this.updateCumulativeMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
-        this.updateCumulativeMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_cumulativeContracts, this.cumulativeContractCount);
     }
 
-    private countContractDeployments(txs: LazyTx[]): number {
-        return txs.filter(tx => tx.contractAddress).length;
+    private countContractDeployments(txs: LazyTx[], traces: LazyTraces | undefined): number {
+        if (!traces) {
+            // Fallback to current method when traces are unavailable
+            return txs.filter(tx => tx.contractAddress).length;
+        }
+
+        // Count CREATE, CREATE2, and CREATE3 calls from traces
+        let contractCount = 0;
+        for (const trace of traces.traces) {
+            contractCount += this.countCreateCallsInTrace(trace.result);
+        }
+        return contractCount;
+    }
+
+    private countCreateCallsInTrace(call: LazyTraceCall): number {
+        let count = 0;
+
+        // Check if this call is a contract creation (CREATE, CREATE2)
+        if (call.type === 'CREATE' || call.type === 'CREATE2') {
+            count = 1;
+        }
+
+        // Recursively check nested calls
+        if (call.calls) {
+            for (const nestedCall of call.calls) {
+                count += this.countCreateCallsInTrace(nestedCall);
+            }
+        }
+
+        return count;
     }
 
     private updateIncrementalMetric(timeInterval: number, timestamp: number, metric: number, increment: number): void {

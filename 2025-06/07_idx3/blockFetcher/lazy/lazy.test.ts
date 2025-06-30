@@ -3,7 +3,7 @@ import { RpcBlock, RpcTxReceipt, RpcTraceResult } from "../evmTypes";
 import assert from "assert";
 import test from "node:test";
 import { encodeLazyTx, LazyTx, lazyTxToReceipt } from "./LazyTx";
-import { encodeLazyTrace, lazyTraceToTrace } from "./LazyTrace";
+import { encodeLazyTraces, lazyTraceToTrace, LazyTraces } from "./LazyTrace";
 import { LazyTrace } from "./LazyTrace";
 
 const preCancunBlock: RpcBlock =
@@ -216,7 +216,8 @@ test("lazy block encode decode - post cancun", () => {
 });
 
 test("lazy trace encode decode", () => {
-    const lazyTraceData = encodeLazyTrace(lazyTrace[0]!);
-    const trace = lazyTraceToTrace(new LazyTrace(lazyTraceData));
-    assert.deepStrictEqual(trace, lazyTrace[0]);
+    const lazyTracesData = encodeLazyTraces(lazyTrace);
+    const lazyTraces = new LazyTraces(lazyTracesData);
+    const traces = lazyTraces.traces.map(lazyTrace => lazyTraceToTrace(lazyTrace));
+    assert.deepStrictEqual(traces, lazyTrace);
 }); 

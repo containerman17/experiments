@@ -39,6 +39,7 @@ if (cluster.isPrimary) {
             maxConcurrent: MAX_CONCURRENT,
             rps: RPS,
             enableBatchSizeGrowth: false,
+            rpcSupportsDebug: DEBUG_RPC_AVAILABLE,
         });
         startFetchingLoop(blocksDb, batchRpc, BLOCKS_PER_BATCH);
     } else if (process.env['ROLE'] === 'api') {
@@ -102,10 +103,10 @@ if (cluster.isPrimary) {
             hadSomethingToIndex = blocks.length > 0;
             let debugTxCount = 0
             if (hadSomethingToIndex) {
-                for (const { block, txs } of blocks) {
+                for (const { block, txs, traces } of blocks) {
                     debugTxCount += txs.length;
                     for (const indexer of indexers) {
-                        indexer.indexBlock(block, txs);
+                        indexer.indexBlock(block, txs, traces);
                     }
                 }
                 const indexingFinish = performance.now();

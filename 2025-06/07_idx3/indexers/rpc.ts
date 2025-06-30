@@ -5,6 +5,7 @@ import { LazyTx, lazyTxToReceipt } from "../blockFetcher/lazy/LazyTx";
 import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
 import { lazyBlockToBlock } from "../blockFetcher/lazy/LazyBlock";
+import { LazyTraces } from "../blockFetcher/lazy/LazyTrace";
 
 class RPCIndexer implements Indexer {
     constructor(private blocksDb: BlockDB, private indexingDb: SQLite.Database) {
@@ -15,7 +16,7 @@ class RPCIndexer implements Indexer {
         // No init - just use existing tables
     }
 
-    indexBlock(block: LazyBlock, txs: LazyTx[]): void {
+    indexBlock(block: LazyBlock, txs: LazyTx[], traces: LazyTraces | undefined): void {
         //No actual indexing, just raw block ops
     }
 

@@ -162,3 +162,52 @@ export function lazyTraceToTrace(lazyTrace: LazyTrace): RpcTraceResult {
         result: lazyTraceCallToTraceCall(lazyTrace.result)
     }
 }
+
+export const encodeLazyTraces = (traces: RpcTraceResult[]): Uint8Array => {
+    if (IS_DEVELOPMENT) {
+        for (const trace of traces) {
+            const expectedTraceFields = new Set(['txHash', 'result'])
+            const actualTraceFields = new Set(Object.keys(trace))
+            const unusedTraceFields = [...actualTraceFields].filter(field => !expectedTraceFields.has(field))
+
+            if (unusedTraceFields.length > 0) {
+                throw new Error(`encodeLazyTraces development: Unused trace fields: ${unusedTraceFields.join(', ')}`)
+            }
+        }
+    }
+
+    const data = traces.map(trace => [trace.txHash, encodeTraceCall(trace.result)])
+
+    const rlp = RLP.encode(data)
+    const out = new Uint8Array(1 + rlp.length)
+    out[0] = TRACE_SIG_V1
+    out.set(rlp, 1)
+    return out
+}
+
+export class LazyTraces {
+    private parts: readonly any[]
+
+    constructor(private blob: Uint8Array) {
+        if (blob[0] !== TRACE_SIG_V1) throw new Error('bad sig')
+        this.parts = RLP.decode(blob.subarray(1)) as any[]
+    }
+
+    #traces?: LazyTrace[]
+    get traces() {
+        if (this.#traces) return this.#traces
+        return this.#traces = this.parts.map(traceParts => {
+            // Reconstruct individual trace blob
+            const traceData = [traceParts[0], traceParts[1]]
+            const rlp = RLP.encode(traceData)
+            const out = new Uint8Array(1 + rlp.length)
+            out[0] = TRACE_SIG_V1
+            out.set(rlp, 1)
+            return new LazyTrace(out)
+        })
+    }
+
+    raw() {
+        return this.blob
+    }
+}

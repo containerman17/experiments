@@ -295,18 +295,24 @@ export class BatchRpc {
             ? await this.batchRpcRequests<EVMTypes.RpcTxReceipt>(receiptOperations)
             : [];
 
-        // Stage 2.5: Fetch traces for blocks if debug is supported
+        // Stage 2.5: Fetch traces for blocks if debug is supported (individual requests in parallel)
         let traceResponses: Array<{ idToCorrelate?: any; result?: EVMTypes.RpcTraceResult[]; error?: any }> = [];
         if (this.rpcSupportsDebug) {
-            const traceOperations = Array.from(successfullyFetchedBlocksMap.entries()).map(([originalBlockIndex, block]) => ({
-                method: 'debug_traceBlockByNumber',
-                params: [block.number, { tracer: 'callTracer', timeout: '20s' }],
-                idToCorrelate: { originalBlockIndex, blockNumber: parseInt(block.number, 16) }
-            }));
+            const blocksToTrace = Array.from(successfullyFetchedBlocksMap.entries())
+                .filter(([_, block]) => parseInt(block.number, 16) !== 0); // Skip block 0
 
-            if (traceOperations.length > 0) {
-                traceResponses = await this.batchRpcRequests<EVMTypes.RpcTraceResult[]>(traceOperations);
-            }
+            const tracePromises = blocksToTrace.map(async ([originalBlockIndex, block]) => {
+                const result = await this.makeRpcCall<EVMTypes.RpcTraceResult[]>('debug_traceBlockByNumber', [
+                    block.number,
+                    { tracer: 'callTracer', timeout: '20s' }
+                ]);
+                return {
+                    idToCorrelate: { originalBlockIndex, blockNumber: parseInt(block.number, 16) },
+                    result
+                };
+            });
+
+            traceResponses = await Promise.all(tracePromises);
         }
 
         // Stage 3: Assemble StoredBlock results
@@ -321,11 +327,18 @@ export class BatchRpc {
 
                 // Add traces if available
                 if (this.rpcSupportsDebug) {
-                    const traceResponse = traceResponses.find(tr => tr.idToCorrelate?.originalBlockIndex === i);
-                    if (traceResponse?.result && !traceResponse.error) {
-                        currentStoredBlock.traces = traceResponse.result;
-                    } else if (traceResponse?.error) {
-                        console.warn(`Failed to fetch traces for block ${blockNumbers[i]}:`, traceResponse.error);
+                    if (parseInt(blockData.number, 16) === 0) {
+                        currentStoredBlock.traces = []; // Hardcode empty array for block 0
+                    } else {
+                        const traceResponse = traceResponses.find(tr => tr.idToCorrelate?.originalBlockIndex === i);
+                        if (traceResponse?.result && !traceResponse.error) {
+                            currentStoredBlock.traces = traceResponse.result;
+                        } else {
+                            currentStoredBlock.traces = []; // Default to empty array if no trace response
+                            if (traceResponse?.error) {
+                                console.warn(`Failed to fetch traces for block ${blockNumbers[i]}:`, traceResponse.error);
+                            }
+                        }
                     }
                 }
 

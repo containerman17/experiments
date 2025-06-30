@@ -3,6 +3,7 @@ import { StoredBlock } from './BatchRpc';
 import { encodeLazyBlock, LazyBlock } from './lazy/LazyBlock';
 import { encodeLazyTx, LazyTx } from './lazy/LazyTx';
 import { compressSync as lz4CompressSync, uncompressSync as lz4UncompressSync } from 'lz4-napi';
+import { LazyTraces, encodeLazyTraces } from './lazy/LazyTrace';
 
 export class BlockDB {
     private db: InstanceType<typeof Database>;
@@ -43,7 +44,7 @@ export class BlockDB {
 
 
     //TODO: could be more efficient, but decoding is 60% of the time now. So 2x faster queries would improve the overall performance only by 20%.
-    getBlocks(start: number, maxTransactions: number): { block: LazyBlock, txs: LazyTx[] }[] {
+    getBlocks(start: number, maxTransactions: number): { block: LazyBlock, txs: LazyTx[], traces: LazyTraces | undefined }[] {
         const totalStart = performance.now();
         let queryTime = 0;
         let decodingTime = 0;
@@ -80,13 +81,13 @@ export class BlockDB {
             return [];
         }
 
-        let result: { block: LazyBlock, txs: LazyTx[] }[] = [];
+        let result: { block: LazyBlock, txs: LazyTx[], traces: LazyTraces | undefined }[] = [];
 
         for (const blockNumber of blocksToFetch) {
             // Time block query
             const blockQueryStart = performance.now();
-            const selectBlock = this.prepQuery('SELECT data FROM blocks WHERE id = ?');
-            const blockResult = selectBlock.get(blockNumber) as { data: Buffer } | undefined;
+            const selectBlock = this.prepQuery('SELECT data, traces FROM blocks WHERE id = ?');
+            const blockResult = selectBlock.get(blockNumber) as { data: Buffer, traces: Buffer | null } | undefined;
             queryTime += performance.now() - blockQueryStart;
 
             if (!blockResult) throw new Error(`Block ${blockNumber} not found`);
@@ -95,6 +96,16 @@ export class BlockDB {
             const blockDecodeStart = performance.now();
             const decompressedBlockData = lz4UncompressSync(blockResult.data);
             const block = new LazyBlock(decompressedBlockData);
+
+            // Decode traces based on hasDebug flag
+            let traces: LazyTraces | undefined = undefined;
+            if (this.hasDebug) {
+                if (!blockResult.traces) {
+                    throw new Error(`hasDebug is true but no traces found for block ${blockNumber} - data corruption`);
+                }
+                const decompressedTracesData = lz4UncompressSync(blockResult.traces);
+                traces = new LazyTraces(decompressedTracesData);
+            }
             decodingTime += performance.now() - blockDecodeStart;
 
             const txs: LazyTx[] = [];
@@ -115,7 +126,7 @@ export class BlockDB {
 
                 txs.push(tx);
             }
-            result.push({ block, txs });
+            result.push({ block, txs, traces });
         }
 
         const totalTime = performance.now() - totalStart;
@@ -231,7 +242,15 @@ export class BlockDB {
     }
 
     private storeBlock(b: StoredBlock) {
-        const insertBlock = this.prepQuery('INSERT INTO blocks(id, data) VALUES (?, ?)');
+        // Validate hasDebug flag vs traces presence
+        if (this.hasDebug && b.traces === undefined) {
+            throw new Error('hasDebug is true but StoredBlock.traces is undefined');
+        }
+        if (!this.hasDebug && b.traces !== undefined) {
+            throw new Error('hasDebug is false but StoredBlock.traces is defined');
+        }
+
+        const insertBlock = this.prepQuery('INSERT INTO blocks(id, data, traces) VALUES (?, ?, ?)');
         const insertTx = this.prepQuery('INSERT INTO txs(block_id, tx_ix, data) VALUES (?, ?, ?)');
 
         const blockNumber = Number(b.block.number);
@@ -239,7 +258,16 @@ export class BlockDB {
         // Compress block data before storing
         const blockData = encodeLazyBlock(b.block);
         const compressedBlockData = lz4CompressSync(Buffer.from(blockData));
-        insertBlock.run(blockNumber, compressedBlockData);
+
+        // Handle traces if hasDebug is true
+        let compressedTracesData: Buffer | null = null;
+        if (this.hasDebug && b.traces) {
+            // Encode all traces into a single buffer with one RLP call
+            const tracesData = encodeLazyTraces(b.traces);
+            compressedTracesData = lz4CompressSync(Buffer.from(tracesData));
+        }
+
+        insertBlock.run(blockNumber, compressedBlockData, compressedTracesData);
 
         for (let i = 0; i < b.block.transactions.length; ++i) {
             const tx = b.block.transactions[i]!;
@@ -256,8 +284,9 @@ export class BlockDB {
     private initSchema() {
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS blocks (
-        id   INTEGER PRIMARY KEY,
-        data BLOB NOT NULL
+        id     INTEGER PRIMARY KEY,
+        data   BLOB NOT NULL,
+        traces BLOB
       ) WITHOUT ROWID;
 
       CREATE TABLE IF NOT EXISTS txs (

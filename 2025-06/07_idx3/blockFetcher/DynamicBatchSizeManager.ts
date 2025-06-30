@@ -1,4 +1,4 @@
-const SANE_MAX_BATCH_SIZE = 1000
+const SANE_MAX_BATCH_SIZE = 500
 
 export class DynamicBatchSizeManager {
     private minBatchSize: number;

@@ -687,12 +687,12 @@
     "chainName": "Mirai",
     "blockchainId": "Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM",
     "subnetId": "2kyZRnEHakKriNufphojbeFR5hi247bJeTjFDgQgo7VRRjoqyq",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc",
-    "evmChainId": "2718",
-    "blocksCount": "100k+",
-    "estimatedTxCount": "100k+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "IntainMarkets",

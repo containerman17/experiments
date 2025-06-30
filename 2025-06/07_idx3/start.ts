@@ -8,16 +8,13 @@ import { createRPCIndexer } from './indexers/rpc';
 import Fastify from 'fastify';
 import Database from 'better-sqlite3';
 import { executePragmas, IndexingDbHelper } from './indexers/dbHelper';
-import { config } from 'node:process';
-import { IS_DEVELOPMENT } from './config';
+
+import { IS_DEVELOPMENT, RPC_URL, CHAIN_ID, DATA_DIR, RPS, REQUEST_BATCH_SIZE, MAX_CONCURRENT, BLOCKS_PER_BATCH } from './config';
 import { createSanityChecker } from './indexers/sanityChecker';
 import { createMetricsIndexer } from './indexers/metrics';
 import { Indexer } from './indexers/types';
 
-const RPC_URL = 'http://65.21.140.118/ext/bc/22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt/rpc'
-const CHAIN_ID = '22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt'
-
-const blocksDbPath = path.join("database", CHAIN_ID, 'blocks.db');
+const blocksDbPath = path.join(DATA_DIR, CHAIN_ID, 'blocks.db');
 const indexingDbPath = path.join(path.dirname(blocksDbPath), 'indexing.db');
 if (!fs.existsSync(blocksDbPath)) {
     fs.mkdirSync(path.dirname(blocksDbPath), { recursive: true });
@@ -38,12 +35,12 @@ if (cluster.isPrimary) {
         const blocksDb = new BlockDB({ path: blocksDbPath, isReadonly: false });
         const batchRpc = new BatchRpc({
             rpcUrl: RPC_URL,
-            batchSize: 500,
-            maxConcurrent: 100,
-            rps: 100,
+            batchSize: REQUEST_BATCH_SIZE,
+            maxConcurrent: MAX_CONCURRENT,
+            rps: RPS,
             enableBatchSizeGrowth: false,
         });
-        startFetchingLoop(blocksDb, batchRpc, 10000);
+        startFetchingLoop(blocksDb, batchRpc, BLOCKS_PER_BATCH);
     } else if (process.env['ROLE'] === 'api') {
         //awaits both files as it is read only for both
         await awaitFileExists(indexingDbPath);
@@ -104,7 +101,7 @@ if (cluster.isPrimary) {
 
         const runIndexing = indexingDb.transaction((lastIndexedBlock) => {
             const getStart = performance.now();
-            const blocks = blocksDb.getBlocks(lastIndexedBlock + 1, 10000);
+            const blocks = blocksDb.getBlocks(lastIndexedBlock + 1, BLOCKS_PER_BATCH);
             const indexingStart = performance.now();
             hadSomethingToIndex = blocks.length > 0;
             let debugTxCount = 0

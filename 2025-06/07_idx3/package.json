@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "rm -f ./database/*/indexing.db*; tsx watch --clear-screen=false start.ts"
+    "dev": "rm -f ./database/*/indexing.db*; tsx watch --clear-screen=false start.ts",
+    "docker:push": "docker buildx build --platform linux/amd64 -t containerman17/idx3:latest --push ."
   },
   "keywords": [],
   "author": "",

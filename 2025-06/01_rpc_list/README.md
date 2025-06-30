@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (62)
+## Chains with Public RPC URLs (61)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -218,15 +218,6 @@
 - EVM Chain ID: 836
 - Blockchain ID: J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ
 - RPC URL: https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
-- Debug Enabled: ✅
-- Explorer URL: ❌
-
-**Mirai**
-- Blocks Count: 100k+
-- Estimated Tx Count: 100k+
-- EVM Chain ID: 2718
-- Blockchain ID: Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
-- RPC URL: https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -565,7 +556,7 @@
 
 
 
-## Chains without Public RPC URLs (13)
+## Chains without Public RPC URLs (14)
 
 **FIZIT**
 - EVM Chain ID: N/A
@@ -601,6 +592,11 @@
 - EVM Chain ID: N/A
 - Blockchain ID: 27xa71ERzSzir2KuPmmsAFkceVA74Xfh8Fys8SrmHjdKyj1vqd
 - Comment: not connected to enough stake: connected to 60.000000%; required at least 80.000000%
+
+**Mirai**
+- EVM Chain ID: N/A
+- Blockchain ID: Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
+- Comment: TODO: investigate
 
 **Rymedi Compliance Subnet**
 - EVM Chain ID: N/A

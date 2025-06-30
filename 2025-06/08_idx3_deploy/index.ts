@@ -37,7 +37,8 @@ for (const chain of chains) {
                 `RPS=${getRps(chain.rpcUrl)}`,
                 `REQUEST_BATCH_SIZE=${getRequestBatchSize(chain.rpcUrl)}`,
                 `MAX_CONCURRENT=${getRps(chain.rpcUrl)}`,//RPS is also max concurrent
-                `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`
+                `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`,
+                `DEBUG_RPC_AVAILABLE=${chain.debugEnabled ? 'true' : 'false'}`
             ],
             volumes: [
                 "/home/ilia/indexer_data:/data"

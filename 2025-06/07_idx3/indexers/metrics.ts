@@ -11,7 +11,7 @@ const TIME_INTERVAL_WEEK = 2
 const TIME_INTERVAL_MONTH = 3
 
 const METRIC_txCount = 0
-const METRIC_cumulativeContracts = 1
+const METRIC_cumulativeTxCount = 1
 
 interface MetricResult {
     timestamp: number;
@@ -19,6 +19,8 @@ interface MetricResult {
 }
 
 class MetricsIndexer implements Indexer {
+    private cumulativeTxCount = 0;
+
     constructor(private blocksDb: BlockDB, private indexingDb: SQLite.Database) { }
 
     initialize(): void {
@@ -31,20 +33,38 @@ class MetricsIndexer implements Indexer {
                 PRIMARY KEY (timeInterval, timestamp, metric)
             ) WITHOUT ROWID
         `);
+
+        // Initialize cumulative tx count from existing data
+        const result = this.indexingDb.prepare(`
+            SELECT MAX(value) as maxValue 
+            FROM metrics 
+            WHERE metric = ? AND timeInterval = ?
+        `).get(METRIC_cumulativeTxCount, TIME_INTERVAL_HOUR) as { maxValue: number | null };
+
+        this.cumulativeTxCount = result?.maxValue || 0;
     }
 
     indexBlock(block: LazyBlock, txs: LazyTx[]): void {
-        const blockTimestamp = block.timestamp; // Keep in seconds, don't multiply by 1000
+        const blockTimestamp = block.timestamp;
         const txCount = txs.length;
 
-        // Update metrics for all time intervals
-        this.updateMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
-        this.updateMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_txCount, txCount);
-        this.updateMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
-        this.updateMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
+        // Update cumulative transaction count
+        this.cumulativeTxCount += txCount;
+
+        // Update incremental metrics (txCount)
+        this.updateIncrementalMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_txCount, txCount);
+        this.updateIncrementalMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_txCount, txCount);
+        this.updateIncrementalMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_txCount, txCount);
+        this.updateIncrementalMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_txCount, txCount);
+
+        // Update cumulative metrics (cumulativeTxCount)
+        this.updateCumulativeMetric(TIME_INTERVAL_HOUR, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
+        this.updateCumulativeMetric(TIME_INTERVAL_DAY, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
+        this.updateCumulativeMetric(TIME_INTERVAL_WEEK, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
+        this.updateCumulativeMetric(TIME_INTERVAL_MONTH, blockTimestamp, METRIC_cumulativeTxCount, this.cumulativeTxCount);
     }
 
-    private updateMetric(timeInterval: number, timestamp: number, metric: number, increment: number): void {
+    private updateIncrementalMetric(timeInterval: number, timestamp: number, metric: number, increment: number): void {
         const normalizedTimestamp = normalizeTimestamp(timestamp, timeInterval);
 
         this.indexingDb.prepare(`
@@ -53,6 +73,17 @@ class MetricsIndexer implements Indexer {
             ON CONFLICT(timeInterval, timestamp, metric) 
             DO UPDATE SET value = value + ?
         `).run(timeInterval, normalizedTimestamp, metric, increment, increment);
+    }
+
+    private updateCumulativeMetric(timeInterval: number, timestamp: number, metric: number, totalValue: number): void {
+        const normalizedTimestamp = normalizeTimestamp(timestamp, timeInterval);
+
+        this.indexingDb.prepare(`
+            INSERT INTO metrics (timeInterval, timestamp, metric, value) 
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(timeInterval, timestamp, metric) 
+            DO UPDATE SET value = ?
+        `).run(timeInterval, normalizedTimestamp, metric, totalValue, totalValue);
     }
 
     registerRoutes(fastify: FastifyInstance, options: FastifyPluginOptions): void {
@@ -138,7 +169,7 @@ class MetricsIndexer implements Indexer {
     private getMetricId(metricName: string): number {
         switch (metricName) {
             case 'txCount': return METRIC_txCount;
-            case 'cumulativeContracts': return METRIC_cumulativeContracts;
+            case 'cumulativeTxCount': return METRIC_cumulativeTxCount;
             default: return -1;
         }
     }

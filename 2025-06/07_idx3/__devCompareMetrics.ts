@@ -38,8 +38,8 @@ async function getEvmChainId(url: string) {
 }
 
 async function compareResponses(queryString: string, pages: number = 1) {
-    let glacierUrl = `https://metrics.avax.network/v2/chains/${evmChainId}/metrics/txCount${queryString}`;
-    let localUrl = `http://localhost:3000/metrics/txCount${queryString}`;
+    let glacierUrl = `https://metrics.avax.network/v2/chains/${evmChainId}/metrics/${queryString}`;
+    let localUrl = `http://localhost:3000/metrics/${queryString}`;
 
     try {
         let allGlacierResults: any[] = [];
@@ -122,14 +122,27 @@ async function compareResponses(queryString: string, pages: number = 1) {
     }
 }
 
-await compareResponses('?pageSize=5', 3);
-await compareResponses('?pageSize=10&startTimestamp=1');
-await compareResponses('?pageSize=10&endTimestamp=1751248800');
-await compareResponses('?pageSize=10&timeInterval=month')
-await compareResponses('?pageSize=10&timeInterval=week')
-await compareResponses('?pageSize=10&timeInterval=day')
-await compareResponses('?pageSize=10&timeInterval=hour')
+const metrics = [
+    // 'txCount',
+    'cumulativeTxCount',
+]
 
+for (const metric of metrics) {
+    const isCumulative = metric.startsWith('cumulative');
 
+    console.log(`\n--- ${metric} ---`);
+
+    await compareResponses(`${metric}?pageSize=5&timeInterval=day`, 3);
+    await compareResponses(`${metric}?pageSize=10&startTimestamp=1&timeInterval=day`);
+    await compareResponses(`${metric}?pageSize=10&endTimestamp=1751248800&timeInterval=day`);
+    await compareResponses(`${metric}?pageSize=10&timeInterval=day`);
+
+    //Cumulative only available daily in glacier, but we support them all
+    if (!isCumulative) {
+        await compareResponses(`${metric}?pageSize=10&timeInterval=month`)
+        await compareResponses(`${metric}?pageSize=10&timeInterval=week`)
+        await compareResponses(`${metric}?pageSize=10&timeInterval=hour`)
+    }
+}
 
 export { }

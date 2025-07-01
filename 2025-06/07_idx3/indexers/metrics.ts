@@ -7,17 +7,6 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { LazyTraces, LazyTraceCall } from "../blockFetcher/lazy/LazyTrace";
 
 // Define schemas for the metrics API
-const MetricParamsSchema = z.object({
-    metricName: z.string().openapi({
-        param: {
-            name: 'metricName',
-            in: 'path',
-        },
-        example: 'txCount',
-        description: 'Name of the metric to retrieve'
-    }),
-});
-
 const MetricQuerySchema = z.object({
     startTimestamp: z.coerce.number().optional().openapi({
         example: 1640995200,
@@ -68,6 +57,12 @@ const TIME_INTERVAL_MONTH = 3
 
 const METRIC_txCount = 0
 const METRIC_cumulativeContracts = 1
+
+// Define available metrics
+const METRICS = {
+    txCount: METRIC_txCount,
+    cumulativeContracts: METRIC_cumulativeContracts,
+} as const;
 
 interface MetricResult {
     timestamp: number;
@@ -177,11 +172,17 @@ class MetricsIndexer implements Indexer {
     }
 
     registerRoutes(app: OpenAPIHono): void {
-        const metricsRoute = createRoute({
+        // Create a separate route for each metric
+        for (const [metricName, metricId] of Object.entries(METRICS)) {
+            this.createMetricRoute(app, metricName, metricId);
+        }
+    }
+
+    private createMetricRoute(app: OpenAPIHono, metricName: string, metricId: number): void {
+        const route = createRoute({
             method: 'get',
-            path: '/metrics/{metricName}',
+            path: `/metrics/${metricName}`,
             request: {
-                params: MetricParamsSchema,
                 query: MetricQuerySchema,
             },
             responses: {
@@ -191,19 +192,18 @@ class MetricsIndexer implements Indexer {
                             schema: MetricResponseSchema
                         }
                     },
-                    description: 'Metric data'
+                    description: `${metricName} metric data`
                 },
                 400: {
-                    description: 'Bad request (invalid metric name or parameters)'
+                    description: 'Bad request (invalid parameters)'
                 }
             },
             tags: ['Metrics'],
-            summary: 'Get metric data',
-            description: 'Retrieve blockchain metrics with optional filtering and pagination'
+            summary: `Get ${metricName} data`,
+            description: `Retrieve ${metricName} blockchain metric with optional filtering and pagination`
         });
 
-        app.openapi(metricsRoute, (c) => {
-            const { metricName } = c.req.valid('param');
+        app.openapi(route, (c) => {
             const {
                 startTimestamp,
                 endTimestamp,
@@ -211,12 +211,6 @@ class MetricsIndexer implements Indexer {
                 pageSize = 100,
                 pageToken
             } = c.req.valid('query');
-
-            // Map metric name to constant
-            const metricId = this.getMetricId(metricName);
-            if (metricId === -1) {
-                return c.json({ error: `Unknown metric: ${metricName}` }, 400);
-            }
 
             // Map time interval to constant
             const timeIntervalId = this.getTimeIntervalId(timeInterval);
@@ -273,14 +267,6 @@ class MetricsIndexer implements Indexer {
 
             return c.json(response);
         });
-    }
-
-    private getMetricId(metricName: string): number {
-        switch (metricName) {
-            case 'txCount': return METRIC_txCount;
-            case 'cumulativeContracts': return METRIC_cumulativeContracts;
-            default: return -1;
-        }
     }
 
     private getTimeIntervalId(timeInterval: string): number {

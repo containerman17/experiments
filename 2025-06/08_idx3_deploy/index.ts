@@ -24,7 +24,7 @@ function replaceRpcUrl(endpoint: string) {
 }
 
 function getBlocksPerBatch(endpoint: string) {
-    return 50
+    return 200
 }
 
 function getRequestBatchSize(endpoint: string) {

@@ -94,7 +94,7 @@ class MetricsIndexer implements Indexer {
             SELECT MAX(value) as maxValue 
             FROM metrics 
             WHERE metric = ? AND timeInterval = ?
-        `).get(METRIC_cumulativeContracts, TIME_INTERVAL_HOUR) as { maxValue: number | null };
+        `).get(METRIC_cumulativeContracts, TIME_INTERVAL_DAY) as { maxValue: number | null };
 
         this.cumulativeContractCount = result?.maxValue || 0;
     }
@@ -221,65 +221,153 @@ class MetricsIndexer implements Indexer {
             // Validate pageSize
             const validPageSize = Math.min(Math.max(pageSize, 1), 2160);
 
-            // Build query
-            let query = `
-                SELECT timestamp, value 
-                FROM metrics 
-                WHERE timeInterval = ? AND metric = ?
-            `;
-            const params: any[] = [timeIntervalId, metricId];
-
-            if (startTimestamp) {
-                query += ` AND timestamp >= ?`;
-                params.push(startTimestamp);
+            // Route to appropriate handler based on metric type
+            if (isCumulativeMetric(metricId)) {
+                return this.handleCumulativeMetricQuery(
+                    c, metricId, timeIntervalId, startTimestamp, endTimestamp,
+                    validPageSize, pageToken
+                );
+            } else {
+                return this.handleIncrementalMetricQuery(
+                    c, metricId, timeIntervalId, startTimestamp, endTimestamp,
+                    validPageSize, pageToken
+                );
             }
-
-            if (endTimestamp) {
-                query += ` AND timestamp <= ?`;
-                params.push(endTimestamp);
-            }
-
-            if (pageToken) {
-                query += ` AND timestamp < ?`;
-                params.push(parseInt(pageToken));
-            }
-
-            query += ` ORDER BY timestamp DESC LIMIT ?`;
-            params.push(validPageSize + 1); // Get one extra to check if there's a next page
-
-            const results = this.indexingDb.prepare(query).all(...params) as MetricResult[];
-
-            // Check if there's a next page
-            const hasNextPage = results.length > validPageSize;
-            if (hasNextPage) {
-                results.pop(); // Remove the extra result
-            }
-
-            // Backfill missing periods with zero values to match Glacier behavior
-            const backfilledResults = this.backfillZeros(results, timeIntervalId, metricId, startTimestamp, endTimestamp);
-
-            const response: any = {
-                results: backfilledResults.slice(0, validPageSize),
-                nextPageToken: hasNextPage && backfilledResults.length > 0
-                    ? backfilledResults[Math.min(validPageSize - 1, backfilledResults.length - 1)]!.timestamp.toString()
-                    : undefined
-            };
-
-            return c.json(response);
         });
     }
 
-    private getTimeIntervalId(timeInterval: string): number {
-        switch (timeInterval) {
-            case 'hour': return TIME_INTERVAL_HOUR;
-            case 'day': return TIME_INTERVAL_DAY;
-            case 'week': return TIME_INTERVAL_WEEK;
-            case 'month': return TIME_INTERVAL_MONTH;
-            default: return -1;
+    private handleIncrementalMetricQuery(
+        c: any, metricId: number, timeIntervalId: number,
+        startTimestamp: number | undefined, endTimestamp: number | undefined,
+        pageSize: number, pageToken: string | undefined
+    ) {
+        // Build query
+        let query = `
+            SELECT timestamp, value 
+            FROM metrics 
+            WHERE timeInterval = ? AND metric = ?
+        `;
+        const params: any[] = [timeIntervalId, metricId];
+
+        if (startTimestamp) {
+            query += ` AND timestamp >= ?`;
+            params.push(startTimestamp);
         }
+
+        if (endTimestamp) {
+            query += ` AND timestamp <= ?`;
+            params.push(endTimestamp);
+        }
+
+        if (pageToken) {
+            query += ` AND timestamp < ?`;
+            params.push(parseInt(pageToken));
+        }
+
+        query += ` ORDER BY timestamp DESC LIMIT ?`;
+        params.push(pageSize + 1);
+
+        const results = this.indexingDb.prepare(query).all(...params) as MetricResult[];
+
+        // Check if there's a next page
+        const hasNextPage = results.length > pageSize;
+        if (hasNextPage) {
+            results.pop();
+        }
+
+        // Backfill missing periods with zero values
+        const backfilledResults = this.backfillIncrementalMetric(
+            results, timeIntervalId, startTimestamp, endTimestamp
+        );
+
+        const response: any = {
+            results: backfilledResults.slice(0, pageSize),
+            nextPageToken: hasNextPage && backfilledResults.length > 0
+                ? backfilledResults[Math.min(pageSize - 1, backfilledResults.length - 1)]!.timestamp.toString()
+                : undefined
+        };
+
+        return c.json(response);
     }
 
-    private backfillZeros(results: MetricResult[], timeInterval: number, metricId: number, startTimestamp?: number, endTimestamp?: number): MetricResult[] {
+    private handleCumulativeMetricQuery(
+        c: any, metricId: number, timeIntervalId: number,
+        startTimestamp: number | undefined, endTimestamp: number | undefined,
+        pageSize: number, pageToken: string | undefined
+    ) {
+        // For cumulative metrics, we need to get the most recent value before the range
+        // to properly backfill
+        let baseQuery = `
+            SELECT timestamp, value 
+            FROM metrics 
+            WHERE timeInterval = ? AND metric = ?
+        `;
+        const baseParams: any[] = [timeIntervalId, metricId];
+
+        // Get the current timestamp to avoid future values
+        const now = Math.floor(Date.now() / 1000);
+
+        // First, get the most recent non-zero value that's not in the future
+        const mostRecentResult = this.indexingDb.prepare(
+            baseQuery + ` AND timestamp <= ? AND value > 0 ORDER BY timestamp DESC LIMIT 1`
+        ).get(...baseParams, now) as MetricResult | undefined;
+
+        const currentCumulativeValue = mostRecentResult?.value || 0;
+
+        // Now build the main query
+        let query = baseQuery;
+        const params = [...baseParams];
+
+        if (startTimestamp) {
+            query += ` AND timestamp >= ?`;
+            params.push(startTimestamp);
+        }
+
+        if (endTimestamp) {
+            query += ` AND timestamp <= ?`;
+            params.push(endTimestamp);
+        }
+
+        if (pageToken) {
+            query += ` AND timestamp < ?`;
+            params.push(parseInt(pageToken));
+        }
+
+        query += ` ORDER BY timestamp DESC LIMIT ?`;
+        params.push(pageSize + 1);
+
+        const results = this.indexingDb.prepare(query).all(...params) as MetricResult[];
+
+        // Check if there's a next page
+        const hasNextPage = results.length > pageSize;
+        if (hasNextPage) {
+            results.pop();
+        }
+
+        // Filter out any zero values for cumulative metrics and future timestamps
+        const filteredResults = results.filter(r => r.value > 0 || r.timestamp <= now);
+
+        // Backfill cumulative values
+        const backfilledResults = this.backfillCumulativeMetric(
+            filteredResults, timeIntervalId, currentCumulativeValue, startTimestamp, endTimestamp
+        );
+
+        const response: any = {
+            results: backfilledResults.slice(0, pageSize),
+            nextPageToken: hasNextPage && backfilledResults.length > 0
+                ? backfilledResults[Math.min(pageSize - 1, backfilledResults.length - 1)]!.timestamp.toString()
+                : undefined
+        };
+
+        return c.json(response);
+    }
+
+    private backfillIncrementalMetric(
+        results: MetricResult[],
+        timeInterval: number,
+        startTimestamp?: number,
+        endTimestamp?: number
+    ): MetricResult[] {
         if (results.length === 0) return results;
 
         const backfilled: MetricResult[] = [];
@@ -291,35 +379,97 @@ class MetricsIndexer implements Indexer {
         const start = startTimestamp ? Math.max(startTimestamp, oldest) : oldest;
         const end = endTimestamp ? Math.min(endTimestamp, newest) : newest;
 
-        const isMetricCumulative = isCumulativeMetric(metricId);
+        let current = newest;
+        while (current >= start) {
+            const value = resultMap.get(current);
+            backfilled.push({
+                timestamp: current,
+                value: value !== undefined ? value : 0
+            });
+            current = this.getPreviousTimestamp(current, timeInterval);
+        }
 
-        // For cumulative metrics, we need to initialize with the most recent actual value
-        let lastKnownValue = 0;
-        if (isMetricCumulative && results.length > 0) {
-            // Find the most recent actual value (results are sorted desc by timestamp)
-            lastKnownValue = results[0]!.value;
+        return backfilled;
+    }
+
+    private backfillCumulativeMetric(
+        results: MetricResult[],
+        timeInterval: number,
+        currentCumulativeValue: number,
+        startTimestamp?: number,
+        endTimestamp?: number
+    ): MetricResult[] {
+        // If no results, create synthetic results based on current value
+        if (results.length === 0 && currentCumulativeValue > 0) {
+            // Generate timestamps for the requested range
+            const now = Math.floor(Date.now() / 1000);
+            const end = endTimestamp || now;
+            const start = startTimestamp || end - (24 * 60 * 60); // Default to 1 day range
+
+            const syntheticResults: MetricResult[] = [];
+            let current = normalizeTimestamp(end, timeInterval);
+            const normalizedStart = normalizeTimestamp(start, timeInterval);
+
+            while (current >= normalizedStart) {
+                syntheticResults.push({
+                    timestamp: current,
+                    value: currentCumulativeValue
+                });
+                current = this.getPreviousTimestamp(current, timeInterval);
+            }
+
+            return syntheticResults;
+        }
+
+        const backfilled: MetricResult[] = [];
+        const resultMap = new Map(results.map(r => [r.timestamp, r.value]));
+
+        const oldest = results[results.length - 1]!.timestamp;
+        const newest = results[0]!.timestamp;
+
+        const start = startTimestamp ? Math.max(startTimestamp, oldest) : oldest;
+        const end = endTimestamp ? Math.min(endTimestamp, newest) : newest;
+
+        // Find the first non-zero value in results, or use currentCumulativeValue
+        let lastKnownValue = currentCumulativeValue;
+        for (const result of results) {
+            if (result.value > 0) {
+                lastKnownValue = result.value;
+                break;
+            }
         }
 
         let current = newest;
         while (current >= start) {
             const value = resultMap.get(current);
-            if (value !== undefined) {
+            if (value !== undefined && value > 0) {
+                // Found a real non-zero value
                 lastKnownValue = value;
                 backfilled.push({
                     timestamp: current,
                     value: value
                 });
             } else {
-                // For cumulative metrics, use last known value; for incremental metrics, use 0
+                // For gaps or zero values, use the last known value
                 backfilled.push({
                     timestamp: current,
-                    value: isMetricCumulative ? lastKnownValue : 0
+                    value: lastKnownValue
                 });
             }
             current = this.getPreviousTimestamp(current, timeInterval);
         }
 
         return backfilled;
+    }
+
+    private getTimeIntervalId(timeInterval: string): number {
+        switch (timeInterval) {
+            case 'hour': return TIME_INTERVAL_HOUR;
+            case 'day': return TIME_INTERVAL_DAY;
+            case 'week': return TIME_INTERVAL_WEEK;
+            case 'month': return TIME_INTERVAL_MONTH;
+            default: return -1;
+        }
     }
 
     private getPreviousTimestamp(timestamp: number, timeInterval: number): number {

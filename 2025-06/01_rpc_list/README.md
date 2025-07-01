@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (65)
+## Chains with Public RPC URLs (61)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -158,16 +158,6 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
-**Henesys**
-- Blocks Count: 1m+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 68414
-- Blockchain ID: 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB
-- RPC URL: https://henesys-rpc.msu.io
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/henesys
-- Comment: The RPC URL is behind an aggressive Cloudflare Protection
-
 **TradeXMarkets**
 - Blocks Count: 1m+
 - Estimated Tx Count: 1m+
@@ -186,15 +176,6 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
-**Space**
-- Blocks Count: 1m+
-- Estimated Tx Count: 1m+
-- EVM Chain ID: 8227
-- Blockchain ID: 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
-- RPC URL: https://meganode.solokhin.com/ext/bc/22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/space
-
 **ApertumMainnet**
 - Blocks Count: 1m+
 - Estimated Tx Count: 1m+
@@ -203,6 +184,15 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
+
+**Space**
+- Blocks Count: 1m+
+- Estimated Tx Count: 1m+
+- EVM Chain ID: 8227
+- Blockchain ID: 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
+- RPC URL: https://meganode.solokhin.com/ext/bc/22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt/rpc
+- Debug Enabled: ✅
+- Explorer URL: https://subnets.avax.network/space
 
 **PLYRPHI**
 - Blocks Count: 100k+
@@ -357,15 +347,6 @@
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/artery
 
-**Memoria**
-- Blocks Count: 1k+
-- Estimated Tx Count: 10k+
-- EVM Chain ID: 1888
-- Blockchain ID: kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
-- RPC URL: https://subnets.avax.network/memoria/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/memoria
-
 **bloodloop**
 - Blocks Count: 1k+
 - Estimated Tx Count: 1k+
@@ -474,15 +455,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/titan
 
-**delaunch**
-- Blocks Count: 10+
-- Estimated Tx Count: 10+
-- EVM Chain ID: 96786
-- Blockchain ID: 8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv
-- RPC URL: https://meganode.solokhin.com/ext/bc/8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/delaunch
-
 **lucid**
 - Blocks Count: 10+
 - Estimated Tx Count: 10+
@@ -537,15 +509,6 @@
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/lylty
 
-**Animalia**
-- Blocks Count: 0+
-- Estimated Tx Count: 0+
-- EVM Chain ID: 8787
-- Blockchain ID: QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk
-- RPC URL: https://meganode.solokhin.com/ext/bc/QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/animalia
-
 **ULALO**
 - Blocks Count: 0+
 - Estimated Tx Count: 0+
@@ -593,12 +556,22 @@
 
 
 
-## Chains without Public RPC URLs (12)
+## Chains without Public RPC URLs (14)
+
+**Memoria**
+- EVM Chain ID: N/A
+- Blockchain ID: kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
+- Comment: TODO: investigate
 
 **FIZIT**
 - EVM Chain ID: N/A
 - Blockchain ID: tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN
 - Comment: Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/
+
+**Henesys**
+- EVM Chain ID: 68414
+- Blockchain ID: 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB
+- Comment: The RPC URL is behind an aggressive Cloudflare Protection
 
 **STLINK**
 - EVM Chain ID: N/A

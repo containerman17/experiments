@@ -305,9 +305,9 @@
     "chainName": "Henesys",
     "blockchainId": "2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB",
     "subnetId": "jmLmezoViv3F72XLzpdmSNk3qLEGb72g5EYkp3ij4wHXPF2KN",
-    "rpcUrl": "https://henesys-rpc.msu.io",
+    "rpcUrl": null,
     "evmChainId": "68414",
-    "blocksCount": "1m+",
+    "blocksCount": null,
     "estimatedTxCount": null,
     "glacierChainId": "68414",
     "comment": "The RPC URL is behind an aggressive Cloudflare Protection",
@@ -580,18 +580,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "delaunch",
-    "blockchainId": "8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv",
-    "subnetId": "2ocjsdpN9czPYmHqS4Tc5Aydj4zk2WWVdX9jdXtqvMjQuf9pgV",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/8yyXaeqhBEDc7sJVTecGtdHgXE4y2EJD228SaVvEsU6ZU3Kuv/rpc",
-    "evmChainId": "96786",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
-    "glacierChainId": "96786",
-    "comment": null,
-    "debugEnabled": true
-  },
-  {
     "chainName": "Bitcoin Content Network",
     "blockchainId": "apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i",
     "subnetId": "2pcw5qWCnrxQDS9uWd6gmcdj1WxUr777xo9BBzcqzmMwu7WtX8",
@@ -699,12 +687,11 @@
     "chainName": "Memoria",
     "blockchainId": "kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC",
     "subnetId": "2sF5Pb165jhdeNSy2kT4WyDYazu3buh1WGh77oTBA9dDjBPtsy",
-    "rpcUrl": "https://subnets.avax.network/memoria/mainnet/rpc",
-    "evmChainId": "1888",
-    "blocksCount": "1k+",
-    "estimatedTxCount": "10k+",
-    "glacierChainId": "1888",
-    "comment": null,
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -740,18 +727,6 @@
     "glacierChainId": "53935",
     "comment": null,
     "debugEnabled": false
-  },
-  {
-    "chainName": "Animalia",
-    "blockchainId": "QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk",
-    "subnetId": "TfTBHvcxpBfxPntMpadskcZTH8AG5rgkrNyz2DzeByNMsZkMo",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/QgQ2ATB5Ca6US2jur1iPrfBtFDGNSQHXcnSzfv19ZZ2vLZSrk/rpc",
-    "evmChainId": "8787",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
-    "glacierChainId": "8787",
-    "comment": null,
-    "debugEnabled": true
   },
   {
     "chainName": "BangoL",

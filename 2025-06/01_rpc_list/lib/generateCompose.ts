@@ -76,7 +76,7 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
     return `events {}
 http {
     # Rate limiting zone: 10000 requests per minute per IP
-    limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=400r/s;
+    limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=1000r/s;
     
     # Rate limit status
     limit_req_status 429;

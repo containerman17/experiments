@@ -129,6 +129,49 @@ async function compareResponses(queryString: string, pages: number = 1) {
     }
 }
 
+async function compareTeleporterMetrics() {
+    console.log('\n\n=== 🚀 TELEPORTER METRICS COMPARISON ===');
+
+    const teleporterMetrics = [
+        'teleporterSourceTxnCount',
+        'teleporterDestinationTxnCount',
+        'teleporterTotalTxnCount'
+    ];
+
+    for (const metric of teleporterMetrics) {
+        console.log(`\n--- ${metric} ---`);
+
+        try {
+            // Glacier URL uses teleporterMetrics path
+            const glacierUrl = `https://metrics.avax.network/v2/chains/${evmChainId}/teleporterMetrics/${metric}`;
+            const localUrl = `http://localhost:3000/teleporterMetrics/${metric}`;
+
+            console.log('Fetching from Glacier API...');
+            const glacierResponse = await fetch(glacierUrl);
+            const glacierData = await glacierResponse.json() as { result: { value: number } };
+
+            console.log('Fetching from local API...');
+            const localResponse = await fetch(localUrl);
+            const localDataDebugText = await localResponse.text();
+            console.log('localDataDebugText', localDataDebugText);
+            const localData = JSON.parse(localDataDebugText) as { result: { value: number } };
+
+            console.log(`Glacier value: ${glacierData.result.value}`);
+            console.log(`Local value: ${localData.result.value}`);
+
+            if (glacierData.result.value === localData.result.value) {
+                console.log('✅ Values match!');
+            } else {
+                console.log('❌ Values differ!');
+                console.log(`Difference: ${Math.abs(glacierData.result.value - localData.result.value)}`);
+            }
+
+        } catch (error) {
+            console.error(`Error comparing ${metric}:`, error);
+        }
+    }
+}
+
 const metrics = [
     // 'txCount',
     'cumulativeTxCount',
@@ -153,5 +196,8 @@ for (const metric of metrics) {
         await compareResponses(`${metric}?pageSize=10&timeInterval=hour`)
     }
 }
+
+// Compare teleporter metrics
+await compareTeleporterMetrics();
 
 export { }

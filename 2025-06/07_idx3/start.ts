@@ -14,6 +14,7 @@ import { createSanityChecker } from './indexers/sanityChecker';
 import { createMetricsIndexer } from './indexers/metrics';
 import { Indexer } from './indexers/types';
 import { serve } from '@hono/node-server';
+import { createTeleporterMetricsIndexer } from './indexers/teleporterMetrics';
 
 const blocksDbPath = path.join(DATA_DIR, CHAIN_ID, DEBUG_RPC_AVAILABLE ? 'blocks.db' : 'blocks_no_dbg.db');
 const indexingDbPath = path.join(path.dirname(blocksDbPath), DEBUG_RPC_AVAILABLE ? 'indexing.db' : 'indexing_no_dbg.db');
@@ -21,7 +22,11 @@ if (!fs.existsSync(blocksDbPath)) {
     fs.mkdirSync(path.dirname(blocksDbPath), { recursive: true });
 }
 
-const indexerFactories = [createRPCIndexer, createMetricsIndexer];
+const indexerFactories = [
+    createRPCIndexer,
+    createMetricsIndexer,
+    createTeleporterMetricsIndexer
+];
 if (IS_DEVELOPMENT) {
     indexerFactories.push(createSanityChecker);
 }

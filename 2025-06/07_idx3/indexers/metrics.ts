@@ -6,6 +6,7 @@ import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { LazyTraces, LazyTraceCall } from "../blockFetcher/lazy/LazyTrace";
 
+
 // Define schemas for the metrics API
 const MetricQuerySchema = z.object({
     startTimestamp: z.coerce.number().optional().openapi({

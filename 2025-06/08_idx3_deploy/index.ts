@@ -46,7 +46,8 @@ for (const chain of chains) {
                 `REQUEST_BATCH_SIZE=${getRequestBatchSize(chain.rpcUrl)}`,
                 `MAX_CONCURRENT=${getMaxConcurrent(chain.rpcUrl)}`,
                 `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`,
-                `DEBUG_RPC_AVAILABLE=${chain.debugEnabled ? 'true' : 'false'}`
+                `DEBUG_RPC_AVAILABLE=${chain.debugEnabled ? 'true' : 'false'}`,
+                ...chain.evmChainId ? [`REVERSE_PROXY_PREFIX=/v1/chains/${chain.evmChainId}`] : []
             ],
             volumes: [
                 "/home/ilia/indexer_data:/data"

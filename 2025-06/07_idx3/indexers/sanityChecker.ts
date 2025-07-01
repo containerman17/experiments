@@ -3,7 +3,7 @@ import { BlockDB } from "../blockFetcher/BlockDB";
 import { CreateIndexerFunction, Indexer } from "./types";
 import { LazyTx } from "../blockFetcher/lazy/LazyTx";
 import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
-import { FastifyInstance, FastifyPluginOptions } from "fastify";
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { LazyTraces } from "../blockFetcher/lazy/LazyTrace";
 import { DEBUG_RPC_AVAILABLE } from "../config";
 
@@ -33,7 +33,7 @@ class SanityChecker implements Indexer {
         }
     }
 
-    registerRoutes(fastify: FastifyInstance, options: FastifyPluginOptions): void { }
+    registerRoutes(app: OpenAPIHono): void { }
 }
 export const createSanityChecker: CreateIndexerFunction = (blocksDb: BlockDB, indexingDb: SQLite.Database) => {
     return new SanityChecker();

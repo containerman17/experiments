@@ -3,8 +3,63 @@ import { BlockDB } from "../blockFetcher/BlockDB";
 import { CreateIndexerFunction, Indexer } from "./types";
 import { LazyTx } from "../blockFetcher/lazy/LazyTx";
 import { LazyBlock } from "../blockFetcher/lazy/LazyBlock";
-import { FastifyInstance, FastifyPluginOptions } from "fastify";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { LazyTraces, LazyTraceCall } from "../blockFetcher/lazy/LazyTrace";
+
+// Define schemas for the metrics API
+const MetricParamsSchema = z.object({
+    metricName: z.string().openapi({
+        param: {
+            name: 'metricName',
+            in: 'path',
+        },
+        example: 'txCount',
+        description: 'Name of the metric to retrieve'
+    }),
+});
+
+const MetricQuerySchema = z.object({
+    startTimestamp: z.coerce.number().optional().openapi({
+        example: 1640995200,
+        description: 'Start timestamp for the query range'
+    }),
+    endTimestamp: z.coerce.number().optional().openapi({
+        example: 1641081600,
+        description: 'End timestamp for the query range'
+    }),
+    timeInterval: z.enum(['hour', 'day', 'week', 'month']).optional().default('hour').openapi({
+        example: 'hour',
+        description: 'Time interval for aggregation'
+    }),
+    pageSize: z.coerce.number().optional().default(100).openapi({
+        example: 100,
+        description: 'Number of results per page'
+    }),
+    pageToken: z.string().optional().openapi({
+        example: '1641081600',
+        description: 'Token for pagination'
+    })
+});
+
+const MetricResultSchema = z.object({
+    timestamp: z.number().openapi({
+        example: 1640995200,
+        description: 'Timestamp of the metric data point'
+    }),
+    value: z.number().openapi({
+        example: 1000,
+        description: 'Metric value'
+    })
+}).openapi('MetricResult');
+
+const MetricResponseSchema = z.object({
+    results: z.array(MetricResultSchema).openapi({
+        description: 'Array of metric results'
+    }),
+    nextPageToken: z.string().optional().openapi({
+        description: 'Token for fetching the next page'
+    })
+}).openapi('MetricResponse');
 
 const TIME_INTERVAL_HOUR = 0
 const TIME_INTERVAL_DAY = 1
@@ -17,6 +72,10 @@ const METRIC_cumulativeContracts = 1
 interface MetricResult {
     timestamp: number;
     value: number;
+}
+
+function isCumulativeMetric(metricId: number): boolean {
+    return metricId === METRIC_cumulativeContracts;
 }
 
 class MetricsIndexer implements Indexer {
@@ -117,33 +176,52 @@ class MetricsIndexer implements Indexer {
         `).run(timeInterval, normalizedTimestamp, metric, totalValue, totalValue);
     }
 
-    registerRoutes(fastify: FastifyInstance, options: FastifyPluginOptions): void {
-        fastify.get('/metrics/:metricName', async (request, reply) => {
-            const { metricName } = request.params as { metricName: string };
+    registerRoutes(app: OpenAPIHono): void {
+        const metricsRoute = createRoute({
+            method: 'get',
+            path: '/metrics/{metricName}',
+            request: {
+                params: MetricParamsSchema,
+                query: MetricQuerySchema,
+            },
+            responses: {
+                200: {
+                    content: {
+                        'application/json': {
+                            schema: MetricResponseSchema
+                        }
+                    },
+                    description: 'Metric data'
+                },
+                400: {
+                    description: 'Bad request (invalid metric name or parameters)'
+                }
+            },
+            tags: ['Metrics'],
+            summary: 'Get metric data',
+            description: 'Retrieve blockchain metrics with optional filtering and pagination'
+        });
+
+        app.openapi(metricsRoute, (c) => {
+            const { metricName } = c.req.valid('param');
             const {
                 startTimestamp,
                 endTimestamp,
                 timeInterval = 'hour',
                 pageSize = 100,
                 pageToken
-            } = request.query as {
-                startTimestamp?: number;
-                endTimestamp?: number;
-                timeInterval?: string;
-                pageSize?: number;
-                pageToken?: string;
-            };
+            } = c.req.valid('query');
 
             // Map metric name to constant
             const metricId = this.getMetricId(metricName);
             if (metricId === -1) {
-                return reply.code(400).send({ error: `Unknown metric: ${metricName}` });
+                return c.json({ error: `Unknown metric: ${metricName}` }, 400);
             }
 
             // Map time interval to constant
             const timeIntervalId = this.getTimeIntervalId(timeInterval);
             if (timeIntervalId === -1) {
-                return reply.code(400).send({ error: `Invalid timeInterval: ${timeInterval}` });
+                return c.json({ error: `Invalid timeInterval: ${timeInterval}` }, 400);
             }
 
             // Validate pageSize
@@ -184,7 +262,7 @@ class MetricsIndexer implements Indexer {
             }
 
             // Backfill missing periods with zero values to match Glacier behavior
-            const backfilledResults = this.backfillZeros(results, timeIntervalId, startTimestamp, endTimestamp);
+            const backfilledResults = this.backfillZeros(results, timeIntervalId, metricId, startTimestamp, endTimestamp);
 
             const response: any = {
                 results: backfilledResults.slice(0, validPageSize),
@@ -193,7 +271,7 @@ class MetricsIndexer implements Indexer {
                     : undefined
             };
 
-            return response;
+            return c.json(response);
         });
     }
 
@@ -215,7 +293,7 @@ class MetricsIndexer implements Indexer {
         }
     }
 
-    private backfillZeros(results: MetricResult[], timeInterval: number, startTimestamp?: number, endTimestamp?: number): MetricResult[] {
+    private backfillZeros(results: MetricResult[], timeInterval: number, metricId: number, startTimestamp?: number, endTimestamp?: number): MetricResult[] {
         if (results.length === 0) return results;
 
         const backfilled: MetricResult[] = [];
@@ -227,12 +305,31 @@ class MetricsIndexer implements Indexer {
         const start = startTimestamp ? Math.max(startTimestamp, oldest) : oldest;
         const end = endTimestamp ? Math.min(endTimestamp, newest) : newest;
 
+        const isMetricCumulative = isCumulativeMetric(metricId);
+
+        // For cumulative metrics, we need to initialize with the most recent actual value
+        let lastKnownValue = 0;
+        if (isMetricCumulative && results.length > 0) {
+            // Find the most recent actual value (results are sorted desc by timestamp)
+            lastKnownValue = results[0]!.value;
+        }
+
         let current = newest;
         while (current >= start) {
-            backfilled.push({
-                timestamp: current,
-                value: resultMap.get(current) || 0
-            });
+            const value = resultMap.get(current);
+            if (value !== undefined) {
+                lastKnownValue = value;
+                backfilled.push({
+                    timestamp: current,
+                    value: value
+                });
+            } else {
+                // For cumulative metrics, use last known value; for incremental metrics, use 0
+                backfilled.push({
+                    timestamp: current,
+                    value: isMetricCumulative ? lastKnownValue : 0
+                });
+            }
             current = this.getPreviousTimestamp(current, timeInterval);
         }
 

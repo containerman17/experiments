@@ -66,6 +66,13 @@ async function compareResponses(queryString: string, pages: number = 1) {
             const localResponse = await fetch(localPageUrl);
             const localData = await localResponse.json() as MetricsResponse;
 
+            if (!Array.isArray(glacierData.results) || !Array.isArray(localData.results)) {
+                console.log('glacierData', JSON.stringify(glacierData, null, 2))
+                console.log('localData', JSON.stringify(localData, null, 2))
+                throw new Error('Results are not arrays');
+            }
+
+
             // Collect results
             allGlacierResults.push(...glacierData.results);
             allLocalResults.push(...localData.results);
@@ -137,6 +144,7 @@ for (const metric of metrics) {
     await compareResponses(`${metric}?pageSize=10&startTimestamp=1&timeInterval=day`);
     await compareResponses(`${metric}?pageSize=10&endTimestamp=1751248800&timeInterval=day`);
     await compareResponses(`${metric}?pageSize=10&timeInterval=day`);
+    await compareResponses(`${metric}?pageSize=1&timeInterval=day`);
 
     //Cumulative only available daily in glacier, but we support them all
     if (!isCumulative) {

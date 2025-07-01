@@ -5,7 +5,7 @@ import { BlockDB } from './blockFetcher/BlockDB';
 import { startFetchingLoop } from './blockFetcher/startFetchingLoop';
 import { BatchRpc } from './blockFetcher/BatchRpc';
 import { createRPCIndexer } from './indexers/rpc';
-import Fastify from 'fastify';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import Database from 'better-sqlite3';
 import { executePragmas, IndexingDbHelper } from './indexers/dbHelper';
 
@@ -13,6 +13,7 @@ import { IS_DEVELOPMENT, RPC_URL, CHAIN_ID, DATA_DIR, RPS, REQUEST_BATCH_SIZE, M
 import { createSanityChecker } from './indexers/sanityChecker';
 import { createMetricsIndexer } from './indexers/metrics';
 import { Indexer } from './indexers/types';
+import { serve } from '@hono/node-server';
 
 const blocksDbPath = path.join(DATA_DIR, CHAIN_ID, DEBUG_RPC_AVAILABLE ? 'blocks.db' : 'blocks_no_dbg.db');
 const indexingDbPath = path.join(path.dirname(blocksDbPath), DEBUG_RPC_AVAILABLE ? 'indexing.db' : 'indexing_no_dbg.db');
@@ -24,6 +25,28 @@ const indexerFactories = [createRPCIndexer, createMetricsIndexer];
 if (IS_DEVELOPMENT) {
     indexerFactories.push(createSanityChecker);
 }
+
+const docsPage = `
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Elements in HTML</title>
+  
+    <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+  </head>
+  <body>
+
+    <elements-api
+      apiDescriptionUrl="/api/openapi.json"
+      router="hash"
+    />
+
+  </body>
+</html>
+`
 
 if (cluster.isPrimary) {
     // spawn one writer, one reader, one misc-job worker
@@ -52,33 +75,37 @@ if (cluster.isPrimary) {
 
         await executePragmas({ db: indexingDb, isReadonly: true });
 
-        const fastifyApp = Fastify({
-            logger: {
-                transport: {
-                    // plain-text output, colourised, one line per log
-                    target: 'pino-pretty',
-                    options: {
-                        translateTime: 'HH:MM:ss',
-                        singleLine: true,
-                        ignore: 'pid,hostname'   // keep it short
-                    }
-                },
-                level: process.env['LOG_LEVEL'] || 'info'
-            }
-        })
+        const app = new OpenAPIHono();
 
         for (const indexerFactory of indexerFactories) {
             const indexer = indexerFactory(blocksDb, indexingDb);
-            //metrics are v2, data is v1
-            fastifyApp.register((fastify, options) => indexer.registerRoutes(fastify, options));
+            indexer.registerRoutes(app);
         }
 
-        fastifyApp.listen({ port: 3000 }, (err, address) => {
-            if (err) {
-                fastifyApp.log.error(err);
-                process.exit(1);
-            }
-            fastifyApp.log.info(`server listening on ${address}`);
+        // Add OpenAPI documentation endpoint
+        app.doc('/api/openapi.json', {
+            openapi: '3.0.0',
+            info: {
+                version: '1.0.0',
+                title: 'Blockchain Indexer API',
+                description: 'API for querying blockchain data and metrics'
+            },
+            servers: [
+                {
+                    url: 'http://localhost:3000',
+                    description: 'Local development server'
+                }
+            ]
+        });
+
+        console.log('Starting server on http://localhost:3000/');
+        app.get('/', (c) => c.html(`< a href = "/docs" > OpenAPI documentation</a>`))
+        app.get('/docs', (c) => c.html(docsPage))
+        app.get('/docs/*', (c) => c.html(docsPage))
+
+        serve({
+            fetch: app.fetch,
+            port: 3000
         });
     } else if (process.env['ROLE'] === 'indexer') {
         await awaitFileExists(blocksDbPath);

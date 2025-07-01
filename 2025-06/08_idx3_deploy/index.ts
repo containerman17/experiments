@@ -7,12 +7,16 @@ const services: Record<string, any> = {}
 
 function getRps(endpoint: string) {
     if (endpoint.includes("meganode.solokhin.com")) {
-        return 50
+        return 200
     } else if (endpoint.includes("subnets.avax.network")) {
-        return 2//TODO: change to 6. UP: even 5 throws 429
+        return 3//TODO: change to 6. UP: even 5 throws 429
     } else {
         return 20
     }
+}
+
+function getMaxConcurrent(endpoint: string) {
+    return 20
 }
 
 function replaceRpcUrl(endpoint: string) {
@@ -40,7 +44,7 @@ for (const chain of chains) {
                 "DATA_DIR=/data/",
                 `RPS=${getRps(chain.rpcUrl)}`,
                 `REQUEST_BATCH_SIZE=${getRequestBatchSize(chain.rpcUrl)}`,
-                `MAX_CONCURRENT=${getRps(chain.rpcUrl)}`,//RPS is also max concurrent
+                `MAX_CONCURRENT=${getMaxConcurrent(chain.rpcUrl)}`,
                 `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`,
                 `DEBUG_RPC_AVAILABLE=${chain.debugEnabled ? 'true' : 'false'}`
             ],

@@ -101,7 +101,6 @@ if (cluster.isPrimary) {
         console.log('Starting server on http://localhost:3000/');
         app.get('/', (c) => c.html(`< a href = "/docs" > OpenAPI documentation</a>`))
         app.get('/docs', (c) => c.html(docsPage))
-        app.get('/docs/*', (c) => c.html(docsPage))
 
         serve({
             fetch: app.fetch,

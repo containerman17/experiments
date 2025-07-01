@@ -20,8 +20,8 @@ const MetricQuerySchema = z.object({
         example: 'hour',
         description: 'Time interval for aggregation'
     }),
-    pageSize: z.coerce.number().optional().default(100).openapi({
-        example: 100,
+    pageSize: z.coerce.number().optional().default(10).openapi({
+        example: 10,
         description: 'Number of results per page'
     }),
     pageToken: z.string().optional().openapi({

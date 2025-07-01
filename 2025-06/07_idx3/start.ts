@@ -15,6 +15,7 @@ import { createMetricsIndexer } from './indexers/metrics';
 import { Indexer } from './indexers/types';
 import { serve } from '@hono/node-server';
 import { createTeleporterMetricsIndexer } from './indexers/teleporterMetrics';
+import { createInfoIndexer } from './indexers/info';
 
 const blocksDbPath = path.join(DATA_DIR, CHAIN_ID, DEBUG_RPC_AVAILABLE ? 'blocks.db' : 'blocks_no_dbg.db');
 const indexingDbPath = path.join(path.dirname(blocksDbPath), DEBUG_RPC_AVAILABLE ? 'indexing.db' : 'indexing_no_dbg.db');
@@ -25,7 +26,8 @@ if (!fs.existsSync(blocksDbPath)) {
 const indexerFactories = [
     createRPCIndexer,
     createMetricsIndexer,
-    createTeleporterMetricsIndexer
+    createTeleporterMetricsIndexer,
+    createInfoIndexer,
 ];
 if (IS_DEVELOPMENT) {
     indexerFactories.push(createSanityChecker);
@@ -104,7 +106,7 @@ if (cluster.isPrimary) {
         });
 
         console.log('Starting server on http://localhost:3000/');
-        app.get('/', (c) => c.html(`< a href = "/docs" > OpenAPI documentation</a>`))
+        app.get('/', (c) => c.html(`<a href="/docs">OpenAPI documentation</a>`))
         app.get('/docs', (c) => c.html(docsPage))
 
         serve({

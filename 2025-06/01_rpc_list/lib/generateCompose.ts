@@ -67,19 +67,19 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
 
             locations += `
         location /ext/bc/${blockchainId}/rpc {
-            limit_req zone=rpc_limit burst=5000 nodelay;
+            limit_conn perip 500;
             proxy_pass http://${upstreamName};
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
         }`
         })
     })
 
     return `events {}
 http {
-    # Rate limiting zone: 10000 requests per minute per IP
-    limit_req_zone $$binary_remote_addr zone=rpc_limit:10m rate=1000r/s;
-    
-    # Rate limit status
-    limit_req_status 429;
+    # Concurrent connection limiting: max 500 active connections per IP
+    limit_conn_zone $$binary_remote_addr zone=perip:10m;
     
     # P-Chain upstream
     upstream backend_p_chain {
@@ -96,14 +96,20 @@ http {
         
         # Route P-Chain to meganode01
         location /ext/bc/P {
-            limit_req zone=rpc_limit burst=2000 nodelay;
+            limit_conn perip 500;
             proxy_pass http://backend_p_chain;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
         }
         
         # Route C-Chain (anything starting with /ext/bc/C) to meganode00
         location ~ ^/ext/bc/C {
-            limit_req zone=rpc_limit burst=2000 nodelay;
+            limit_conn perip 500;
             proxy_pass http://backend_c_chain;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
         }
              
         ${locations}
@@ -111,13 +117,6 @@ http {
         location / {
             return 200 'RPC Gateway OK\\n';
             add_header Content-Type text/plain;
-        }
-        
-        # Custom error page for rate limiting
-        error_page 429 @rate_limit;
-        location @rate_limit {
-            return 429 '{"error":"Rate limit exceeded","message":"Too many requests"}\\n';
-            add_header Content-Type application/json;
         }
     }
 }`

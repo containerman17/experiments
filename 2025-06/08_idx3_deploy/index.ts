@@ -15,8 +15,12 @@ function getRps(endpoint: string) {
     }
 }
 
+function replaceRpcUrl(endpoint: string) {
+    return endpoint.replace("https://meganode.solokhin.com", "http://65.21.140.118")
+}
+
 function getBlocksPerBatch(endpoint: string) {
-    return 100
+    return 50
 }
 
 function getRequestBatchSize(endpoint: string) {
@@ -28,10 +32,10 @@ for (const chain of chains) {
     if (chain.rpcUrl) {
 
         services[`indexer_${chain.blockchainId}`] = {
-            image: "containerman17/lean-explorer-core:latest",
+            image: "containerman17/idx3:latest",
             container_name: `indexer_${chain.blockchainId}`,
             environment: [
-                `RPC_URL=${chain.rpcUrl}`,
+                `RPC_URL=${replaceRpcUrl(chain.rpcUrl)}`,
                 `CHAIN_ID=${chain.blockchainId}`,
                 "DATA_DIR=/data/",
                 `RPS=${getRps(chain.rpcUrl)}`,
@@ -43,16 +47,9 @@ for (const chain of chains) {
             volumes: [
                 "/home/ilia/indexer_data:/data"
             ],
-            networks: [
-                "caddy"
-            ],
             ports: [
                 "3000" // random port
             ],
-            labels: {
-                caddy: chain.blockchainId + "." + process.env.CADDY_DOMAIN,
-                "caddy.reverse_proxy": "{{upstreams 3000}}",
-            },
             restart: "on-failure:100" // Add restart policy with sane limit
         }
     }
@@ -64,41 +61,15 @@ services["dashboard"] = {
     ports: [
         "80"
     ],
-    networks: [
-        "caddy"
-    ],
     labels: {
-        caddy: process.env.CADDY_DOMAIN,
-        "caddy.reverse_proxy": "{{upstreams 80}}"
     },
     restart: "on-failure:100"
 }
 
-services["caddy"] = {
-    image: "lucaslorentz/caddy-docker-proxy:ci-alpine",
-    container_name: "caddy",
-    restart: "unless-stopped",
-    ports: [
-        "80:80",
-        "443:443"
-    ],
-    environment: [
-        "CADDY_INGRESS_NETWORKS=caddy"
-    ],
-    networks: [
-        "caddy"
-    ],
-    volumes: [
-        "/var/run/docker.sock:/var/run/docker.sock",
-        "caddy_data:/data"
-    ]
-}
-
 const composeObject = {
     services,
-    networks: { caddy: { external: true } },
+    networks: {},
     volumes: {
-        caddy_data: {}
     }
 }
 const yamlStr = YAML.stringify(composeObject)

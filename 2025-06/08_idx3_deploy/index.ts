@@ -137,7 +137,7 @@ services["nginx"] = {
 }
 
 services["dashboard"] = {
-    image: "containerman17/indexer-dashboard",
+    image: "containerman17/idx3-dashboard",
     container_name: "dashboard",
     // Remove external port exposure - access via nginx only
     labels: {

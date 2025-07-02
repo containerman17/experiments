@@ -127,6 +127,18 @@
     "debugEnabled": false
   },
   {
+    "chainName": "Letsbuyhealthcare",
+    "blockchainId": "29vwJsYDCuAHpCCGkvvWh8K2MiHAyCXYKUNobCMg4c7ZQvSkJu",
+    "subnetId": "f6ewGNYxGRjQ1SFfhL2tiHCMHzz9AHdTuPe11dRNarGbp3dES",
+    "rpcUrl": "https://subnets.avax.network/letsbuyhc/mainnet/rpc",
+    "evmChainId": "50776",
+    "blocksCount": "0+",
+    "estimatedTxCount": null,
+    "glacierChainId": "50776",
+    "comment": null,
+    "debugEnabled": false
+  },
+  {
     "chainName": "GOODCARE",
     "blockchainId": "2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu",
     "subnetId": "2TqrQau4E99KoUXcFjyf1Pek3rUHpDpqtN9rC5GDaCKFu7dfPo",
@@ -296,7 +308,7 @@
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc",
     "evmChainId": "17177",
     "blocksCount": "0+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "0+",
     "glacierChainId": "17177",
     "comment": null,
     "debugEnabled": true
@@ -571,13 +583,13 @@
     "chainName": "oumla",
     "blockchainId": "3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr",
     "subnetId": "HXtMMwc6UwS8zK1G3kA9u6NGtUHrm56cnPm2WZBCU1bs2hHsM",
-    "rpcUrl": "https://subnets.avax.network/oumla/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr/rpc",
     "evmChainId": "58166",
     "blocksCount": "0+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "0+",
     "glacierChainId": "58166",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "Bitcoin Content Network",
@@ -758,7 +770,7 @@
     "subnetId": "25VdGtdQPejyffNLpTqh4BH2NABXT8Zxup6ee3B4htrMryofUB",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
     "evmChainId": "4313",
-    "blocksCount": "1k+",
+    "blocksCount": "10k+",
     "estimatedTxCount": "10k+",
     "glacierChainId": "4313",
     "comment": null,

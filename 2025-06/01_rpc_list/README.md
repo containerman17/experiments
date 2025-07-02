@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (61)
+## Chains with Public RPC URLs (62)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -339,7 +339,7 @@
 - Explorer URL: ❌
 
 **Artery**
-- Blocks Count: 1k+
+- Blocks Count: 10k+
 - Estimated Tx Count: 10k+
 - EVM Chain ID: 4313
 - Blockchain ID: rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6
@@ -401,15 +401,6 @@
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/marnisa
 
-**GOODCARE**
-- Blocks Count: 100+
-- Estimated Tx Count: 100+
-- EVM Chain ID: 741741
-- Blockchain ID: 2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
-- RPC URL: https://meganode.solokhin.com/ext/bc/2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu/rpc
-- Debug Enabled: ✅
-- Explorer URL: https://subnets.avax.network/goodcare
-
 **TixChain**
 - Blocks Count: 100+
 - Estimated Tx Count: 100+
@@ -418,6 +409,15 @@
 - RPC URL: https://meganode.solokhin.com/ext/bc/Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj/rpc
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/tixchain
+
+**GOODCARE**
+- Blocks Count: 100+
+- Estimated Tx Count: 100+
+- EVM Chain ID: 741741
+- Blockchain ID: 2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu
+- RPC URL: https://meganode.solokhin.com/ext/bc/2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu/rpc
+- Debug Enabled: ✅
+- Explorer URL: https://subnets.avax.network/goodcare
 
 **ienium**
 - Blocks Count: 100+
@@ -500,9 +500,18 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
-**TheLYLTYEconomy**
+**Letsbuyhealthcare**
 - Blocks Count: 0+
 - Estimated Tx Count: Unknown
+- EVM Chain ID: 50776
+- Blockchain ID: 29vwJsYDCuAHpCCGkvvWh8K2MiHAyCXYKUNobCMg4c7ZQvSkJu
+- RPC URL: https://subnets.avax.network/letsbuyhc/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/letsbuyhc
+
+**TheLYLTYEconomy**
+- Blocks Count: 0+
+- Estimated Tx Count: 0+
 - EVM Chain ID: 17177
 - Blockchain ID: 2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC
 - RPC URL: https://meganode.solokhin.com/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc
@@ -529,11 +538,11 @@
 
 **oumla**
 - Blocks Count: 0+
-- Estimated Tx Count: Unknown
+- Estimated Tx Count: 0+
 - EVM Chain ID: 58166
 - Blockchain ID: 3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr
-- RPC URL: https://subnets.avax.network/oumla/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://meganode.solokhin.com/ext/bc/3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/oumla
 
 **CodeNekt**

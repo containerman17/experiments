@@ -36,6 +36,26 @@ interface ChainWithInfo extends Chain {
   teleporterError?: string
 }
 
+const calculateIndexedPercentage = (info: ChainInfo): string => {
+  if (info.totalBlocksInChain === 0) {
+    return '100.00'
+  }
+  return ((info.latestStoredBlock / info.totalBlocksInChain) * 100).toFixed(2)
+}
+
+const calculateEstimatedTotalTxs = (chain: ChainWithInfo): number | null => {
+  if (!chain.info || !chain.totalTxCount) return null
+
+  const percentage = parseFloat(calculateIndexedPercentage(chain.info))
+  if (percentage === 0) return null
+
+  // If already synced, return actual count
+  if (percentage >= 99) return chain.totalTxCount
+
+  // Otherwise, estimate based on current progress
+  return Math.round(chain.totalTxCount * 100 / percentage)
+}
+
 function App() {
   const [chains, setChains] = useState<ChainWithInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -100,11 +120,11 @@ function App() {
 
         const chainsWithInfo = await Promise.all(chainPromises)
 
-        // Sort by totalTxCount descending
+        // Sort by estimated total tx count descending
         chainsWithInfo.sort((a, b) => {
-          const aTxCount = a.totalTxCount ?? 0
-          const bTxCount = b.totalTxCount ?? 0
-          return bTxCount - aTxCount
+          const aEstimated = calculateEstimatedTotalTxs(a) ?? 0
+          const bEstimated = calculateEstimatedTotalTxs(b) ?? 0
+          return bEstimated - aEstimated
         })
 
         setChains(chainsWithInfo)
@@ -117,13 +137,6 @@ function App() {
 
     fetchChainsAndInfo()
   }, [])
-
-  const calculateIndexedPercentage = (info: ChainInfo): string => {
-    if (info.totalBlocksInChain === 0) {
-      return '100.00'
-    }
-    return ((info.latestStoredBlock / info.totalBlocksInChain) * 100).toFixed(2)
-  }
 
   const getFilteredChains = () => {
     switch (activeFilter) {
@@ -240,7 +253,7 @@ function App() {
                 Chain Name
               </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Total Txs
+                Total Txs (Est.)
               </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Teleporter Txs
@@ -268,11 +281,19 @@ function App() {
                 <td className="px-4 py-3 text-sm text-right">
                   {chain.metricsError ? (
                     <span className="text-gray-400">-</span>
-                  ) : chain.totalTxCount !== undefined ? (
-                    <span className="font-mono">{chain.totalTxCount.toLocaleString()}</span>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
+                  ) : (() => {
+                    const estimatedTotal = calculateEstimatedTotalTxs(chain)
+                    if (estimatedTotal === null) {
+                      return <span className="text-gray-400">-</span>
+                    }
+                    const isEstimate = chain.info && parseFloat(calculateIndexedPercentage(chain.info)) < 99
+                    return (
+                      <span className={`font-mono ${isEstimate ? 'text-gray-600 italic' : ''}`}>
+                        {estimatedTotal.toLocaleString()}
+                        {isEstimate && <span className="text-xs ml-1">*</span>}
+                      </span>
+                    )
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-sm text-right">
                   {chain.teleporterError ? (
@@ -331,7 +352,10 @@ function App() {
       </div>
 
       <div className="mt-4 text-sm text-gray-600 text-center">
-        Showing {filteredChains.length} of {chains.length} chains
+        <div>Showing {filteredChains.length} of {chains.length} chains</div>
+        {filteredChains.some(chain => chain.info && parseFloat(calculateIndexedPercentage(chain.info)) < 99 && chain.totalTxCount) && (
+          <div className="text-xs text-gray-500 mt-1">* Estimated based on current sync progress</div>
+        )}
       </div>
     </div>
   )

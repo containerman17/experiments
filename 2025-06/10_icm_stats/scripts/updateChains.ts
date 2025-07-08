@@ -4,7 +4,7 @@ import { ChainConfig } from "frostbyte-sdk";
 const result: ChainConfig[] = [];
 
 // Get optional max chains limit from command line argument
-const maxChains = process.argv[2] ? parseInt(process.argv[2]) : undefined;
+const debugFilterChainIds = process.argv[2] ? process.argv[2].split(',') : undefined;
 
 const FORCE_DISABLE_DEBUG = false
 
@@ -91,11 +91,11 @@ for (const chain of chains) {
 
 import fs from "fs";
 // Limit the number of chains if maxChains is specified
-const finalResult = maxChains ? result.slice(0, maxChains) : result;
+const finalResult = debugFilterChainIds ? result.filter(chain => debugFilterChainIds.includes(chain.blockchainId)) : result;
 // Ensure data directory exists
 if (!fs.existsSync("./data")) {
     fs.mkdirSync("./data", { recursive: true });
 }
 
 fs.writeFileSync("./data/chains.json", JSON.stringify(finalResult, null, 2));
-console.log(`Saved ${finalResult.length} chains in data/chains.json${maxChains ? ` (limited to ${maxChains})` : ''}`);
+console.log(`Saved ${finalResult.length} chains in data/chains.json${debugFilterChainIds ? ` (limited to ${debugFilterChainIds})` : ''}`);

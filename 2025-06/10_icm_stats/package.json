@@ -1,9 +1,10 @@
 {
   "scripts": {
     "start": "frostbyte run --plugins-dir=./plugins --data-dir=./data",
-    "dev": "npx tsx ./scripts/updateChains.ts 2 && nodemon --watch plugins --watch data --exec \"npm run start\""
+    "dev": "npx tsx ./scripts/updateChains.ts 2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1 && nodemon --watch plugins --watch data --exec \"npm run start\""
   },
   "dependencies": {
+    "@avalabs/avalanchejs": "^5.0.0",
     "frostbyte-sdk": "file:../../../FrostByte"
   },
   "devDependencies": {

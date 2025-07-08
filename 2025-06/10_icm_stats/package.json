@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "start": "frostbyte run --plugins-dir=./plugins --data-dir=./data",
+    "dev": "npx tsx ./scripts/updateChains.ts 2 && nodemon --watch plugins --watch data --exec \"npm run start\""
+  },
+  "dependencies": {
+    "frostbyte-sdk": "file:../../../FrostByte"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

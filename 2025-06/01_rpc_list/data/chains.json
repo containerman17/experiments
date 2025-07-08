@@ -132,7 +132,7 @@
     "subnetId": "f6ewGNYxGRjQ1SFfhL2tiHCMHzz9AHdTuPe11dRNarGbp3dES",
     "rpcUrl": "https://subnets.avax.network/letsbuyhc/mainnet/rpc",
     "evmChainId": "50776",
-    "blocksCount": "0+",
+    "blocksCount": "1k+",
     "estimatedTxCount": null,
     "glacierChainId": "50776",
     "comment": null,
@@ -551,8 +551,8 @@
     "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
     "evmChainId": "222345",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
     "comment": null,
     "debugEnabled": true
   },
@@ -585,8 +585,8 @@
     "subnetId": "HXtMMwc6UwS8zK1G3kA9u6NGtUHrm56cnPm2WZBCU1bs2hHsM",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr/rpc",
     "evmChainId": "58166",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
+    "blocksCount": "100+",
+    "estimatedTxCount": "100+",
     "glacierChainId": "58166",
     "comment": null,
     "debugEnabled": true
@@ -643,8 +643,8 @@
     "subnetId": "2T4gpnissLkoezQ36XKxhrFAH5yynqKGa1u47XxCYTdfvePuNz",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N/rpc",
     "evmChainId": "10850",
-    "blocksCount": "10k+",
-    "estimatedTxCount": "10k+",
+    "blocksCount": "100k+",
+    "estimatedTxCount": "100k+",
     "glacierChainId": "10850",
     "comment": null,
     "debugEnabled": true
@@ -756,13 +756,13 @@
     "chainName": "Pulsar",
     "blockchainId": "QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v",
     "subnetId": "DxanjptkyaeM1eUew2gzUMngHM3n5ttUyMj7BuHw9riXh9pJC",
-    "rpcUrl": "https://subnets.avax.network/pulsar/mainnet/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v/rpc",
     "evmChainId": "357",
     "blocksCount": "10m+",
     "estimatedTxCount": "100m+",
     "glacierChainId": "357",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   },
   {
     "chainName": "Artery",
@@ -771,7 +771,7 @@
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
     "evmChainId": "4313",
     "blocksCount": "10k+",
-    "estimatedTxCount": "10k+",
+    "estimatedTxCount": "100k+",
     "glacierChainId": "4313",
     "comment": null,
     "debugEnabled": true

@@ -4,10 +4,11 @@
     "dev": "npx tsx ./scripts/updateChains.ts 2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1 && nodemon --watch plugins --watch data --exec \"npm run start\""
   },
   "dependencies": {
-    "@avalabs/avalanchejs": "^5.0.0",
-    "frostbyte-sdk": "file:../../../FrostByte"
+    "frostbyte-sdk": "^1.0.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
   }
 }

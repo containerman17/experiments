@@ -8,8 +8,8 @@ npx tsx ./scripts/updateChains.ts
 ssh idx3 "mkdir -p ~/data ~/plugins"
 scp ./data/chains.json idx3:~/data/chains.json
 
-# Copy all local plugins to remote
-scp -r ./plugins/* idx3:~/plugins/ || true
+# Sync local plugins to remote (removing any remote plugins not present locally)
+rsync -av --delete ./plugins/ idx3:~/plugins/
 
 # Deploy to idx3
 ssh idx3 << 'EOF'
@@ -24,8 +24,10 @@ services:
     volumes:
       - ~/plugins:/plugins
       - ~/data:/data
+    environment:
+      - PORT=80
     ports:
-      - 80:3000
+      - 80:80
 COMPOSE
 
 # Run docker compose

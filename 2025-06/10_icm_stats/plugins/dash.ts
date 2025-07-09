@@ -1,28 +1,12 @@
-import type { IndexerModule } from "frostbyte-sdk";
+import type { ApiPlugin } from "frostbyte-sdk";
 
-const module: IndexerModule = {
+const module: ApiPlugin = {
     name: "dash",
-    version: 1,
-    usesTraces: false,
-
-    wipe: (db) => { },
-    initialize: (db) => { },
-    handleTxBatch: (db, blocksDb, batch) => { },
+    requiredIndexers: [],
 
     registerRoutes: (app, dbCtx) => {
-        app.get('/', {
-            schema: {
-                description: 'Simple dashboard showing chain status',
-                tags: ['Dashboard'],
-                summary: 'Get HTML dashboard',
-                response: {
-                    200: {
-                        type: 'string',
-                        description: 'HTML content'
-                    }
-                }
-            }
-        }, async (request, reply) => {
+        //@ts-ignore IDK why ts doesn't like hide
+        app.get('/', { schema: { hide: true } }, async (request, reply) => {
             // Get chain data
             const configs = dbCtx.getAllChainConfigs();
             const chains: Array<{

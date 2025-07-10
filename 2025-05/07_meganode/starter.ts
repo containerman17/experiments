@@ -69,12 +69,18 @@ const chainConfig = {
     ]
 }
 
+const cChainConfig = {
+    "state-sync-enabled": false,
+    "pruning-enabled": false
+}
+
 for (const chainId of [...chainIds, 'C']) {
     const chainConfigDir = join(configBaseDir, chainId)
     const configPath = join(chainConfigDir, 'config.json')
+    const config = chainId === 'C' ? cChainConfig : chainConfig
 
     mkdirSync(chainConfigDir, { recursive: true })
-    writeFileSync(configPath, JSON.stringify(chainConfig, null, 2))
+    writeFileSync(configPath, JSON.stringify(config, null, 2))
     console.log(`Created config for chain ${chainId}`)
 }
 

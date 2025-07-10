@@ -7,10 +7,10 @@
       "rpcUrl": "https://subnets.avax.network/dexalot/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -21,10 +21,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -35,10 +35,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -49,10 +49,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -63,10 +63,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -77,10 +77,10 @@
       "rpcUrl": "https://subnets.avax.network/titan/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -91,10 +91,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -105,10 +105,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -119,10 +119,10 @@
       "rpcUrl": "https://subnets.avax.network/koroshi/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -133,10 +133,10 @@
       "rpcUrl": "https://subnets.avax.network/letsbuyhc/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -147,10 +147,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -161,10 +161,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -175,10 +175,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -189,10 +189,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -203,10 +203,10 @@
       "rpcUrl": "https://subnets.avax.network/tgp/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -217,10 +217,10 @@
       "rpcUrl": "https://subnets.avax.network/intersect/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -231,10 +231,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -245,10 +245,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -259,10 +259,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -275,8 +275,8 @@
       "maxConcurrentRequests": 100,
       "rps": 20,
       "rpcSupportsDebug": true,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -287,10 +287,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -301,10 +301,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -315,10 +315,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -329,10 +329,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -343,10 +343,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -359,8 +359,8 @@
       "maxConcurrentRequests": 100,
       "rps": 20,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -371,10 +371,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -385,10 +385,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -399,10 +399,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -413,10 +413,10 @@
       "rpcUrl": "https://subnets.avax.network/shrapnel/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -427,10 +427,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -441,10 +441,10 @@
       "rpcUrl": "https://subnets.avax.network/beam/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -455,10 +455,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -469,10 +469,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -483,10 +483,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -499,8 +499,8 @@
       "maxConcurrentRequests": 100,
       "rps": 20,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -511,10 +511,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -525,10 +525,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -539,10 +539,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -553,10 +553,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -567,10 +567,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -581,10 +581,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -595,10 +595,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -609,10 +609,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -623,10 +623,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -637,10 +637,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -651,10 +651,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -665,10 +665,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -679,10 +679,10 @@
       "rpcUrl": "https://subnets.avax.network/playa3ull/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -693,10 +693,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -707,10 +707,10 @@
       "rpcUrl": "https://subnets.avax.network/defi-kingdoms/dfk-chain/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -721,10 +721,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -735,10 +735,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -749,10 +749,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -763,10 +763,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -777,10 +777,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -791,10 +791,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -805,10 +805,10 @@
       "rpcUrl": "https://subnets.avax.network/lamina1/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -819,10 +819,10 @@
       "rpcUrl": "https://subnets.avax.network/innovo/mainnet/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 9,
-      "rps": 1,
+      "rps": 2,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   },
   {
@@ -833,10 +833,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -847,10 +847,10 @@
       "rpcUrl": "http://65.21.140.118/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc",
       "requestBatchSize": 30,
       "maxConcurrentRequests": 22,
-      "rps": 44,
+      "rps": 66,
       "rpcSupportsDebug": true,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "blocksPerBatch": 300
     }
   },
   {
@@ -863,8 +863,8 @@
       "maxConcurrentRequests": 100,
       "rps": 20,
       "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 100
+      "enableBatchSizeGrowth": true,
+      "blocksPerBatch": 300
     }
   }
 ]

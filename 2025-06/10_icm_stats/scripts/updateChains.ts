@@ -9,11 +9,15 @@ const debugFilterChainIds = process.argv[2] ? process.argv[2].split(',') : undef
 const FORCE_DISABLE_DEBUG = false
 
 const RPS_PER_HOST = {
-    "meganode.solokhin.com": 2000,
-    "subnets.avax.network": 10,
+    "meganode.solokhin.com": 3000,
+    "subnets.avax.network": 20,
     "api.avax.network": 20,
     "default": 20,
 }
+
+const DISABLE_BLOCK_GROWTH = [
+    "meganode.solokhin.com",
+]
 
 const MAX_CONCURRENCY_PER_HOST = {
     "meganode.solokhin.com": 1000,
@@ -30,7 +34,7 @@ const URL_REPLACEMENTS = {
 }
 
 const DEFAULT_REQUEST_BATCH_SIZE = 30;
-const DEFAULT_BLOCKS_PER_BATCH = 100;
+const DEFAULT_BLOCKS_PER_BATCH = 300;
 
 // First pass: count chains per host
 const hostCounts: { [host: string]: number } = {};
@@ -55,6 +59,9 @@ for (const chain of chains) {
     const url = new URL(chain.rpcUrl);
     const host = url.hostname;
 
+
+    const enableBatchSizeGrowth = !DISABLE_BLOCK_GROWTH.includes(host);
+
     const hostRps = RPS_PER_HOST[host] || RPS_PER_HOST["default"];
     const hostMaxConcurrency = MAX_CONCURRENCY_PER_HOST[host] || MAX_CONCURRENCY_PER_HOST["default"];
     const chainCount = hostCounts[host];
@@ -68,10 +75,10 @@ for (const chain of chains) {
     }
 
     //TODO: remove
-    if (chain.rpcUrl.includes("subnets.avax.network")) {
-        console.log(`WARNING: ${chain.chainName} is using subnets.avax.network, due to temporary issues, disabled`);
-        // continue;
-    }
+    // if (chain.rpcUrl.includes("subnets.avax.network")) {
+    //     console.log(`WARNING: ${chain.chainName} is using subnets.avax.network, due to temporary issues, disabled`);
+    //     continue;
+    // }
 
     result.push({
         "chainName": chain.chainName,
@@ -83,7 +90,7 @@ for (const chain of chains) {
             "maxConcurrentRequests": maxConcurrentRequestsPerChain,
             "rps": rpsPerChain,
             "rpcSupportsDebug": chain.debugEnabled && !FORCE_DISABLE_DEBUG,
-            "enableBatchSizeGrowth": false,//Not used for now
+            "enableBatchSizeGrowth": enableBatchSizeGrowth,
             "blocksPerBatch": DEFAULT_BLOCKS_PER_BATCH
         }
     },);

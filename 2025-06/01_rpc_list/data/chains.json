@@ -259,12 +259,12 @@
     "chainName": "Monsoon",
     "blockchainId": "2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK",
     "subnetId": "2LV4VB4dMaxn5c16p1UxEDvknqJAT7U4vCqpr3bnk6DTebewyN",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc",
-    "evmChainId": "100610",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "FRQTALNETWORK",
@@ -307,8 +307,8 @@
     "subnetId": "2iumcj2wiV9BQ96LRHpYNpD1SHhb8Vcvm8YUebZSqcFeJakTo6",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc",
     "evmChainId": "17177",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
     "glacierChainId": "17177",
     "comment": null,
     "debugEnabled": true
@@ -469,13 +469,13 @@
     "chainName": "UPTN",
     "blockchainId": "2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE",
     "subnetId": "yDxaSh2hoVxQKRHmacV1xFpuSgHf6Q6cCMu4v3GoLQnqQWk6L",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE/rpc",
+    "rpcUrl": "https://node-api.uptn.io/v1/ext/rpc",
     "evmChainId": "6119",
     "blocksCount": "10m+",
     "estimatedTxCount": "10m+",
     "glacierChainId": "6119",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "ULALO",
@@ -595,12 +595,12 @@
     "chainName": "Bitcoin Content Network",
     "blockchainId": "apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i",
     "subnetId": "2pcw5qWCnrxQDS9uWd6gmcdj1WxUr777xo9BBzcqzmMwu7WtX8",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i/rpc",
-    "evmChainId": "71932",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "TixChain",
@@ -641,13 +641,13 @@
     "chainName": "Lamina1Identity",
     "blockchainId": "hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N",
     "subnetId": "2T4gpnissLkoezQ36XKxhrFAH5yynqKGa1u47XxCYTdfvePuNz",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N/rpc",
+    "rpcUrl": "https://subnets.avax.network/lamina1id/mainnet/rpc",
     "evmChainId": "10850",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "10850",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "PLYRPHI",
@@ -655,8 +655,8 @@
     "subnetId": "axp7DUSPvFghTM883ug2B8btAReBAACxD1VyENmRDStH4Lfed",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4/rpc",
     "evmChainId": "16180",
-    "blocksCount": "100k+",
-    "estimatedTxCount": "100k+",
+    "blocksCount": "1m+",
+    "estimatedTxCount": "1m+",
     "glacierChainId": "16180",
     "comment": null,
     "debugEnabled": true
@@ -665,10 +665,11 @@
     "chainName": "bloodloop",
     "blockchainId": "iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA",
     "subnetId": "2QRKgBVT4zbcEWM4aXYRPNRazmas9on1QZodYakh1cF4RDrQE5",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
+    "rpcUrl": "https://mainnet.bloodloop.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
     "evmChainId": "578",
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",
+    "glacierChainId": "578",
     "comment": null,
     "debugEnabled": true
   },
@@ -770,7 +771,7 @@
     "subnetId": "25VdGtdQPejyffNLpTqh4BH2NABXT8Zxup6ee3B4htrMryofUB",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
     "evmChainId": "4313",
-    "blocksCount": "10k+",
+    "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "4313",
     "comment": null,
@@ -875,9 +876,9 @@
     "subnetId": "o4Eariv2Cx1fTvPFXYofpJfS9KgwFaiGN8KFGcCeZM9t87GJr",
     "rpcUrl": "https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc",
     "evmChainId": "235235",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
     "comment": null,
-    "debugEnabled": false
+    "debugEnabled": true
   }
 ]

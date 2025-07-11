@@ -340,6 +340,8 @@ export class BatchRpc {
             "latest"
         ]);
 
+        console.log('result', this.rpcUrl, result);
+
         if (typeof result !== 'string' || !result.startsWith('0x')) {
             throw new Error('Invalid result format for blockchain ID from precompile.');
         }

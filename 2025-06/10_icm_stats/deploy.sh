@@ -15,7 +15,7 @@ rsync -av --delete ./plugins/ idx3:~/plugins/
 scp ./compose.yml idx3:~/compose.yml
 
 # Deploy to idx3
-ssh idx3 << 'EOF'
+ssh -T idx3 << 'EOF'
 # Run docker compose
 cd ~
 docker compose down

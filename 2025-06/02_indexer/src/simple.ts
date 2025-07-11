@@ -4,6 +4,7 @@ import { createTxCountIndexer } from "./subindexers/txCount";
 import { IndexContext } from "./types";
 import { createTxIndexer } from "./subindexers/tx";
 import { createBlockIndexer } from "./subindexers/block";
+import { createRpcIndexer } from "./subindexers/rpc";
 import { SqliteBlockStore } from "./system/SqliteBlockStore";
 import SQLite3 from "better-sqlite3";
 import path from "path";
@@ -62,6 +63,7 @@ const defaultIndexerFactories: IndexerFactory[] = [
     createBlockIndexer,
     createIcmIndexer,
     createStatusIndexer,
+    createRpcIndexer,
 ]
 
 type APIConfig = {
@@ -129,9 +131,11 @@ export async function startBackend(config: BackendConfig) {
     }
 
 
+
     const indexers = [...defaultIndexerFactories, ...extraIndexers]
     const { context, blockStore } = await setupDatabases(dbFolder, chainId)
     const writers = indexers.map(factory => factory(context, true))
+
 
     // Initialize writers
     for (const writer of writers) {

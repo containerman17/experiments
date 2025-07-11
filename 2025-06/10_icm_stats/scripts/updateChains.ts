@@ -6,10 +6,10 @@ const result: ChainConfig[] = [];
 // Get optional max chains limit from command line argument
 const debugFilterChainIds = process.argv[2] ? process.argv[2].split(',') : undefined;
 
-const FORCE_DISABLE_DEBUG = false
+const FORCE_DISABLE_DEBUG = true
 
 const RPS_PER_HOST = {
-    "meganode.solokhin.com": 3000,
+    "meganode.solokhin.com": 10000,
     "subnets.avax.network": 20,
     "api.avax.network": 20,
     "default": 20,
@@ -20,7 +20,7 @@ const DISABLE_BLOCK_GROWTH = [
 ]
 
 const MAX_CONCURRENCY_PER_HOST = {
-    "meganode.solokhin.com": 1000,
+    "meganode.solokhin.com": 300,
     "subnets.avax.network": 100,
     "api.avax.network": 100,
     "rpc.step.network": 100,
@@ -33,7 +33,7 @@ const URL_REPLACEMENTS = {
     "https://meganode.solokhin.com/": "http://65.21.140.118/"
 }
 
-const DEFAULT_REQUEST_BATCH_SIZE = 30;
+const DEFAULT_REQUEST_BATCH_SIZE = 10;
 const DEFAULT_BLOCKS_PER_BATCH = 300;
 
 // First pass: count chains per host

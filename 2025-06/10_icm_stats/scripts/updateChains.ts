@@ -33,8 +33,8 @@ const URL_REPLACEMENTS = {
     "https://meganode.solokhin.com/": "http://65.21.140.118/"
 }
 
-const DEFAULT_REQUEST_BATCH_SIZE = 10;
-const DEFAULT_BLOCKS_PER_BATCH = 300;
+const DEFAULT_REQUEST_BATCH_SIZE = 10
+const DEFAULT_BLOCKS_PER_BATCH = 300
 
 // First pass: count chains per host
 const hostCounts: { [host: string]: number } = {};
@@ -84,15 +84,27 @@ for (const chain of chains) {
         "chainName": chain.chainName,
         "blockchainId": chain.blockchainId,
         "evmChainId": Number(chain.evmChainId),
+        // "rpcConfig": {
+        //     "rpcUrl": rpcUrl,
+        //     "requestBatchSize": DEFAULT_REQUEST_BATCH_SIZE,
+        //     "maxConcurrentRequests": maxConcurrentRequestsPerChain,
+        //     "rps": rpsPerChain,
+        //     "rpcSupportsDebug": chain.debugEnabled && !FORCE_DISABLE_DEBUG,
+        //     "enableBatchSizeGrowth": enableBatchSizeGrowth,
+        //     "blocksPerBatch": DEFAULT_BLOCKS_PER_BATCH
+        // },
+
+        //FIXME: temp to sync from idx2
         "rpcConfig": {
-            "rpcUrl": rpcUrl,
-            "requestBatchSize": DEFAULT_REQUEST_BATCH_SIZE,
-            "maxConcurrentRequests": maxConcurrentRequestsPerChain,
-            "rps": rpsPerChain,
-            "rpcSupportsDebug": chain.debugEnabled && !FORCE_DISABLE_DEBUG,
-            "enableBatchSizeGrowth": enableBatchSizeGrowth,
-            "blocksPerBatch": DEFAULT_BLOCKS_PER_BATCH
+            "rpcUrl": `https://${chain.blockchainId}.idx2.solokhin.com/api/rpc`,//TODO: remove once idx2 data is copied
+            "requestBatchSize": 100,
+            "maxConcurrentRequests": 10,
+            "rps": 1000,
+            "rpcSupportsDebug": false,
+            "enableBatchSizeGrowth": false,
+            "blocksPerBatch": 1000
         }
+
     },);
 }
 

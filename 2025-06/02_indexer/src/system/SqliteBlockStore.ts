@@ -27,7 +27,53 @@ export class SqliteBlockStore {
         this.db.pragma('optimize')
     }
 
+    private getBlocksCache: Map<string, { blocks: (StoredBlock | null)[], missingIndexes: number[], missingBlockNumbers: number[] }> = new Map();
+    private getBlocksLocks: Map<string, Promise<void>> = new Map();
+
     public async getBlocks(blockNumbers: number[]): Promise<{ blocks: (StoredBlock | null)[], missingIndexes: number[], missingBlockNumbers: number[] }> {
+        const cacheKey = blockNumbers.join(',');
+
+        // Check if there's an existing lock for this cache key
+        const existingLock = this.getBlocksLocks.get(cacheKey);
+        if (existingLock) {
+            await existingLock;
+        }
+
+        // Check cache
+        const cached = this.getBlocksCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        // Create a new lock
+        let resolveLock: () => void;
+        const lock = new Promise<void>((resolve) => {
+            resolveLock = resolve;
+        });
+        this.getBlocksLocks.set(cacheKey, lock);
+
+        try {
+            // Fetch the data
+            const result = await this.getBlocksUncached(blockNumbers);
+
+            // Store in cache
+            this.getBlocksCache.set(cacheKey, result);
+
+            // Set timeout to remove from cache after 10 seconds
+            setTimeout(() => {
+                this.getBlocksCache.delete(cacheKey);
+            }, 10 * 1000);
+
+            return result;
+        } finally {
+            // Release the lock
+            resolveLock!();
+            this.getBlocksLocks.delete(cacheKey);
+        }
+    }
+
+
+    public async getBlocksUncached(blockNumbers: number[]): Promise<{ blocks: (StoredBlock | null)[], missingIndexes: number[], missingBlockNumbers: number[] }> {
         if (!blockNumbers || blockNumbers.length === 0) {
             return { blocks: [], missingIndexes: [], missingBlockNumbers: [] };
         }

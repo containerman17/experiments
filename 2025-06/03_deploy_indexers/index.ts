@@ -62,7 +62,8 @@ for (const chain of chains) {
                 `RPS=${getRps(chain.rpcUrl)}`,
                 `REQUEST_BATCH_SIZE=${getRequestBatchSize(chain.rpcUrl)}`,
                 `MAX_CONCURRENT=${getRps(chain.rpcUrl)}`,//RPS is also max concurrent
-                `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`
+                `BLOCKS_PER_BATCH=${getBlocksPerBatch(chain.rpcUrl)}`,
+                `EVM_CHAIN_ID=${chain.evmChainId}`
             ],
             volumes: [
                 "/home/ilia/indexer_data:/data"

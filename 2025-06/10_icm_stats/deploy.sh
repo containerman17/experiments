@@ -18,7 +18,7 @@ scp ./compose.yml idx3:~/compose.yml
 ssh -T idx3 << 'EOF'
 # Run docker compose
 cd ~
-docker compose down
 docker compose pull
+docker compose restart
 docker compose up -d --remove-orphans
 EOF

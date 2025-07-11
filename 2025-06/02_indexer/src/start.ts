@@ -89,8 +89,10 @@ async function runReader() {
 }
 
 if (cluster.isPrimary) {
-    // Fork one reader worker
-    cluster.fork()
+    // Fork 4 reader workers
+    for (let i = 0; i < 4; i++) {
+        cluster.fork()
+    }
     await runWriter()
 } else {
     await new Promise(resolve => setTimeout(resolve, 1000))

@@ -5,12 +5,12 @@
     "evmChainId": 432204,
     "rpcConfig": {
       "rpcUrl": "https://21Ths5Afqi5r4PaoV8r8cruGZWhN11y5rxvy89K8px7pKy3P8E.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -19,12 +19,12 @@
     "evmChainId": 8227,
     "rpcConfig": {
       "rpcUrl": "https://22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -33,12 +33,12 @@
     "evmChainId": 7979,
     "rpcConfig": {
       "rpcUrl": "https://22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -47,12 +47,12 @@
     "evmChainId": 42069,
     "rpcConfig": {
       "rpcUrl": "https://23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -61,12 +61,12 @@
     "evmChainId": 2345,
     "rpcConfig": {
       "rpcUrl": "https://23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -75,12 +75,12 @@
     "evmChainId": 84358,
     "rpcConfig": {
       "rpcUrl": "https://24gRTyzFmXUPebVwzQHuwU6RFeKHHDxRftRVaSAe7MHRXWxZ4S.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -89,12 +89,12 @@
     "evmChainId": 1853,
     "rpcConfig": {
       "rpcUrl": "https://25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -103,12 +103,12 @@
     "evmChainId": 737373,
     "rpcConfig": {
       "rpcUrl": "https://25xjR3fvh7aXkxs36n1xRc3wLUAuqnS1wBxJD1BC4z3y6mHsEV.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -117,12 +117,12 @@
     "evmChainId": 379,
     "rpcConfig": {
       "rpcUrl": "https://26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -131,12 +131,12 @@
     "evmChainId": 50776,
     "rpcConfig": {
       "rpcUrl": "https://29vwJsYDCuAHpCCGkvvWh8K2MiHAyCXYKUNobCMg4c7ZQvSkJu.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -145,12 +145,12 @@
     "evmChainId": 741741,
     "rpcConfig": {
       "rpcUrl": "https://2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -159,12 +159,12 @@
     "evmChainId": 8021,
     "rpcConfig": {
       "rpcUrl": "https://2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -173,12 +173,12 @@
     "evmChainId": 710420,
     "rpcConfig": {
       "rpcUrl": "https://2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -187,12 +187,12 @@
     "evmChainId": 5419,
     "rpcConfig": {
       "rpcUrl": "https://2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -201,12 +201,12 @@
     "evmChainId": 61587,
     "rpcConfig": {
       "rpcUrl": "https://2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -215,12 +215,12 @@
     "evmChainId": 1216,
     "rpcConfig": {
       "rpcUrl": "https://2Ec9g5vbwwoy7MEyjmjjEjuS6FzaeToBm1KVbvDU6HeKsSNVTF.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -229,12 +229,12 @@
     "evmChainId": 12150,
     "rpcConfig": {
       "rpcUrl": "https://2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -243,12 +243,12 @@
     "evmChainId": 100610,
     "rpcConfig": {
       "rpcUrl": "https://2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -257,12 +257,12 @@
     "evmChainId": 62789,
     "rpcConfig": {
       "rpcUrl": "https://2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -271,12 +271,12 @@
     "evmChainId": 1234,
     "rpcConfig": {
       "rpcUrl": "https://2jRZvKtXY5nyWTqRwFh1KMHGrCRxJoULu4r2CsayWRnjdDGbV1.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -285,12 +285,12 @@
     "evmChainId": 21024,
     "rpcConfig": {
       "rpcUrl": "https://2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -299,12 +299,12 @@
     "evmChainId": 17177,
     "rpcConfig": {
       "rpcUrl": "https://2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -313,12 +313,12 @@
     "evmChainId": 43419,
     "rpcConfig": {
       "rpcUrl": "https://2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -327,12 +327,12 @@
     "evmChainId": 10507,
     "rpcConfig": {
       "rpcUrl": "https://2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -341,12 +341,12 @@
     "evmChainId": 28530,
     "rpcConfig": {
       "rpcUrl": "https://2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -355,12 +355,12 @@
     "evmChainId": 43114,
     "rpcConfig": {
       "rpcUrl": "https://2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -369,12 +369,12 @@
     "evmChainId": 1344,
     "rpcConfig": {
       "rpcUrl": "https://2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -383,12 +383,12 @@
     "evmChainId": 12087,
     "rpcConfig": {
       "rpcUrl": "https://2qn2cvsCdgp9ZwHXjS68YPYPCspSxFQ2uL8k1GmV2jTpup4NQx.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -397,12 +397,12 @@
     "evmChainId": 389,
     "rpcConfig": {
       "rpcUrl": "https://2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -411,12 +411,12 @@
     "evmChainId": 46975,
     "rpcConfig": {
       "rpcUrl": "https://2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -425,12 +425,12 @@
     "evmChainId": 2044,
     "rpcConfig": {
       "rpcUrl": "https://2tdRBvNEUhoD6ZWYF9b5NBdj5hHwWPfvSq1EnzvV8QU2XjLNy9.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -439,12 +439,12 @@
     "evmChainId": 8198,
     "rpcConfig": {
       "rpcUrl": "https://2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -453,12 +453,12 @@
     "evmChainId": 4337,
     "rpcConfig": {
       "rpcUrl": "https://2tmrrBo1Lgt1mzzvPSFt73kkQKFas5d1AP88tv9cicwoFp8BSn.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -467,12 +467,12 @@
     "evmChainId": 6119,
     "rpcConfig": {
       "rpcUrl": "https://2tsFdSeemtqK9vaPgjPrcwvKFKPw1T6PHufaZ26tKbAFSkXPTE.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -481,12 +481,12 @@
     "evmChainId": 237007,
     "rpcConfig": {
       "rpcUrl": "https://2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -495,12 +495,12 @@
     "evmChainId": 62521,
     "rpcConfig": {
       "rpcUrl": "https://2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -509,12 +509,12 @@
     "evmChainId": 588785742,
     "rpcConfig": {
       "rpcUrl": "https://2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -523,12 +523,12 @@
     "evmChainId": 20250320,
     "rpcConfig": {
       "rpcUrl": "https://2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -537,12 +537,12 @@
     "evmChainId": 27827,
     "rpcConfig": {
       "rpcUrl": "https://2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -551,12 +551,12 @@
     "evmChainId": 222345,
     "rpcConfig": {
       "rpcUrl": "https://2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -565,12 +565,12 @@
     "evmChainId": 33345,
     "rpcConfig": {
       "rpcUrl": "https://2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -579,12 +579,12 @@
     "evmChainId": 58166,
     "rpcConfig": {
       "rpcUrl": "https://3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -593,12 +593,12 @@
     "evmChainId": 13790,
     "rpcConfig": {
       "rpcUrl": "https://Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -607,12 +607,12 @@
     "evmChainId": 5566,
     "rpcConfig": {
       "rpcUrl": "https://EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -621,12 +621,12 @@
     "evmChainId": 10850,
     "rpcConfig": {
       "rpcUrl": "https://hR6djBP7uMGJnXrjdUic2rzvvuuMpqMWNb5us7j8xgmj6Ck2N.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -635,12 +635,12 @@
     "evmChainId": 16180,
     "rpcConfig": {
       "rpcUrl": "https://HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -649,12 +649,12 @@
     "evmChainId": 578,
     "rpcConfig": {
       "rpcUrl": "https://iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -663,12 +663,12 @@
     "evmChainId": 836,
     "rpcConfig": {
       "rpcUrl": "https://J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -677,12 +677,12 @@
     "evmChainId": 3011,
     "rpcConfig": {
       "rpcUrl": "https://k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -691,12 +691,12 @@
     "evmChainId": 2718,
     "rpcConfig": {
       "rpcUrl": "https://Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -705,12 +705,12 @@
     "evmChainId": 53935,
     "rpcConfig": {
       "rpcUrl": "https://q2aTwKuyzgs8pynF7UXBZCU7DejbZbZ6EUyHr3JQzYgwNPUPi.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -719,12 +719,12 @@
     "evmChainId": 5506,
     "rpcConfig": {
       "rpcUrl": "https://QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -733,12 +733,12 @@
     "evmChainId": 357,
     "rpcConfig": {
       "rpcUrl": "https://QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -747,12 +747,12 @@
     "evmChainId": 4313,
     "rpcConfig": {
       "rpcUrl": "https://rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -761,12 +761,12 @@
     "evmChainId": 13322,
     "rpcConfig": {
       "rpcUrl": "https://SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -775,12 +775,12 @@
     "evmChainId": 6533,
     "rpcConfig": {
       "rpcUrl": "https://TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -789,12 +789,12 @@
     "evmChainId": 33311,
     "rpcConfig": {
       "rpcUrl": "https://txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -803,12 +803,12 @@
     "evmChainId": 10849,
     "rpcConfig": {
       "rpcUrl": "https://UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -817,12 +817,12 @@
     "evmChainId": 10036,
     "rpcConfig": {
       "rpcUrl": "https://vFHT9J4F6PhqCTMmqkKKUKW3yfsjd6tNvhmcK4MkFa3Pmnnqe.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -831,12 +831,12 @@
     "evmChainId": 14594,
     "rpcConfig": {
       "rpcUrl": "https://WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -845,12 +845,12 @@
     "evmChainId": 2786,
     "rpcConfig": {
       "rpcUrl": "https://YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   },
   {
@@ -859,12 +859,12 @@
     "evmChainId": 235235,
     "rpcConfig": {
       "rpcUrl": "https://ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK.idx2.solokhin.com/api/rpc",
-      "requestBatchSize": 100,
-      "maxConcurrentRequests": 10,
-      "rps": 1000,
+      "requestBatchSize": 200,
+      "maxConcurrentRequests": 200,
+      "rps": 10000,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 1000
+      "blocksPerBatch": 10000
     }
   }
 ]

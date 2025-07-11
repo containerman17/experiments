@@ -97,12 +97,12 @@ for (const chain of chains) {
         //FIXME: temp to sync from idx2
         "rpcConfig": {
             "rpcUrl": `https://${chain.blockchainId}.idx2.solokhin.com/api/rpc`,//TODO: remove once idx2 data is copied
-            "requestBatchSize": 100,
-            "maxConcurrentRequests": 10,
-            "rps": 1000,
+            "requestBatchSize": 200,
+            "maxConcurrentRequests": 200,
+            "rps": 10000,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 1000
+            "blocksPerBatch": 10000
         }
 
     },);

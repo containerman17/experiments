@@ -259,12 +259,12 @@
     "chainName": "Monsoon",
     "blockchainId": "2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK",
     "subnetId": "2LV4VB4dMaxn5c16p1UxEDvknqJAT7U4vCqpr3bnk6DTebewyN",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc",
+    "evmChainId": "100610",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "FRQTALNETWORK",
@@ -407,6 +407,18 @@
     "debugEnabled": true
   },
   {
+    "chainName": "QRTMS",
+    "blockchainId": "2qn2cvsCdgp9ZwHXjS68YPYPCspSxFQ2uL8k1GmV2jTpup4NQx",
+    "subnetId": "TnR6FmcW4PSCk4DiqaQAGhRsYEkJE5bvTAswYH3tWt6ADpajR",
+    "rpcUrl": "https://subnets.avax.network/qr0710t1ms/mainnet/rpc",
+    "evmChainId": "12087",
+    "blocksCount": "0+",
+    "estimatedTxCount": null,
+    "glacierChainId": "12087",
+    "comment": null,
+    "debugEnabled": false
+  },
+  {
     "chainName": "EthixETX",
     "blockchainId": "2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE",
     "subnetId": "q54cgHa9RN2NFp9qsfpPzVkhgn8xqDgKEQR1G997xZ1P5Dc8o",
@@ -483,8 +495,8 @@
     "subnetId": "sopy3uXvCFVLorg4kmqQfZpqVg9GXzs8GmjSwM18GZJtf66h6",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc",
     "evmChainId": "237007",
-    "blocksCount": "0+",
-    "estimatedTxCount": "0+",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
     "comment": null,
     "debugEnabled": true
   },
@@ -665,7 +677,7 @@
     "chainName": "bloodloop",
     "blockchainId": "iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA",
     "subnetId": "2QRKgBVT4zbcEWM4aXYRPNRazmas9on1QZodYakh1cF4RDrQE5",
-    "rpcUrl": "https://mainnet.bloodloop.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
+    "rpcUrl": "https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
     "evmChainId": "578",
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",

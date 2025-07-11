@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (60)
+## Chains with Public RPC URLs (62)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -352,7 +352,7 @@
 - Estimated Tx Count: 1k+
 - EVM Chain ID: 578
 - Blockchain ID: iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
-- RPC URL: https://mainnet.bloodloop.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc
+- RPC URL: https://meganode.solokhin.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc
 - Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/bloodloop
 
@@ -509,6 +509,15 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
+**ULALO**
+- Blocks Count: 10+
+- Estimated Tx Count: 10+
+- EVM Chain ID: 237007
+- Blockchain ID: 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig
+- RPC URL: https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
 **amichainMainnet**
 - Blocks Count: 10+
 - Estimated Tx Count: 10+
@@ -516,6 +525,15 @@
 - Blockchain ID: 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc
 - RPC URL: https://rpc.amichain.org
 - Debug Enabled: ❌
+- Explorer URL: ❌
+
+**Monsoon**
+- Blocks Count: 10+
+- Estimated Tx Count: 10+
+- EVM Chain ID: 100610
+- Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
+- RPC URL: https://meganode.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
+- Debug Enabled: ✅
 - Explorer URL: ❌
 
 **Republic Chain**
@@ -527,14 +545,14 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
-**ULALO**
+**QRTMS**
 - Blocks Count: 0+
-- Estimated Tx Count: 0+
-- EVM Chain ID: 237007
-- Blockchain ID: 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig
-- RPC URL: https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc
-- Debug Enabled: ✅
-- Explorer URL: ❌
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 12087
+- Blockchain ID: 2qn2cvsCdgp9ZwHXjS68YPYPCspSxFQ2uL8k1GmV2jTpup4NQx
+- RPC URL: https://subnets.avax.network/qr0710t1ms/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/qr0710t1ms
 
 **Blaze**
 - Blocks Count: 0+
@@ -547,12 +565,7 @@
 
 
 
-## Chains without Public RPC URLs (16)
-
-**Monsoon**
-- EVM Chain ID: N/A
-- Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
-- Comment: TODO: investigate
+## Chains without Public RPC URLs (15)
 
 **Bitcoin Content Network**
 - EVM Chain ID: N/A

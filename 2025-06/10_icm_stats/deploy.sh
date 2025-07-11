@@ -6,7 +6,7 @@ npx tsx ./scripts/updateChains.ts
 
 # Ensure remote data directory exists and copy chains.json
 ssh idx3 "mkdir -p ~/data ~/plugins"
-scp ./data/chains.json idx3:~/data/chains.json
+scp ./prod_chains.json idx3:~/data/chains.json
 
 # Sync local plugins to remote (removing any remote plugins not present locally)
 rsync -av --delete ./plugins/ idx3:~/plugins/
@@ -18,7 +18,7 @@ scp ./compose.yml idx3:~/compose.yml
 ssh -T idx3 << 'EOF'
 # Run docker compose
 cd ~
+docker compose down
 docker compose pull
-docker compose restart
 docker compose up -d --remove-orphans
 EOF

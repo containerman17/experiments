@@ -1,0 +1,16 @@
+[
+  {
+    "chainName": "zerooneMainnet",
+    "blockchainId": "2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1",
+    "evmChainId": 27827,
+    "rpcConfig": {
+      "rpcUrl": "https://2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1.idx2.solokhin.com/api/rpc",
+      "requestBatchSize": 50,
+      "maxConcurrentRequests": 50,
+      "rps": 1000,
+      "rpcSupportsDebug": false,
+      "enableBatchSizeGrowth": false,
+      "blocksPerBatch": 1000
+    }
+  }
+]

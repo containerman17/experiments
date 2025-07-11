@@ -97,12 +97,12 @@ for (const chain of chains) {
         //FIXME: temp to sync from idx2
         "rpcConfig": {
             "rpcUrl": `https://${chain.blockchainId}.idx2.solokhin.com/api/rpc`,//TODO: remove once idx2 data is copied
-            "requestBatchSize": 200,
-            "maxConcurrentRequests": 200,
-            "rps": 10000,
+            "requestBatchSize": 50,
+            "maxConcurrentRequests": 50,
+            "rps": 1000,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 10000
+            "blocksPerBatch": 1000
         }
 
     },);
@@ -116,5 +116,5 @@ if (!fs.existsSync("./data")) {
     fs.mkdirSync("./data", { recursive: true });
 }
 
-fs.writeFileSync("./data/chains.json", JSON.stringify(finalResult, null, 2));
-console.log(`Saved ${finalResult.length} chains in data/chains.json${debugFilterChainIds ? ` (limited to ${debugFilterChainIds})` : ''}`);
+fs.writeFileSync("./prod_chains.json", JSON.stringify(finalResult, null, 2));
+console.log(`Saved ${finalResult.length} chains in prod_chains.json${debugFilterChainIds ? ` (limited to ${debugFilterChainIds})` : ''}`);

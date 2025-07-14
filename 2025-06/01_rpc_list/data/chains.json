@@ -133,7 +133,7 @@
     "rpcUrl": "https://subnets.avax.network/letsbuyhc/mainnet/rpc",
     "evmChainId": "50776",
     "blocksCount": "1k+",
-    "estimatedTxCount": null,
+    "estimatedTxCount": "1k+",
     "glacierChainId": "50776",
     "comment": null,
     "debugEnabled": false
@@ -208,6 +208,17 @@
     "estimatedTxCount": "100k+",
     "glacierChainId": "1216",
     "comment": null,
+    "debugEnabled": false
+  },
+  {
+    "chainName": "Martian Chain",
+    "blockchainId": "2EerRz8dUALXWs7r7iUyfVtTp1vAMtuxGzoncNmamTeuW6Ymne",
+    "subnetId": "6qUaXJbt541JQUmrRLrxjDnQb62UPLGDnkFJdwjgQp8DiNTuP",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -407,18 +418,6 @@
     "debugEnabled": true
   },
   {
-    "chainName": "QRTMS",
-    "blockchainId": "2qn2cvsCdgp9ZwHXjS68YPYPCspSxFQ2uL8k1GmV2jTpup4NQx",
-    "subnetId": "TnR6FmcW4PSCk4DiqaQAGhRsYEkJE5bvTAswYH3tWt6ADpajR",
-    "rpcUrl": "https://subnets.avax.network/qr0710t1ms/mainnet/rpc",
-    "evmChainId": "12087",
-    "blocksCount": "0+",
-    "estimatedTxCount": null,
-    "glacierChainId": "12087",
-    "comment": null,
-    "debugEnabled": false
-  },
-  {
     "chainName": "EthixETX",
     "blockchainId": "2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE",
     "subnetId": "q54cgHa9RN2NFp9qsfpPzVkhgn8xqDgKEQR1G997xZ1P5Dc8o",
@@ -527,11 +526,11 @@
     "chainName": "amichainMainnet",
     "blockchainId": "2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc",
     "subnetId": "6uH9zL2ZhPLWB1W1qodgRRm42YfLWdPKtQe2xzAWjr5TAhkmm",
-    "rpcUrl": "https://rpc.amichain.org",
-    "evmChainId": "588785742",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
-    "comment": null,
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -759,8 +758,8 @@
     "subnetId": "4Wuefof5Lp2v5KfmJRnsGJz9HPX4UzWP7DZC5SyhQcXRQkyPp",
     "rpcUrl": "https://meganode.solokhin.com/ext/bc/QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4/rpc",
     "evmChainId": "5506",
-    "blocksCount": "100+",
-    "estimatedTxCount": "100+",
+    "blocksCount": "1k+",
+    "estimatedTxCount": "1k+",
     "glacierChainId": "5506",
     "comment": null,
     "debugEnabled": true
@@ -776,6 +775,17 @@
     "glacierChainId": "357",
     "comment": null,
     "debugEnabled": true
+  },
+  {
+    "chainName": "Martian Chain",
+    "blockchainId": "R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN",
+    "subnetId": "28aQXYENwytzxEwyYMZDtGjpUmP67eWkyoHdGGyid6gEACeg9x",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "Artery",
@@ -810,6 +820,18 @@
     "blocksCount": null,
     "estimatedTxCount": null,
     "comment": "Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/",
+    "debugEnabled": false
+  },
+  {
+    "chainName": "QRTMP",
+    "blockchainId": "tkfaNJvuPU8LxLjMRSP3XvoU7khfqZp1tU1peZ83zv9ysNxfZ",
+    "subnetId": "2R6ZZqzZyqWze8F6E6JWzs1GZJBQdkG6a9PPS6qgePk7MM73qf",
+    "rpcUrl": "https://subnets.avax.network/qr0711t1mp/mainnet/rpc",
+    "evmChainId": "24513",
+    "blocksCount": "10+",
+    "estimatedTxCount": null,
+    "glacierChainId": "24513",
+    "comment": null,
     "debugEnabled": false
   },
   {
@@ -888,8 +910,8 @@
     "subnetId": "o4Eariv2Cx1fTvPFXYofpJfS9KgwFaiGN8KFGcCeZM9t87GJr",
     "rpcUrl": "https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc",
     "evmChainId": "235235",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
+    "blocksCount": "100+",
+    "estimatedTxCount": "100+",
     "comment": null,
     "debugEnabled": true
   }

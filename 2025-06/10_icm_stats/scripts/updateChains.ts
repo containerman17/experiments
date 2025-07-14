@@ -84,26 +84,15 @@ for (const chain of chains) {
         "chainName": chain.chainName,
         "blockchainId": chain.blockchainId,
         "evmChainId": Number(chain.evmChainId),
-        // "rpcConfig": {
-        //     "rpcUrl": rpcUrl,
-        //     "requestBatchSize": DEFAULT_REQUEST_BATCH_SIZE,
-        //     "maxConcurrentRequests": maxConcurrentRequestsPerChain,
-        //     "rps": rpsPerChain,
-        //     "rpcSupportsDebug": chain.debugEnabled && !FORCE_DISABLE_DEBUG,
-        //     "enableBatchSizeGrowth": enableBatchSizeGrowth,
-        //     "blocksPerBatch": DEFAULT_BLOCKS_PER_BATCH
-        // },
-
-        //FIXME: temp to sync from idx2
         "rpcConfig": {
-            "rpcUrl": `https://${chain.blockchainId}.idx2.solokhin.com/api/rpc`,//TODO: remove once idx2 data is copied
-            "requestBatchSize": 50,
-            "maxConcurrentRequests": 50,
-            "rps": 1000,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 1000
-        }
+            "rpcUrl": rpcUrl,
+            "requestBatchSize": DEFAULT_REQUEST_BATCH_SIZE,
+            "maxConcurrentRequests": maxConcurrentRequestsPerChain,
+            "rps": rpsPerChain,
+            "rpcSupportsDebug": chain.debugEnabled && !FORCE_DISABLE_DEBUG,
+            "enableBatchSizeGrowth": enableBatchSizeGrowth,
+            "blocksPerBatch": DEFAULT_BLOCKS_PER_BATCH
+        },
 
     },);
 }

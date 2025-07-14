@@ -378,20 +378,6 @@
     }
   },
   {
-    "chainName": "QRTMS",
-    "blockchainId": "2qn2cvsCdgp9ZwHXjS68YPYPCspSxFQ2uL8k1GmV2jTpup4NQx",
-    "evmChainId": 12087,
-    "rpcConfig": {
-      "rpcUrl": "https://subnets.avax.network/qr0710t1ms/mainnet/rpc",
-      "requestBatchSize": 10,
-      "maxConcurrentRequests": 8,
-      "rps": 2,
-      "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": true,
-      "blocksPerBatch": 300
-    }
-  },
-  {
     "chainName": "EthixETX",
     "blockchainId": "2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE",
     "evmChainId": 389,
@@ -500,20 +486,6 @@
       "rps": 233,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
-      "blocksPerBatch": 300
-    }
-  },
-  {
-    "chainName": "amichainMainnet",
-    "blockchainId": "2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc",
-    "evmChainId": 588785742,
-    "rpcConfig": {
-      "rpcUrl": "https://rpc.amichain.org",
-      "requestBatchSize": 10,
-      "maxConcurrentRequests": 100,
-      "rps": 20,
-      "rpcSupportsDebug": false,
-      "enableBatchSizeGrowth": true,
       "blocksPerBatch": 300
     }
   },
@@ -766,6 +738,20 @@
       "rps": 233,
       "rpcSupportsDebug": false,
       "enableBatchSizeGrowth": false,
+      "blocksPerBatch": 300
+    }
+  },
+  {
+    "chainName": "QRTMP",
+    "blockchainId": "tkfaNJvuPU8LxLjMRSP3XvoU7khfqZp1tU1peZ83zv9ysNxfZ",
+    "evmChainId": 24513,
+    "rpcConfig": {
+      "rpcUrl": "https://subnets.avax.network/qr0711t1mp/mainnet/rpc",
+      "requestBatchSize": 10,
+      "maxConcurrentRequests": 8,
+      "rps": 2,
+      "rpcSupportsDebug": false,
+      "enableBatchSizeGrowth": true,
       "blocksPerBatch": 300
     }
   },

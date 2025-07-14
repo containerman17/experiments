@@ -2,11 +2,15 @@
 
 set -exu
 
+npm run build
+rsync -av --delete ./dist/ idx3:~/assets/
+
 npx tsx ./scripts/updateChains.ts
 
 # Ensure remote data directory exists and copy chains.json
 ssh idx3 "mkdir -p ~/data ~/plugins"
 scp ./prod_chains.json idx3:~/data/chains.json
+rm ./prod_chains.json
 
 # Sync local plugins to remote (removing any remote plugins not present locally)
 rsync -av --delete ./plugins/ idx3:~/plugins/

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { getApiChains } from "./client/sdk.gen"
+import { useQuery } from '@tanstack/react-query'
 
 interface ChainData {
     evmChainId: number;
@@ -14,28 +15,29 @@ interface ChainData {
 }
 
 export default function Sync() {
-    const [chains, setChains] = useState<ChainData[]>([])
     const [lastUpdated, setLastUpdated] = useState(new Date())
 
-    useEffect(() => {
-        getApiChains().then(res => {
+    const { data: rawChains = [] } = useQuery<ChainData[]>({
+        queryKey: ['chains'],
+        queryFn: async () => {
+            const res = await getApiChains()
             if (res.data) {
-                // Calculate sync progress for each chain
-                const chainsWithProgress = res.data.map(chain => ({
+                return res.data.map(chain => ({
                     ...chain,
                     syncProgress: chain.latestRemoteBlockNumber > 0
                         ? ((chain.lastStoredBlockNumber / chain.latestRemoteBlockNumber) * 100).toFixed(2)
                         : '0.00'
-                }))
-                // Sort by projected TX count descending
-                chainsWithProgress.sort((a, b) => b.projectedTxCount - a.projectedTxCount)
-                setChains(chainsWithProgress)
-                setLastUpdated(new Date())
+                })).sort((a, b) => b.projectedTxCount - a.projectedTxCount)
             }
-        }).catch(err => {
-            console.error(err)
-        })
-    }, [])
+            throw new Error('Failed to fetch chains')
+        }
+    })
+
+    useEffect(() => {
+        if (rawChains.length > 0) {
+            setLastUpdated(new Date())
+        }
+    }, [rawChains])
 
     return (
         <div className="py-8">
@@ -55,10 +57,11 @@ export default function Sync() {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remote Blocks</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sync Progress</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TX Count</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Projected TX</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {chains.map(chain => (
+                        {rawChains.map(chain => (
                             <tr key={chain.evmChainId} className="hover:bg-gray-50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{chain.evmChainId}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{chain.chainName}</td>
@@ -79,6 +82,7 @@ export default function Sync() {
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{chain.txCount.toLocaleString()}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{chain.projectedTxCount.toLocaleString()}</td>
                             </tr>
                         ))}
                     </tbody>

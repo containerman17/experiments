@@ -84,14 +84,25 @@ export type GetApiIcttContractHomesResponses = {
         chainName: string;
         blockchainId: string;
         evmChainId: number;
-        contractHomes: Array<{
-            address: string;
-            remotes: Array<{
-                remoteBlockchainID: string;
-                remoteTokenTransferrerAddress: string;
-                initialCollateralNeeded: boolean;
-                tokenDecimals: number;
-            }>;
+        address: string;
+        callFailed?: string;
+        callSucceeded?: string;
+        tokensWithdrawn?: string;
+        remotes: Array<{
+            remoteBlockchainID: string;
+            remoteTokenTransferrerAddress: string;
+            initialCollateralNeeded: boolean;
+            tokenDecimals: number;
+            collateralAddedCnt: number;
+            collateralAddedSum: string;
+            tokensAndCallRoutedCnt: number;
+            tokensAndCallRoutedSum: string;
+            tokensAndCallSentCnt: number;
+            tokensAndCallSentSum: string;
+            tokensRoutedCnt: number;
+            tokensRoutedSum: string;
+            tokensSentCnt: number;
+            tokensSentSum: string;
         }>;
     }>;
 };

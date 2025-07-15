@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev:front": "VITE_BACK_URL=http://localhost:3080 vite",
+    "dev": "npm run openapi && vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
+    "@tanstack/react-query": "^5.83.0",
     "frostbyte-sdk": "file:../../../FrostByte",
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",

@@ -82,8 +82,8 @@ const module: ApiPlugin = {
                         } else {
                             // Incoming: from other chain to this chain
                             const key: ChainPairKey = `${row.other_chain_id}->${config.blockchainId}`;
-                            const fromName = chainNameById.get(row.other_chain_id) || WELL_KNOWN_CHAINS[row.other_chain_id] || row.other_chain_id;
-                            const toName = chainNameById.get(config.blockchainId) || WELL_KNOWN_CHAINS[config.blockchainId] || config.blockchainId;
+                            const fromName = chainNameById.get(row.other_chain_id) || row.other_chain_id;
+                            const toName = chainNameById.get(config.blockchainId) || config.blockchainId;
                             const existing = pairCounts.get(key) || {
                                 fromChain: row.other_chain_id,
                                 toChain: config.blockchainId,
@@ -120,7 +120,7 @@ const module: ApiPlugin = {
         };
 
         // Day leaderboard endpoint
-        app.get('/leaderboard/day', {
+        app.get('/api/leaderboard/day', {
             schema: {
                 response: {
                     200: {
@@ -145,7 +145,7 @@ const module: ApiPlugin = {
         });
 
         // Week leaderboard endpoint
-        app.get('/leaderboard/week', {
+        app.get('/api/leaderboard/week', {
             schema: {
                 response: {
                     200: {

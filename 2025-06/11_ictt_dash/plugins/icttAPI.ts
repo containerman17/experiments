@@ -18,9 +18,12 @@ const module: ApiPlugin = {
                                 blockchainId: { type: 'string' },
                                 evmChainId: { type: 'number' },
                                 address: { type: 'string' },
-                                callFailed: { type: 'string' },
-                                callSucceeded: { type: 'string' },
-                                tokensWithdrawn: { type: 'string' },
+                                callFailedCnt: { type: 'number' },
+                                callFailedSum: { type: 'string' },
+                                callSucceededCnt: { type: 'number' },
+                                callSucceededSum: { type: 'string' },
+                                tokensWithdrawnCnt: { type: 'number' },
+                                tokensWithdrawnSum: { type: 'string' },
                                 remotes: {
                                     type: 'array',
                                     items: {

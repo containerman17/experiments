@@ -85,9 +85,12 @@ export type GetApiIcttContractHomesResponses = {
         blockchainId: string;
         evmChainId: number;
         address: string;
-        callFailed?: string;
-        callSucceeded?: string;
-        tokensWithdrawn?: string;
+        callFailedCnt: number;
+        callFailedSum: string;
+        callSucceededCnt: number;
+        callSucceededSum: string;
+        tokensWithdrawnCnt: number;
+        tokensWithdrawnSum: string;
         remotes: Array<{
             remoteBlockchainID: string;
             remoteTokenTransferrerAddress: string;

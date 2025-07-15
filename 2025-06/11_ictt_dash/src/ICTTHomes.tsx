@@ -96,15 +96,21 @@ export default function ICTTHomes() {
                                             <p className="text-sm text-gray-600 font-mono">{home.address}</p>
                                             <p className="text-xs text-gray-500">Blockchain ID: {home.blockchainId}</p>
                                         </div>
-                                        <div className="text-right space-y-1">
+                                        <div className="text-right space-y-2">
                                             <div className="text-sm">
-                                                <span className="text-gray-600">Calls:</span>
-                                                <span className="text-green-600 ml-2">✅ {(home as any).callSucceededCnt || 0}</span>
-                                                <span className="text-red-600 ml-2">❌ {(home as any).callFailedCnt || 0}</span>
+                                                <span className="text-gray-600">Successful Calls:</span>
+                                                <span className="text-green-600 ml-2">✅ {home.callSucceededCnt}</span>
+                                                <span className="text-xs text-gray-500 ml-1">({formatAmount(home.callSucceededSum, 18)})</span>
+                                            </div>
+                                            <div className="text-sm">
+                                                <span className="text-gray-600">Failed Calls:</span>
+                                                <span className="text-red-600 ml-2">❌ {home.callFailedCnt}</span>
+                                                <span className="text-xs text-gray-500 ml-1">({formatAmount(home.callFailedSum, 18)})</span>
                                             </div>
                                             <div className="text-sm">
                                                 <span className="text-gray-600">Withdrawals:</span>
-                                                <span className="text-blue-600 ml-2">💸 {(home as any).tokensWithdrawnCnt || 0}</span>
+                                                <span className="text-blue-600 ml-2">💸 {home.tokensWithdrawnCnt}</span>
+                                                <span className="text-xs text-gray-500 ml-1">({formatAmount(home.tokensWithdrawnSum, 18)})</span>
                                             </div>
                                         </div>
                                     </div>

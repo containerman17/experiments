@@ -24,5 +24,5 @@ ssh -T idx4 << 'EOF'
 cd ~
 docker compose pull
 docker compose up -d --remove-orphans
-docker compose restart
+docker compose restart api fetcher indexer
 EOF

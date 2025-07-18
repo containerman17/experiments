@@ -6,27 +6,42 @@ const module: IndexingPlugin = {
     usesTraces: false,
 
     initialize: async (db) => {
+        //FIXME: guarantee that initialize is called exatly once on the level above
         await db.execute(`
-            CREATE TABLE minute_tx_counts (
+            CREATE TABLE IF NOT EXISTS minute_tx_counts (
                 minute_ts INT PRIMARY KEY,  -- Unix timestamp rounded down to minute
                 tx_count INT NOT NULL
             )
         `);
 
         await db.execute(`
-            CREATE INDEX idx_minute_ts ON minute_tx_counts(minute_ts)
-        `);
-
-        await db.execute(`
-            CREATE TABLE cumulative_tx_counts (
+            CREATE TABLE IF NOT EXISTS cumulative_tx_counts (
                 minute_ts INT PRIMARY KEY,  -- Unix timestamp rounded down to minute
                 cumulative_count INT NOT NULL
             )
         `);
 
-        await db.execute(`
-            CREATE INDEX idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts)
-        `);
+        try {
+            await db.execute(`
+                CREATE INDEX idx_minute_ts ON minute_tx_counts(minute_ts)
+            `);
+        } catch (error: any) {
+            // Ignore error if index already exists
+            if (!error.message.includes('Duplicate key name')) {
+                throw error;
+            }
+        }
+
+        try {
+            await db.execute(`
+                CREATE INDEX idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts)
+            `);
+        } catch (error: any) {
+            // Ignore error if index already exists
+            if (!error.message.includes('Duplicate key name')) {
+                throw error;
+            }
+        }
     },
 
     handleTxBatch: async (db, blocksDb, batch) => {

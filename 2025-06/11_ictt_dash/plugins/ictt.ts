@@ -43,7 +43,7 @@ const addAmount = (existing: string | undefined, toAdd: bigint): string => {
 
 const module: IndexingPlugin = {
     name: "ictt",
-    version: 10, // Bumped for new fields
+    version: 15, // Bumped for new fields
     usesTraces: false,
     filterEvents: eventHexes,
 

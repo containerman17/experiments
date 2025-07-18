@@ -7,7 +7,8 @@ interface ContractHomeRow {
     data: ContractHomeData;
 }
 
-const events = abiUtils.getEventHashesMap(ERC20TokenHome as abiUtils.AbiItem[]);
+const events: Map<string, string> = abiUtils.getEventHashesMap(ERC20TokenHome as abiUtils.AbiItem[]);
+const eventHexes = Array.from(events.keys());
 
 const decodeRemoteRegistered = (log: viem.Log) => {
     const args = viem.decodeEventLog({
@@ -42,8 +43,9 @@ const addAmount = (existing: string | undefined, toAdd: bigint): string => {
 
 const module: IndexingPlugin = {
     name: "ictt",
-    version: 9, // Bumped for new fields
+    version: 10, // Bumped for new fields
     usesTraces: false,
+    filterEvents: eventHexes,
 
     initialize: async (db) => {
         await db.execute(`

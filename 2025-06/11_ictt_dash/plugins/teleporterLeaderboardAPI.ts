@@ -15,13 +15,19 @@ type LeaderboardEntry = {
 
 type ChainPairKey = `${string}->${string}`;
 
+interface MessageCountRow {
+    is_outgoing: number;
+    other_chain_id: string;
+    message_count: number;
+}
+
 const module: ApiPlugin = {
     name: "teleporter_leaderboard",
     requiredIndexers: ["teleporter_messages"],
 
     registerRoutes: (app, dbCtx) => {
         // Helper function to get leaderboard data for a time period
-        const getLeaderboard = (secondsAgo: number): LeaderboardEntry[] => {
+        const getLeaderboard = async (secondsAgo: number): Promise<LeaderboardEntry[]> => {
             const configs = dbCtx.getAllChainConfigs();
 
             // Helper to get chainName by blockchainId, with special case for C_CHAIN_ID
@@ -43,14 +49,14 @@ const module: ApiPlugin = {
             // Query each chain's database
             for (const config of configs) {
                 try {
-                    const db = dbCtx.indexerDbFactory(config.evmChainId, "teleporter_messages");
+                    const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, "teleporter_messages");
 
                     // Get current timestamp in seconds
                     const now = Math.floor(Date.now() / 1000);
                     const startTime = now - secondsAgo;
 
                     // Query grouped counts for both incoming and outgoing messages
-                    const results = db.prepare(`
+                    const [rows] = await indexerConn.execute(`
                         SELECT 
                             is_outgoing,
                             other_chain_id,
@@ -58,11 +64,8 @@ const module: ApiPlugin = {
                         FROM teleporter_messages
                         WHERE block_timestamp >= ?
                         GROUP BY is_outgoing, other_chain_id
-                    `).all(startTime) as Array<{
-                        is_outgoing: number;
-                        other_chain_id: string;
-                        message_count: number;
-                    }>;
+                    `, [startTime]);
+                    const results = rows as MessageCountRow[];
 
                     // Process results
                     for (const row of results) {
@@ -139,8 +142,8 @@ const module: ApiPlugin = {
                     }
                 }
             }
-        }, (request, reply) => {
-            const leaderboard = getLeaderboard(86400); // 24 hours
+        }, async (request, reply) => {
+            const leaderboard = await getLeaderboard(86400); // 24 hours
             return reply.send(leaderboard);
         });
 
@@ -164,8 +167,8 @@ const module: ApiPlugin = {
                     }
                 }
             }
-        }, (request, reply) => {
-            const leaderboard = getLeaderboard(604800); // 7 days
+        }, async (request, reply) => {
+            const leaderboard = await getLeaderboard(604800); // 7 days
             return reply.send(leaderboard);
         });
     }

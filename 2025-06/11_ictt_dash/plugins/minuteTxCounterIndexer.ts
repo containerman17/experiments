@@ -2,26 +2,30 @@ import type { IndexingPlugin } from "frostbyte-sdk";
 
 const module: IndexingPlugin = {
     name: "minute_tx_counter",
-    version: 4,
+    version: 5,
     usesTraces: false,
 
     initialize: async (db) => {
-        db.exec(`
+        await db.execute(`
             CREATE TABLE minute_tx_counts (
-                minute_ts INTEGER PRIMARY KEY,  -- Unix timestamp rounded down to minute
-                tx_count INTEGER NOT NULL
-            );
-            
-            CREATE INDEX idx_minute_ts ON minute_tx_counts(minute_ts);
+                minute_ts INT PRIMARY KEY,  -- Unix timestamp rounded down to minute
+                tx_count INT NOT NULL
+            )
         `);
 
-        db.exec(`
+        await db.execute(`
+            CREATE INDEX idx_minute_ts ON minute_tx_counts(minute_ts)
+        `);
+
+        await db.execute(`
             CREATE TABLE cumulative_tx_counts (
-                minute_ts INTEGER PRIMARY KEY,  -- Unix timestamp rounded down to minute
-                cumulative_count INTEGER NOT NULL
-            );
-            
-            CREATE INDEX idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts);
+                minute_ts INT PRIMARY KEY,  -- Unix timestamp rounded down to minute
+                cumulative_count INT NOT NULL
+            )
+        `);
+
+        await db.execute(`
+            CREATE INDEX idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts)
         `);
     },
 
@@ -43,35 +47,46 @@ const module: IndexingPlugin = {
         const firstMinuteTs = sortedMinutes[0]![0];
 
         // Get the cumulative count just before our first minute
-        const previousCumulative = db.prepare(
-            'SELECT cumulative_count FROM cumulative_tx_counts WHERE minute_ts < ? ORDER BY minute_ts DESC LIMIT 1'
-        ).get(firstMinuteTs) as { cumulative_count: number } | undefined;
+        const [rows] = await db.execute(
+            'SELECT cumulative_count FROM cumulative_tx_counts WHERE minute_ts < ? ORDER BY minute_ts DESC LIMIT 1',
+            [firstMinuteTs]
+        );
+        const previousCumulative = (rows as { cumulative_count: number }[])[0];
 
         let runningTotal = previousCumulative?.cumulative_count || 0;
 
-        // Prepare insert statements
-        const minuteStmt = db.prepare(`
-            INSERT INTO minute_tx_counts (minute_ts, tx_count)
-            VALUES (?, ?)
-            ON CONFLICT(minute_ts) DO UPDATE SET
-                tx_count = tx_count + excluded.tx_count
-        `);
+        // Process in chunks to avoid MySQL placeholder limit
+        const CHUNK_SIZE = 1000; // Safe chunk size for batch inserts
 
-        const cumulativeStmt = db.prepare(`
-            INSERT INTO cumulative_tx_counts (minute_ts, cumulative_count)
-            VALUES (?, ?)
-            ON CONFLICT(minute_ts) DO UPDATE SET
-                cumulative_count = excluded.cumulative_count
-        `);
+        for (let i = 0; i < sortedMinutes.length; i += CHUNK_SIZE) {
+            const chunk = sortedMinutes.slice(i, i + CHUNK_SIZE);
 
-        // Batch insert all minute counts and update cumulative counts
-        for (const [minuteTs, count] of sortedMinutes) {
-            // Update minute counts
-            minuteStmt.run(minuteTs, count);
+            // Batch insert minute counts for this chunk
+            const minuteValues = chunk.map(([minuteTs, count]) => [minuteTs, count]);
+            const minutePlaceholders = minuteValues.map(() => '(?, ?)').join(', ');
+            const minuteParams = minuteValues.flat();
 
-            // Update running total and insert cumulative count
-            runningTotal += count;
-            cumulativeStmt.run(minuteTs, runningTotal);
+            await db.execute(`
+                INSERT INTO minute_tx_counts (minute_ts, tx_count)
+                VALUES ${minutePlaceholders}
+                ON DUPLICATE KEY UPDATE
+                    tx_count = tx_count + VALUES(tx_count)
+            `, minuteParams);
+
+            // Batch insert cumulative counts for this chunk
+            const cumulativeValues = chunk.map(([minuteTs, count]) => {
+                runningTotal += count;
+                return [minuteTs, runningTotal];
+            });
+            const cumulativePlaceholders = cumulativeValues.map(() => '(?, ?)').join(', ');
+            const cumulativeParams = cumulativeValues.flat();
+
+            await db.execute(`
+                INSERT INTO cumulative_tx_counts (minute_ts, cumulative_count)
+                VALUES ${cumulativePlaceholders}
+                ON DUPLICATE KEY UPDATE
+                    cumulative_count = VALUES(cumulative_count)
+            `, cumulativeParams);
         }
     }
 };

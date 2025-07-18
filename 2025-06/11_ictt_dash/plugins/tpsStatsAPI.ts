@@ -8,6 +8,10 @@ type TpsStats = {
     tps: number;
 }
 
+interface TxSumResult {
+    total_txs: number | null;
+}
+
 const module: ApiPlugin = {
     name: "tps_stats",
     requiredIndexers: ['minute_tx_counter'],
@@ -55,16 +59,16 @@ const module: ApiPlugin = {
             const since = now - periodSeconds;
 
             for (const config of configs) {
-                const db = dbCtx.indexerDbFactory(config.evmChainId, 'minute_tx_counter');
+                const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, 'minute_tx_counter');
 
                 // Query minute_tx_counts table for the selected period
-                const stmt = db.prepare(`
+                const [rows] = await indexerConn.execute(`
                     SELECT SUM(tx_count) as total_txs
                     FROM minute_tx_counts
                     WHERE minute_ts >= ?
-                `);
+                `, [since]);
 
-                const result = stmt.get(since) as { total_txs: number | null };
+                const result = (rows as TxSumResult[])[0];
 
                 const txCount = result.total_txs || 0;
                 const tps = txCount / periodSeconds;

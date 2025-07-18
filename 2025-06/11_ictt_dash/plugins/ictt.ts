@@ -1,6 +1,11 @@
-import { type IndexingPlugin, abiUtils, prepQueryCached, encodingUtils, viem } from "frostbyte-sdk";
+import { type IndexingPlugin, abiUtils, encodingUtils, viem } from "frostbyte-sdk";
 import ERC20TokenHome from './abi/ERC20TokenHome.abi.json';
 import type { ContractHomeData, RemoteData } from './types/ictt.types';
+
+interface ContractHomeRow {
+    address: string;
+    data: ContractHomeData;
+}
 
 const events = abiUtils.getEventHashesMap(ERC20TokenHome as abiUtils.AbiItem[]);
 
@@ -37,27 +42,29 @@ const addAmount = (existing: string | undefined, toAdd: bigint): string => {
 
 const module: IndexingPlugin = {
     name: "ictt",
-    version: 8, // Bumped for new fields
+    version: 9, // Bumped for new fields
     usesTraces: false,
 
-    initialize: (db) => {
-        db.exec(`
+    initialize: async (db) => {
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS contract_homes (
-                address TEXT PRIMARY KEY,
+                address VARCHAR(42) PRIMARY KEY,
                 data JSON NOT NULL
-            );
+            )
         `);
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    handleTxBatch: async (db, blocksDb, batch) => {
         // First, get all existing contract homes
-        const existingRows = db.prepare(`
+        const [rows] = await db.execute(`
             SELECT address, data FROM contract_homes
-        `).all() as Array<{ address: string; data: string }>;
+        `);
+        const existingRows = rows as ContractHomeRow[];
 
         const existingHomes = new Map<string, ContractHomeData>();
         for (const row of existingRows) {
-            existingHomes.set(row.address.toLowerCase(), JSON.parse(row.data));
+            // MySQL JSON columns return already-parsed objects
+            existingHomes.set(row.address.toLowerCase(), row.data as ContractHomeData);
         }
 
         // Process events
@@ -199,12 +206,12 @@ const module: IndexingPlugin = {
             console.log('DEBUG: Event counter', debugEventCounter);
 
             for (const [address, data] of updatedHomes) {
-                prepQueryCached(db, `
+                await db.execute(`
                     INSERT INTO contract_homes (address, data)
                     VALUES (?, ?)
-                    ON CONFLICT(address) DO UPDATE SET
-                        data = excluded.data;
-                `).run(address, JSON.stringify(data));
+                    ON DUPLICATE KEY UPDATE
+                        data = VALUES(data)
+                `, [address, JSON.stringify(data)]);
             }
         }
     }

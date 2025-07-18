@@ -8,6 +8,12 @@ type DailyVolume = {
 
 type ChainPairKey = `${string}->${string}`;
 
+interface MessageCountRow {
+    is_outgoing: number;
+    other_chain_id: string;
+    message_count: number;
+}
+
 const module: ApiPlugin = {
     name: "teleporter_daily_volume",
     requiredIndexers: ["teleporter_messages"],
@@ -41,7 +47,7 @@ const module: ApiPlugin = {
                     }
                 }
             }
-        }, (request, reply) => {
+        }, async (request, reply) => {
             const { days = 7 } = request.query as { days?: number };
 
             // Get current timestamp in seconds
@@ -65,22 +71,19 @@ const module: ApiPlugin = {
                 // Query each chain's database
                 for (const config of configs) {
                     try {
-                        const db = dbCtx.indexerDbFactory(config.evmChainId, "teleporter_messages");
+                        const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, "teleporter_messages");
 
                         // Query grouped counts for messages in this time period
-                        const results = db.prepare(`
-                            SELECT 
+                        const [rows] = await indexerConn.execute(`
+                            SELECT
                                 is_outgoing,
                                 other_chain_id,
                                 COUNT(*) as message_count
                             FROM teleporter_messages
                             WHERE block_timestamp >= ? AND block_timestamp < ?
                             GROUP BY is_outgoing, other_chain_id
-                        `).all(startTime, endTime) as Array<{
-                            is_outgoing: number;
-                            other_chain_id: string;
-                            message_count: number;
-                        }>;
+                        `, [startTime, endTime]);
+                        const results = rows as MessageCountRow[];
 
                         // Process results for deduplication
                         for (const row of results) {

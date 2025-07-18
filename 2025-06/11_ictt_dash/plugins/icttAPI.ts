@@ -1,6 +1,11 @@
 import type { ApiPlugin } from "frostbyte-sdk";
 import type { ContractHome, ContractHomeData, ContractHomeRemote } from './types/ictt.types';
 
+interface ContractHomeRow {
+    address: string;
+    data: ContractHomeData;
+}
+
 const module: ApiPlugin = {
     name: "ictt_api",
     requiredIndexers: ['ictt'],
@@ -63,22 +68,18 @@ const module: ApiPlugin = {
             const results: (ContractHome & { chainName: string; blockchainId: string; evmChainId: number; })[] = [];
 
             for (const config of configs) {
-                const db = dbCtx.indexerDbFactory(config.evmChainId, 'ictt');
+                const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, 'ictt');
 
                 // Query all contract homes from this chain
-                const stmt = db.prepare(`
+                const [rows] = await indexerConn.execute(`
                     SELECT address, data
                     FROM contract_homes
                 `);
-
-                const rows = stmt.all() as Array<{
-                    address: string;
-                    data: string;
-                }>;
+                const homeRows = rows as ContractHomeRow[];
 
                 // Convert from nested structure to flat structure for API
-                const contractHomes: ContractHome[] = rows.map(row => {
-                    const data: ContractHomeData = JSON.parse(row.data);
+                const contractHomes: ContractHome[] = homeRows.map(row => {
+                    const data: ContractHomeData = row.data;
                     const remotes: ContractHomeRemote[] = [];
 
                     // Flatten the nested structure

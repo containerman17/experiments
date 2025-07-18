@@ -1,4 +1,5 @@
-import { type IndexingPlugin, prepQueryCached, Sqlite3Database, BlockDB, TxBatch, encodingUtils, dateUtils } from "frostbyte-sdk";
+import type { IndexingPlugin } from "frostbyte-sdk";
+import { encodingUtils } from "frostbyte-sdk";
 
 
 // Teleporter contract address
@@ -11,33 +12,28 @@ const RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC = '0x292ee90bbaf70b5d4936025e09d56ba08f3
 
 const module: IndexingPlugin = {
     name: "teleporter_messages",
-    version: 4,
+    version: 5,
     usesTraces: false,
 
     // Initialize tables
-    initialize: (db: Sqlite3Database) => {
-        db.exec(`
+    initialize: async (db) => {
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS teleporter_messages (
                 is_outgoing BOOLEAN NOT NULL,
-                other_chain_id TEXT NOT NULL,
-                block_timestamp INTEGER NOT NULL
-                -- Uncomment if you need to store more data
-                -- tx_number INTEGER NOT NULL,
-                -- log_index INTEGER NOT NULL,
-                -- message_id BLOB NOT NULL,
+                other_chain_id VARCHAR(64) NOT NULL,
+                block_timestamp INT NOT NULL
             )
         `);
 
-        // Create indexes for efficient queries
-        db.exec(`
-            CREATE INDEX IF NOT EXISTS idx_teleporter_stats_direction_time_chain 
-            ON teleporter_messages(is_outgoing, block_timestamp, other_chain_id);
-        `);
 
+        await db.execute(`
+                CREATE INDEX idx_teleporter_messages_time_direction_chain 
+                ON teleporter_messages(block_timestamp, is_outgoing, other_chain_id)
+            `);
     },
 
     // Process transactions
-    handleTxBatch: (db: Sqlite3Database, blocksDb: BlockDB, batch: TxBatch) => {
+    handleTxBatch: async (db, blocksDb, batch) => {
         const teleporterMessages: {
             is_outgoing: boolean;
             other_chain_id: string;
@@ -94,10 +90,8 @@ const module: IndexingPlugin = {
 
             // Build multi-row insert statement for this batch
             const placeholders = batch.map(() => '(?, ?, ?)').join(', ');
-            const insertStmt = prepQueryCached(db,
-                `INSERT INTO teleporter_messages (is_outgoing, other_chain_id, block_timestamp) 
-                     VALUES ${placeholders}`
-            );
+            const insertStmt = `INSERT INTO teleporter_messages (is_outgoing, other_chain_id, block_timestamp) 
+                     VALUES ${placeholders}`;
 
             // Flatten the batch into a single array of values
             const values = batch.flatMap(msg => [
@@ -106,7 +100,7 @@ const module: IndexingPlugin = {
                 msg.block_timestamp
             ]);
 
-            insertStmt.run(...values);
+            await db.execute(insertStmt, values);
         }
 
     }

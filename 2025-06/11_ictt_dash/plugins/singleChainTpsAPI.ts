@@ -6,6 +6,15 @@ type DailyTpsDataPoint = {
     tps: number;        // Average TPS for the period
 }
 
+interface TxSumResult {
+    total_txs: number | null;
+}
+
+interface CumulativeResult {
+    minute_ts: number;
+    cumulative_count: number;
+}
+
 const module: ApiPlugin = {
     name: "single_chain_tps",
     requiredIndexers: ['minute_tx_counter'],
@@ -61,7 +70,7 @@ const module: ApiPlugin = {
                 return reply.code(404).send({ error: `Chain ${chainId} not found` });
             }
 
-            const db = dbCtx.indexerDbFactory(chainId, 'minute_tx_counter');
+            const indexerConn = await dbCtx.getIndexerDbConnection(chainId, 'minute_tx_counter');
             const results: DailyTpsDataPoint[] = [];
 
             // Get current timestamp in seconds
@@ -75,13 +84,13 @@ const module: ApiPlugin = {
                 const periodStart = periodEnd - dayInSeconds;
 
                 // Query minute_tx_counts table for this 24h period
-                const stmt = db.prepare(`
+                const [rows] = await indexerConn.execute(`
                     SELECT SUM(tx_count) as total_txs
                     FROM minute_tx_counts
                     WHERE minute_ts >= ? AND minute_ts < ?
-                `);
+                `, [periodStart, periodEnd]);
 
-                const result = stmt.get(periodStart, periodEnd) as { total_txs: number | null };
+                const result = (rows as TxSumResult[])[0];
 
                 const txCount = result.total_txs || 0;
                 const tps = txCount / dayInSeconds;
@@ -143,30 +152,30 @@ const module: ApiPlugin = {
                 return reply.code(404).send({ error: `Chain ${chainId} not found` });
             }
 
-            const db = dbCtx.indexerDbFactory(chainId, 'minute_tx_counter');
+            const indexerConn = await dbCtx.getIndexerDbConnection(chainId, 'minute_tx_counter');
 
-            let result: { minute_ts: number; cumulative_count: number } | undefined;
+            let result: CumulativeResult | undefined;
 
             if (queryTimestamp) {
                 // Get cumulative count at or before the specified timestamp
                 const minuteTs = Math.floor(queryTimestamp / 60) * 60;
-                const stmt = db.prepare(`
+                const [rows] = await indexerConn.execute(`
                     SELECT minute_ts, cumulative_count
                     FROM cumulative_tx_counts
                     WHERE minute_ts <= ?
                     ORDER BY minute_ts DESC
                     LIMIT 1
-                `);
-                result = stmt.get(minuteTs) as { minute_ts: number; cumulative_count: number } | undefined;
+                `, [minuteTs]);
+                result = (rows as CumulativeResult[])[0];
             } else {
                 // Get the latest cumulative count
-                const stmt = db.prepare(`
+                const [rows] = await indexerConn.execute(`
                     SELECT minute_ts, cumulative_count
                     FROM cumulative_tx_counts
                     ORDER BY minute_ts DESC
                     LIMIT 1
                 `);
-                result = stmt.get() as { minute_ts: number; cumulative_count: number } | undefined;
+                result = (rows as CumulativeResult[])[0];
             }
 
             if (!result) {

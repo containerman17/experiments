@@ -19,7 +19,7 @@ export const ICM_CHAIN_INTERVAL_SIZE = 300; // 5 minutes
 
 const module: IndexingPlugin = {
     name: "icm_gas_usage",
-    version: 19,
+    version: 20,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 

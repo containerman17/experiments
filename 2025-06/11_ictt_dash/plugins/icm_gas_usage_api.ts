@@ -7,19 +7,34 @@ type IcmGasUsageStats = {
     chainId: string;
     sendCount: number;
     receiveCount: number;
-    sendGasUsed: string;
-    receiveGasUsed: string;
-    totalGasUsed: string;
+    sendGasCost: number;  // Changed to number for float representation
+    receiveGasCost: number;  // Changed to number for float representation
+    totalGasCost: number;  // Changed to number for float representation
     intervalTs: number;
 }
 
+type IcmGasUsageValue = {
+    sendCount: number;
+    receiveCount: number;
+    sendGasCost: number;  // Changed to number for float representation
+    receiveGasCost: number;  // Changed to number for float representation  
+    totalGasCost: number;  // Changed to number for float representation
+    intervalTs: number;
+}
+
+type IcmGasUsageChainData = {
+    name: string;
+    evmChainId: number;
+    values: IcmGasUsageValue[];
+}
+
 interface ChainStatsResult {
-    chain_id: string;
+    other_chain_id: string;
     interval_ts: number;
     send_count: number;
     receive_count: number;
-    send_gas_used: string;
-    receive_gas_used: string;
+    send_gas_cost: string;  // DECIMAL comes as string from MySQL
+    receive_gas_cost: string;  // DECIMAL comes as string from MySQL
 }
 
 const module: ApiPlugin = {
@@ -30,7 +45,7 @@ const module: ApiPlugin = {
         app.get<{
             Params: { evmChainId: string };
             Querystring: {
-                period?: '1d' | '7d' | '30d' | '1h' | 'all';
+                period?: '1d' | '7d' | '30d' | '1h';
                 count?: number;
             }
         }>('/api/:evmChainId/stats/icm-gas-usage', {
@@ -45,29 +60,36 @@ const module: ApiPlugin = {
                 querystring: {
                     type: 'object',
                     properties: {
-                        period: { type: 'string', enum: ['1d', '7d', '30d', '1h', 'all'], default: '1d' },
+                        period: { type: 'string', enum: ['1d', '7d', '30d', '1h'], default: '1d' },
                         count: { type: 'number', minimum: 1, maximum: 100, default: 50 }
                     },
                     required: []
                 },
                 response: {
                     200: {
-                        type: 'array',
-                        items: {
+                        type: 'object',
+                        additionalProperties: {
                             type: 'object',
                             properties: {
                                 name: { type: 'string' },
-                                blockchainId: { type: 'string' },
                                 evmChainId: { type: 'number' },
-                                chainId: { type: 'string' },
-                                sendCount: { type: 'number' },
-                                receiveCount: { type: 'number' },
-                                sendGasUsed: { type: 'string' },
-                                receiveGasUsed: { type: 'string' },
-                                totalGasUsed: { type: 'string' },
-                                intervalTs: { type: 'number' }
+                                values: {
+                                    type: 'array',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            sendCount: { type: 'number' },
+                                            receiveCount: { type: 'number' },
+                                            sendGasCost: { type: 'number' },  // Changed to number
+                                            receiveGasCost: { type: 'number' },  // Changed to number
+                                            totalGasCost: { type: 'number' },  // Changed to number
+                                            intervalTs: { type: 'number' }
+                                        },
+                                        required: ['sendCount', 'receiveCount', 'sendGasCost', 'receiveGasCost', 'totalGasCost', 'intervalTs']
+                                    }
+                                }
                             },
-                            required: ['name', 'blockchainId', 'evmChainId', 'chainId', 'sendCount', 'receiveCount', 'sendGasUsed', 'receiveGasUsed', 'totalGasUsed', 'intervalTs']
+                            required: ['name', 'evmChainId', 'values']
                         }
                     }
                 }
@@ -80,122 +102,103 @@ const module: ApiPlugin = {
                 return reply.code(404).send({ error: 'Chain not found' });
             }
 
-            const results: IcmGasUsageStats[] = [];
-
             // Get current timestamp in seconds
             const now = Math.floor(Date.now() / 1000);
             const period = request.query.period || '1d';
             const count = request.query.count || 50;
 
-            let periodSeconds: number | null = null;
-            let since: number | null = null;
+            let periodSeconds: number;
+            if (period === '7d') periodSeconds = 86400 * 7;
+            else if (period === '30d') periodSeconds = 86400 * 30;
+            else if (period === '1h') periodSeconds = 3600;
+            else if (period === '1d') periodSeconds = 86400;
+            else throw new Error(`Invalid period: ${period}`);
 
-            if (period !== 'all') {
-                if (period === '7d') periodSeconds = 86400 * 7;
-                else if (period === '30d') periodSeconds = 86400 * 30;
-                else if (period === '1h') periodSeconds = 3600;
-                else periodSeconds = 86400; // default: 1 day
-                since = now - periodSeconds;
-            }
-
-            // Get the latest interval timestamp to calculate the range for filling gaps
-            const intervalSize = 300; // 5 minutes
-            const latestIntervalTs = Math.floor(now / intervalSize) * intervalSize;
+            const since = now - count * periodSeconds;
 
             const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, 'icm_gas_usage');
 
-            // Build query based on period
-            let query = `
-                SELECT chain_id, interval_ts, send_count, receive_count, send_gas_used, receive_gas_used
+            // Generate intervals using MySQL aggregation with sliding windows relative to 'now'
+            const query = `
+                SELECT 
+                    other_chain_id,
+                    FLOOR((? - interval_ts) / ?) as interval_index,
+                    SUM(send_count) as send_count,
+                    SUM(receive_count) as receive_count,
+                    SUM(send_gas_cost) as send_gas_cost,
+                    SUM(receive_gas_cost) as receive_gas_cost
                 FROM icm_chain_interval_stats
+                WHERE interval_ts >= ? AND interval_ts <= ?
+                GROUP BY other_chain_id, interval_index
+                ORDER BY other_chain_id, interval_index
             `;
-            const params: any[] = [];
 
-            if (since !== null) {
-                query += ` WHERE interval_ts >= ?`;
-                params.push(since);
-            }
+            const [rows] = await indexerConn.execute(query, [now, periodSeconds, since, now]);
+            const results = rows as Array<{
+                other_chain_id: string;
+                interval_index: number;
+                send_count: number;
+                receive_count: number;
+                send_gas_cost: string;
+                receive_gas_cost: string;
+            }>;
 
-            query += ` ORDER BY interval_ts DESC LIMIT ?`;
-            params.push(count);
+            // Group results by chain
+            const resultsByChain: Record<string, IcmGasUsageChainData> = {};
 
-            const [rows] = await indexerConn.execute(query, params);
-            const results_raw = rows as ChainStatsResult[];
+            // Initialize all intervals for all chains
+            const allChains = [...new Set(results.map(r => r.other_chain_id))];
 
-            // Create a map to store existing data
-            const dataMap = new Map<string, Map<number, ChainStatsResult>>();
-            for (const row of results_raw) {
-                if (!dataMap.has(row.chain_id)) {
-                    dataMap.set(row.chain_id, new Map());
-                }
-                dataMap.get(row.chain_id)!.set(row.interval_ts, row);
-            }
+            for (const otherChainId of allChains) {
+                const chainConfig = dbCtx.getChainConfig(otherChainId) || {
+                    chainName: "Unknown",
+                    evmChainId: 0
+                };
 
-            // Generate time intervals to fill gaps
-            const intervals: number[] = [];
-            if (since !== null) {
-                for (let ts = latestIntervalTs; ts >= since && intervals.length < count; ts -= intervalSize) {
-                    intervals.push(ts);
-                }
-            } else {
-                // For 'all' period, get existing intervals and fill gaps between them
-                const existingIntervals = new Set(results_raw.map(r => r.interval_ts));
-                if (existingIntervals.size > 0) {
-                    const intervalArray = Array.from(existingIntervals);
-                    const minTs = Math.min(...intervalArray);
-                    const maxTs = Math.max(...intervalArray);
-                    for (let ts = maxTs; ts >= minTs && intervals.length < count; ts -= intervalSize) {
-                        intervals.push(ts);
+                resultsByChain[otherChainId] = {
+                    name: chainConfig.chainName,
+                    evmChainId: chainConfig.evmChainId,
+                    values: []
+                };
+
+                // Create a map for quick lookup by interval index
+                const chainResults = results.filter(r => r.other_chain_id === otherChainId);
+                const resultMap = new Map(chainResults.map(r => [r.interval_index, r]));
+
+                // Generate all intervals, filling with zeros where no data exists
+                for (let i = 0; i < count; i++) {
+                    const intervalEnd = now - i * periodSeconds;
+                    const intervalStart = intervalEnd - periodSeconds;
+                    const data = resultMap.get(i);
+
+                    if (data) {
+                        // Values are already in ETH/AVAX from the database
+                        const sendGasCost = parseFloat(data.send_gas_cost);
+                        const receiveGasCost = parseFloat(data.receive_gas_cost);
+                        const totalGasCost = sendGasCost + receiveGasCost;
+
+                        resultsByChain[otherChainId].values.push({
+                            sendCount: data.send_count,
+                            receiveCount: data.receive_count,
+                            sendGasCost: sendGasCost,
+                            receiveGasCost: receiveGasCost,
+                            totalGasCost: totalGasCost,
+                            intervalTs: intervalStart
+                        });
+                    } else {
+                        resultsByChain[otherChainId].values.push({
+                            sendCount: 0,
+                            receiveCount: 0,
+                            sendGasCost: 0,
+                            receiveGasCost: 0,
+                            totalGasCost: 0,
+                            intervalTs: intervalStart
+                        });
                     }
                 }
             }
 
-            // Get all unique chain IDs that have any data
-            const allChainIds = new Set(results_raw.map(r => r.chain_id));
-
-            // Fill gaps with zero values
-            for (const chainId of Array.from(allChainIds)) {
-                const chainData = dataMap.get(chainId) || new Map();
-
-                for (const intervalTs of intervals) {
-                    const existing = chainData.get(intervalTs);
-                    const row = existing || {
-                        chain_id: chainId,
-                        interval_ts: intervalTs,
-                        send_count: 0,
-                        receive_count: 0,
-                        send_gas_used: '0',
-                        receive_gas_used: '0'
-                    };
-
-                    const sendGasUsed = BigInt(row.send_gas_used);
-                    const receiveGasUsed = BigInt(row.receive_gas_used);
-                    const totalGasUsed = sendGasUsed + receiveGasUsed;
-
-                    results.push({
-                        name: config.chainName,
-                        blockchainId: config.blockchainId,
-                        evmChainId: config.evmChainId,
-                        chainId: row.chain_id,
-                        sendCount: row.send_count,
-                        receiveCount: row.receive_count,
-                        sendGasUsed: row.send_gas_used,
-                        receiveGasUsed: row.receive_gas_used,
-                        totalGasUsed: totalGasUsed.toString(),
-                        intervalTs: row.interval_ts
-                    });
-                }
-            }
-
-            // Sort by timestamp descending, then by total gas used descending
-            results.sort((a, b) => {
-                if (a.intervalTs !== b.intervalTs) {
-                    return b.intervalTs - a.intervalTs;
-                }
-                return Number(BigInt(b.totalGasUsed) - BigInt(a.totalGasUsed));
-            });
-
-            return reply.send(results.slice(0, count));
+            return reply.send(resultsByChain);
         });
     }
 };

@@ -7,7 +7,7 @@
             "rpcUrl": "https://subnets.avax.network/echo/testnet/rpc",
             "requestBatchSize": 10,
             "maxConcurrentRequests": 50,
-            "rps": 15,
+            "rps": 10,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": true,
             "blocksPerBatch": 1000
@@ -21,7 +21,7 @@
             "rpcUrl": "https://subnets.avax.network/dispatch/testnet/rpc",
             "requestBatchSize": 10,
             "maxConcurrentRequests": 50,
-            "rps": 15,
+            "rps": 25,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": true,
             "blocksPerBatch": 1000
@@ -38,7 +38,7 @@
             "rps": 1000,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 2000
+            "blocksPerBatch": 10000
         }
     },
     {
@@ -52,21 +52,7 @@
             "rps": 1000,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 2000
-        }
-    },
-    {
-        "chainName": "Lamina1",
-        "blockchainId": "UhReZTXT8Cqsjat9ghRtCe5kBQPQexQB5zG5Fvf3egrdYfyoJ",
-        "evmChainId": 10849,
-        "rpcConfig": {
-            "rpcUrl": "https://idx3.solokhin.com/api/10849/rpc",
-            "requestBatchSize": 100,
-            "maxConcurrentRequests": 100,
-            "rps": 1000,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 2000
+            "blocksPerBatch": 10000
         }
     }
 ]

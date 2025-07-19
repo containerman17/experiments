@@ -11,48 +11,15 @@ const RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC = '0x292ee90bbaf70b5d4936025e09d56ba08f3
 interface ChainIntervalStats {
     send_count: number;
     receive_count: number;
-    send_gas_used: bigint;
-    receive_gas_used: bigint;
+    send_gas_cost: bigint;
+    receive_gas_cost: bigint;
 }
 
-// Decode SendCrossChainMessage event
-const decodeSendEvent = (log: viem.Log) => {
-    // Teleporter SendCrossChainMessage event structure:
-    // event SendCrossChainMessage(
-    //     bytes32 indexed destinationBlockchainID,
-    //     uint256 indexed messageID,
-    //     TeleporterMessage message,
-    //     TeleporterFeeInfo feeInfo
-    // );
-
-    // For now, we'll extract the destination blockchain ID from topics
-    const destinationBlockchainID = log.topics[2]; // First indexed parameter - message id, second - destination blockchain id
-    return {
-        destinationBlockchainID: destinationBlockchainID || '0x0',
-    };
-};
-
-// Decode ReceiveCrossChainMessage event  
-const decodeReceiveEvent = (log: viem.Log) => {
-    // Teleporter ReceiveCrossChainMessage event structure:
-    // event ReceiveCrossChainMessage(
-    //     bytes32 indexed sourceBlockchainID,
-    //     uint256 indexed messageID,
-    //     address indexed deliverer,
-    //     address rewardRedeemer,
-    //     TeleporterMessage message
-    // );
-
-    // Extract the source blockchain ID from topics
-    const sourceBlockchainID = log.topics[2]; // First indexed parameter - message id, second - source blockchain id
-    return {
-        sourceBlockchainID: sourceBlockchainID || '0x0',
-    };
-};
+export const ICM_CHAIN_INTERVAL_SIZE = 300; // 5 minutes
 
 const module: IndexingPlugin = {
     name: "icm_gas_usage",
-    version: 8,
+    version: 19,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 
@@ -61,13 +28,13 @@ const module: IndexingPlugin = {
         // Create table for per-chain per-interval statistics
         await db.execute(`
             CREATE TABLE IF NOT EXISTS icm_chain_interval_stats (
-                chain_id VARCHAR(50),
+                other_chain_id VARCHAR(50),
                 interval_ts INT,
                 send_count INT NOT NULL DEFAULT 0,
                 receive_count INT NOT NULL DEFAULT 0,
-                send_gas_used VARCHAR(100) NOT NULL DEFAULT '0',
-                receive_gas_used VARCHAR(100) NOT NULL DEFAULT '0',
-                PRIMARY KEY (chain_id, interval_ts)
+                send_gas_cost DECIMAL(30,18) NOT NULL DEFAULT 0,
+                receive_gas_cost DECIMAL(30,18) NOT NULL DEFAULT 0,
+                PRIMARY KEY (other_chain_id, interval_ts)
             )
         `);
 
@@ -91,21 +58,28 @@ const module: IndexingPlugin = {
 
         for (const tx of batch.txs) {
             const gasUsed = BigInt(tx.receipt.gasUsed || '0');
-            const intervalTs = Math.floor(tx.blockTs / 300) * 300; // 5 minutes
+            const gasPrice = BigInt(tx.receipt.effectiveGasPrice || '0');
+            const gasCost = gasUsed * gasPrice; // Cost in wei
+            const intervalTs = Math.floor(tx.blockTs / ICM_CHAIN_INTERVAL_SIZE) * ICM_CHAIN_INTERVAL_SIZE;
 
-            // Check for both event types
-            let hasSend = false;
-            let hasReceive = false;
+            // First, count all ICM events in this transaction
+            let sendEventCount = 0;
+            let receiveEventCount = 0;
 
             for (const log of tx.receipt.logs) {
                 if (log.address !== TELEPORTER_ADDRESS) continue;
                 const topic = log.topics[0];
-                if (topic === SEND_CROSS_CHAIN_MESSAGE_TOPIC) hasSend = true;
-                if (topic === RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC) hasReceive = true;
+                if (topic === SEND_CROSS_CHAIN_MESSAGE_TOPIC) sendEventCount++;
+                if (topic === RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC) receiveEventCount++;
             }
 
-            const gasPerEvent = hasSend && hasReceive ? gasUsed / 2n : gasUsed;
+            const totalEventCount = sendEventCount + receiveEventCount;
+            if (totalEventCount === 0) continue;
 
+            // Calculate gas cost per event
+            const gasCostPerEvent = gasCost / BigInt(totalEventCount);
+
+            // Now process events and allocate costs
             for (const log of tx.receipt.logs) {
                 if (log.address !== TELEPORTER_ADDRESS) continue;
                 const topic = log.topics[0];
@@ -114,12 +88,10 @@ const module: IndexingPlugin = {
                 let isSend: boolean;
 
                 if (topic === SEND_CROSS_CHAIN_MESSAGE_TOPIC) {
-                    const event = decodeSendEvent(log as unknown as viem.Log);
-                    chainId = encodingUtils.hexToCB58(event.destinationBlockchainID);
+                    chainId = encodingUtils.hexToCB58(log.topics[2] || '0x0');
                     isSend = true;
                 } else if (topic === RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC) {
-                    const event = decodeReceiveEvent(log as unknown as viem.Log);
-                    chainId = encodingUtils.hexToCB58(event.sourceBlockchainID);
+                    chainId = encodingUtils.hexToCB58(log.topics[2] || '0x0');
                     isSend = false;
                 } else {
                     continue;
@@ -136,37 +108,39 @@ const module: IndexingPlugin = {
                     chainMap.set(intervalTs, {
                         send_count: 0,
                         receive_count: 0,
-                        send_gas_used: 0n,
-                        receive_gas_used: 0n
+                        send_gas_cost: 0n,
+                        receive_gas_cost: 0n
                     });
                 }
                 const stats = chainMap.get(intervalTs)!;
 
                 if (isSend) {
                     stats.send_count += 1;
-                    stats.send_gas_used += gasPerEvent;
+                    stats.send_gas_cost += gasCostPerEvent;
                 } else {
                     stats.receive_count += 1;
-                    stats.receive_gas_used += gasPerEvent;
+                    stats.receive_gas_cost += gasCostPerEvent;
                 }
             }
         }
 
-        console.log(updates);
-
         // Update database
         for (const [chainId, chainMap] of updates) {
             for (const [intervalTs, stats] of chainMap) {
+                // Convert from wei to ETH/AVAX (divide by 10^18)
+                const sendGasCostInEth = Number(stats.send_gas_cost) / 1e18;
+                const receiveGasCostInEth = Number(stats.receive_gas_cost) / 1e18;
+
                 await db.execute(`
                     INSERT INTO icm_chain_interval_stats 
-                    (chain_id, interval_ts, send_count, receive_count, send_gas_used, receive_gas_used)
+                    (other_chain_id, interval_ts, send_count, receive_count, send_gas_cost, receive_gas_cost)
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE
                         send_count = send_count + VALUES(send_count),
                         receive_count = receive_count + VALUES(receive_count),
-                        send_gas_used = CAST(CAST(send_gas_used AS UNSIGNED) + CAST(VALUES(send_gas_used) AS UNSIGNED) AS CHAR),
-                        receive_gas_used = CAST(CAST(receive_gas_used AS UNSIGNED) + CAST(VALUES(receive_gas_used) AS UNSIGNED) AS CHAR)
-                `, [chainId, intervalTs, stats.send_count, stats.receive_count, stats.send_gas_used.toString(), stats.receive_gas_used.toString()]);
+                        send_gas_cost = send_gas_cost + VALUES(send_gas_cost),
+                        receive_gas_cost = receive_gas_cost + VALUES(receive_gas_cost)
+                `, [chainId, intervalTs, stats.send_count, stats.receive_count, sendGasCostInEth, receiveGasCostInEth]);
             }
         }
 

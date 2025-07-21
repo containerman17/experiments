@@ -1,4 +1,4 @@
-const AVALANCHE_RPC_URL = 'http://node001:9650';
+const AVALANCHE_RPC_URL = 'http://localhost:9650';
 
 interface SubnetInfo {
     exists: boolean;

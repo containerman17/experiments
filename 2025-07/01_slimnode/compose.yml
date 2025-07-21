@@ -1,77 +1,72 @@
 services:
-  # SlimNode API Service
-  slimnode-api:
-    build: .
-    container_name: slimnode-api
-    ports:
-      - "3000:3000"
-    environment:
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - NODE_COUNT=${NODE_COUNT:-3}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - .:/app/workspace
-    working_dir: /app/workspace
-    restart: unless-stopped
-    networks:
-      - avalanche
-    depends_on:
-      - node001
-
-  # Cloudflare Tunnel
-  cloudflare-tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflare-tunnel
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    restart: unless-stopped
-    networks:
-      - avalanche
-
-  # Avalanche Nodes
   node001:
     image: avaplatform/avalanchego:latest
     container_name: node001
     ports:
-      - "9650:9650"
-      - "9651:9651"
+      - 9650:9650
+      - 9651:9651
     volumes:
       - /avadata/node001:/root/.avalanchego
     environment:
+      AVAGO_TRACK_SUBNETS: 
       AVAGO_PUBLIC_IP_RESOLUTION_SERVICE: opendns
       AVAGO_HTTP_HOST: 0.0.0.0
-      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: "true"
-      AVAGO_TRACK_SUBNETS: ""
+      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: true
       AVAGO_NETWORK_ID: fuji
-      AVAGO_HTTP_ALLOWED_HOSTS: "*"
+      AVAGO_HTTP_ALLOWED_HOSTS: '*'
       AVAGO_HTTP_PORT: 9650
       AVAGO_STAKING_PORT: 9651
     restart: unless-stopped
     networks:
       - avalanche
-
   node002:
     image: avaplatform/avalanchego:latest
     container_name: node002
     ports:
-      - "9652:9650"
-      - "9653:9651"
+      - 9652:9652
+      - 9653:9653
     volumes:
       - /avadata/node002:/root/.avalanchego
     environment:
+      AVAGO_TRACK_SUBNETS: 
       AVAGO_PUBLIC_IP_RESOLUTION_SERVICE: opendns
       AVAGO_HTTP_HOST: 0.0.0.0
-      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: "true"
-      AVAGO_TRACK_SUBNETS: ""
+      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: true
       AVAGO_NETWORK_ID: fuji
-      AVAGO_HTTP_ALLOWED_HOSTS: "*"
-      AVAGO_HTTP_PORT: 9650
-      AVAGO_STAKING_PORT: 9651
+      AVAGO_HTTP_ALLOWED_HOSTS: '*'
+      AVAGO_HTTP_PORT: 9652
+      AVAGO_STAKING_PORT: 9653
     restart: unless-stopped
     networks:
       - avalanche
-
+  node003:
+    image: avaplatform/avalanchego:latest
+    container_name: node003
+    ports:
+      - 9654:9654
+      - 9655:9655
+    volumes:
+      - /avadata/node003:/root/.avalanchego
+    environment:
+      AVAGO_TRACK_SUBNETS: 
+      AVAGO_PUBLIC_IP_RESOLUTION_SERVICE: opendns
+      AVAGO_HTTP_HOST: 0.0.0.0
+      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: true
+      AVAGO_NETWORK_ID: fuji
+      AVAGO_HTTP_ALLOWED_HOSTS: '*'
+      AVAGO_HTTP_PORT: 9654
+      AVAGO_STAKING_PORT: 9655
+    restart: unless-stopped
+    networks:
+      - avalanche
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: tunnel
+    environment:
+      TODO_ADD_TUNNEL_TOKEN: 'TODO:'
+    restart: unless-stopped
+    network_mode: host
+    command: tunnel --url http://localhost:3000
 networks:
   avalanche:
     driver: bridge

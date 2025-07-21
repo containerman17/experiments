@@ -12,6 +12,10 @@ const server = fastify({ logger: true });
 // TODO: fix - move bootstrap error message to const as required
 const BOOTSTRAP_ERROR_MESSAGE = 'Node is not ready or still bootstrapping';
 
+// Initialize Docker containers on startup
+console.log('Starting Docker containers...');
+generateDockerCompose();
+
 // Rate limiting middleware
 server.addHook('preHandler', (req, reply, done) => {
     const clientIP = extractClientIP(req.headers);
@@ -44,14 +48,14 @@ server.addHook('preHandler', (req, reply, done) => {
     done();
 });
 
-server.post('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
+server.get('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
     const { subnetId } = req.params as { subnetId: string };
 
     try {
         // Validate subnet exists on Avalanche network
         const subnetExists = await checkSubnetExists(subnetId);
         if (!subnetExists) {
-            return reply.code(404).send({
+            return reply.code(400).send({
                 success: false,
                 error: `Subnet ${subnetId} does not exist on Avalanche network`
             });
@@ -93,7 +97,7 @@ server.post('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
         // Add subnet to node
         database.addSubnetToNode(targetNode, subnetId);
 
-        // Regenerate docker-compose.yml
+        // Regenerate compose.yml and restart containers
         generateDockerCompose();
 
         return {
@@ -164,8 +168,11 @@ server.post('/ext/bc/:chainId/rpc', async (req, reply) => {
             body: JSON.stringify(req.body)
         });
 
-        const data = await response.json();
-        reply.code(response.status).send(data);
+        // Forward response as-is
+        const data = await response.text();
+        reply.code(response.status)
+            .header('Content-Type', response.headers.get('Content-Type') || 'application/json')
+            .send(data);
 
     } catch (error) {
         console.error('Error proxying request:', error);

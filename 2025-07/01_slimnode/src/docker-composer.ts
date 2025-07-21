@@ -6,14 +6,16 @@ import path from 'path';
 interface ComposeService {
     image: string;
     container_name: string;
-    ports: string[];
+    ports?: string[];
+    volumes?: string[];
     environment: Record<string, string>;
     restart: string;
-    networks: string[];
+    networks?: string[];
+    network_mode?: string;
+    command?: string;
 }
 
 interface ComposeFile {
-    version: string;
     services: Record<string, ComposeService>;
     networks: {
         avalanche: {
@@ -25,7 +27,6 @@ interface ComposeFile {
 export function generateDockerCompose(): void {
     const nodes = database.getAllNodes();
     const compose: ComposeFile = {
-        version: '3.8',
         services: {},
         networks: {
             avalanche: {
@@ -45,42 +46,54 @@ export function generateDockerCompose(): void {
             image: 'avaplatform/avalanchego:latest',
             container_name: nodeId,
             ports: [
-                `${httpPort}:9650`,
-                `${stakePort}:9651`
+                `${httpPort}:${httpPort}`,
+                `${stakePort}:${stakePort}`
+            ],
+            volumes: [
+                `/avadata/${nodeId}:/root/.avalanchego`
             ],
             environment: {
-                AVAGO_TRACK_SUBNETS: subnets.sort().join(',') || ''
+                AVAGO_TRACK_SUBNETS: subnets.sort().join(',') || '',
+                AVAGO_PUBLIC_IP_RESOLUTION_SERVICE: 'opendns',
+                AVAGO_HTTP_HOST: '0.0.0.0',
+                AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: "true",
+                AVAGO_NETWORK_ID: 'fuji',
+                AVAGO_HTTP_ALLOWED_HOSTS: "'*'",
+                AVAGO_HTTP_PORT: `${httpPort}`,
+                AVAGO_STAKING_PORT: `${stakePort}`
+
             },
             restart: 'unless-stopped',
             networks: ['avalanche']
         };
     });
 
-    // Add Cloudflare tunnel service (placeholder)
-    compose.services['cloudflare-tunnel'] = {
+    // Add Cloudflare tunnel service - needs host network to access API on host:3000
+    compose.services['tunnel'] = {
         image: 'cloudflare/cloudflared:latest',
-        container_name: 'cloudflare-tunnel',
-        ports: [],
+        container_name: 'tunnel',
         environment: {
-            TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
+            TODO_ADD_TUNNEL_TOKEN: "'TODO:'"
+            // TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
         },
         restart: 'unless-stopped',
-        networks: ['avalanche']
+        network_mode: 'host',
+        command: 'tunnel --url http://localhost:3000'
     };
 
     // Write to file
     const yamlContent = generateYaml(compose);
-    const composePath = path.join(process.cwd(), 'docker-compose.yml');
+    const composePath = path.join(process.cwd(), 'compose.yml');
     writeFileSync(composePath, yamlContent);
     console.log('Docker compose file regenerated');
 
-    // Rebuild and restart containers as required by TASK.md
+    // TASK.md requirement: "call docker compose up -d" on any database change
     try {
         execSync('docker compose up -d', {
             cwd: process.cwd(),
-            stdio: 'pipe'
+            stdio: 'inherit'
         });
-        console.log('Docker containers restarted');
+        console.log('Docker containers restarted with new configuration');
     } catch (error) {
         console.error('Failed to restart docker containers:', error);
     }

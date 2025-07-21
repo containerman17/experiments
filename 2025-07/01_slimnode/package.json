@@ -1,17 +1,28 @@
 {
   "name": "01_slimnode",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "SlimNode API - Avalanche subnet node management service",
+  "main": "src/server.ts",
   "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "avalanche",
+    "subnet",
+    "blockchain",
+    "api",
+    "docker"
+  ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@types/node": "^24.0.15",
+    "dotenv": "^17.2.0",
+    "fastify": "^5.4.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }

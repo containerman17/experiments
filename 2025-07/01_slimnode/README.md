@@ -1,316 +1,246 @@
-# SlimNode - Avalanche Subnet Node Manager
+# SlimNode API
 
-SlimNode is a high-performance API service that manages multiple Avalanche nodes with intelligent subnet distribution, automatic load balancing, and seamless proxy routing. Each node can host up to 16 subnets with automatic rebalancing based on usage patterns.
+An API service that manages multiple Avalanche nodes, each hosting up to 16 subnets, with automatic subnet registration, load balancing, and proxy routing.
 
 ## Features
 
-- **Automatic Subnet Management**: Register subnets via simple API calls with intelligent node selection
-- **Load Balancing**: Distributes subnets evenly across nodes, replacing oldest subnets when at capacity
-- **Smart Proxy**: Routes blockchain requests to the correct node based on chain ID
-- **Rate Limiting**: Built-in protection with 2 req/sec per IP with burst support
-- **Docker Integration**: Automatic Docker Compose generation and management
-- **Cloudflare Tunnel**: Secure public access without exposing ports
-- **Real-time Validation**: Verifies subnet existence before registration
-- **Idempotent Operations**: Safe to retry any API call
+- **Subnet Management**: Automatically assign subnets to nodes with load balancing
+- **Dynamic Docker Compose**: Generates docker-compose.yml based on subnet assignments  
+- **Proxy Routing**: Routes RPC requests to the correct node based on chainId
+- **Rate Limiting**: 2 requests/second per IP with burst allowance
+- **Cloudflare Integration**: Built-in tunnel support for public access
 
 ## Quick Start
 
-### Prerequisites
+1. **Setup Environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your values
+   ```
 
-- Docker and Docker Compose
-- Node.js 24+ (for local development)
-- Cloudflare account (for tunnel setup)
+2. **Start Services**:
+   ```bash
+   docker-compose up -d
+   ```
 
-### Installation
+3. **Register a Subnet**:
+   ```bash
+   curl -X POST "http://localhost:3000/node_admin/registerSubnet/FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1?password=your_password"
+   ```
 
-1. Download the docker-compose.yml file:
-```bash
-curl -O https://raw.githubusercontent.com/your-org/slimnode/main/docker-compose.yml
-```
-
-2. Create your `.env` file in the same directory:
-```env
-# API Configuration
-ADMIN_PASSWORD=your-secure-password-here
-NODE_COUNT=5
-
-# Cloudflare Tunnel
-TUNNEL_TOKEN=your-cloudflare-tunnel-token
-
-# Avalanche RPC (optional, defaults to public endpoint)
-AVALANCHE_RPC_URL=https://api.avax.network/ext/bc/P
-```
-
-3. Start the services:
-```bash
-docker-compose up -d
-```
-
-The API will be available at `http://localhost:3000` and through your Cloudflare tunnel domain.
-
-> **Note**: The SlimNode API image is available on Docker Hub as `slimnode/api:latest`
-
-## API Reference
-
-### Register Subnet
-
-Registers a subnet to be tracked by the node cluster. Automatically handles node selection and rebalancing.
+## Environment Variables
 
 ```bash
-POST /node_admin/registerSubnet/:subnetId?password=your-password
-
-# Example
-curl -X POST "http://localhost:3000/node_admin/registerSubnet/FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1?password=your-password"
+ADMIN_PASSWORD=your_admin_password_here  # Required: Password for admin endpoints
+NODE_COUNT=3                            # Optional: Number of Avalanche nodes (default: 3, max: 999)
+CLOUDFLARE_TUNNEL_TOKEN=your_token_here  # Optional: Cloudflare tunnel token
 ```
 
-**Response:**
+## API Endpoints
+
+### Admin Endpoints (Protected)
+
+All `/node_admin/` endpoints require the `password` query parameter.
+
+#### Register Subnet
+```http
+POST /node_admin/registerSubnet/:subnetId?password=<admin_password>
+```
+
+Registers a subnet to be tracked by a node. The API will:
+1. Validate the subnet exists on Avalanche network via local node001
+2. Find the node with the lowest subnet count
+3. If all nodes are full (16 subnets each), replace the oldest subnet
+4. Update the database and regenerate docker-compose.yml
+
+**Example**:
+```bash
+curl -X POST "http://localhost:3000/node_admin/registerSubnet/FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1?password=test123"
+```
+
+**Response**:
 ```json
 {
   "success": true,
-  "node": "node001",
-  "message": "Subnet registered successfully"
+  "message": "Subnet FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1 registered to node001",
+  "nodeId": "node001",
+  "replacedSubnet": null,
+  "nodeSubnets": ["FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1"]
 }
 ```
 
-### Proxy Requests
+#### View Status
+```http
+GET /node_admin/status?password=<admin_password>
+```
 
-Route blockchain RPC requests to the appropriate node hosting the subnet.
+Returns the current state of all nodes and their registered subnets.
 
+**Example**:
 ```bash
-POST /ext/bc/:chainId/rpc
+curl "http://localhost:3000/node_admin/status?password=test123"
+```
 
-# Example
-curl -X POST http://localhost:3000/ext/bc/98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp/rpc \
+**Response**:
+```json
+{
+  "nodes": {
+    "node001": {
+      "FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1": 1704067200000
+    },
+    "node002": {},
+    "node003": {}
+  },
+  "nodeCount": 3
+}
+```
+
+### Public Endpoints
+
+#### Proxy RPC Requests
+```http
+POST /ext/bc/:chainId/rpc
+```
+
+Proxies RPC requests to the appropriate Avalanche node based on the chainId. The API will:
+1. Extract chainId from the URL path
+2. Look up which subnet this chain belongs to via local node001 (cached for 10 minutes)
+3. Find which node hosts that subnet
+4. Forward the request to the correct node
+
+**Example**:
+```bash
+curl -X POST "http://localhost:3000/ext/bc/98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp/rpc" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "eth_blockNumber",
-    "params": [],
+    "method": "eth_getBalance",
+    "params": ["0x742d35cc6634c0532925a3b8d8b8e302e3db24c3", "latest"],
     "id": 1
   }'
 ```
 
-**Error Response (subnet not tracked):**
-```json
-{
-  "error": {
-    "code": 404,
-    "message": "This subnet is not tracked by any node"
-  }
-}
-```
+## Rate Limiting
 
-## Configuration
+All endpoints are rate limited to **2 requests per second per IP** with a **5-token burst allowance**.
 
-### Environment Variables
+- Uses Cloudflare headers (`CF-Connecting-IP`) when available
+- Returns `429 Too Many Requests` when exceeded
+- Includes `Retry-After` header with seconds to wait
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `ADMIN_PASSWORD` | Password for admin endpoints | - | Yes |
-| `NODE_COUNT` | Number of nodes to manage (1-999) | 1 | No |
-| `TUNNEL_TOKEN` | Cloudflare tunnel token | - | Yes |
-| `AVALANCHE_RPC_URL` | Avalanche P-Chain RPC endpoint | https://api.avax.network/ext/bc/P | No |
-| `PORT` | API server port | 3000 | No |
-| `DB_PATH` | Path to database file | ./data/nodes.json | No |
+## Node Management
 
-### Rate Limiting
+### Port Allocation
 
-The API implements intelligent rate limiting:
-- **Limit**: 2 requests per second per IP
-- **Burst**: Allows short bursts up to 10 requests
-- **Queue**: Excess requests are queued rather than rejected
-- **IP Detection**: Uses Cloudflare headers (CF-Connecting-IP) when available
+Nodes are assigned ports incrementally:
+- `node001`: 9650 (HTTP), 9651 (Staking)  
+- `node002`: 9652 (HTTP), 9653 (Staking)
+- `node003`: 9654 (HTTP), 9655 (Staking)
+- etc.
 
-### Docker Compose Management
+### Subnet Assignment Logic
 
-SlimNode automatically generates and updates `docker-compose.yml` when subnets are added or removed. Each node is configured with:
+1. **New Registration**: Assigns to node with lowest subnet count
+2. **Full Capacity**: When all nodes have 16 subnets, replaces the oldest subnet
+3. **Load Balancing**: Automatically distributes subnets across available nodes
 
-- Sequential port allocation (9650/9651 for node001, +2 for each additional)
-- `AVAGO_TRACK_SUBNETS` environment variable with comma-separated subnet IDs
-- Automatic container naming and networking
+### Docker Compose Generation
 
-Example generated configuration:
+The API automatically generates `docker-compose.yml` when subnets are registered:
+
 ```yaml
 services:
-  slimnode-api:
-    image: slimnode/api:latest
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - avalanche
-
-  cloudflare-tunnel:
-    image: cloudflare/cloudflared:latest
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    networks:
-      - avalanche
-
   node001:
     image: avaplatform/avalanchego:latest
+    environment:
+      AVAGO_TRACK_SUBNETS: "subnet1,subnet2,subnet3"  # Alphabetically sorted
     ports:
       - "9650:9650"
       - "9651:9651"
-    environment:
-      - AVAGO_TRACK_SUBNETS=subnet1,subnet2,subnet3
-    networks:
-      - avalanche
-
-  node002:
-    image: avaplatform/avalanchego:latest
-    ports:
-      - "9652:9650"
-      - "9653:9651"
-    environment:
-      - AVAGO_TRACK_SUBNETS=subnet4,subnet5
-    networks:
-      - avalanche
 ```
-
-## Architecture
-
-### Database Structure
-
-SlimNode uses a simple JSON database for tracking subnet assignments:
-
-```json
-{
-  "node001": {
-    "FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1": 1753101451446,
-    "2F8j9Rf7E3qPbPXYGNwNkNBkkhpA8Hc7J8FSZZ8L8dv8mRQXQF": 1753101451000
-  },
-  "node002": {
-    "98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp": 1753101452000
-  }
-}
-```
-
-### Subnet Registration Flow
-
-1. **Authentication**: Validates admin password
-2. **Subnet Validation**: Checks if subnet exists on Avalanche network
-3. **Duplicate Check**: Ensures subnet isn't already registered
-4. **Node Selection**: Finds node with lowest subnet count
-5. **Capacity Management**: If all nodes full, replaces oldest subnet
-6. **Docker Update**: Regenerates compose file and restarts affected containers
-
-### Proxy Caching
-
-The proxy service implements intelligent caching:
-- Chain ID to Subnet ID mappings cached for 10 minutes
-- Failed lookups cached to prevent repeated API calls
-- Memory-based cache with automatic expiration
-
-## Monitoring
-
-### Health Check
-
-```bash
-GET /health
-
-# Response
-{
-  "status": "healthy",
-  "nodes": 5,
-  "totalSubnets": 42,
-  "uptime": 3600
-}
-```
-
-### Metrics
-
-The application exposes metrics at `/metrics` including:
-- Request rates per endpoint
-- Cache hit/miss ratios
-- Node subnet distribution
-- Docker container status
 
 ## Cloudflare Tunnel Setup
 
-1. Create a tunnel in Cloudflare dashboard
-2. Copy the tunnel token
-3. Add to `.env` file
-4. The tunnel container will automatically connect
+1. **Create Tunnel**: 
+   ```bash
+   cloudflared tunnel create slimnode
+   ```
 
-Your API will be available at: `https://your-tunnel.cloudflareaccess.com`
+2. **Get Token**:
+   ```bash
+   cloudflared tunnel token slimnode
+   ```
 
-### Local Setup
+3. **Add to Environment**:
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN=your_token_here
+   ```
+
+4. **Configure DNS**: Point your domain to the tunnel in Cloudflare dashboard
+
+## Error Responses
+
+### 401 Unauthorized
+```json
+{
+  "error": "Unauthorized"
+}
+```
+
+### 404 Not Found
+```json
+{
+  "error": "Subnet FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1 does not exist on Avalanche network"
+}
+```
+
+### 429 Rate Limited
+```json
+{
+  "error": "Rate limit exceeded",
+  "retryAfter": 1
+}
+```
+
+### 503 Service Unavailable
+```json
+{
+  "error": "Node is not ready or still bootstrapping",
+  "chainId": "98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp",
+  "retry": true
+}
+```
+
+## Development
+
+### Running Locally
 
 ```bash
 # Install dependencies
 npm install
 
-# Run in development mode
+# Start development server
 npm run dev
+```
 
+### Building
+
+```bash
 # Build for production
 npm run build
 
-# Run tests
-npm test
-
-# Build Docker image locally
-docker build -t slimnode/api:local .
-
-# Push to Docker Hub (maintainers only)
-docker push slimnode/api:latest
+# Start production server
+npm start
 ```
 
-### Project Structure
+## Architecture
 
-```
-slimnode/
-├── src/
-│   ├── server.ts         # Main API server
-│   ├── routes.ts         # Route handlers
-│   ├── database.ts       # Database management
-│   ├── docker.ts         # Docker compose generation
-│   ├── proxy.ts          # Proxy service
-│   └── rateLimit.ts      # Rate limiting middleware
-├── data/
-│   └── nodes.json        # Subnet database
-├── docker-compose.yml    # Generated automatically
-├── Dockerfile
-└── .env                  # Configuration
-```
+- **Database**: In-memory storage with node → subnet mapping
+- **Validation**: Real-time subnet existence checks via local node001
+- **Caching**: 10-minute cache for chainId → subnetId lookups via local node001
+- **Proxy**: Direct request forwarding to appropriate node ports
+- **Rate Limiting**: Token bucket algorithm with burst allowance
 
-## Troubleshooting
+## License
 
-### Common Issues
-
-**Subnet registration fails**
-- Verify subnet exists: Check the subnet ID is valid on Avalanche network
-- Check authentication: Ensure password is correct
-- Review logs: `docker logs slimnode-api`
-
-**Proxy returns 404**
-- Subnet may not be tracked: Register it first
-- Chain ID might be invalid: Verify on Avalanche explorer
-- Cache might be stale: Wait 10 minutes or restart API
-
-**Rate limit errors**
-- Reduce request frequency
-- Check if behind proxy: Ensure Cloudflare headers are passed
-- Implement client-side retry with exponential backoff
-
-## Security Considerations
-
-- Always use HTTPS in production (handled by Cloudflare tunnel)
-- Rotate admin password regularly
-- Keep node ports (965X) behind firewall, only expose through API
-- Monitor for unusual subnet registration patterns
-- Regular backups of `nodes.json` database
-
-## Contributing
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+MIT

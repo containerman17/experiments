@@ -1,0 +1,35 @@
+services:
+  node001:
+    image: avaplatform/subnet-evm_avalanchego:latest
+    container_name: node001
+    ports:
+      - "127.0.0.1:9650:9650"
+      - "9651:9651"
+    volumes:
+      - /avadata/node001:/root/.avalanchego
+    environment:
+      AVAGO_PUBLIC_IP_RESOLUTION_SERVICE: opendns
+      AVAGO_HTTP_HOST: 0.0.0.0
+      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: "true"
+      AVAGO_TRACK_SUBNETS: ""
+      AVAGO_NETWORK_ID: fuji
+      AVAGO_HTTP_ALLOWED_HOSTS: "*"
+      AVAGO_HTTP_PORT: 9650
+      AVAGO_STAKING_PORT: 9651
+  node002:
+    image: avaplatform/subnet-evm_avalanchego:latest
+    container_name: node002
+    ports:
+      - "127.0.0.1:9652:9652"
+      - "9653:9653"
+    volumes:
+      - /avadata/node002:/root/.avalanchego
+    environment:
+      AVAGO_PUBLIC_IP_RESOLUTION_SERVICE: opendns
+      AVAGO_HTTP_HOST: 0.0.0.0
+      AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK: "true"
+      AVAGO_TRACK_SUBNETS: ""
+      AVAGO_NETWORK_ID: fuji
+      AVAGO_HTTP_ALLOWED_HOSTS: "*"
+      AVAGO_HTTP_PORT: 9652
+      AVAGO_STAKING_PORT: 9653

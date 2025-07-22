@@ -7,12 +7,27 @@ An API service that manages multiple Avalanche nodes, each hosting up to 16 subn
 The SlimNode API runs **outside Docker using pm2** while Avalanche nodes run **inside Docker containers**. This prevents self-restart issues and provides better process management.
 
 - **API**: Runs with pm2 on host (port 3000)
-- **Avalanche Nodes**: Run in Docker (ports 9650, 9652, 9654...)
+- **Bootnode**: Dedicated bootstrap node in Docker (ports 9650/9651)
+- **Subnet Nodes**: Run in Docker (ports 9652/9653, 9654/9655, 9656/9657...)
 - **Cloudflare Tunnel**: Runs in Docker with `network_mode: host` to access the API
 
 ### Network Configuration
 
 The Cloudflare tunnel container uses `network_mode: host` to access the SlimNode API running on the host machine at `localhost:3000`. This allows the tunnel to proxy external traffic to the API without complex Docker networking.
+
+### Bootnode Architecture
+
+The SlimNode API uses a dedicated **bootnode** for network bootstrapping:
+
+- **Bootnode**: A dedicated Avalanche node that runs on ports 9650/9651 and serves as the bootstrap point for all other nodes
+- **Subnet Nodes**: Regular Avalanche nodes (node001, node002, etc.) that track subnets and connect to the bootnode for initial synchronization
+- **Bootstrap Process**: All subnet nodes automatically connect to the bootnode using the `BOOTNODE_ID` and `MY_IP` environment variables
+
+This architecture provides:
+- **Stable Bootstrap Point**: The bootnode provides a consistent entry point for network synchronization
+- **Clean Separation**: Bootstrap responsibilities are separated from subnet tracking
+- **Easier Scaling**: New subnet nodes automatically connect to the established bootnode
+- **Network Stability**: The bootnode can remain stable while subnet nodes are restarted for configuration changes
 
 ### Docker Container Management
 
@@ -50,7 +65,7 @@ For optimal bootstrapping, start with a single node first:
    # Wait for node to sync (may take several minutes)
    ```
 
-3. **Get Node ID**:
+3. **Get Bootnode ID**:
    ```bash
    curl -X POST --data '{
        "jsonrpc":"2.0",
@@ -59,10 +74,11 @@ For optimal bootstrapping, start with a single node first:
    }' -H 'content-type:application/json;' 127.0.0.1:9650/ext/info | jq -r ".result.nodeID"
    ```
 
-4. **Set Bootstrap Node ID**:
+4. **Set Bootstrap Configuration**:
    ```bash
-   # Add the NodeID from step 3 to your .env file
-   echo "NODE001_ID=NodeID-LSaQisuyTXKQV9mdifzFpejY4wm1noUWh" >> .env
+   # Add the NodeID from step 3 and your external IP to your .env file
+   echo "BOOTNODE_ID=NodeID-LSaQisuyTXKQV9mdifzFpejY4wm1noUWh" >> .env
+   echo "MY_IP=your.external.ip.address" >> .env
    ```
 
 5. **Scale to Multiple Nodes**:
@@ -112,9 +128,11 @@ If you prefer to start with multiple nodes immediately:
 
 ```bash
 ADMIN_PASSWORD=your_admin_password_here  # Required: Password for admin endpoints
-NODE_COUNT=3                            # Optional: Number of Avalanche nodes (default: 3, max: 999)
+NODE_COUNT=3                            # Optional: Number of subnet nodes (default: 3, max: 999)
 DATA_DIR=./data                         # Optional: Data directory for database storage (default: ./data)
 CLOUDFLARE_TUNNEL_TOKEN=your_token_here  # Optional: Cloudflare tunnel token
+BOOTNODE_ID=NodeID-xxx                  # Optional: Bootstrap node ID for multi-node setup
+MY_IP=your.external.ip.address          # Optional: External IP for bootstrap configuration
 ```
 
 ## API Endpoints
@@ -247,12 +265,27 @@ pm2 startup
 
 ```bash
 # View logs (containers are managed automatically by API)
-docker logs node001
-docker logs tunnel
+docker logs bootnode    # Bootstrap node logs
+docker logs node001     # First subnet node logs
+docker logs tunnel      # Cloudflare tunnel logs
 
 # Manual container management (not normally needed)
 docker-compose down  # Stop all containers
 docker-compose up -d # Start all containers
+```
+
+### Status Monitoring
+
+```bash
+# Check status of all nodes (bootnode + subnet nodes)
+./scripts/check-status.sh
+
+# Check status and restart failed nodes
+./scripts/check-status.sh restart
+
+# Alternative: Use the TypeScript status script directly
+npx tsx src/scripts/status.ts
+npx tsx src/scripts/status.ts restart
 ```
 
 ## Rate Limiting
@@ -267,18 +300,20 @@ All endpoints are rate limited to **2 requests per second per IP** with a **5-to
 
 ### Port Allocation
 
-Nodes are assigned ports incrementally:
-- `node001`: 9650 (HTTP), 9651 (Staking)  
-- `node002`: 9652 (HTTP), 9653 (Staking)
-- `node003`: 9654 (HTTP), 9655 (Staking)
+Nodes are assigned ports with dedicated bootnode:
+- `bootnode`: 9650 (HTTP), 9651 (Staking) - Bootstrap node only
+- `node001`: 9652 (HTTP), 9653 (Staking) - First subnet node
+- `node002`: 9654 (HTTP), 9655 (Staking) - Second subnet node  
+- `node003`: 9656 (HTTP), 9657 (Staking) - Third subnet node
 - etc.
 
 ### Subnet Assignment Logic
 
-1. **New Registration**: Assigns to node with lowest subnet count
-2. **Full Capacity**: When all nodes have 16 subnets, replaces the oldest subnet
-3. **Load Balancing**: Automatically distributes subnets across available nodes
+1. **New Registration**: Assigns to subnet node with lowest subnet count
+2. **Full Capacity**: When all subnet nodes have 16 subnets, replaces the oldest subnet
+3. **Load Balancing**: Automatically distributes subnets across available subnet nodes
 4. **Node Info**: Fetches and caches node information before any changes
+5. **Bootnode Exclusion**: The bootnode never tracks subnets - it only provides bootstrap services
 
 ### Docker Compose Generation
 
@@ -286,13 +321,20 @@ The API automatically generates `compose.yml` when subnets are registered and re
 
 ```yaml
 services:
+  bootnode:
+    image: avaplatform/subnet-evm_avalanchego:latest
+    environment:
+      AVAGO_HTTP_PORT: "9650"
+      AVAGO_STAKING_PORT: "9651"
+    network_mode: host
   node001:
     image: avaplatform/subnet-evm_avalanchego:latest
     environment:
       AVAGO_TRACK_SUBNETS: "subnet1,subnet2,subnet3"  # Alphabetically sorted
-    ports:
-      - "9650:9650"
-      - "9651:9651"
+      AVAGO_HTTP_PORT: "9652"
+      AVAGO_STAKING_PORT: "9653"
+    network_mode: host
+    command: "./avalanchego --bootstrap-ips=MY_IP:9651 --bootstrap-ids=BOOTNODE_ID"
   tunnel:
     image: cloudflare/cloudflared:latest
     network_mode: host  # Access API on host:3000
@@ -413,6 +455,30 @@ pm2 restart slimnode-api
 - **Deployment**: API with pm2 (host) + Avalanche nodes with Docker
 - **Tunnel**: Cloudflare tunnel uses host network to access API
 - **Container Management**: Automatic Docker container startup and async restart
+
+## Bootnode Architecture Summary
+
+The SlimNode API now uses a **dedicated bootnode architecture** for improved network stability and cleaner separation of concerns:
+
+### Key Changes:
+- **Dedicated Bootstrap Node**: A separate `bootnode` container handles network bootstrapping on ports 9650/9651
+- **Subnet Node Separation**: Regular subnet nodes (`node001`, `node002`, etc.) start from ports 9652/9653 and only handle subnet tracking
+- **Environment Variables**: 
+  - `BOOTNODE_ID` (replaces `NODE001_ID`) - Bootstrap node's NodeID
+  - `MY_IP` - External IP address for bootstrap configuration
+- **Status Monitoring**: New status checking script at `./scripts/check-status.sh`
+
+### Benefits:
+- **Network Stability**: Bootnode provides consistent bootstrap point while subnet nodes can be restarted
+- **Clean Architecture**: Bootstrap responsibilities separated from subnet tracking
+- **Easier Scaling**: New nodes automatically connect to established bootnode
+- **Better Monitoring**: Clear distinction between bootstrap and subnet nodes in status checks
+
+### Migration from Previous Version:
+1. Update your `.env` file: Change `NODE001_ID` to `BOOTNODE_ID`
+2. Add `MY_IP=your.external.ip.address` to your `.env` file
+3. Restart the SlimNode API: `pm2 restart slimnode-api`
+4. The bootnode will automatically use ports 9650/9651, while subnet nodes shift to 9652+
 
 ## License
 

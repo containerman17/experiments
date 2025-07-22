@@ -8,9 +8,11 @@ Build an API service that manages multiple Avalanche nodes, each hosting up to 1
 ## Key Architecture Decisions
 - **PM2 Deployment**: API runs with pm2 outside Docker while Avalanche nodes run in Docker containers
 - **Automatic Container Management**: API starts containers on startup and restarts them on every database change (TASK.md requirement)
-- **Localhost RPC**: API connects to localhost:9650 (node001) for validation and chain lookups
+- **Dedicated Bootnode**: Separate bootstrap node on ports 9650/9651 that doesn't track subnets
+- **Localhost RPC**: API connects to localhost:9650 (bootnode) for validation and chain lookups
 - **Host Network Tunnel**: Cloudflare tunnel uses `network_mode: host` to access API on localhost:3000
-- **Only Meaningful Variables**: ADMIN_PASSWORD, NODE_COUNT, CLOUDFLARE_TUNNEL_TOKEN - things users actually need to configure
+- **Bootstrap Configuration**: BOOTNODE_ID and MY_IP environment variables for multi-node setup
+- **Port Separation**: Bootnode uses 9650/9651, subnet nodes start from 9652/9653
 
 ## Deployment Architecture
 
@@ -18,9 +20,10 @@ Build an API service that manages multiple Avalanche nodes, each hosting up to 1
 Host Machine (pm2)
 ├── SlimNode API (port 3000) ← manages Docker containers
 └── Docker Containers
-    ├── node001 (ports 9650/9651) ← avalanche network
-    ├── node002 (ports 9652/9653) ← avalanche network  
-    ├── node003 (ports 9654/9655) ← avalanche network
+    ├── bootnode (ports 9650/9651) ← bootstrap node only
+    ├── node001 (ports 9652/9653) ← subnet tracking node
+    ├── node002 (ports 9654/9655) ← subnet tracking node  
+    ├── node003 (ports 9656/9657) ← subnet tracking node
     └── tunnel (network_mode: host) ← accesses API on host:3000
 ```
 

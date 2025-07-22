@@ -13,9 +13,17 @@ const server = fastify({ logger: true });
 const BOOTSTRAP_ERROR_MESSAGE = 'Node is not ready or still bootstrapping';
 
 // Initialize Docker containers on startup
-console.log('Starting Docker containers...');
-database.adjustNodeCount(); // Adjust node count based on NODE_COUNT env var
-generateDockerCompose(); // Generate compose file and start containers on initial startup
+async function initializeContainers() {
+    console.log('Starting Docker containers...');
+    database.adjustNodeCount(); // Adjust node count based on NODE_COUNT env var
+    await generateDockerCompose(); // Generate compose file and start containers on initial startup
+}
+
+// Start initialization
+initializeContainers().catch(e => {
+    console.error(e);
+    process.exit(1);
+});
 
 // Rate limiting middleware
 server.addHook('preHandler', (req, reply, done) => {
@@ -68,12 +76,12 @@ server.get('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
         // Get node port and cached info
         const nodes = database.getAllNodes();
         const nodeIndex = nodes.indexOf(nodeId);
-        const nodePort = 9650 + (nodeIndex * 2);
+        const nodePort = 9652 + (nodeIndex * 2);  // Start from 9652 (bootnode uses 9650)
 
         // Get node info
         const nodeInfo = (await getNodeInfo(nodePort));
         if (isNewAssignment) {
-            generateDockerCompose();
+            await generateDockerCompose();
         }
 
         return nodeInfo
@@ -127,10 +135,10 @@ server.get('/ext/bc/:chainId/rpc', async (req, reply) => {
             });
         }
 
-        // Calculate node port (9650 + index * 2)
+        // Calculate node port (9652 + index * 2 - bootnode uses 9650)
         const nodes = database.getAllNodes();
         const nodeIndex = nodes.indexOf(nodeId);
-        const nodePort = 9650 + (nodeIndex * 2);
+        const nodePort = 9652 + (nodeIndex * 2);
 
         let status = 'not healthy - node is not ready or still bootstrapping';
         let evmChainIdText = '';
@@ -198,10 +206,10 @@ server.post('/ext/bc/:chainId/rpc', async (req, reply) => {
             });
         }
 
-        // Calculate node port (9650 + index * 2)
+        // Calculate node port (9652 + index * 2 - bootnode uses 9650)
         const nodes = database.getAllNodes();
         const nodeIndex = nodes.indexOf(nodeId);
-        const nodePort = 9650 + (nodeIndex * 2);
+        const nodePort = 9652 + (nodeIndex * 2);
 
         // Forward request to node
         const targetUrl = `http://localhost:${nodePort}/ext/bc/${chainId}/rpc`;

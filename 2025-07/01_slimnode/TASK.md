@@ -11,6 +11,17 @@ Protect the whole /node_admin/ with this password
 
 On registerSubnet request, checks in db if this subnet is registered, check if it is a real subnet, then searches for an empty slot, and if found, gets the oldest subnet, removes it and places the new subnet instead. each node hosts exactly 16 subnets. When filling, select a node with the lowest amount of subnets registered (empty nodes - first).
 
+**IMPORTANT**: Always fetch and return the node's info (NodeID, public key, proof of possession) in the response by proxying the info.getNodeID call from the assigned node.
+
+To get node info:
+```
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "id"     :1,
+    "method" :"info.getNodeID"
+}' -H 'content-type:application/json;' 127.0.0.1:9650/ext/info
+```
+
 To check that subnet exists check if this request returns a result, and not error field. No cache here please. 
 ```
 curl -X POST --data '{
@@ -66,3 +77,10 @@ Document everythyng well from a user standpoint with examples and explain about 
 
 **Compose**
 The first node has to have ports 9650 and 9651. Every other node gets 2 next ports. AVAGO_TRACK_SUBNETS is just all subnets of this node ordered by alphabet. On any changes in the database you reform the compose file and call docker compose up -d. Should contain exactly NODE_COUNT nodes (control this via db). Leave the current compose template file with 2 nodes and add there this app (add Dockerfile and zero build npx tsx run) Also add to this initial compose file the tunnel.
+
+**Container Restart Behavior**
+Since container restarts take several minutes, the registerSubnet endpoint decouples database updates from container restarts:
+- Database is updated immediately for new registrations
+- Container restart happens asynchronously in the background for new registrations
+- Response always includes current node info fetched fresh from the node
+- Response includes `restartPending: true` only for new registrations

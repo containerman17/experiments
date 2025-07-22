@@ -18,7 +18,8 @@ The Cloudflare tunnel container uses `network_mode: host` to access the SlimNode
 
 **Important**: The API automatically starts and manages Docker containers:
 - **On Startup**: Generates compose.yml and runs `docker compose up -d`
-- **On Database Changes**: Regenerates compose file and restarts containers with new subnet configurations
+- **On Database Changes**: Regenerates compose file and restarts containers asynchronously with new subnet configurations
+- **Async Restart**: Container restarts happen in the background since they take several minutes
 
 ## Features
 
@@ -27,7 +28,8 @@ The Cloudflare tunnel container uses `network_mode: host` to access the SlimNode
 - **Proxy Routing**: Routes RPC requests to the correct node based on chainId
 - **Rate Limiting**: 2 requests/second per IP with burst allowance
 - **Cloudflare Integration**: Built-in tunnel support for public access
-- **Automatic Container Management**: Starts containers on API startup and restarts on configuration changes
+- **Automatic Container Management**: Starts containers on API startup and restarts asynchronously on configuration changes
+- **Node Information**: Returns NodeID, public key, and proof of possession for assigned nodes
 
 ## Quick Start
 
@@ -68,6 +70,7 @@ The Cloudflare tunnel container uses `network_mode: host` to access the SlimNode
 ```bash
 ADMIN_PASSWORD=your_admin_password_here  # Required: Password for admin endpoints
 NODE_COUNT=3                            # Optional: Number of Avalanche nodes (default: 3, max: 999)
+DATA_DIR=./data                         # Optional: Data directory for database storage (default: ./data)
 CLOUDFLARE_TUNNEL_TOKEN=your_token_here  # Optional: Cloudflare tunnel token
 ```
 
@@ -86,8 +89,10 @@ Registers a subnet to be tracked by a node. The API will:
 1. Validate the subnet exists on Avalanche network via localhost:9650
 2. Find the node with the lowest subnet count
 3. If all nodes are full (16 subnets each), replace the oldest subnet
-4. Update the database and regenerate compose.yml
-5. **Automatically restart Docker containers with new configuration**
+4. **Fetch node information (NodeID, publicKey, proofOfPossession) before making changes**
+5. Update the database and regenerate compose.yml
+6. **Return response immediately with node info**
+7. **Restart Docker containers asynchronously in the background**
 
 **Example**:
 ```bash
@@ -101,9 +106,17 @@ curl -X POST "http://localhost:3000/node_admin/registerSubnet/FWbUFNjYSpZeSXkDmL
   "message": "Subnet FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1 registered to node001",
   "nodeId": "node001",
   "replacedSubnet": null,
-  "nodeSubnets": ["FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1"]
+  "nodeSubnets": ["FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1"],
+  "nodeInfo": {
+    "nodeID": "NodeID-LSaQisuyTXKQV9mdifzFpejY4wm1noUWh",
+    "publicKey": "0x89beabf01f01940d534cfc3de2e7012f1ffbac562d441ebd23ca4f59f376b1cb8e236eb37307d3ae1621191a661c1ad4",
+    "proofOfPossession": "0xb0da9747653498dfb6c829a363c778fe90ac948d04efb9a2605b777db6f9695b7a21bba820b47510c511ef7f2d782c42048872c450ba010bf3a51e960952dfa92c0f9c4274fb8ce8eab4bf1dc919027eca5ec4d80595e8480e75be12400fefef"
+  },
+  "restartPending": true
 }
 ```
+
+**Note**: The `restartPending: true` field indicates that containers will restart in the background. This process takes several minutes.
 
 #### View Status
 ```http
@@ -222,10 +235,11 @@ Nodes are assigned ports incrementally:
 1. **New Registration**: Assigns to node with lowest subnet count
 2. **Full Capacity**: When all nodes have 16 subnets, replaces the oldest subnet
 3. **Load Balancing**: Automatically distributes subnets across available nodes
+4. **Node Info**: Fetches and caches node information before any changes
 
 ### Docker Compose Generation
 
-The API automatically generates `compose.yml` when subnets are registered and restarts containers:
+The API automatically generates `compose.yml` when subnets are registered and restarts containers asynchronously:
 
 ```yaml
 services:
@@ -320,16 +334,42 @@ npm run build
 npm start
 ```
 
+## Data Persistence & Recovery
+
+The SlimNode API uses a robust dual-file backup system to protect against data loss:
+
+### Backup System
+- **Primary**: `./data/chains.json` - Main database file
+- **Backup**: `./data/chains.backup.json` - Automatic backup copy
+- **Process**: Every save writes to both files sequentially
+
+### Recovery Process
+1. **Normal Start**: Loads from `chains.json`
+2. **Corruption Recovery**: If main file is corrupted, automatically recovers from `chains.backup.json`
+3. **Automatic Restore**: Corrupted main file gets restored from backup
+4. **Manual Recovery**: If both files fail, you can manually restore from backup
+
+### Manual Recovery
+If you need to manually restore from backup:
+```bash
+# Copy backup to main file
+cp ./data/chains.backup.json ./data/chains.json
+
+# Restart the API
+pm2 restart slimnode-api
+```
+
 ## Architecture
 
-- **Database**: In-memory storage with node → subnet mapping
+- **Database**: Persistent JSON storage at `${DATA_DIR}/chains.json` with automatic backup to `chains.backup.json`
 - **Validation**: Real-time subnet existence checks via localhost:9650
+- **Node Info**: Permanent caching of node information (NodeID, publicKey, proofOfPossession)
 - **Caching**: 10-minute cache for chainId → subnetId lookups
 - **Proxy**: Direct request forwarding to appropriate node ports
 - **Rate Limiting**: Token bucket algorithm with burst allowance
 - **Deployment**: API with pm2 (host) + Avalanche nodes with Docker
 - **Tunnel**: Cloudflare tunnel uses host network to access API
-- **Container Management**: Automatic Docker container startup and restart
+- **Container Management**: Automatic Docker container startup and async restart
 
 ## License
 

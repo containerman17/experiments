@@ -1,8 +1,8 @@
 import fastify from 'fastify';
 import dotenv from 'dotenv';
 import { database } from './database.js';
-import { checkSubnetExists, getSubnetIdFromChainId } from './avalanche.js';
-import { generateDockerCompose } from './docker-composer.js';
+import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo } from './avalanche.js';
+import { generateDockerCompose, restartContainersAsync } from './docker-composer.js';
 import { checkRateLimit, extractClientIP } from './rate-limiter.js';
 
 dotenv.config();
@@ -14,7 +14,7 @@ const BOOTSTRAP_ERROR_MESSAGE = 'Node is not ready or still bootstrapping';
 
 // Initialize Docker containers on startup
 console.log('Starting Docker containers...');
-generateDockerCompose();
+generateDockerCompose(); // Generate compose file and start containers on initial startup
 
 // Rate limiting middleware
 server.addHook('preHandler', (req, reply, done) => {
@@ -61,54 +61,21 @@ server.get('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
             });
         }
 
-        // Check if subnet is already registered
-        const { isRegistered, nodeId: existingNode } = database.isSubnetRegistered(subnetId);
-        if (isRegistered) {
-            return {
-                success: true,
-                message: `Subnet ${subnetId} already registered`,
-                nodeId: existingNode,
-                isUpdate: false
-            };
+        // Assign subnet to appropriate node (database handles all the logic)
+        const { nodeId, replacedSubnet, isNewAssignment } = database.assignSubnetToNode(subnetId);
+
+        // Get node port and cached info
+        const nodes = database.getAllNodes();
+        const nodeIndex = nodes.indexOf(nodeId);
+        const nodePort = 9650 + (nodeIndex * 2);
+
+        // Get node info
+        const nodeInfo = (await getNodeInfo(nodePort)).result;
+        if (isNewAssignment) {
+            generateDockerCompose();
         }
 
-        // Find node to assign subnet to
-        let targetNode: string;
-        let replacedSubnet: string | null = null;
-
-        if (database.areAllNodesFull()) {
-            // All nodes are full, replace oldest subnet
-            const oldest = database.getOldestSubnetAcrossAllNodes();
-            if (!oldest) {
-                throw new Error('All nodes full but no subnets found');
-            }
-
-            targetNode = oldest.nodeId;
-            replacedSubnet = oldest.subnetId;
-            database.removeSubnetFromNode(oldest.nodeId, oldest.subnetId);
-
-            console.log(`Replacing ${replacedSubnet} with ${subnetId} on ${targetNode}`);
-        } else {
-            // Find node with lowest subnet count
-            targetNode = database.getNodeWithLowestSubnetCount();
-            console.log(`Assigning ${subnetId} to ${targetNode}`);
-        }
-
-        // Add subnet to node
-        database.addSubnetToNode(targetNode, subnetId);
-
-        // Regenerate compose.yml and restart containers
-        generateDockerCompose();
-
-        return {
-            success: true,
-            message: replacedSubnet
-                ? `Subnet ${subnetId} registered to ${targetNode}, replaced ${replacedSubnet}`
-                : `Subnet ${subnetId} registered to ${targetNode}`,
-            nodeId: targetNode,
-            replacedSubnet,
-            nodeSubnets: database.getNodeSubnets(targetNode)
-        };
+        return nodeInfo
     } catch (error) {
         console.error('Error registering subnet:', error);
         return reply.code(500).send({

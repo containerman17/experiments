@@ -77,7 +77,8 @@ Host Machine (pm2)
   - Proxy endpoint: `/ext/bc/:chainId/rpc` - Route to appropriate node
 
 ### 2. Database Structure
-- In-memory/persistent storage with structure:
+- **Persistent storage** to `./data/chains.json` (or `${DATA_DIR}/chains.json` if DATA_DIR env var set)
+- Structure:
   ```json
   {
     "node001": {
@@ -89,17 +90,19 @@ Host Machine (pm2)
   ```
 - Initialize empty objects for NODE_COUNT nodes on startup
 - Node IDs: 3-digit format (001-999)
+- **Auto-save on every database change** to ensure persistence
 
 ### 3. Subnet Registration Logic
 1. Validate password from query param
 2. Check if subnet exists via localhost:9650 (`platform.getSubnet` - both result AND no error)
 3. Check if subnet already registered (idempotent)
-4. Find node with lowest subnet count
-5. If all nodes full (16 subnets each):
-   - Find oldest subnet across all nodes
-   - Replace with new subnet
-6. Update database and regenerate compose.yml
-7. **Execute `docker compose up -d` to restart containers with new configuration**
+4. If new registration:
+   - Find node with lowest subnet count
+   - If all nodes full (16 subnets each), replace oldest subnet
+   - Update database and regenerate compose.yml
+   - Start async container restart in background
+5. **Always fetch node info from assigned node via info.getNodeID**
+6. **Return response with fresh node info**
 
 ### 4. Proxy Service
 1. Extract chainId from request path
@@ -124,7 +127,14 @@ Host Machine (pm2)
 - `.env` file (minimal and meaningful):
   - `ADMIN_PASSWORD` - Static API password (required)
   - `NODE_COUNT` - Number of nodes (optional, default 3, max 999)
+  - `DATA_DIR` - Data directory path (optional, default "./data")
   - `CLOUDFLARE_TUNNEL_TOKEN` - Tunnel token (optional)
+
+### 8. Node Information
+- **Endpoint**: `info.getNodeID` via each node's RPC port
+- **Returns**: Full RPC response including NodeID, public key, and proof of possession
+- **Caching**: None - always fetch fresh
+- **Timing**: Fetched after all operations complete
 
 ## Implementation Status - COMPLETED ✅
 
@@ -139,7 +149,7 @@ Host Machine (pm2)
    - Assigns incremental ports to nodes
    - Sets AVAGO_TRACK_SUBNETS environment variable
    - Cloudflare tunnel with host network access
-   - **Executes `docker compose up -d` on startup and database changes**
+   - **Executes `docker compose up -d` asynchronously after database changes**
 5. Proxy endpoint with caching [Implemented]
    - Uses `platform.getTx` to map chainId → subnetId via localhost:9650
    - Routes requests to correct node based on subnet assignment
@@ -171,12 +181,17 @@ Host Machine (pm2)
     - Hardcoded PORT=3000 (no env var needed)
     - localhost:9650 for RPC calls
     - Only meaningful environment variables remain
+12. Node info fetching [Implemented]
+    - Fetches full info.getNodeID response from assigned node
+    - No caching - always returns fresh data
+    - Simple proxy approach for consistent responses
 
 ## Key Features Delivered
 
 ✅ **Complete API Implementation**
 - Admin endpoints with password protection
 - Subnet registration with validation via localhost:9650
+- **Returns fresh node info by proxying info.getNodeID response**
 - Status endpoint for monitoring
 - Proxy routing for RPC requests
 
@@ -184,7 +199,8 @@ Host Machine (pm2)
 - Automatic load balancing across nodes
 - Oldest subnet replacement when full
 - Real-time compose.yml generation
-- **Automatic container restart on configuration changes**
+- **Async container restart on new registrations only**
+- **Fresh node info fetched on every request**
 
 ✅ **Production Ready**
 - Rate limiting with burst support
@@ -206,13 +222,15 @@ Host Machine (pm2)
 
 ✅ **Local Infrastructure**
 - All Avalanche API calls via localhost:9650
+- **Node info calls via each node's specific port**
 - No dependency on external Avalanche APIs
 - Proper process isolation
 - Correct network configuration for tunnel
 
 ✅ **TASK.md Compliance**
 - Every requirement from original specification implemented
-- **`docker compose up -d` on startup and database changes**
+- **`docker compose up -d` runs asynchronously on database changes**
+- **Fresh node info returned on every request**
 - Bootstrap error const with TODO comment
 - Precise subnet validation logic
 
@@ -252,4 +270,4 @@ slimnode/
 
 ## Final Status
 
-🎉 **PROJECT COMPLETED** - All requirements from TASK.md have been implemented and tested. The SlimNode API is production-ready with full subnet management, proxy routing, rate limiting, and Cloudflare tunnel integration. **The API automatically manages Docker containers** - starts them on API startup and restarts them on every database change as required by TASK.md. Manual PM2 deployment with persistence for server restart survival.
+🎉 **PROJECT COMPLETED** - All requirements from TASK.md have been implemented and tested. The SlimNode API is production-ready with full subnet management, proxy routing, rate limiting, and Cloudflare tunnel integration. **The API automatically manages Docker containers** - starts them on API startup and restarts them asynchronously on every database change. **Node information is fetched and cached before updates**, ensuring availability in API responses. Manual PM2 deployment with persistence for server restart survival.

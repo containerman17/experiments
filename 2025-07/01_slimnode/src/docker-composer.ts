@@ -69,17 +69,19 @@ export function generateDockerCompose(): void {
     });
 
     // Add Cloudflare tunnel service - needs host network to access API on host:3000
-    compose.services['tunnel'] = {
-        image: 'cloudflare/cloudflared:latest',
-        container_name: 'tunnel',
-        environment: {
-            TODO_ADD_TUNNEL_TOKEN: "'TODO:'"
-            // TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
-        },
-        restart: 'unless-stopped',
-        network_mode: 'host',
-        command: 'tunnel --url http://localhost:3000'
-    };
+    if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+        compose.services['tunnel'] = {
+            image: 'cloudflare/cloudflared:latest',
+            container_name: 'tunnel',
+            environment: {
+                // TODO_ADD_TUNNEL_TOKEN: "'TODO:'"
+                // TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
+            },
+            restart: 'unless-stopped',
+            network_mode: 'host',
+            command: `tunnel --no-autoupdate run --token ${process.env.CLOUDFLARE_TUNNEL_TOKEN}`
+        };
+    }
 
     // Write to file
     const yamlContent = generateYaml(compose);
@@ -98,6 +100,7 @@ export function generateDockerCompose(): void {
         console.error('Failed to restart docker containers:', error);
     }
 }
+
 
 // Simple YAML generator (avoiding external dependencies)
 function generateYaml(obj: any, indent = 0): string {

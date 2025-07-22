@@ -220,6 +220,64 @@ class Database {
             isNewAssignment: true
         };
     }
+
+    // Adjust node count based on NODE_COUNT environment variable
+    adjustNodeCount(): void {
+        const targetNodeCount = parseInt(process.env.NODE_COUNT || '3');
+        if (targetNodeCount > 999) {
+            throw new Error('NODE_COUNT cannot exceed 999');
+        }
+
+        const currentNodes = this.getAllNodes();
+        const currentNodeCount = currentNodes.length;
+
+        if (targetNodeCount === currentNodeCount) {
+            console.log(`Node count already correct: ${currentNodeCount} nodes`);
+            return;
+        }
+
+        if (targetNodeCount > currentNodeCount) {
+            // Add new empty nodes
+            let needsSave = false;
+            for (let i = currentNodeCount + 1; i <= targetNodeCount; i++) {
+                const nodeId = `node${i.toString().padStart(3, '0')}`;
+                this.data[nodeId] = {};
+                needsSave = true;
+                console.log(`Added empty node: ${nodeId}`);
+            }
+            if (needsSave) {
+                this.saveToDisk();
+            }
+        } else {
+            // Remove nodes from the end, but only if they're empty
+            const nodesToRemove = currentNodes.slice(targetNodeCount);
+
+            for (const nodeId of nodesToRemove) {
+                const subnets = this.getNodeSubnets(nodeId);
+                if (subnets.length > 0) {
+                    throw new Error(
+                        `Cannot reduce NODE_COUNT from ${currentNodeCount} to ${targetNodeCount}: ` +
+                        `Node ${nodeId} contains ${subnets.length} subnets (${subnets.join(', ')}). ` +
+                        `Remove subnets first or increase NODE_COUNT.`
+                    );
+                }
+            }
+
+            // All nodes to remove are empty, safe to delete
+            let needsSave = false;
+            for (const nodeId of nodesToRemove) {
+                delete this.data[nodeId];
+                needsSave = true;
+                console.log(`Removed empty node: ${nodeId}`);
+            }
+
+            if (needsSave) {
+                this.saveToDisk();
+            }
+        }
+
+        console.log(`Node count adjusted from ${currentNodeCount} to ${targetNodeCount}`);
+    }
 }
 
 export const database = new Database(); 

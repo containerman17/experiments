@@ -33,6 +33,49 @@ The Cloudflare tunnel container uses `network_mode: host` to access the SlimNode
 
 ## Quick Start
 
+### Recommended Setup Process
+
+For optimal bootstrapping, start with a single node first:
+
+1. **Start with Single Node**:
+   ```bash
+   # Set node count to 1 initially
+   echo "NODE_COUNT=1" >> .env
+   echo "ADMIN_PASSWORD=your_admin_password_here" >> .env
+   ```
+
+2. **Start API and Let Node Sync**:
+   ```bash
+   pm2 start npm --name "slimnode-api" -- start
+   # Wait for node to sync (may take several minutes)
+   ```
+
+3. **Get Node ID**:
+   ```bash
+   curl -X POST --data '{
+       "jsonrpc":"2.0",
+       "id":1,
+       "method":"info.getNodeID"
+   }' -H 'content-type:application/json;' 127.0.0.1:9650/ext/info | jq -r ".result.nodeID"
+   ```
+
+4. **Set Bootstrap Node ID**:
+   ```bash
+   # Add the NodeID from step 3 to your .env file
+   echo "NODE001_ID=NodeID-LSaQisuyTXKQV9mdifzFpejY4wm1noUWh" >> .env
+   ```
+
+5. **Scale to Multiple Nodes**:
+   ```bash
+   # Update node count to desired number
+   sed -i 's/NODE_COUNT=1/NODE_COUNT=3/' .env
+   pm2 restart slimnode-api
+   ```
+
+### Alternative Quick Start
+
+If you prefer to start with multiple nodes immediately:
+
 1. **Setup Environment**:
    ```bash
    cp .env.example .env
@@ -244,7 +287,7 @@ The API automatically generates `compose.yml` when subnets are registered and re
 ```yaml
 services:
   node001:
-    image: avaplatform/avalanchego:latest
+    image: avaplatform/subnet-evm_avalanchego:latest
     environment:
       AVAGO_TRACK_SUBNETS: "subnet1,subnet2,subnet3"  # Alphabetically sorted
     ports:

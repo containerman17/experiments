@@ -8,7 +8,7 @@ interface ComposeService {
     container_name: string;
     ports?: string[];
     volumes?: string[];
-    environment: Record<string, string>;
+    environment?: Record<string, string>;
     restart: string;
     networks?: string[];
     network_mode?: string;
@@ -42,13 +42,11 @@ export function generateDockerCompose(): void {
         const stakePort = 9651 + (index * 2);
         const subnets = database.getNodeSubnets(nodeId);
 
+        const avalanchegoArgs = (index === 0 || !process.env.NODE001_ID || !process.env.MY_IP) ? '' : `./avalanchego --bootstrap-ips=${process.env.MY_IP}:9651 --bootstrap-ids="${process.env.NODE001_ID}"`;
+
         compose.services[nodeId] = {
-            image: 'avaplatform/avalanchego:latest',
+            image: 'avaplatform/subnet-evm_avalanchego:latest',
             container_name: nodeId,
-            ports: [
-                `${httpPort}:${httpPort}`,
-                `${stakePort}:${stakePort}`
-            ],
             volumes: [
                 `/avadata/${nodeId}:/root/.avalanchego`
             ],
@@ -61,10 +59,10 @@ export function generateDockerCompose(): void {
                 AVAGO_HTTP_ALLOWED_HOSTS: "'*'",
                 AVAGO_HTTP_PORT: `${httpPort}`,
                 AVAGO_STAKING_PORT: `${stakePort}`
-
             },
             restart: 'unless-stopped',
-            networks: ['avalanche']
+            network_mode: 'host',
+            ...(avalanchegoArgs && { command: avalanchegoArgs })
         };
     });
 
@@ -73,10 +71,10 @@ export function generateDockerCompose(): void {
         compose.services['tunnel'] = {
             image: 'cloudflare/cloudflared:latest',
             container_name: 'tunnel',
-            environment: {
-                // TODO_ADD_TUNNEL_TOKEN: "'TODO:'"
-                // TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
-            },
+            // environment: {
+            // TODO_ADD_TUNNEL_TOKEN: "'TODO:'"
+            // TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
+            // },
             restart: 'unless-stopped',
             network_mode: 'host',
             command: `tunnel --no-autoupdate run --token ${process.env.CLOUDFLARE_TUNNEL_TOKEN}`
@@ -91,7 +89,7 @@ export function generateDockerCompose(): void {
 
     // TASK.md requirement: "call docker compose up -d" on any database change
     try {
-        execSync('docker compose up -d', {
+        execSync('docker compose up -d --remove-orphans', {
             cwd: process.cwd(),
             stdio: 'inherit'
         });

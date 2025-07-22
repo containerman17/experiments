@@ -119,4 +119,4 @@ export async function getNodeInfo(nodePort: number): Promise<NodeInfoResponse> {
         console.error(`Error getting node info from port ${nodePort}:`, error);
         throw new Error('Failed to get node info');
     }
-} 
+}

@@ -2,7 +2,7 @@ import fastify from 'fastify';
 import dotenv from 'dotenv';
 import { database } from './database.js';
 import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo } from './avalanche.js';
-import { generateDockerCompose, restartContainersAsync } from './docker-composer.js';
+import { generateDockerCompose } from './docker-composer.js';
 import { checkRateLimit, extractClientIP } from './rate-limiter.js';
 
 dotenv.config();
@@ -14,6 +14,7 @@ const BOOTSTRAP_ERROR_MESSAGE = 'Node is not ready or still bootstrapping';
 
 // Initialize Docker containers on startup
 console.log('Starting Docker containers...');
+database.adjustNodeCount(); // Adjust node count based on NODE_COUNT env var
 generateDockerCompose(); // Generate compose file and start containers on initial startup
 
 // Rate limiting middleware
@@ -70,7 +71,7 @@ server.get('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
         const nodePort = 9650 + (nodeIndex * 2);
 
         // Get node info
-        const nodeInfo = (await getNodeInfo(nodePort)).result;
+        const nodeInfo = (await getNodeInfo(nodePort));
         if (isNewAssignment) {
             generateDockerCompose();
         }
@@ -93,9 +94,92 @@ server.get('/node_admin/status', async () => {
     };
 });
 
+// OPTIONS handler for CORS preflight
+server.options('/ext/bc/:chainId/rpc', async (req, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', '*');
+    reply.code(200).send();
+});
+
+server.get('/ext/bc/:chainId/rpc', async (req, reply) => {
+    const { chainId } = req.params as { chainId: string };
+
+    // Add CORS headers
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', '*');
+
+    try {
+        // Get subnetId from chainId using cached lookup
+        const subnetId = await getSubnetIdFromChainId(chainId);
+        if (!subnetId) {
+            return reply.code(404).send({
+                error: `Chain ${chainId} not found or invalid`
+            });
+        }
+
+        // Find which node hosts this subnet
+        const { isRegistered, nodeId } = database.isSubnetRegistered(subnetId);
+        if (!isRegistered || !nodeId) {
+            return reply.code(404).send({
+                error: `Subnet ${subnetId} for chain ${chainId} is not hosted by any node`
+            });
+        }
+
+        // Calculate node port (9650 + index * 2)
+        const nodes = database.getAllNodes();
+        const nodeIndex = nodes.indexOf(nodeId);
+        const nodePort = 9650 + (nodeIndex * 2);
+
+        let status = 'not healthy - node is not ready or still bootstrapping';
+        let evmChainIdText = '';
+
+        // Test if node is alive and get chain ID
+        try {
+            const targetUrl = `http://localhost:${nodePort}/ext/bc/${chainId}/rpc`;
+            const chainIdResponse = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'eth_chainId',
+                    params: [],
+                    id: 1
+                })
+            });
+
+            if (chainIdResponse.ok) {
+                const chainIdData = await chainIdResponse.json();
+                if (chainIdData.result) {
+                    const evmChainId = parseInt(chainIdData.result, 16);
+                    status = 'healthy';
+                    evmChainIdText = `, EVM Chain ID: ${evmChainId}`;
+                }
+            }
+        } catch (error) {
+            // status already set to not healthy
+        }
+
+        return reply.code(status === 'healthy' ? 200 : 503).send(`Blockchain ID: ${chainId}, Subnet ID: ${subnetId}, Status: ${status}${evmChainIdText}. To do actual RPC requests you need to issue a POST request.`);
+
+    } catch (error) {
+        console.error('Error testing node health:', error);
+        return reply.code(500).send({
+            error: 'Internal proxy error',
+            chainId
+        });
+    }
+});
+
 // Proxy endpoint - forwards RPC requests to appropriate node
 server.post('/ext/bc/:chainId/rpc', async (req, reply) => {
     const { chainId } = req.params as { chainId: string };
+
+    // Add CORS headers
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', '*');
 
     try {
         // Get subnetId from chainId using cached lookup

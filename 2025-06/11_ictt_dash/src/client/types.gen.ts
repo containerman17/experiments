@@ -69,48 +69,39 @@ export type PostApiByEvmChainIdRpcResponses = {
 
 export type PostApiByEvmChainIdRpcResponse = PostApiByEvmChainIdRpcResponses[keyof PostApiByEvmChainIdRpcResponses];
 
-export type GetApiIcttContractHomesData = {
+export type GetApiByEvmChainIdStatsIcmGasUsageData = {
     body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/ictt/contract-homes';
+    path: {
+        evmChainId: string;
+    };
+    query?: {
+        period?: '1d' | '7d' | '30d' | '1h';
+        count?: number;
+    };
+    url: '/api/{evmChainId}/stats/icm-gas-usage';
 };
 
-export type GetApiIcttContractHomesResponses = {
+export type GetApiByEvmChainIdStatsIcmGasUsageResponses = {
     /**
      * Default Response
      */
-    200: Array<{
-        chainName: string;
-        blockchainId: string;
-        evmChainId: number;
-        address: string;
-        callFailedCnt: number;
-        callFailedSum: string;
-        callSucceededCnt: number;
-        callSucceededSum: string;
-        tokensWithdrawnCnt: number;
-        tokensWithdrawnSum: string;
-        remotes: Array<{
-            remoteBlockchainID: string;
-            remoteTokenTransferrerAddress: string;
-            initialCollateralNeeded: boolean;
-            tokenDecimals: number;
-            collateralAddedCnt: number;
-            collateralAddedSum: string;
-            tokensAndCallRoutedCnt: number;
-            tokensAndCallRoutedSum: string;
-            tokensAndCallSentCnt: number;
-            tokensAndCallSentSum: string;
-            tokensRoutedCnt: number;
-            tokensRoutedSum: string;
-            tokensSentCnt: number;
-            tokensSentSum: string;
-        }>;
-    }>;
+    200: {
+        [key: string]: {
+            name: string;
+            evmChainId: number;
+            values: Array<{
+                sendCount: number;
+                receiveCount: number;
+                sendGasCost: number;
+                receiveGasCost: number;
+                totalGasCost: number;
+                intervalTs: number;
+            }>;
+        };
+    };
 };
 
-export type GetApiIcttContractHomesResponse = GetApiIcttContractHomesResponses[keyof GetApiIcttContractHomesResponses];
+export type GetApiByEvmChainIdStatsIcmGasUsageResponse = GetApiByEvmChainIdStatsIcmGasUsageResponses[keyof GetApiByEvmChainIdStatsIcmGasUsageResponses];
 
 export type GetApiByChainIdStatsTpsData = {
     body?: never;
@@ -205,6 +196,43 @@ export type GetApiMetricsDailyMessageVolumeResponses = {
 };
 
 export type GetApiMetricsDailyMessageVolumeResponse = GetApiMetricsDailyMessageVolumeResponses[keyof GetApiMetricsDailyMessageVolumeResponses];
+
+export type GetApiByChainIdMetricsDailyMessageVolumeData = {
+    body?: never;
+    path: {
+        chainId: string;
+    };
+    query?: {
+        days?: number;
+    };
+    url: '/api/{chainId}/metrics/dailyMessageVolume';
+};
+
+export type GetApiByChainIdMetricsDailyMessageVolumeErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByChainIdMetricsDailyMessageVolumeError = GetApiByChainIdMetricsDailyMessageVolumeErrors[keyof GetApiByChainIdMetricsDailyMessageVolumeErrors];
+
+export type GetApiByChainIdMetricsDailyMessageVolumeResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        timestamp: number;
+        date: string;
+        messageCount: number;
+        incomingCount: number;
+        outgoingCount: number;
+    }>;
+};
+
+export type GetApiByChainIdMetricsDailyMessageVolumeResponse = GetApiByChainIdMetricsDailyMessageVolumeResponses[keyof GetApiByChainIdMetricsDailyMessageVolumeResponses];
 
 export type GetApiLeaderboardDayData = {
     body?: never;

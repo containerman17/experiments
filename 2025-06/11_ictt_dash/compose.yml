@@ -8,9 +8,6 @@ services:
       - ~/data:/data
     environment:
       - ROLES=fetcher
-      - MYSQL_HOST=mysql
-    depends_on:
-      - mysql
     logging:
       driver: "json-file"
       options:
@@ -28,11 +25,8 @@ services:
       - PORT=80
       - ROLES=api
       - ASSETS_DIR=/assets
-      - MYSQL_HOST=mysql
     ports:
       - 80:80
-    depends_on:
-      - mysql
     logging:
       driver: "json-file"
       options:
@@ -47,30 +41,8 @@ services:
       - ~/data:/data
     environment:
       - ROLES=indexer
-      - MYSQL_HOST=mysql
-    depends_on:
-      - mysql
     logging:
       driver: "json-file"
       options:
         max-size: "150m"
         max-file: "5" 
-  mysql:
-    container_name: mysql
-    restart: on-failure:10
-    image: percona/percona-server:8.4
-    environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - INIT_ROCKSDB=1
-    volumes:
-      - mysql:/var/lib/mysql
-      - ./rocksdb.cnf:/etc/my.cnf.d/rocksdb.cnf
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "150m"
-        max-file: "5"
-
-volumes:
-  mysql:
-    external: true 

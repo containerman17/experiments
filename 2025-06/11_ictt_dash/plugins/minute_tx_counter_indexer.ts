@@ -2,49 +2,48 @@ import type { IndexingPlugin } from "frostbyte-sdk";
 
 const module: IndexingPlugin = {
     name: "minute_tx_counter",
-    version: 5,
+    version: 6,
     usesTraces: false,
 
-    initialize: async (db) => {
-        //FIXME: guarantee that initialize is called exatly once on the level above
-        await db.execute(`
+    initialize: (db) => {
+        db.exec(`
             CREATE TABLE IF NOT EXISTS minute_tx_counts (
-                minute_ts INT PRIMARY KEY,  -- Unix timestamp rounded down to minute
-                tx_count INT NOT NULL
+                minute_ts INTEGER PRIMARY KEY,  -- Unix timestamp rounded down to minute
+                tx_count INTEGER NOT NULL
             )
         `);
 
-        await db.execute(`
+        db.exec(`
             CREATE TABLE IF NOT EXISTS cumulative_tx_counts (
-                minute_ts INT PRIMARY KEY,  -- Unix timestamp rounded down to minute
-                cumulative_count INT NOT NULL
+                minute_ts INTEGER PRIMARY KEY,  -- Unix timestamp rounded down to minute
+                cumulative_count INTEGER NOT NULL
             )
         `);
 
         try {
-            await db.execute(`
-                CREATE INDEX idx_minute_ts ON minute_tx_counts(minute_ts)
+            db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_minute_ts ON minute_tx_counts(minute_ts)
             `);
         } catch (error: any) {
             // Ignore error if index already exists
-            if (!error.message.includes('Duplicate key name')) {
+            if (!error.message.includes('already exists')) {
                 throw error;
             }
         }
 
         try {
-            await db.execute(`
-                CREATE INDEX idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts)
+            db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts)
             `);
         } catch (error: any) {
             // Ignore error if index already exists
-            if (!error.message.includes('Duplicate key name')) {
+            if (!error.message.includes('already exists')) {
                 throw error;
             }
         }
     },
 
-    handleTxBatch: async (db, blocksDb, batch) => {
+    handleTxBatch: (db, blocksDb, batch) => {
         // Accumulate tx counts by minute in memory
         const minuteCounts = new Map<number, number>();
 
@@ -62,46 +61,36 @@ const module: IndexingPlugin = {
         const firstMinuteTs = sortedMinutes[0]![0];
 
         // Get the cumulative count just before our first minute
-        const [rows] = await db.execute(
-            'SELECT cumulative_count FROM cumulative_tx_counts WHERE minute_ts < ? ORDER BY minute_ts DESC LIMIT 1',
-            [firstMinuteTs]
+        const selectStmt = db.prepare(
+            'SELECT cumulative_count FROM cumulative_tx_counts WHERE minute_ts < ? ORDER BY minute_ts DESC LIMIT 1'
         );
-        const previousCumulative = (rows as { cumulative_count: number }[])[0];
+        const previousCumulative = selectStmt.get(firstMinuteTs) as { cumulative_count: number } | undefined;
 
         let runningTotal = previousCumulative?.cumulative_count || 0;
 
-        // Process in chunks to avoid MySQL placeholder limit
-        const CHUNK_SIZE = 1000; // Safe chunk size for batch inserts
+        // Prepare statements for batch operations
+        const insertMinuteStmt = db.prepare(`
+            INSERT INTO minute_tx_counts (minute_ts, tx_count)
+            VALUES (?, ?)
+            ON CONFLICT(minute_ts) DO UPDATE SET
+                tx_count = tx_count + excluded.tx_count
+        `);
 
-        for (let i = 0; i < sortedMinutes.length; i += CHUNK_SIZE) {
-            const chunk = sortedMinutes.slice(i, i + CHUNK_SIZE);
+        const insertCumulativeStmt = db.prepare(`
+            INSERT INTO cumulative_tx_counts (minute_ts, cumulative_count)
+            VALUES (?, ?)
+            ON CONFLICT(minute_ts) DO UPDATE SET
+                cumulative_count = excluded.cumulative_count
+        `);
 
-            // Batch insert minute counts for this chunk
-            const minuteValues = chunk.map(([minuteTs, count]) => [minuteTs, count]);
-            const minutePlaceholders = minuteValues.map(() => '(?, ?)').join(', ');
-            const minuteParams = minuteValues.flat();
+        // Process each minute
+        for (const [minuteTs, count] of sortedMinutes) {
+            // Insert minute count
+            insertMinuteStmt.run(minuteTs, count);
 
-            await db.execute(`
-                INSERT INTO minute_tx_counts (minute_ts, tx_count)
-                VALUES ${minutePlaceholders}
-                ON DUPLICATE KEY UPDATE
-                    tx_count = tx_count + VALUES(tx_count)
-            `, minuteParams);
-
-            // Batch insert cumulative counts for this chunk
-            const cumulativeValues = chunk.map(([minuteTs, count]) => {
-                runningTotal += count;
-                return [minuteTs, runningTotal];
-            });
-            const cumulativePlaceholders = cumulativeValues.map(() => '(?, ?)').join(', ');
-            const cumulativeParams = cumulativeValues.flat();
-
-            await db.execute(`
-                INSERT INTO cumulative_tx_counts (minute_ts, cumulative_count)
-                VALUES ${cumulativePlaceholders}
-                ON DUPLICATE KEY UPDATE
-                    cumulative_count = VALUES(cumulative_count)
-            `, cumulativeParams);
+            // Update running total and insert cumulative count
+            runningTotal += count;
+            insertCumulativeStmt.run(minuteTs, runningTotal);
         }
     }
 };

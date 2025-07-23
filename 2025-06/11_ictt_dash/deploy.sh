@@ -5,12 +5,11 @@ set -exu
 npm run build
 rsync -av --delete ./dist/ idx4:~/assets/
 
-# npx tsx ./scripts/updateChains.ts
+npx tsx ./scripts/updateChains.ts
 
 # Ensure remote data directory exists and copy chains.json
 ssh idx4 "mkdir -p ~/data ~/plugins"
-# scp ./prod_chains.json idx4:~/data/chains.json
-# rm ./prod_chains.json
+scp ./prod_chains.json idx4:~/data/chains.json
 
 # Sync local plugins to remote (removing any remote plugins not present locally)
 rsync -av --delete ./plugins/ idx4:~/plugins/

@@ -1,19 +1,5 @@
 [
     {
-        "chainName": "echo",
-        "blockchainId": "98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp",
-        "evmChainId": 173750,
-        "rpcConfig": {
-            "rpcUrl": "https://subnets.avax.network/echo/testnet/rpc",
-            "requestBatchSize": 10,
-            "maxConcurrentRequests": 50,
-            "rps": 10,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 1000
-        }
-    },
-    {
         "chainName": "Dispatch",
         "blockchainId": "2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY",
         "evmChainId": 779672,

@@ -3,7 +3,7 @@ import type { ContractHome, ContractHomeData, ContractHomeRemote } from './types
 
 interface ContractHomeRow {
     address: string;
-    data: ContractHomeData;
+    data: string; // JSON string from SQLite
 }
 
 const module: ApiPlugin = {
@@ -68,18 +68,18 @@ const module: ApiPlugin = {
             const results: (ContractHome & { chainName: string; blockchainId: string; evmChainId: number; })[] = [];
 
             for (const config of configs) {
-                const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, 'ictt');
+                const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, 'ictt');
 
                 // Query all contract homes from this chain
-                const [rows] = await indexerConn.execute(`
+                const selectStmt = indexerConn.prepare(`
                     SELECT address, data
                     FROM contract_homes
                 `);
-                const homeRows = rows as ContractHomeRow[];
+                const homeRows = selectStmt.all() as ContractHomeRow[];
 
                 // Convert from nested structure to flat structure for API
                 const contractHomes: ContractHome[] = homeRows.map(row => {
-                    const data: ContractHomeData = row.data;
+                    const data: ContractHomeData = JSON.parse(row.data);
                     const remotes: ContractHomeRemote[] = [];
 
                     // Flatten the nested structure

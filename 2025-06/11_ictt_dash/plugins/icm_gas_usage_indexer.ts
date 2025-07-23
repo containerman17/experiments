@@ -19,40 +19,40 @@ export const ICM_CHAIN_INTERVAL_SIZE = 300; // 5 minutes
 
 const module: IndexingPlugin = {
     name: "icm_gas_usage",
-    version: 20,
+    version: 21,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 
     // Initialize tables
-    initialize: async (db) => {
+    initialize: (db) => {
         // Create table for per-chain per-interval statistics
-        await db.execute(`
+        db.exec(`
             CREATE TABLE IF NOT EXISTS icm_chain_interval_stats (
-                other_chain_id VARCHAR(50),
-                interval_ts INT,
-                send_count INT NOT NULL DEFAULT 0,
-                receive_count INT NOT NULL DEFAULT 0,
-                send_gas_cost DECIMAL(30,18) NOT NULL DEFAULT 0,
-                receive_gas_cost DECIMAL(30,18) NOT NULL DEFAULT 0,
+                other_chain_id TEXT,
+                interval_ts INTEGER,
+                send_count INTEGER NOT NULL DEFAULT 0,
+                receive_count INTEGER NOT NULL DEFAULT 0,
+                send_gas_cost REAL NOT NULL DEFAULT 0,
+                receive_gas_cost REAL NOT NULL DEFAULT 0,
                 PRIMARY KEY (other_chain_id, interval_ts)
             )
         `);
 
         // Create index for queries
         try {
-            await db.execute(`
-                CREATE INDEX idx_icm_chain_interval_ts ON icm_chain_interval_stats(interval_ts)
+            db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_icm_chain_interval_ts ON icm_chain_interval_stats(interval_ts)
             `);
         } catch (error: any) {
             // Ignore if already exists
-            if (!error.message.includes('Duplicate key name')) {
+            if (!error.message.includes('already exists')) {
                 throw error;
             }
         }
     },
 
     // Process transactions
-    handleTxBatch: async (db, blocksDb, batch) => {
+    handleTxBatch: (db, blocksDb, batch) => {
         // Accumulate updates per chain per interval
         const updates = new Map<string, Map<number, ChainIntervalStats>>();
 
@@ -124,6 +124,18 @@ const module: IndexingPlugin = {
             }
         }
 
+        // Prepare statements for batch insert/update
+        const insertStmt = db.prepare(`
+            INSERT INTO icm_chain_interval_stats 
+            (other_chain_id, interval_ts, send_count, receive_count, send_gas_cost, receive_gas_cost)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(other_chain_id, interval_ts) DO UPDATE SET
+                send_count = send_count + excluded.send_count,
+                receive_count = receive_count + excluded.receive_count,
+                send_gas_cost = send_gas_cost + excluded.send_gas_cost,
+                receive_gas_cost = receive_gas_cost + excluded.receive_gas_cost
+        `);
+
         // Update database
         for (const [chainId, chainMap] of updates) {
             for (const [intervalTs, stats] of chainMap) {
@@ -131,16 +143,7 @@ const module: IndexingPlugin = {
                 const sendGasCostInEth = Number(stats.send_gas_cost) / 1e18;
                 const receiveGasCostInEth = Number(stats.receive_gas_cost) / 1e18;
 
-                await db.execute(`
-                    INSERT INTO icm_chain_interval_stats 
-                    (other_chain_id, interval_ts, send_count, receive_count, send_gas_cost, receive_gas_cost)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        send_count = send_count + VALUES(send_count),
-                        receive_count = receive_count + VALUES(receive_count),
-                        send_gas_cost = send_gas_cost + VALUES(send_gas_cost),
-                        receive_gas_cost = receive_gas_cost + VALUES(receive_gas_cost)
-                `, [chainId, intervalTs, stats.send_count, stats.receive_count, sendGasCostInEth, receiveGasCostInEth]);
+                insertStmt.run(chainId, intervalTs, stats.send_count, stats.receive_count, sendGasCostInEth, receiveGasCostInEth);
             }
         }
 

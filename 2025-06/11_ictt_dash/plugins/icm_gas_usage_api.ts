@@ -30,11 +30,11 @@ type IcmGasUsageChainData = {
 
 interface ChainStatsResult {
     other_chain_id: string;
-    interval_ts: number;
+    interval_index: number;
     send_count: number;
     receive_count: number;
-    send_gas_cost: string;  // DECIMAL comes as string from MySQL
-    receive_gas_cost: string;  // DECIMAL comes as string from MySQL
+    send_gas_cost: number;
+    receive_gas_cost: number;
 }
 
 const module: ApiPlugin = {
@@ -116,13 +116,13 @@ const module: ApiPlugin = {
 
             const since = now - count * periodSeconds;
 
-            const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, 'icm_gas_usage');
+            const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, 'icm_gas_usage');
 
-            // Generate intervals using MySQL aggregation with sliding windows relative to 'now'
+            // Generate intervals using SQLite aggregation with sliding windows relative to 'now'
             const query = `
                 SELECT 
                     other_chain_id,
-                    FLOOR((? - interval_ts) / ?) as interval_index,
+                    CAST((? - interval_ts) / ? AS INTEGER) as interval_index,
                     SUM(send_count) as send_count,
                     SUM(receive_count) as receive_count,
                     SUM(send_gas_cost) as send_gas_cost,
@@ -133,15 +133,8 @@ const module: ApiPlugin = {
                 ORDER BY other_chain_id, interval_index
             `;
 
-            const [rows] = await indexerConn.execute(query, [now, periodSeconds, since, now]);
-            const results = rows as Array<{
-                other_chain_id: string;
-                interval_index: number;
-                send_count: number;
-                receive_count: number;
-                send_gas_cost: string;
-                receive_gas_cost: string;
-            }>;
+            const stmt = indexerConn.prepare(query);
+            const results = stmt.all(now, periodSeconds, since, now) as ChainStatsResult[];
 
             // Group results by chain
             const resultsByChain: Record<string, IcmGasUsageChainData> = {};
@@ -173,8 +166,8 @@ const module: ApiPlugin = {
 
                     if (data) {
                         // Values are already in ETH/AVAX from the database
-                        const sendGasCost = parseFloat(data.send_gas_cost);
-                        const receiveGasCost = parseFloat(data.receive_gas_cost);
+                        const sendGasCost = data.send_gas_cost;
+                        const receiveGasCost = data.receive_gas_cost;
                         const totalGasCost = sendGasCost + receiveGasCost;
 
                         resultsByChain[otherChainId].values.push({

@@ -59,16 +59,15 @@ const module: ApiPlugin = {
             const since = now - periodSeconds;
 
             for (const config of configs) {
-                const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, 'minute_tx_counter');
+                const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, 'minute_tx_counter');
 
                 // Query minute_tx_counts table for the selected period
-                const [rows] = await indexerConn.execute(`
+                const stmt = indexerConn.prepare(`
                     SELECT SUM(tx_count) as total_txs
                     FROM minute_tx_counts
                     WHERE minute_ts >= ?
-                `, [since]);
-
-                const result = (rows as TxSumResult[])[0];
+                `);
+                const result = stmt.get(since) as TxSumResult;
 
                 const txCount = result.total_txs || 0;
                 const tps = txCount / periodSeconds;

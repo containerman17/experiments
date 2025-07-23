@@ -49,14 +49,14 @@ const module: ApiPlugin = {
             // Query each chain's database
             for (const config of configs) {
                 try {
-                    const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, "teleporter_messages");
+                    const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, "teleporter_messages");
 
                     // Get current timestamp in seconds
                     const now = Math.floor(Date.now() / 1000);
                     const startTime = now - secondsAgo;
 
                     // Query grouped counts for both incoming and outgoing messages
-                    const [rows] = await indexerConn.execute(`
+                    const stmt = indexerConn.prepare(`
                         SELECT 
                             is_outgoing,
                             other_chain_id,
@@ -64,8 +64,8 @@ const module: ApiPlugin = {
                         FROM teleporter_messages
                         WHERE block_timestamp >= ?
                         GROUP BY is_outgoing, other_chain_id
-                    `, [startTime]);
-                    const results = rows as MessageCountRow[];
+                    `);
+                    const results = stmt.all(startTime) as MessageCountRow[];
 
                     // Process results
                     for (const row of results) {

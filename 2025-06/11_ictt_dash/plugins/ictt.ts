@@ -4,7 +4,7 @@ import type { ContractHomeData, RemoteData } from './types/ictt.types';
 
 interface ContractHomeRow {
     address: string;
-    data: ContractHomeData;
+    data: string; // JSON string from SQLite
 }
 
 const events: Map<string, string> = abiUtils.getEventHashesMap(ERC20TokenHome as abiUtils.AbiItem[]);
@@ -43,30 +43,30 @@ const addAmount = (existing: string | undefined, toAdd: bigint): string => {
 
 const module: IndexingPlugin = {
     name: "ictt",
-    version: 15, // Bumped for new fields
+    version: 16, // Bumped for SQLite
     usesTraces: false,
     filterEvents: eventHexes,
 
-    initialize: async (db) => {
-        await db.execute(`
+    initialize: (db) => {
+        db.exec(`
             CREATE TABLE IF NOT EXISTS contract_homes (
-                address VARCHAR(42) PRIMARY KEY,
-                data JSON NOT NULL
+                address TEXT PRIMARY KEY,
+                data TEXT NOT NULL
             )
         `);
     },
 
-    handleTxBatch: async (db, blocksDb, batch) => {
+    handleTxBatch: (db, blocksDb, batch) => {
         // First, get all existing contract homes
-        const [rows] = await db.execute(`
+        const selectStmt = db.prepare(`
             SELECT address, data FROM contract_homes
         `);
-        const existingRows = rows as ContractHomeRow[];
+        const existingRows = selectStmt.all() as ContractHomeRow[];
 
         const existingHomes = new Map<string, ContractHomeData>();
         for (const row of existingRows) {
-            // MySQL JSON columns return already-parsed objects
-            existingHomes.set(row.address.toLowerCase(), row.data as ContractHomeData);
+            // Parse JSON string from SQLite
+            existingHomes.set(row.address.toLowerCase(), JSON.parse(row.data) as ContractHomeData);
         }
 
         // Process events
@@ -207,13 +207,13 @@ const module: IndexingPlugin = {
         if (updatedHomes.size > 0) {
             console.log('DEBUG: Event counter', debugEventCounter);
 
+            const insertStmt = db.prepare(`
+                INSERT OR REPLACE INTO contract_homes (address, data)
+                VALUES (?, ?)
+            `);
+
             for (const [address, data] of updatedHomes) {
-                await db.execute(`
-                    INSERT INTO contract_homes (address, data)
-                    VALUES (?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        data = VALUES(data)
-                `, [address, JSON.stringify(data)]);
+                insertStmt.run(address, JSON.stringify(data));
             }
         }
     }

@@ -71,10 +71,10 @@ const module: ApiPlugin = {
                 // Query each chain's database
                 for (const config of configs) {
                     try {
-                        const indexerConn = await dbCtx.getIndexerDbConnection(config.evmChainId, "teleporter_messages");
+                        const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, "teleporter_messages");
 
                         // Query grouped counts for messages in this time period
-                        const [rows] = await indexerConn.execute(`
+                        const stmt = indexerConn.prepare(`
                             SELECT
                                 is_outgoing,
                                 other_chain_id,
@@ -82,8 +82,8 @@ const module: ApiPlugin = {
                             FROM teleporter_messages
                             WHERE block_timestamp >= ? AND block_timestamp < ?
                             GROUP BY is_outgoing, other_chain_id
-                        `, [startTime, endTime]);
-                        const results = rows as MessageCountRow[];
+                        `);
+                        const results = stmt.all(startTime, endTime) as MessageCountRow[];
 
                         // Process results for deduplication
                         for (const row of results) {
@@ -187,7 +187,7 @@ const module: ApiPlugin = {
 
             // Check if chain has teleporter indexer
             try {
-                const indexerConn = await dbCtx.getIndexerDbConnection(chainId, "teleporter_messages");
+                const indexerConn = dbCtx.getIndexerDbConnection(chainId, "teleporter_messages");
 
                 // Get current timestamp in seconds
                 const now = Math.floor(Date.now() / 1000);
@@ -201,16 +201,15 @@ const module: ApiPlugin = {
                     const startTime = endTime - 86400;
 
                     // Query counts for this chain
-                    const [rows] = await indexerConn.execute(`
+                    const stmt = indexerConn.prepare(`
                         SELECT
                             is_outgoing,
                             COUNT(*) as message_count
                         FROM teleporter_messages
                         WHERE block_timestamp >= ? AND block_timestamp < ?
                         GROUP BY is_outgoing
-                    `, [startTime, endTime]);
-
-                    const results = rows as { is_outgoing: number; message_count: number }[];
+                    `);
+                    const results = stmt.all(startTime, endTime) as { is_outgoing: number; message_count: number }[];
 
                     let incomingCount = 0;
                     let outgoingCount = 0;

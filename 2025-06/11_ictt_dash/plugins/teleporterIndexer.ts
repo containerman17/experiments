@@ -12,29 +12,28 @@ const RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC = '0x292ee90bbaf70b5d4936025e09d56ba08f3
 
 const module: IndexingPlugin = {
     name: "teleporter_messages",
-    version: 7,
+    version: 8,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 
     // Initialize tables
-    initialize: async (db) => {
-        await db.execute(`
+    initialize: (db) => {
+        db.exec(`
             CREATE TABLE IF NOT EXISTS teleporter_messages (
                 is_outgoing BOOLEAN NOT NULL,
-                other_chain_id VARCHAR(64) NOT NULL,
-                block_timestamp INT NOT NULL
+                other_chain_id TEXT NOT NULL,
+                block_timestamp INTEGER NOT NULL
             )
         `);
 
-
-        await db.execute(`
-                CREATE INDEX idx_teleporter_messages_time_direction_chain 
-                ON teleporter_messages(block_timestamp, is_outgoing, other_chain_id)
-            `);
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_teleporter_messages_time_direction_chain 
+            ON teleporter_messages(block_timestamp, is_outgoing, other_chain_id)
+        `);
     },
 
     // Process transactions
-    handleTxBatch: async (db, blocksDb, batch) => {
+    handleTxBatch: (db, blocksDb, batch) => {
         const teleporterMessages: {
             is_outgoing: boolean;
             other_chain_id: string;
@@ -82,28 +81,16 @@ const module: IndexingPlugin = {
             return;
         }
 
-        // Insert in batches to avoid "too many SQL variables" error
-        // SQLite typically supports 999 variables, so with 3 columns per row, we use 300 rows per batch
-        const BATCH_SIZE = 300;
+        // Prepare statement for batch insert
+        const insertStmt = db.prepare(`
+            INSERT INTO teleporter_messages (is_outgoing, other_chain_id, block_timestamp) 
+            VALUES (?, ?, ?)
+        `);
 
-        for (let i = 0; i < teleporterMessages.length; i += BATCH_SIZE) {
-            const batch = teleporterMessages.slice(i, i + BATCH_SIZE);
-
-            // Build multi-row insert statement for this batch
-            const placeholders = batch.map(() => '(?, ?, ?)').join(', ');
-            const insertStmt = `INSERT INTO teleporter_messages (is_outgoing, other_chain_id, block_timestamp) 
-                     VALUES ${placeholders}`;
-
-            // Flatten the batch into a single array of values
-            const values = batch.flatMap(msg => [
-                msg.is_outgoing ? 1 : 0,
-                msg.other_chain_id,
-                msg.block_timestamp
-            ]);
-
-            await db.execute(insertStmt, values);
+        // Insert each message
+        for (const msg of teleporterMessages) {
+            insertStmt.run(msg.is_outgoing ? 1 : 0, msg.other_chain_id, msg.block_timestamp);
         }
-
     }
 };
 

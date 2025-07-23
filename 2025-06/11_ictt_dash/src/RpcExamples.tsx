@@ -130,7 +130,7 @@ interface EthCallCardProps extends RpcCardProps {
     selectedChain: Chain | undefined
 }
 
-function EthCallCard({ selectedChainId, selectedChain }: EthCallCardProps) {
+function EthCallCard({ selectedChainId }: EthCallCardProps) {
     const { data: callData } = useQuery({
         queryKey: ['rpc', 'eth_call', selectedChainId],
         queryFn: async () => {

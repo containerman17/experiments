@@ -24,3 +24,5 @@ db structure
 require() statements.
 
 do not call toLowerCase ever. in a loop it is a CPU hoarder
+
+Do not use text color, unless absolutely necessary.

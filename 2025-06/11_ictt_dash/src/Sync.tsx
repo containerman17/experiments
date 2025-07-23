@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { getApiChains } from "./client/sdk.gen"
 import { useQuery } from '@tanstack/react-query'
+import ErrorComponent from "./components/ErrorComponent"
 
 interface ChainData {
     evmChainId: number;
@@ -17,7 +18,7 @@ interface ChainData {
 export default function Sync() {
     const [lastUpdated, setLastUpdated] = useState(new Date())
 
-    const { data: rawChains = [] } = useQuery<ChainData[]>({
+    const { data: rawChains = [], error, isError } = useQuery<ChainData[]>({
         queryKey: ['chains'],
         queryFn: async () => {
             const res = await getApiChains()
@@ -39,10 +40,14 @@ export default function Sync() {
         }
     }, [rawChains])
 
+    if (isError) {
+        return <ErrorComponent message={error?.message || 'Failed to load chain data'} />
+    }
+
     return (
         <div className="py-8 px-0 md:px-8">
             <div className="flex justify-between items-center mb-8 px-4 md:px-0">
-                <h1 className="text-3xl font-bold text-gray-800">FrostByte Chain Status</h1>
+                <h1 className="text-3xl font-bold text-gray-800">🔄 Sync Status</h1>
             </div>
 
             <div className="bg-white shadow-lg md:rounded-lg overflow-x-auto">

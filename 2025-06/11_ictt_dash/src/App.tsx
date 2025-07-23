@@ -1,7 +1,7 @@
 import { Routes, Route, Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import Sync from './Sync'
-import ICTTHomes from './ICTTHomes'
+import RpcExamples from './RpcExamples'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 
@@ -14,7 +14,7 @@ function App() {
           <nav className="mb-6">
             <div className="py-3 flex gap-6">
               <Link to="/" className="text-blue-700 hover:underline">Sync Status</Link>
-              <Link to="/ictt-homes" className="text-blue-700 hover:underline">ICTT Homes</Link>
+              <Link to="/rpc" className="text-blue-700 hover:underline">RPC Demo</Link>
               <a href="/api/docs" className="text-blue-700 hover:underline flex items-center gap-1" target="api">
                 API Docs
                 <ExternalLink size={16} />
@@ -24,7 +24,7 @@ function App() {
           <main>
             <Routes>
               <Route path="/" element={<Sync />} />
-              <Route path="/ictt-homes" element={<ICTTHomes />} />
+              <Route path="/rpc" element={<RpcExamples />} />
             </Routes>
           </main>
         </div>

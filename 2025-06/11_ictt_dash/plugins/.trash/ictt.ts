@@ -1,6 +1,6 @@
 import { type IndexingPlugin, abiUtils, encodingUtils, viem } from "frostbyte-sdk";
-import ERC20TokenHome from './abi/ERC20TokenHome.abi.json';
-import type { ContractHomeData, RemoteData } from './types/ictt.types';
+import ERC20TokenHome from '../abi/ERC20TokenHome.abi.json';
+import type { ContractHomeData, RemoteData } from '../types/ictt.types';
 
 interface ContractHomeRow {
     address: string;

@@ -1,5 +1,5 @@
 import type { ApiPlugin } from "frostbyte-sdk";
-import type { ContractHome, ContractHomeData, ContractHomeRemote } from './types/ictt.types';
+import type { ContractHome, ContractHomeData, ContractHomeRemote } from '../types/ictt.types';
 
 interface ContractHomeRow {
     address: string;

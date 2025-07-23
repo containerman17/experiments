@@ -38,12 +38,12 @@
     "chainName": "DOS Chain",
     "blockchainId": "22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv",
     "subnetId": "nQCwF6V9y8VFjvMuPeQVWWYn6ba75518Dpf6ZMWZNb3NyTA94",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv/rpc",
-    "evmChainId": "7979",
-    "blocksCount": "1m+",
-    "estimatedTxCount": "1m+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "coqnet",
@@ -53,6 +53,7 @@
     "evmChainId": "42069",
     "blocksCount": "1m+",
     "estimatedTxCount": "100m+",
+    "glacierChainId": "42069",
     "comment": null,
     "debugEnabled": true
   },
@@ -60,12 +61,12 @@
     "chainName": "ienium",
     "blockchainId": "23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK",
     "subnetId": "2sDjh95i88VY4oi3eACYBxHTY6poZs71yKC71jhzgYBJY5hrCs",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc",
-    "evmChainId": "2345",
-    "blocksCount": "100+",
-    "estimatedTxCount": "100+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "TITANL",
@@ -187,6 +188,17 @@
     "debugEnabled": true
   },
   {
+    "chainName": "Gentle Flawless Enemies Chain",
+    "blockchainId": "2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53",
+    "subnetId": "5nw7KUi4vpwohKXdnFZFsJ5RJRST2gVXVScNksQHsKVxANq69",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
+  },
+  {
     "chainName": "thegrowthprotocol",
     "blockchainId": "2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY",
     "subnetId": "2eq3DtJp4cWzvGd8Q3ZFo8VpZmmD235Xoxgq6CmX8anZ69M54",
@@ -247,13 +259,13 @@
     "chainName": "QChain",
     "blockchainId": "2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy",
     "subnetId": "26wQKuvA5kjwrKDaje7nmuJAx6Ke2bGvDDr3EiypNr53rH1pMc",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2GRw9HYnCxyVsr4P5pytpqcyRaymtnTuu1oZhuSWcP4DfJxojy/rpc",
+    "rpcUrl": "https://subnets.avax.network/qchain/mainnet/rpc",
     "evmChainId": "12150",
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "12150",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "STLINK",
@@ -281,13 +293,13 @@
     "chainName": "FRQTALNETWORK",
     "blockchainId": "2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB",
     "subnetId": "5vcCHz5fgd1hWyXaKiLnMAVjmh4qW7yFxNbASBjxCXZYE445N",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2JepXG35p5i21VxbnPx1eWmu5Z5EutcSXVAtcisBBJPTYzAVmB/rpc",
+    "rpcUrl": "https://subnets.avax.network/frqtalnet/mainnet/rpc",
     "evmChainId": "62789",
-    "blocksCount": "10+",
+    "blocksCount": "100+",
     "estimatedTxCount": "10+",
     "glacierChainId": "62789",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "StepNetwork",
@@ -304,25 +316,25 @@
     "chainName": "TradeXMarkets",
     "blockchainId": "2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK",
     "subnetId": "JD8MbaUp75twdVJ7A4j2ryk7gFJ8FCgQeNLhvDv3y4up9bExp",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2L9oVyCkyqMgrwVS7CFkn21KSNWeD67dH6uzjw3LF6ErDhzAjK/rpc",
+    "rpcUrl": "https://subnets.avax.network/trx/mainnet/rpc",
     "evmChainId": "21024",
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "21024",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "TheLYLTYEconomy",
     "blockchainId": "2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC",
     "subnetId": "2iumcj2wiV9BQ96LRHpYNpD1SHhb8Vcvm8YUebZSqcFeJakTo6",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2Ldubr6779M2PWhY3ECsBx5kb85pGY4euCWZLdaaE9o7ocSHMC/rpc",
+    "rpcUrl": "https://subnets.avax.network/lylty/mainnet/rpc",
     "evmChainId": "17177",
-    "blocksCount": "10+",
+    "blocksCount": "100+",
     "estimatedTxCount": "10+",
     "glacierChainId": "17177",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Henesys",
@@ -340,13 +352,13 @@
     "chainName": "gunz",
     "blockchainId": "2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML",
     "subnetId": "2MbQjnTg3yxEtZBfnamboi7K9AajwNq7WExiwReBQSBtwbBVer",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2M47TxWHGnhNtq6pM5zPXdATBtuqubxn5EPFgFmEawCQr9WFML/rpc",
+    "rpcUrl": "https://subnets.avax.network/gunzilla/mainnet/rpc",
     "evmChainId": "43419",
     "blocksCount": "1m+",
-    "estimatedTxCount": "1m+",
+    "estimatedTxCount": "10m+",
     "glacierChainId": "43419",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "XANA Chain",
@@ -363,12 +375,23 @@
     "chainName": "numbersevm",
     "blockchainId": "2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE",
     "subnetId": "2gHgAgyDHQv7jzFg6MxU2yyKq5NZBpwFLFeP8xX2E3gyK1SzSQ",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc",
-    "evmChainId": "10507",
-    "blocksCount": "100k+",
-    "estimatedTxCount": "100k+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
+  },
+  {
+    "chainName": "Growfitter",
+    "blockchainId": "2PdUCtQocNDvbVWy8ch4PdaicTHA2h5keHLAAPcs9Pr8tYaUg3",
+    "subnetId": "BCDGWbjqYBJLsXEzHNc2qy9VYPTrF3aGaSMbTGyjn7qJ7RxH8",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "Rymedi Transaction Subnet",
@@ -385,13 +408,13 @@
     "chainName": "Blockticity",
     "blockchainId": "2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc",
     "subnetId": "2Ypm6RVhddu5Ps8DEbb35Y1PgX4uXE76yyxn6JMhnZy8ftAFLW",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2pV5K35V1ohNSYhRU3z1Bud2oZys9bak7QYcmvbVvnieh4FJXc/rpc",
+    "rpcUrl": "https://subnets.avax.network/btic/mainnet/rpc",
     "evmChainId": "28530",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "28530",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "C-Chain",
@@ -409,31 +432,42 @@
     "chainName": "BLITZ SUBNET",
     "blockchainId": "2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj",
     "subnetId": "yPUx56ffTBML1QfomcBvwfBxfE3LSgqkBNfxTCpx5dr4NNFGB",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj/rpc",
+    "rpcUrl": "https://subnets.avax.network/blitz/mainnet/rpc",
     "evmChainId": "1344",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "1344",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
+  },
+  {
+    "chainName": "DComm",
+    "blockchainId": "2QJ6d1ue6UyXNXrMdGnELFc2AjMdMqs8YbX3sT3k4Nin2RcWSm",
+    "subnetId": "fmmMAGwEYQZMGN7BC4b86gqmukSMEc6rAkG1SXapq3cz1W7y7",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "EthixETX",
     "blockchainId": "2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE",
     "subnetId": "q54cgHa9RN2NFp9qsfpPzVkhgn8xqDgKEQR1G997xZ1P5Dc8o",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2R87vuaaRZRxPLdvdMEpo7fH9qyyNnP34h4nyxuwq8sKkQ1GaE/rpc",
+    "rpcUrl": "https://subnets.avax.network/etx/mainnet/rpc",
     "evmChainId": "389",
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "389",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Blaze",
     "blockchainId": "2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY",
     "subnetId": "j6HXQWdpRhX7yHMWLehUyYDjypHa455vP5tuiXZ81nkPgveFV",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2SfshBPqRJexmqdWBY2xYSTq2Rp2dDisuax7nQB6GyNqPjSWWY/rpc",
+    "rpcUrl": "https://subnets.avax.network/blaze/mainnet/rpc",
     "evmChainId": "46975",
     "blocksCount": "0+",
     "estimatedTxCount": "0+",
@@ -457,12 +491,12 @@
     "chainName": "Hatchyverse",
     "blockchainId": "2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm",
     "subnetId": "2Mi7V6HwKCEPxXTRG87o5tHACECkMPnJKP6UA3w1ote7j46GYT",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc",
-    "evmChainId": "8198",
-    "blocksCount": "10k+",
-    "estimatedTxCount": "10k+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "beam",
@@ -492,12 +526,12 @@
     "chainName": "ULALO",
     "blockchainId": "2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig",
     "subnetId": "sopy3uXvCFVLorg4kmqQfZpqVg9GXzs8GmjSwM18GZJtf66h6",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc",
-    "evmChainId": "237007",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "numine",
@@ -514,13 +548,13 @@
     "chainName": "lucid",
     "blockchainId": "2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb",
     "subnetId": "hbP3PrnQS71Py1VVxvHfnCnr7MWos3XQesEsCKQoA9hpciyVR",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb/rpc",
+    "rpcUrl": "https://subnets.avax.network/lucid/mainnet/rpc",
     "evmChainId": "62521",
     "blocksCount": "10+",
     "estimatedTxCount": "10+",
     "glacierChainId": "62521",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "amichainMainnet",
@@ -537,47 +571,47 @@
     "chainName": "deraalpha",
     "blockchainId": "2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du",
     "subnetId": "B7hA9WibSJu2fKdHT2XZs2RYg1rZTtxwg6cMYBKYjvcJjbqsp",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc",
-    "evmChainId": "20250320",
-    "blocksCount": "1m+",
-    "estimatedTxCount": "100m+",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
     "comment": "also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc",
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "zerooneMainnet",
     "blockchainId": "2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1",
     "subnetId": "nKJuE11HePLrmp391sfoFVqZR7Fw5VJ1XjyznsogsjebxwiAg",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2Xj6iZeySuuUTZR5jYjhQ7yQ84q8AtDWnAJ2vS9BmmXBNJhYD1/rpc",
+    "rpcUrl": "https://subnets.avax.network/zeroonemai/mainnet/rpc",
     "evmChainId": "27827",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "27827",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "SSHIVANSH",
     "blockchainId": "2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW",
     "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
-    "evmChainId": "222345",
-    "blocksCount": "10+",
-    "estimatedTxCount": "10+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "even",
     "blockchainId": "2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL",
     "subnetId": "VsxF67NQTACc2fLQL9fD3F8LzJ5eezcSGFNitGsk7VxKbPwcD",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL/rpc",
+    "rpcUrl": "https://subnets.avax.network/even/mainnet/rpc",
     "evmChainId": "33345",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "33345",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Rymedi Compliance Subnet",
@@ -594,13 +628,12 @@
     "chainName": "oumla",
     "blockchainId": "3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr",
     "subnetId": "HXtMMwc6UwS8zK1G3kA9u6NGtUHrm56cnPm2WZBCU1bs2hHsM",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr/rpc",
-    "evmChainId": "58166",
-    "blocksCount": "100+",
-    "estimatedTxCount": "100+",
-    "glacierChainId": "58166",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "Bitcoin Content Network",
@@ -617,25 +650,25 @@
     "chainName": "TixChain",
     "blockchainId": "Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj",
     "subnetId": "2BLtazsGwYAFEHpvZQGQUPavjQZ2YUqpvfYPdAdTtKpJ1m3eRK",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/Bb5XKrQoBT6ypFmFUppAqfSmKCqcqYwjGCn3hHS6gibRTjiDj/rpc",
+    "rpcUrl": "https://subnets.avax.network/tixchain/mainnet/rpc",
     "evmChainId": "13790",
     "blocksCount": "100+",
     "estimatedTxCount": "100+",
     "glacierChainId": "13790",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "StraitsX",
     "blockchainId": "EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx",
     "subnetId": "2W9sERL7Zf7NrWpz7Bzg3fKSEt46gSQaKAU7ntTMSShLy64yMz",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/EJ4DyXHe4ydhsLLMiDPsHtoq5RDqgyao6Lwb9znKhs59q4NQx/rpc",
+    "rpcUrl": "https://subnets.avax.network/straitsx/mainnet/rpc",
     "evmChainId": "5566",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "5566",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Rymedi Identity Subnet",
@@ -664,13 +697,13 @@
     "chainName": "PLYRPHI",
     "blockchainId": "HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4",
     "subnetId": "axp7DUSPvFghTM883ug2B8btAReBAACxD1VyENmRDStH4Lfed",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4/rpc",
+    "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
     "evmChainId": "16180",
     "blocksCount": "1m+",
     "estimatedTxCount": "1m+",
     "glacierChainId": "16180",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "bloodloop",
@@ -688,12 +721,12 @@
     "chainName": "BnryMainnet",
     "blockchainId": "J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ",
     "subnetId": "23dqTMHK186m4Rzcn1ukJdmHy13nqido4LjTp5Kh9W6qBKaFib",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc",
-    "evmChainId": "836",
-    "blocksCount": "100k+",
-    "estimatedTxCount": "100m+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "PLAYA3ULL",
@@ -722,12 +755,12 @@
     "chainName": "Mirai",
     "blockchainId": "Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM",
     "subnetId": "2kyZRnEHakKriNufphojbeFR5hi247bJeTjFDgQgo7VRRjoqyq",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc",
-    "evmChainId": "2718",
-    "blocksCount": "100k+",
-    "estimatedTxCount": "100k+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "IntainMarkets",
@@ -756,13 +789,13 @@
     "chainName": "BangoL",
     "blockchainId": "QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4",
     "subnetId": "4Wuefof5Lp2v5KfmJRnsGJz9HPX4UzWP7DZC5SyhQcXRQkyPp",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/QUmGffHpjgMeHJVobZDjwvFKAcP5Rs5FQsURJexDjKir2Ljp4/rpc",
+    "rpcUrl": "https://subnets.avax.network/bangochain/mainnet/rpc",
     "evmChainId": "5506",
-    "blocksCount": "1k+",
-    "estimatedTxCount": "1k+",
+    "blocksCount": "10k+",
+    "estimatedTxCount": "10k+",
     "glacierChainId": "5506",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Pulsar",
@@ -791,25 +824,25 @@
     "chainName": "Artery",
     "blockchainId": "rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6",
     "subnetId": "25VdGtdQPejyffNLpTqh4BH2NABXT8Zxup6ee3B4htrMryofUB",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6/rpc",
+    "rpcUrl": "https://subnets.avax.network/artery/mainnet/rpc",
     "evmChainId": "4313",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "4313",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "FIFABlockchain",
     "blockchainId": "SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E",
     "subnetId": "h7egyVb6fKHMDpVaEsTEcy7YaEnXrayxZS4A1AEU4pyBzmwGp",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/SUDoK9P89PCcguskyof41fZexw7U3zubDP2DZpGf3HbFWwJ4E/rpc",
+    "rpcUrl": "https://subnets.avax.network/fifa/mainnet/rpc",
     "evmChainId": "13322",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "13322",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "FIZIT",
@@ -838,25 +871,25 @@
     "chainName": "KALICHAIN",
     "blockchainId": "TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3",
     "subnetId": "x1C95jnFyLV3x8tiiCW7ZFRoRFgq9SX1Yprwfxx4GCTujggYB",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3/rpc",
+    "rpcUrl": "https://subnets.avax.network/kalichain/mainnet/rpc",
     "evmChainId": "6533",
     "blocksCount": "100k+",
     "estimatedTxCount": "100k+",
     "glacierChainId": "6533",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "feature",
     "blockchainId": "txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk",
     "subnetId": "29p4FdSKaXQPyw8sqhzJSK37FXuPHdyECau186qZSUNRhk3QuB",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/txbozTNfyRgJJxtHmsbpvwTTWTHU739z7pX7qKdhJVxHC2MAk/rpc",
+    "rpcUrl": "https://subnets.avax.network/feature/mainnet/rpc",
     "evmChainId": "33311",
     "blocksCount": "1k+",
     "estimatedTxCount": "1k+",
     "glacierChainId": "33311",
     "comment": null,
-    "debugEnabled": true
+    "debugEnabled": false
   },
   {
     "chainName": "Lamina1",
@@ -897,12 +930,12 @@
     "chainName": "ApertumMainnet",
     "blockchainId": "YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn",
     "subnetId": "2Y83BEXg7zgSCJunL2KD2i1vjMfaMnU1QEpG4M7acqG44BnRto",
-    "rpcUrl": "https://meganode.solokhin.com/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc",
-    "evmChainId": "2786",
-    "blocksCount": "1m+",
-    "estimatedTxCount": "1m+",
-    "comment": null,
-    "debugEnabled": true
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "CodeNekt",
@@ -910,8 +943,8 @@
     "subnetId": "o4Eariv2Cx1fTvPFXYofpJfS9KgwFaiGN8KFGcCeZM9t87GJr",
     "rpcUrl": "https://rpc-codenekt-mainnet.cogitus.io/ext/bc/ZG7cT4B1u3y7piZ9CzfejnTKnNAoehcifbJWUwBqgyD3RuEqK/rpc",
     "evmChainId": "235235",
-    "blocksCount": "100+",
-    "estimatedTxCount": "100+",
+    "blocksCount": "1k+",
+    "estimatedTxCount": "1k+",
     "comment": null,
     "debugEnabled": true
   }

@@ -16,12 +16,11 @@ interface ChainSelectorProps {
 
 function ChainSelector({ chains, selectedChainId, onChainSelect }: ChainSelectorProps) {
     return (
-        <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <label className=" font-medium whitespace-nowrap">Select Chain:</label>
+        <div className="bg-white rounded-lg shadow-sm p-4">
             <select
                 value={selectedChainId || ''}
                 onChange={(e) => onChainSelect(Number(e.target.value))}
-                className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
                 {chains.map(chain => (
                     <option key={chain.evmChainId} value={chain.evmChainId}>
@@ -303,7 +302,7 @@ export default function Rpc() {
     return (
         <div className="py-8 px-4 md:px-8">
             <div className="flex flex-col gap-4 mb-8">
-                <h1 className="text-3xl font-bold ">🔧 Ethereum RPC Demo</h1>
+                <h1 className="text-3xl font-bold ">🔧 RPC Demo</h1>
 
                 <div className="border border-gray-200 rounded-xl bg-white p-6">
                     <div className="mb-3  text-base">RPC Caching</div>

@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react"
 import { getApiChains, getApiByChainIdStatsCumulativeTxs } from "./client/sdk.gen"
-import { type GetApiChainsResponses, type GetApiByChainIdStatsCumulativeTxsResponses } from "./client/types.gen"
+import { type GetApiChainsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 
 type Chain = GetApiChainsResponses[200][0]
-type CumulativeTxsData = GetApiByChainIdStatsCumulativeTxsResponses[200]
 
 interface ChainWithTxs extends Chain {
     cumulativeTxs?: number
@@ -70,7 +69,11 @@ function CumulativeTxsList({ timestamp }: { timestamp: number }) {
                 }
             })
 
-            chainsWithResults.sort((a, b) => (b.cumulativeTxs || 0) - (a.cumulativeTxs || 0))
+            chainsWithResults.sort((a, b) => {
+                const aTxs = 'cumulativeTxs' in a ? (a.cumulativeTxs || 0) : 0
+                const bTxs = 'cumulativeTxs' in b ? (b.cumulativeTxs || 0) : 0
+                return bTxs - aTxs
+            })
             setChainsWithTxs(chainsWithResults)
         }
 

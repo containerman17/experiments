@@ -16,9 +16,20 @@ interface ExampleCardProps {
 export default function ExampleCard({ children, curlString, name, chains, selectedChainId, onChainSelect, defaultChainId }: ExampleCardProps) {
     useEffect(() => {
         if (chains && chains.length > 0 && selectedChainId === null && onChainSelect) {
-            if (defaultChainId && chains.some(chain => chain.evmChainId === defaultChainId)) {
+            // Find chains that are at least 99% synced
+            const syncedChains = chains.filter(chain => {
+                const syncPercentage = chain.latestRemoteBlockNumber > 0
+                    ? (chain.lastStoredBlockNumber / chain.latestRemoteBlockNumber) * 100
+                    : 0
+                return syncPercentage >= 99
+            })
+            
+            if (defaultChainId && syncedChains.some(chain => chain.evmChainId === defaultChainId)) {
                 onChainSelect(defaultChainId)
-            } else {
+            } else if (syncedChains.length > 0) {
+                onChainSelect(syncedChains[0].evmChainId)
+            } else if (chains.length > 0) {
+                // If no chains are 99% synced, still select the first one
                 onChainSelect(chains[0].evmChainId)
             }
         }
@@ -38,11 +49,23 @@ export default function ExampleCard({ children, curlString, name, chains, select
                         onChange={(e) => onChainSelect(Number(e.target.value))}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                        {chains.map(chain => (
-                            <option key={chain.evmChainId} value={chain.evmChainId}>
-                                {chain.chainName} (ID: {chain.evmChainId})
-                            </option>
-                        ))}
+                        {chains.map(chain => {
+                            const syncPercentage = chain.latestRemoteBlockNumber > 0
+                                ? (chain.lastStoredBlockNumber / chain.latestRemoteBlockNumber) * 100
+                                : 0
+                            const isGreyedOut = syncPercentage < 99
+                            
+                            return (
+                                <option 
+                                    key={chain.evmChainId} 
+                                    value={chain.evmChainId}
+                                    disabled={isGreyedOut}
+                                    className={isGreyedOut ? "text-gray-400" : ""}
+                                >
+                                    {chain.chainName} (ID: {chain.evmChainId}) {isGreyedOut ? `- ${syncPercentage.toFixed(1)}% synced` : ""}
+                                </option>
+                            )
+                        })}
                     </select>
                 </div>
             )}

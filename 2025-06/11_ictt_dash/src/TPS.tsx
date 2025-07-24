@@ -1,14 +1,13 @@
 import { useState } from "react"
 import { getApiChains, getApiByChainIdStatsTps, getApiStatsTps } from "./client/sdk.gen"
-import { type GetApiChainsResponses, type GetApiByChainIdStatsTpsResponses, type GetApiStatsTpsResponses } from "./client/types.gen"
+import { type GetApiChainsResponses, type GetApiByChainIdStatsTpsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 type Chain = GetApiChainsResponses[200][0]
 type TPSData = GetApiByChainIdStatsTpsResponses[200]
-type NetworkTPSData = GetApiStatsTpsResponses[200]
 
 interface ChartDataPoint {
     time: string

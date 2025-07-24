@@ -12,7 +12,7 @@ const RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC = '0x292ee90bbaf70b5d4936025e09d56ba08f3
 
 const module: IndexingPlugin = {
     name: "teleporter_messages",
-    version: 8,
+    version: 9,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 

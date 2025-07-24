@@ -42,25 +42,25 @@ function DailyMessageVolumeChart({ days }: { days: number }) {
             <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="transparent" />
-                    <XAxis 
+                    <XAxis
                         dataKey="formattedDate"
                         tick={{ fontSize: 12 }}
                         tickLine={false}
                         axisLine={false}
                     />
-                    <YAxis 
+                    <YAxis
                         tick={{ fontSize: 12 }}
                         tickLine={false}
                         axisLine={false}
                     />
-                    <Tooltip 
+                    <Tooltip
                         labelFormatter={(value) => `Date: ${value}`}
                         formatter={(value: number) => [value.toLocaleString(), 'Messages']}
                     />
-                    <Line 
-                        type="monotone" 
-                        dataKey="messageCount" 
-                        stroke="#2563eb" 
+                    <Line
+                        type="monotone"
+                        dataKey="messageCount"
+                        stroke="#2563eb"
                         strokeWidth={2}
                         dot={{ fill: '#2563eb', strokeWidth: 2, r: 4 }}
                         activeDot={{ r: 6, stroke: '#2563eb', strokeWidth: 2, fill: '#ffffff' }}
@@ -75,7 +75,7 @@ function ChainDailyMessageVolumeChart({ selectedChainId, days }: { selectedChain
     const { data, error, isError, isLoading } = useQuery<ChainDailyMessageVolumeData[]>({
         queryKey: ['chainDailyMessageVolume', selectedChainId, days],
         queryFn: async () => {
-            if (!selectedChainId) return null
+            if (!selectedChainId) return []
             const res = await getApiByChainIdMetricsDailyMessageVolume({
                 path: { chainId: String(selectedChainId) },
                 query: { days }
@@ -83,7 +83,7 @@ function ChainDailyMessageVolumeChart({ selectedChainId, days }: { selectedChain
             if (res.data) {
                 return res.data
             }
-            throw new Error('Failed to fetch chain daily message volume data')
+            return []
         },
         enabled: !!selectedChainId
     })
@@ -96,7 +96,7 @@ function ChainDailyMessageVolumeChart({ selectedChainId, days }: { selectedChain
         return <div className="text-center py-8">Loading chain message data...</div>
     }
 
-    const chartData = data.map(item => ({
+    const chartData = (data || []).map((item: ChainDailyMessageVolumeData) => ({
         ...item,
         formattedDate: new Date(item.timestamp * 1000).toLocaleDateString()
     }))
@@ -106,34 +106,34 @@ function ChainDailyMessageVolumeChart({ selectedChainId, days }: { selectedChain
             <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="transparent" />
-                    <XAxis 
+                    <XAxis
                         dataKey="formattedDate"
                         tick={{ fontSize: 12 }}
                         tickLine={false}
                         axisLine={false}
                     />
-                    <YAxis 
+                    <YAxis
                         tick={{ fontSize: 12 }}
                         tickLine={false}
                         axisLine={false}
                     />
-                    <Tooltip 
+                    <Tooltip
                         labelFormatter={(value) => `Date: ${value}`}
                         formatter={(value: number, name: string) => [
-                            value.toLocaleString(), 
+                            value.toLocaleString(),
                             name === 'incomingCount' ? 'Incoming' : 'Outgoing'
                         ]}
                     />
-                    <Bar 
-                        dataKey="incomingCount" 
+                    <Bar
+                        dataKey="incomingCount"
                         stackId="messages"
-                        fill="#2563eb" 
+                        fill="#2563eb"
                         name="Incoming"
                     />
-                    <Bar 
-                        dataKey="outgoingCount" 
+                    <Bar
+                        dataKey="outgoingCount"
                         stackId="messages"
-                        fill="#7c3aed" 
+                        fill="#7c3aed"
                         name="Outgoing"
                     />
                 </BarChart>

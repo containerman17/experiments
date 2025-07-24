@@ -18,7 +18,7 @@
         "blockchainId": "HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4",
         "evmChainId": 16180,
         "rpcConfig": {
-            "rpcUrl": "https://idx3.solokhin.com/api/16180/rpc",
+            "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
             "requestBatchSize": 100,
             "maxConcurrentRequests": 100,
             "rps": 1000,
@@ -32,7 +32,7 @@
         "blockchainId": "2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf",
         "evmChainId": 8021,
         "rpcConfig": {
-            "rpcUrl": "https://idx3.solokhin.com/api/8021/rpc",
+            "rpcUrl": "https://meganode.solokhin.com/ext/bc/2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf/rpc",
             "requestBatchSize": 100,
             "maxConcurrentRequests": 100,
             "rps": 1000,

@@ -199,7 +199,7 @@ export default function ICMGasUsage() {
             <div className="grid grid-cols-1">
                 <ExampleCard
                     name="ICM Gas Usage Chart"
-                    curlString={`curl -X GET ${window.location.origin}/api/${selectedChainId || '{evmChainId}'}/stats/icm-gas-usage?period=7d&count=50`}
+                    curlString={`curl -X GET "${window.location.origin}/api/${selectedChainId || '{evmChainId}'}/stats/icm-gas-usage?period=7d&count=50"`}
                 >
                     <ICMGasUsageChart selectedChainId={selectedChainId} />
                 </ExampleCard>

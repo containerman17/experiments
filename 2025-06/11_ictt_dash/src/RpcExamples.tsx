@@ -40,7 +40,7 @@ function ChainIdCard({ selectedChainId }: RpcCardProps) {
     return (
         <ExampleCard
             name="eth_chainId"
-            curlString={`curl -X POST ${window.location.origin}/api/${selectedChainId}/rpc \\
+            curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_chainId","params":[]}'`}
         >
@@ -84,7 +84,7 @@ function BlockNumberCard({ selectedChainId }: RpcCardProps) {
     return (
         <ExampleCard
             name="eth_blockNumber"
-            curlString={`curl -X POST ${window.location.origin}/api/${selectedChainId}/rpc \\
+            curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_blockNumber","params":[]}'`}
         >
@@ -136,7 +136,7 @@ function EthCallCard({ selectedChainId }: EthCallCardProps) {
     return (
         <ExampleCard
             name="eth_call (Warp Contract)"
-            curlString={`curl -X POST ${window.location.origin}/api/${selectedChainId}/rpc \\
+            curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_call","params":[{"to":"0x0200000000000000000000000000000000000005","data":"0x4213cf78"},"latest"]}'`}
         >
@@ -172,7 +172,7 @@ function GetBlockCard({ selectedChainId }: RpcCardProps) {
     return (
         <ExampleCard
             name="eth_getBlockByNumber (Block 1)"
-            curlString={`curl -X POST ${window.location.origin}/api/${selectedChainId}/rpc \\
+            curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_getBlockByNumber","params":["0x1",true]}'`}
         >
@@ -235,7 +235,7 @@ function GetTransactionReceiptCard({ selectedChainId }: RpcCardProps) {
     return (
         <ExampleCard
             name="eth_getTransactionReceipt"
-            curlString={`curl -X POST ${window.location.origin}/api/${selectedChainId}/rpc \\
+            curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_getTransactionReceipt","params":["${txHash}"]}'`}
         >

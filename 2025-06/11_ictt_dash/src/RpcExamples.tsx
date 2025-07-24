@@ -1,36 +1,14 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { getApiChains, postApiByEvmChainIdRpc } from "./client/sdk.gen"
 import { type GetApiChainsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
+import ChainSelector from "./components/ChainSelector"
 import { encodingUtils } from "frostbyte-sdk"
 
 type Chain = GetApiChainsResponses[200][0]
 
-interface ChainSelectorProps {
-    chains: Chain[]
-    selectedChainId: number | null
-    onChainSelect: (chainId: number) => void
-}
-
-function ChainSelector({ chains, selectedChainId, onChainSelect }: ChainSelectorProps) {
-    return (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-            <select
-                value={selectedChainId || ''}
-                onChange={(e) => onChainSelect(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-                {chains.map(chain => (
-                    <option key={chain.evmChainId} value={chain.evmChainId}>
-                        {chain.chainName} (ID: {chain.evmChainId})
-                    </option>
-                ))}
-            </select>
-        </div>
-    )
-}
 
 interface RpcCardProps {
     selectedChainId: number | null
@@ -286,12 +264,6 @@ export default function Rpc() {
         }
     })
 
-    // Set default chain when chains load
-    useEffect(() => {
-        if (chains.length > 0 && selectedChainId === null) {
-            setSelectedChainId(chains[0].evmChainId)
-        }
-    }, [chains, selectedChainId])
 
     if (isError) {
         return <ErrorComponent message={error?.message || 'Failed to load chain data'} />
@@ -327,6 +299,7 @@ export default function Rpc() {
                     chains={chains}
                     selectedChainId={selectedChainId}
                     onChainSelect={setSelectedChainId}
+                    defaultChainId={43114}
                 />
             </div>
 

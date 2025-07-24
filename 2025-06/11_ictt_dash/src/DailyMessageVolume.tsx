@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
-import ChainSelector from "./components/ChainSelector"
 
 type Chain = GetApiChainsResponses[200][0]
 type DailyMessageVolumeData = GetApiMetricsDailyMessageVolumeResponses[200][0]
@@ -172,7 +171,7 @@ export default function DailyMessageVolume() {
     return (
         <div className="py-8 px-4 md:px-8">
             <div className="flex flex-col gap-4 mb-8">
-                <h1 className="text-3xl font-bold">📈 Daily Message Volume</h1>
+                <h1 className="text-3xl font-bold">📅 Daily Message Volume</h1>
 
                 <div className="border border-gray-200 rounded-xl bg-white p-6">
                     <div className="mb-3 text-base">ICM Message Volume Over Time</div>
@@ -211,15 +210,13 @@ export default function DailyMessageVolume() {
                 </ExampleCard>
 
                 <div className="space-y-4">
-                    <ChainSelector
+                    <ExampleCard
+                        name="Chain-specific Message Volume (Incoming/Outgoing)"
+                        curlString={selectedChainId ? `curl -X GET "${window.location.origin}/api/${selectedChainId}/metrics/dailyMessageVolume?days=${days}"` : `curl -X GET "${window.location.origin}/api/{chainId}/metrics/dailyMessageVolume?days=${days}"`}
                         chains={chains}
                         selectedChainId={selectedChainId}
                         onChainSelect={setSelectedChainId}
                         defaultChainId={779672}
-                    />
-                    <ExampleCard
-                        name="Chain-specific Message Volume (Incoming/Outgoing)"
-                        curlString={selectedChainId ? `curl -X GET "${window.location.origin}/api/${selectedChainId}/metrics/dailyMessageVolume?days=${days}"` : `curl -X GET "${window.location.origin}/api/{chainId}/metrics/dailyMessageVolume?days=${days}"`}
                     >
                         <ChainDailyMessageVolumeChart selectedChainId={selectedChainId} days={days} />
                     </ExampleCard>

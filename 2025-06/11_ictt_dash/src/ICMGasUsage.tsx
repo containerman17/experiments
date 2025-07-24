@@ -4,7 +4,6 @@ import { type GetApiChainsResponses, type GetApiByEvmChainIdStatsIcmGasUsageResp
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
-import ChainSelector from "./components/ChainSelector"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 type Chain = GetApiChainsResponses[200][0]
@@ -188,18 +187,16 @@ export default function ICMGasUsage() {
                     </ul>
                 </div>
 
-                <ChainSelector
-                    chains={chains}
-                    selectedChainId={selectedChainId}
-                    onChainSelect={setSelectedChainId}
-                    defaultChainId={779672}
-                />
             </div>
 
             <div className="grid grid-cols-1">
                 <ExampleCard
                     name="ICM Gas Usage Chart"
                     curlString={`curl -X GET "${window.location.origin}/api/${selectedChainId || '{evmChainId}'}/stats/icm-gas-usage?period=7d&count=50"`}
+                    chains={chains}
+                    selectedChainId={selectedChainId}
+                    onChainSelect={setSelectedChainId}
+                    defaultChainId={779672}
                 >
                     <ICMGasUsageChart selectedChainId={selectedChainId} />
                 </ExampleCard>

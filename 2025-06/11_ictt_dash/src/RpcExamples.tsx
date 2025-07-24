@@ -1,10 +1,9 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { getApiChains, postApiByEvmChainIdRpc } from "./client/sdk.gen"
 import { type GetApiChainsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
-import ChainSelector from "./components/ChainSelector"
 import { encodingUtils } from "frostbyte-sdk"
 
 type Chain = GetApiChainsResponses[200][0]
@@ -12,9 +11,12 @@ type Chain = GetApiChainsResponses[200][0]
 
 interface RpcCardProps {
     selectedChainId: number | null
+    chains: Chain[]
+    onChainSelect: (chainId: number) => void
+    defaultChainId?: number
 }
 
-function ChainIdCard({ selectedChainId }: RpcCardProps) {
+function ChainIdCard({ selectedChainId, chains, onChainSelect, defaultChainId }: RpcCardProps) {
     const { data: chainIdData } = useQuery({
         queryKey: ['rpc', 'eth_chainId', selectedChainId],
         queryFn: async () => {
@@ -43,6 +45,10 @@ function ChainIdCard({ selectedChainId }: RpcCardProps) {
             curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_chainId","params":[]}'`}
+            chains={chains}
+            selectedChainId={selectedChainId}
+            onChainSelect={onChainSelect}
+            defaultChainId={defaultChainId}
         >
             <div className="flex flex-col items-center justify-center py-12">
                 <div className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -58,7 +64,7 @@ function ChainIdCard({ selectedChainId }: RpcCardProps) {
     )
 }
 
-function BlockNumberCard({ selectedChainId }: RpcCardProps) {
+function BlockNumberCard({ selectedChainId, chains, onChainSelect, defaultChainId }: RpcCardProps) {
     const { data: blockNumberData } = useQuery({
         queryKey: ['rpc', 'eth_blockNumber', selectedChainId],
         queryFn: async () => {
@@ -87,6 +93,10 @@ function BlockNumberCard({ selectedChainId }: RpcCardProps) {
             curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_blockNumber","params":[]}'`}
+            chains={chains}
+            selectedChainId={selectedChainId}
+            onChainSelect={onChainSelect}
+            defaultChainId={defaultChainId}
         >
             <div className="flex flex-col items-center justify-center py-12">
                 <div className="text-sm uppercase tracking-wider  mb-2">Latest Block</div>
@@ -107,7 +117,7 @@ interface EthCallCardProps extends RpcCardProps {
     selectedChain: Chain | undefined
 }
 
-function EthCallCard({ selectedChainId }: EthCallCardProps) {
+function EthCallCard({ selectedChainId, selectedChain, chains, onChainSelect, defaultChainId }: EthCallCardProps) {
     const { data: callData } = useQuery({
         queryKey: ['rpc', 'eth_call', selectedChainId],
         queryFn: async () => {
@@ -139,6 +149,10 @@ function EthCallCard({ selectedChainId }: EthCallCardProps) {
             curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_call","params":[{"to":"0x0200000000000000000000000000000000000005","data":"0x4213cf78"},"latest"]}'`}
+            chains={chains}
+            selectedChainId={selectedChainId}
+            onChainSelect={onChainSelect}
+            defaultChainId={defaultChainId}
         >
             <div className="flex flex-col items-center justify-center py-8">
                 <div className="text-sm uppercase tracking-wider  mb-3">Blockchain ID</div>
@@ -155,7 +169,7 @@ function EthCallCard({ selectedChainId }: EthCallCardProps) {
     )
 }
 
-function GetBlockCard({ selectedChainId }: RpcCardProps) {
+function GetBlockCard({ selectedChainId, chains, onChainSelect, defaultChainId }: RpcCardProps) {
     const { data: blockData } = useQuery({
         queryKey: ['rpc', 'eth_getBlockByNumber', selectedChainId],
         queryFn: async () => {
@@ -175,6 +189,10 @@ function GetBlockCard({ selectedChainId }: RpcCardProps) {
             curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_getBlockByNumber","params":["0x1",true]}'`}
+            chains={chains}
+            selectedChainId={selectedChainId}
+            onChainSelect={onChainSelect}
+            defaultChainId={defaultChainId}
         >
             <div className="h-64 overflow-auto bg-gray-50 rounded p-3">
                 <pre className="text-xs font-mono ">{JSON.stringify(blockData, null, 2)}</pre>
@@ -183,7 +201,7 @@ function GetBlockCard({ selectedChainId }: RpcCardProps) {
     )
 }
 
-function GetTransactionReceiptCard({ selectedChainId }: RpcCardProps) {
+function GetTransactionReceiptCard({ selectedChainId, chains, onChainSelect, defaultChainId }: RpcCardProps) {
     const { data: blockNumberData } = useQuery({
         queryKey: ['rpc', 'eth_blockNumber', selectedChainId],
         queryFn: async () => {
@@ -238,6 +256,10 @@ function GetTransactionReceiptCard({ selectedChainId }: RpcCardProps) {
             curlString={`curl -X POST "${window.location.origin}/api/${selectedChainId}/rpc" \\
   -H "Content-Type: application/json" \\
   -d '{"method":"eth_getTransactionReceipt","params":["${txHash}"]}'`}
+            chains={chains}
+            selectedChainId={selectedChainId}
+            onChainSelect={onChainSelect}
+            defaultChainId={defaultChainId}
         >
             <div className="h-64 overflow-auto bg-gray-50 rounded p-3">
                 {txReceiptData && ('error' in txReceiptData) && typeof txReceiptData.error === 'string' ? (
@@ -295,20 +317,14 @@ export default function Rpc() {
                     </div>
                 </div>
 
-                <ChainSelector
-                    chains={chains}
-                    selectedChainId={selectedChainId}
-                    onChainSelect={setSelectedChainId}
-                    defaultChainId={43114}
-                />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                <ChainIdCard selectedChainId={selectedChainId} />
-                <BlockNumberCard selectedChainId={selectedChainId} />
-                <EthCallCard selectedChainId={selectedChainId} selectedChain={selectedChain} />
-                <GetBlockCard selectedChainId={selectedChainId} />
-                <GetTransactionReceiptCard selectedChainId={selectedChainId} />
+                <ChainIdCard selectedChainId={selectedChainId} chains={chains} onChainSelect={setSelectedChainId} defaultChainId={43114} />
+                <BlockNumberCard selectedChainId={selectedChainId} chains={chains} onChainSelect={setSelectedChainId} defaultChainId={43114} />
+                <EthCallCard selectedChainId={selectedChainId} selectedChain={selectedChain} chains={chains} onChainSelect={setSelectedChainId} defaultChainId={43114} />
+                <GetBlockCard selectedChainId={selectedChainId} chains={chains} onChainSelect={setSelectedChainId} defaultChainId={43114} />
+                <GetTransactionReceiptCard selectedChainId={selectedChainId} chains={chains} onChainSelect={setSelectedChainId} defaultChainId={43114} />
             </div>
         </div>
     )

@@ -2,7 +2,7 @@ import { writeFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { database } from './database.js';
 import path from 'path';
-import { checkNodeBootstrap, getNodeId, getNodeIP } from './avalanche.js';
+import { checkNodeBootstrap, getNodeId, getNodeIP } from './apis.js';
 
 interface ComposeService {
     image: string;
@@ -186,7 +186,7 @@ export async function generateDockerCompose(): Promise<void> {
 
     // TASK.md requirement: "call docker compose up -d" on any database change
     try {
-        execSync('docker compose up -d --remove-orphans', {
+        execSync('docker compose up -d', {
             cwd: process.cwd(),
             stdio: 'inherit'
         });

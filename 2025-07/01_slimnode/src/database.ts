@@ -31,31 +31,8 @@ class Database {
 
             // Try loading main file first
             if (existsSync(this.filePath)) {
-                try {
-                    const fileContent = readFileSync(this.filePath, 'utf-8');
-                    this.data = JSON.parse(fileContent);
-                    console.log(`Loaded database from ${this.filePath}`);
-                    return;
-                } catch (error) {
-                    console.error(`Main database file corrupted: ${error}`);
-
-                    // Try backup file
-                    const backupPath = path.join(this.dataDir, 'chains.backup.json');
-                    if (existsSync(backupPath)) {
-                        try {
-                            const backupContent = readFileSync(backupPath, 'utf-8');
-                            this.data = JSON.parse(backupContent);
-                            console.log(`Recovered database from backup: ${backupPath}`);
-
-                            // Restore main file from backup
-                            writeFileSync(this.filePath, backupContent);
-                            console.log(`Restored main database file from backup`);
-                            return;
-                        } catch (backupError) {
-                            console.error(`Backup file also corrupted: ${backupError}`);
-                        }
-                    }
-                }
+                const fileContent = readFileSync(this.filePath, 'utf-8');
+                this.data = JSON.parse(fileContent);
             }
 
             console.log(`No existing database found, starting fresh`);
@@ -172,9 +149,9 @@ class Database {
         return oldest;
     }
 
-    getDatabase(): NodeDatabase {
-        return this.data;
-    }
+    // getDatabase(): NodeDatabase {
+    //     return this.data;
+    // }
 
     // Assign subnet to appropriate node, handling full capacity automatically
     assignSubnetToNode(subnetId: string): {

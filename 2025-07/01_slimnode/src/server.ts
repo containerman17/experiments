@@ -1,7 +1,7 @@
 import fastify from 'fastify';
 import dotenv from 'dotenv';
 import { database } from './database.js';
-import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo } from './avalanche.js';
+import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo } from './apis.js';
 import { generateDockerCompose } from './docker-composer.js';
 import { checkRateLimit, extractClientIP } from './rate-limiter.js';
 
@@ -91,14 +91,6 @@ server.get('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
             error: error instanceof Error ? error.message : 'Failed to register subnet'
         });
     }
-});
-
-// Debug endpoint to view database state
-server.get('/node_admin/status', async () => {
-    return {
-        nodes: database.getDatabase(),
-        nodeCount: database.getAllNodes().length
-    };
 });
 
 // OPTIONS handler for CORS preflight

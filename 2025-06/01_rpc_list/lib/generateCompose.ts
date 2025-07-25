@@ -156,7 +156,7 @@ export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnet
             stakingPort: nextHttpPort + 1,
             subnetIds: subnets,
             blockchainIds: blockchainIds,
-            skipCChain: parseInt(nodeId) !== 0, // Only node 0 syncs C-Chain
+            skipCChain: true//parseInt(nodeId) !== 0, // Only node 0 syncs C-Chain
         })
 
         serviceConfigs.push({
@@ -178,7 +178,7 @@ export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnet
             }
         ],
         ports: [
-            '80:80'
+            '8080:80'
         ],
         restart: 'unless-stopped',
         depends_on: Object.keys(composeObject.services)

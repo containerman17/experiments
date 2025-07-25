@@ -2,6 +2,7 @@ import { writeFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { database } from './database.js';
 import path from 'path';
+import { checkNodeBootstrap, getNodeId, getNodeIP } from './avalanche.js';
 
 interface ComposeService {
     image: string;
@@ -24,28 +25,13 @@ interface ComposeFile {
     };
 }
 
-// Check if bootnode is bootstrapped
-async function checkBootnodeBootstrap(): Promise<boolean> {
-    try {
-        const response = await fetch('http://127.0.0.1:9650/ext/info', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 1,
-                method: 'info.isBootstrapped',
-                params: {
-                    chain: 'P'
-                }
-            })
-        });
-
-        const data = await response.json();
-        return data.result?.isBootstrapped === true;
-    } catch (error) {
-        return false;
+export const getPorts = (index: number) => {
+    return {
+        httpPort: 9652 + (index * 2),
+        stakePort: 9653 + (index * 2)
     }
 }
+
 
 // Fast bootstrap: copy bootnode data to new nodes
 function copyBootnodeToNewNodes(): void {
@@ -93,7 +79,7 @@ export async function generateDockerCompose(): Promise<void> {
     const nodes = database.getAllNodes();
 
     // Check if bootnode is bootstrapped
-    const bootnodeBootstrapped = await checkBootnodeBootstrap();
+    const bootnodeBootstrapped = await checkNodeBootstrap(9650);
     console.log(`Bootnode bootstrapped: ${bootnodeBootstrapped}`);
 
     // If bootnode is bootstrapped, do fast bootstrap copy for new nodes
@@ -130,16 +116,20 @@ export async function generateDockerCompose(): Promise<void> {
         network_mode: 'host'
     };
 
+    let bootNodeId = await getNodeId(9650);
+    const bootNodeIP = await getNodeIP(9650);
+
+
     // Only add subnet nodes if bootnode is bootstrapped
-    if (bootnodeBootstrapped) {
+    if (bootnodeBootstrapped && bootNodeId && bootNodeIP) {
         // Generate service for each node - ports start from 9652/9653
         nodes.forEach((nodeId, index) => {
-            const httpPort = 9652 + (index * 2);  // Start from 9652 (bootnode uses 9650)
-            const stakePort = 9653 + (index * 2);  // Start from 9653 (bootnode uses 9651)
+
+            const { httpPort, stakePort } = getPorts(index);
             const subnets = database.getNodeSubnets(nodeId);
 
             // All nodes bootstrap from the bootnode
-            const avalanchegoArgs = (!process.env.BOOTNODE_ID || !process.env.MY_IP) ? '' : `./avalanchego --bootstrap-ips=${process.env.MY_IP}:9651 --bootstrap-ids="${process.env.BOOTNODE_ID}"`;
+            const avalanchegoArgs = `./avalanchego --bootstrap-ips=${bootNodeIP} --bootstrap-ids="${bootNodeId}"`;
 
             compose.services[nodeId] = {
                 image: 'avaplatform/subnet-evm_avalanchego:latest',
@@ -159,7 +149,7 @@ export async function generateDockerCompose(): Promise<void> {
                 },
                 restart: 'unless-stopped',
                 network_mode: 'host',
-                ...(avalanchegoArgs && { command: avalanchegoArgs })
+                command: avalanchegoArgs
             };
         });
     } else {

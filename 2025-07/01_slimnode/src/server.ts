@@ -20,10 +20,9 @@ async function initializeContainers() {
 }
 
 // Start initialization
-initializeContainers().catch(e => {
-    console.error(e);
-    process.exit(1);
-});
+setInterval(() => initializeContainers().catch(e => {
+    console.error('Error initializing containers:', e);
+}), 5 * 1000);
 
 // Rate limiting middleware
 server.addHook('preHandler', (req, reply, done) => {

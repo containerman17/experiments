@@ -52,29 +52,6 @@ async function checkNodePeerCount(nodePort: number): Promise<number> {
     }
 }
 
-function restartFailedNodes(failedNodes: string[]): string[] {
-    if (failedNodes.length === 0) {
-        console.log('\n✅ No failed nodes to restart\n');
-        return [];
-    }
-
-    console.log(`\nRestarting ${failedNodes.length} failed nodes...\n`);
-
-    const restartedNodes: string[] = [];
-    for (const nodeId of failedNodes) {
-        try {
-            console.log(`🔄 Restarting ${nodeId}...`);
-            execSync(`docker restart ${nodeId}`, { stdio: 'inherit' });
-            console.log(`✅ Successfully restarted ${nodeId}`);
-            restartedNodes.push(nodeId);
-        } catch (error) {
-            console.log(`❌ Failed to restart ${nodeId}:`, error);
-        }
-    }
-
-    return restartedNodes;
-}
-
 async function main() {
     const dataDir = process.env.DATA_DIR || './data';
     const filePath = path.join(dataDir, 'chains.json');
@@ -100,8 +77,8 @@ async function main() {
     const nodes = Object.keys(database).sort();
     console.log(`Checking ${nodes.length} nodes...\n`);
 
-    // First pass: check status and identify failed nodes
-    const failedNodes: string[] = [];
+    // First pass: check status and identify nodes eligible for restart
+    const eligibleForRestart: Array<{ nodeId: string, port: number }> = [];
     let totalSubnets = 0;
 
     // Check bootnode first (always on port 9650)
@@ -110,8 +87,8 @@ async function main() {
     const bootnodePeerCount = await checkNodePeerCount(9650);
     const bootnodeStatus = bootnodeBootstrapped ? '✅' : '❌';
 
-    if (!bootnodeBootstrapped) {
-        failedNodes.push('bootnode');
+    if (!bootnodeBootstrapped && bootnodePeerCount === 0) {
+        eligibleForRestart.push({ nodeId: 'bootnode', port: 9650 });
     }
 
     console.log(`${bootnodeStatus} bootnode (port 9650) - bootstrap node, ${bootnodePeerCount} peers\n`);
@@ -127,21 +104,44 @@ async function main() {
         const peerCount = await checkNodePeerCount(nodePort);
         const status = isBootstrapped ? '✅' : '❌';
 
-        if (!isBootstrapped) {
-            failedNodes.push(nodeId);
+        if (!isBootstrapped && peerCount === 0) {
+            eligibleForRestart.push({ nodeId, port: nodePort });
         }
 
         console.log(`${status} ${nodeId} (port ${nodePort}) - ${subnetCount} subnets, ${peerCount} peers`);
     }
 
-    // Restart failed nodes if flag is provided
+    // Restart up to 5 random nodes that are failing and have 0 peers
     let restartedNodes: string[] = [];
     if (shouldRestart) {
-        restartedNodes = restartFailedNodes(failedNodes);
+        if (eligibleForRestart.length === 0) {
+            console.log('\n✅ No nodes eligible for restart (need both failing status and 0 peers)\n');
+        } else {
+            // Randomly select up to 5 nodes
+            const nodesToRestart = eligibleForRestart
+                .sort(() => Math.random() - 0.5)  // Shuffle array
+                .slice(0, 5)  // Take first 5
+                .map(node => node.nodeId);
+
+            console.log(`\nFound ${eligibleForRestart.length} nodes eligible for restart (failing + 0 peers)`);
+            console.log(`Randomly selected ${nodesToRestart.length} nodes to restart: ${nodesToRestart.join(', ')}\n`);
+
+            for (const nodeId of nodesToRestart) {
+                try {
+                    console.log(`🔄 Restarting ${nodeId}...`);
+                    execSync(`docker restart ${nodeId}`, { stdio: 'inherit' });
+                    console.log(`✅ Successfully restarted ${nodeId}`);
+                    restartedNodes.push(nodeId);
+                } catch (error) {
+                    console.log(`❌ Failed to restart ${nodeId}:`, error);
+                }
+            }
+        }
 
         if (restartedNodes.length > 0) {
-            console.log('Waiting 10 seconds for nodes to restart...\n');
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            const WAIT_SECONDS = 10;
+            console.log(`Waiting ${WAIT_SECONDS} seconds for nodes to restart...\n`);
+            await new Promise(resolve => setTimeout(resolve, WAIT_SECONDS * 1000));
 
             console.log('Rechecking restarted nodes...\n');
 

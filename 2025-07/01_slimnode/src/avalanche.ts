@@ -35,6 +35,9 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 // Permanent cache for node info responses (never expires)
 const nodeInfoCache = new Map<number, any>();
 
+// Permanent cache for node IP responses (never expires)
+const nodeIPCache = new Map<number, string | undefined>();
+
 export async function getSubnetIdFromChainId(chainId: string): Promise<string | null> {
     // Check cache first
     const cached = chainIdCache.get(chainId);
@@ -92,6 +95,16 @@ export type NodeInfoResponse = {
     id: number;
 };
 
+export async function getNodeId(port: number): Promise<string | undefined> {
+    try {
+        const nodeInfo = await getNodeInfo(port);
+        return nodeInfo.result.nodeID;
+    } catch (error) {
+        console.error(`Error getting node ID from port ${port}:`, error);
+        return undefined;
+    }
+}
+
 export async function getNodeInfo(nodePort: number): Promise<NodeInfoResponse> {
     // Check permanent cache first
     const cached = nodeInfoCache.get(nodePort);
@@ -118,5 +131,62 @@ export async function getNodeInfo(nodePort: number): Promise<NodeInfoResponse> {
     } catch (error) {
         console.error(`Error getting node info from port ${nodePort}:`, error);
         throw new Error('Failed to get node info');
+    }
+}
+
+export async function getNodeIP(nodePort: number): Promise<string | undefined> {
+    // Check permanent cache first
+    const cached = nodeIPCache.get(nodePort);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:${nodePort}/ext/info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'info.getNodeIP',
+                id: 1
+            })
+        });
+
+        const data = await response.json();
+        const ip = data.result?.ip;
+
+        // Cache forever since this never changes
+        nodeIPCache.set(nodePort, ip);
+        return ip;
+    } catch (error) {
+        console.error(`Error getting node IP from port ${nodePort}:`, error);
+        const undefinedResult = undefined;
+        // Cache the undefined result too to avoid repeated failed attempts
+        nodeIPCache.set(nodePort, undefinedResult);
+        return undefinedResult;
+    }
+}
+
+
+// Check if bootnode is bootstrapped
+export async function checkNodeBootstrap(nodePort: number): Promise<boolean> {
+    try {
+        const response = await fetch(`http://127.0.0.1:${nodePort}/ext/info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'info.isBootstrapped',
+                params: {
+                    chain: 'P'
+                }
+            })
+        });
+
+        const data = await response.json();
+        return data.result?.isBootstrapped === true;
+    } catch (error) {
+        return false;
     }
 }

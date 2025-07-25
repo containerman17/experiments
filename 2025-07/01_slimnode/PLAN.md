@@ -11,7 +11,6 @@ Build an API service that manages multiple Avalanche nodes, each hosting up to 1
 - **Dedicated Bootnode**: Separate bootstrap node on ports 9650/9651 that doesn't track subnets
 - **Localhost RPC**: API connects to localhost:9650 (bootnode) for validation and chain lookups
 - **Host Network Tunnel**: Cloudflare tunnel uses `network_mode: host` to access API on localhost:3000
-- **Bootstrap Configuration**: BOOTNODE_ID and MY_IP environment variables for multi-node setup
 - **Port Separation**: Bootnode uses 9650/9651, subnet nodes start from 9652/9653
 
 ## Deployment Architecture

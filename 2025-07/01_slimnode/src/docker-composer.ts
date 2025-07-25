@@ -14,6 +14,8 @@ interface ComposeService {
     networks?: string[];
     network_mode?: string;
     command?: string;
+    cpus?: string;
+    mem_limit?: string;
 }
 
 interface ComposeFile {
@@ -113,7 +115,9 @@ export async function generateDockerCompose(): Promise<void> {
             AVAGO_STAKING_PORT: '9651'
         },
         restart: 'unless-stopped',
-        network_mode: 'host'
+        network_mode: 'host',
+        cpus: '2',
+        mem_limit: '2g'
     };
 
     let bootNodeId = await getNodeId(9650);
@@ -129,7 +133,7 @@ export async function generateDockerCompose(): Promise<void> {
             const subnets = database.getNodeSubnets(nodeId);
 
             // All nodes bootstrap from the bootnode
-            const avalanchegoArgs = `./avalanchego --bootstrap-ips=${bootNodeIP} --bootstrap-ids="${bootNodeId}"`;
+            const avalanchegoArgs = ''//`./avalanchego --bootstrap-ips=${bootNodeIP} --bootstrap-ids="${bootNodeId}"`;
 
             compose.services[nodeId] = {
                 image: 'avaplatform/subnet-evm_avalanchego:latest',
@@ -149,7 +153,9 @@ export async function generateDockerCompose(): Promise<void> {
                 },
                 restart: 'unless-stopped',
                 network_mode: 'host',
-                command: avalanchegoArgs
+                command: avalanchegoArgs,
+                cpus: '1',
+                mem_limit: '1g'
             };
         });
     } else {

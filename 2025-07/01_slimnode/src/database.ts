@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
 
+const SUBNETS_PER_NODE = 1;
+
 interface NodeDatabase {
     [nodeId: string]: {
         [subnetId: string]: number; // timestamp
@@ -149,7 +151,7 @@ class Database {
 
     areAllNodesFull(): boolean {
         for (const [nodeId, subnets] of Object.entries(this.data)) {
-            if (Object.keys(subnets).length < 16) {
+            if (Object.keys(subnets).length < SUBNETS_PER_NODE) {
                 return false;
             }
         }

@@ -16,9 +16,32 @@ for (const chain of chains) {
     }
 }
 
-// All subnets from all chains
+// Get chains without RPC URLs
+const chainsWithoutRpc = chains.filter(chain => !chain.rpcUrl);
+
+// Get blockchainIds from trackExtraChains
+const extraBlockchainIds = trackExtraChains as string[];
+
+// Find subnets for chains without RPC or in trackExtraChains
+const subnetsToTrackSet = new Set<string>();
+for (const chain of chainsWithoutRpc) {
+    if (chain.subnetId) {
+        subnetsToTrackSet.add(chain.subnetId);
+    }
+}
+
+// Add subnets for chains in trackExtraChains
+for (const chain of chains) {
+    if (chain.blockchainId && extraBlockchainIds.includes(chain.blockchainId)) {
+        if (chain.subnetId) {
+            subnetsToTrackSet.add(chain.subnetId);
+        }
+    }
+}
+
+// Convert to array and filter out primary subnet
 const PRIMARY_SUBNET_ID = "11111111111111111111111111111111LpoYY"
-const subnetsToTrack = [...new Set(chains.map(chain => chain.subnetId))].filter(subnet => subnet !== PRIMARY_SUBNET_ID)
+const subnetsToTrack = [...subnetsToTrackSet].filter(subnet => subnet !== PRIMARY_SUBNET_ID)
 
 // Get all currently assigned subnets across all nodes
 const currentlyAssigned = new Set();
@@ -29,6 +52,9 @@ Object.values(nodeSubnets).forEach((subnets: string[]) => {
 // Find new subnets that need to be assigned
 const newSubnets = subnetsToTrack.filter(subnet => !currentlyAssigned.has(subnet));
 
+console.log(`Tracking ${chainsWithoutRpc.length} chains without RPC`);
+console.log(`Tracking ${extraBlockchainIds.length} chains from trackExtraChains`);
+console.log(`Total subnets to track: ${subnetsToTrack.length}`);
 console.log(`Found ${newSubnets.length} new subnets to assign:`, newSubnets);
 
 // Assign new subnets to nodes

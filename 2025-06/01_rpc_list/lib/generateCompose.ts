@@ -29,7 +29,7 @@ function generateService(config: ServiceConfig) {
             `${config.stakingPort}:${config.stakingPort}`
         ],
         volumes: [
-            `~/meganode_${config.folderSuffix}/:/root/.avalanchego`
+            `~/nodes/${config.folderSuffix}/:/root/.avalanchego`
         ],
         environment: [
             `AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=${config.skipCChain ? 'true' : 'false'}`,

@@ -10,6 +10,8 @@ import { getGlacierChains, listAllBlockchains } from './lib/glacier.ts'
 import { isValidated } from './lib/pApi.ts';
 import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber, fetchBlockchainIDFromPrecompile, testDebugFunctionality } from './lib/evm.ts'
 import { getIndexerStatus } from './lib/indexer.ts'
+import { config } from 'dotenv'
+config()
 
 const ignoreChains = [
     "2oYMBNV4eNHyqk2fjjV5nVQLDbtmNJzq5s3qs3Lo6ftnC6FByM", // X-Chain
@@ -94,7 +96,12 @@ async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise
 
 // Find working RPC URL for a chain
 async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, extraRpcUrl?: string): Promise<{ rpcUrl: string; debugEnabled: boolean } | undefined> {
-    const meganodeUrl = `https://meganode.solokhin.com/ext/bc/${blockchainId}/rpc`;
+    const MEGANODE_DOMAIN = process.env.MEGANODE_DOMAIN
+    if (!MEGANODE_DOMAIN) {
+        console.log('MEGANODE_DOMAIN is not set. Please set it in the .env file.');
+        process.exit(1);
+    }
+    const meganodeUrl = `${MEGANODE_DOMAIN}/ext/bc/${blockchainId}/rpc`;
 
     // Try extra RPC first
     if (extraRpcUrl && extraRpcUrl.trim() !== '') {

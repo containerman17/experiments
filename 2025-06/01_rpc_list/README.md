@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (50)
+## Chains with Public RPC URLs (51)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -409,14 +409,14 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/etx
 
-**QRTMP**
+**Monsoon**
 - Blocks Count: 10+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 24513
-- Blockchain ID: tkfaNJvuPU8LxLjMRSP3XvoU7khfqZp1tU1peZ83zv9ysNxfZ
-- RPC URL: https://subnets.avax.network/qr0711t1mp/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/qr0711t1mp
+- Estimated Tx Count: 10+
+- EVM Chain ID: 100610
+- Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
+- RPC URL: http://142.132.150.152:8080/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
 
 **TITANL**
 - Blocks Count: 10+
@@ -435,6 +435,15 @@
 - RPC URL: https://subnets.avax.network/lucid/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/lucid
+
+**Republic Chain**
+- Blocks Count: 10+
+- Estimated Tx Count: 10+
+- EVM Chain ID: 14594
+- Blockchain ID: WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER
+- RPC URL: http://142.132.150.152:8080/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
 
 **DinariFinancialNetwork**
 - Blocks Count: 0+
@@ -456,7 +465,7 @@
 
 
 
-## Chains without Public RPC URLs (34)
+## Chains without Public RPC URLs (32)
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -488,11 +497,6 @@
 - Blockchain ID: 3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr
 - Comment: TODO: investigate
 
-**Republic Chain**
-- EVM Chain ID: N/A
-- Blockchain ID: WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER
-- Comment: TODO: investigate
-
 **SSHIVANSH**
 - EVM Chain ID: N/A
 - Blockchain ID: 2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW
@@ -501,11 +505,6 @@
 **ULALO**
 - EVM Chain ID: N/A
 - Blockchain ID: 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig
-- Comment: TODO: investigate
-
-**Monsoon**
-- EVM Chain ID: N/A
-- Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
 - Comment: TODO: investigate
 
 **Bitcoin Content Network**

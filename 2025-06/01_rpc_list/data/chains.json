@@ -294,12 +294,12 @@
     "chainName": "Monsoon",
     "blockchainId": "2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK",
     "subnetId": "2LV4VB4dMaxn5c16p1UxEDvknqJAT7U4vCqpr3bnk6DTebewyN",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "rpcUrl": "http://142.132.150.152:8080/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc",
+    "evmChainId": "100610",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "FRQTALNETWORK",
@@ -880,18 +880,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "QRTMP",
-    "blockchainId": "tkfaNJvuPU8LxLjMRSP3XvoU7khfqZp1tU1peZ83zv9ysNxfZ",
-    "subnetId": "2R6ZZqzZyqWze8F6E6JWzs1GZJBQdkG6a9PPS6qgePk7MM73qf",
-    "rpcUrl": "https://subnets.avax.network/qr0711t1mp/mainnet/rpc",
-    "evmChainId": "24513",
-    "blocksCount": "10+",
-    "estimatedTxCount": null,
-    "glacierChainId": "24513",
-    "comment": null,
-    "debugEnabled": false
-  },
-  {
     "chainName": "KALICHAIN",
     "blockchainId": "TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3",
     "subnetId": "x1C95jnFyLV3x8tiiCW7ZFRoRFgq9SX1Yprwfxx4GCTujggYB",
@@ -943,12 +931,12 @@
     "chainName": "Republic Chain",
     "blockchainId": "WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER",
     "subnetId": "hQmBhZEf78SgYasnNkjFLnRewn2cntY7C21sPEnhdaKnKUrhi",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "rpcUrl": "http://142.132.150.152:8080/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc",
+    "evmChainId": "14594",
+    "blocksCount": "10+",
+    "estimatedTxCount": "10+",
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "ApertumMainnet",

@@ -1,11 +1,9 @@
 import fastify from 'fastify';
-import dotenv from 'dotenv';
 import { database } from './database.js';
-import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo } from './apis.js';
+import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo, NodeInfoResult, NodeInfoResponse } from './node_apis.js';
 import { generateDockerCompose } from './docker-composer.js';
 import { checkRateLimit, extractClientIP } from './rate-limiter.js';
-
-dotenv.config();
+import { ADMIN_PASSWORD } from './config.js';
 
 const server = fastify({ logger: true });
 
@@ -15,7 +13,6 @@ const BOOTSTRAP_ERROR_MESSAGE = 'Node is not ready or still bootstrapping';
 // Initialize Docker containers on startup
 async function initializeContainers() {
     console.log('Starting Docker containers...');
-    database.adjustNodeCount(); // Adjust node count based on NODE_COUNT env var
     await generateDockerCompose(); // Generate compose file and start containers on initial startup
 }
 
@@ -47,7 +44,7 @@ server.addHook('preHandler', (req, reply, done) => {
 server.addHook('preHandler', (req, reply, done) => {
     if (req.url.startsWith('/node_admin/')) {
         const { password } = req.query as { password?: string };
-        if (!password || password !== process.env.ADMIN_PASSWORD) {
+        if (!password || password !== ADMIN_PASSWORD) {
             console.log(`Unauthorized admin access from ${extractClientIP(req.headers)}`);
             reply.code(401).send({ error: 'Unauthorized' });
             return;
@@ -56,42 +53,65 @@ server.addHook('preHandler', (req, reply, done) => {
     done();
 });
 
-server.get('/node_admin/registerSubnet/:subnetId', async (req, reply) => {
+server.get('/node_admin/subnets/status/:subnetId', async (req, reply) => {
     const { subnetId } = req.params as { subnetId: string };
-
-    try {
-        // Validate subnet exists on Avalanche network
-        const subnetExists = await checkSubnetExists(subnetId);
-        if (!subnetExists) {
-            return reply.code(400).send({
-                success: false,
-                error: `Subnet ${subnetId} does not exist on Avalanche network`
-            });
-        }
-
-        // Assign subnet to appropriate node (database handles all the logic)
-        const { nodeId, replacedSubnet, isNewAssignment } = database.assignSubnetToNode(subnetId);
-
-        // Get node port and cached info
-        const nodes = database.getAllNodes();
-        const nodeIndex = nodes.indexOf(nodeId);
-        const nodePort = 9652 + (nodeIndex * 2);  // Start from 9652 (bootnode uses 9650)
-
-        // Get node info
-        const nodeInfo = (await getNodeInfo(nodePort));
-        if (isNewAssignment) {
-            await generateDockerCompose();
-        }
-
-        return nodeInfo
-    } catch (error) {
-        console.error('Error registering subnet:', error);
-        return reply.code(500).send({
-            success: false,
-            error: error instanceof Error ? error.message : 'Failed to register subnet'
+    const subnet = database.getSubnet(subnetId);
+    if (!subnet) {
+        return reply.code(404).send({
+            error: `Subnet ${subnetId} not found in database`
         });
     }
+
+    const nodes: NodeInfoResponse[] = [];
+
+    for (const nodeId of subnet.nodeIds.sort()) {
+        const nodeInfo = await getNodeInfo(9652 + nodeId * 2);
+        if (!nodeInfo.result) {
+            return reply.code(404).send({
+                error: `Nodeinfo call failed for node ${nodeId} with error: ${JSON.stringify(nodeInfo.error || "Unknown error")}`
+            });
+        }
+        nodes.push(nodeInfo);
+    }
+
+    return reply.send({
+        nodes: nodes,
+        expiresAt: subnet.expiresAt,
+        subnetId: subnetId,
+        nodeCount: subnet.nodeIds.length,
+    });
 });
+
+server.get('/node_admin/subnets/scale/:subnetId/:count', async (req, reply) => {
+    const { subnetId, count: stringCount } = req.params as { subnetId: string, count: string };
+    const count = stringCount ? parseInt(stringCount) : 1;
+
+    if (isNaN(count) || count < 0 || count > 5) {
+        return reply.code(400).send({
+            success: false,
+            error: 'Invalid count parameter, must be a number between 0 and 5'
+        });
+    }
+
+    // Validate subnet exists on Avalanche network
+    const subnetExists = await checkSubnetExists(subnetId);
+    if (!subnetExists) {
+        return reply.code(400).send({
+            success: false,
+            error: `Subnet ${subnetId} does not exist on Avalanche network`
+        });
+    }
+
+    // Assign subnet to appropriate node (database handles all the logic)
+    database.addOrAdjustSubnet(subnetId, count);
+    await generateDockerCompose();
+
+    return reply.send({
+        success: true,
+        message: `Subnet ${subnetId} assigned to nodes, count: ${count}`,
+    });
+});
+
 
 // OPTIONS handler for CORS preflight
 server.options('/ext/bc/:chainId/rpc', async (req, reply) => {
@@ -118,18 +138,21 @@ server.get('/ext/bc/:chainId/rpc', async (req, reply) => {
             });
         }
 
-        // Find which node hosts this subnet
-        const { isRegistered, nodeId } = database.isSubnetRegistered(subnetId);
-        if (!isRegistered || !nodeId) {
+        const subnet = database.getSubnet(subnetId);
+        if (!subnet) {
             return reply.code(404).send({
-                error: `Subnet ${subnetId} for chain ${chainId} is not hosted by any node`
+                error: `Subnet ${subnetId} not found in database`
             });
         }
 
-        // Calculate node port (9652 + index * 2 - bootnode uses 9650)
-        const nodes = database.getAllNodes();
-        const nodeIndex = nodes.indexOf(nodeId);
-        const nodePort = 9652 + (nodeIndex * 2);
+        const nodeId = subnet.nodeIds[0]; // Get the first node hosting this subnet
+        if (typeof nodeId !== 'number') {
+            return reply.code(500).send({
+                error: `No nodes found for subnet ${subnetId}. This is an implementation error, please report it.`
+            });
+        }
+
+        const nodePort = 9652 + (nodeId * 2);
 
         let status = 'not healthy - node is not ready or still bootstrapping';
         let evmChainIdText = '';
@@ -160,7 +183,11 @@ server.get('/ext/bc/:chainId/rpc', async (req, reply) => {
             // status already set to not healthy
         }
 
-        return reply.code(status === 'healthy' ? 200 : 503).send(`Blockchain ID: ${chainId}, Subnet ID: ${subnetId}, Status: ${status}${evmChainIdText}. To do actual RPC requests you need to issue a POST request.`);
+        if (status === 'healthy') {
+            return reply.code(200).send(`Blockchain ID: ${chainId}, Subnet ID: ${subnetId}, Status: ${status}${evmChainIdText}. To do actual RPC requests you need to issue a POST request.`);
+        } else {
+            return reply.code(503).send(`Blockchain ID: ${chainId}, Subnet ID: ${subnetId}, Status: ${status}`);
+        }
 
     } catch (error) {
         console.error('Error testing node health:', error);
@@ -181,7 +208,6 @@ server.post('/ext/bc/:chainId/rpc', async (req, reply) => {
     reply.header('Access-Control-Allow-Headers', '*');
 
     try {
-        // Get subnetId from chainId using cached lookup
         const subnetId = await getSubnetIdFromChainId(chainId);
         if (!subnetId) {
             return reply.code(404).send({
@@ -189,18 +215,21 @@ server.post('/ext/bc/:chainId/rpc', async (req, reply) => {
             });
         }
 
-        // Find which node hosts this subnet
-        const { isRegistered, nodeId } = database.isSubnetRegistered(subnetId);
-        if (!isRegistered || !nodeId) {
+        const subnet = database.getSubnet(subnetId);
+        if (!subnet) {
             return reply.code(404).send({
-                error: `Subnet ${subnetId} for chain ${chainId} is not hosted by any node`
+                error: `Subnet ${subnetId} not found in database`
             });
         }
 
-        // Calculate node port (9652 + index * 2 - bootnode uses 9650)
-        const nodes = database.getAllNodes();
-        const nodeIndex = nodes.indexOf(nodeId);
-        const nodePort = 9652 + (nodeIndex * 2);
+        const nodeId = subnet.nodeIds[0]; // Get the first node hosting this subnet
+        if (typeof nodeId !== 'number') {
+            return reply.code(500).send({
+                error: `No nodes found for subnet ${subnetId}. This is an implementation error, please report it.`
+            });
+        }
+
+        const nodePort = 9652 + (nodeId * 2);
 
         // Forward request to node
         const targetUrl = `http://localhost:${nodePort}/ext/bc/${chainId}/rpc`;

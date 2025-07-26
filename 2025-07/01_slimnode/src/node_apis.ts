@@ -91,19 +91,20 @@ export type NodeInfoResult = {
 
 export type NodeInfoResponse = {
     jsonrpc: "2.0";
-    result: NodeInfoResult;
+    result?: NodeInfoResult;
+    error?: any
     id: number;
 };
 
-export async function getNodeId(port: number): Promise<string | undefined> {
-    try {
-        const nodeInfo = await getNodeInfo(port);
+export async function getNodeId(nodePort: number): Promise<string> {
+    const nodeInfo = await getNodeInfo(nodePort);
+    if (nodeInfo.result && nodeInfo.result.nodeID) {
         return nodeInfo.result.nodeID;
-    } catch (error) {
-        console.error(`Error getting node ID from port ${port}:`, error);
-        return undefined;
+    } else {
+        throw new Error(`Failed to get node ID from port ${nodePort}`);
     }
 }
+
 
 export async function getNodeInfo(nodePort: number): Promise<NodeInfoResponse> {
     // Check permanent cache first

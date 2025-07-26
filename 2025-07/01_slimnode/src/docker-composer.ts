@@ -2,7 +2,8 @@ import { writeFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { database } from './database.js';
 import path from 'path';
-import { checkNodeBootstrap, getNodeId, getNodeIP } from './apis.js';
+import { checkNodeBootstrap, getNodeIP, getNodeId } from './node_apis.js';
+import { CLOUDFLARE_TUNNEL_TOKEN } from './config.js';
 
 interface ComposeService {
     image: string;
@@ -34,17 +35,21 @@ export const getPorts = (index: number) => {
     }
 }
 
+function getNodeContainerName(nodeId: number): string {
+    return `node_${nodeId.toString().padStart(4, '0')}`;
+}
+
 
 // Fast bootstrap: copy bootnode data to new nodes
 function copyBootnodeToNewNodes(): void {
-    const nodes = database.getAllNodes();
-    const nodesToCopy: string[] = [];
+    const nodesCount = database.getNodesCount();
+    const nodesToCopy: number[] = [];
 
     // Check which node directories don't exist
-    for (const nodeId of nodes) {
-        const nodeDataPath = `/avadata/${nodeId}`;
+    for (let i = 0; i < nodesCount; i++) {
+        const nodeDataPath = `/avadata/${getNodeContainerName(i)}`;
         if (!existsSync(nodeDataPath)) {
-            nodesToCopy.push(nodeId);
+            nodesToCopy.push(i);
         }
     }
 
@@ -60,14 +65,17 @@ function copyBootnodeToNewNodes(): void {
         console.log('Stopping bootnode for data copy...');
         execSync('docker stop bootnode', { stdio: 'inherit' });
 
+
         // Copy bootnode data to each new node
         for (const nodeId of nodesToCopy) {
-            console.log(`Copying bootnode data to ${nodeId}...`);
-            execSync(`sudo cp -r /avadata/bootnode/ /avadata/${nodeId}/`, { stdio: 'inherit' });
+            const nodeContainerName = getNodeContainerName(nodeId);
+
+            console.log(`Copying bootnode data to ${nodeContainerName}...`);
+            execSync(`sudo cp -r /avadata/bootnode/ /avadata/${nodeContainerName}/`, { stdio: 'inherit' });
 
             // Remove staking directory from copied data
-            console.log(`Removing staking directory from ${nodeId}...`);
-            execSync(`sudo rm -rf /avadata/${nodeId}/staking`, { stdio: 'inherit' });
+            console.log(`Removing staking directory from ${nodeContainerName}...`);
+            execSync(`sudo rm -rf /avadata/${nodeContainerName}/staking`, { stdio: 'inherit' });
         }
 
         console.log('Fast bootstrap copy completed');
@@ -78,7 +86,7 @@ function copyBootnodeToNewNodes(): void {
 }
 
 export async function generateDockerCompose(): Promise<void> {
-    const nodes = database.getAllNodes();
+    const nodesCount = database.getNodesCount();
 
     // Check if bootnode is bootstrapped
     const bootnodeBootstrapped = await checkNodeBootstrap(9650);
@@ -120,26 +128,26 @@ export async function generateDockerCompose(): Promise<void> {
         mem_limit: '2g'
     };
 
-    let bootNodeId = await getNodeId(9650);
-    const bootNodeIP = await getNodeIP(9650);
-
 
     // Only add subnet nodes if bootnode is bootstrapped
-    if (bootnodeBootstrapped && bootNodeId && bootNodeIP) {
+    if (bootnodeBootstrapped) {
         // Generate service for each node - ports start from 9652/9653
-        nodes.forEach((nodeId, index) => {
+        for (let index = 0; index < nodesCount; index++) {
+            const containerName = getNodeContainerName(index);
 
-            const { httpPort, stakePort } = getPorts(index);
-            const subnets = database.getNodeSubnets(nodeId);
+            const httpPort = 9652 + (index * 2);
+            const stakePort = 9653 + (index * 2);
+            const subnets = database.getNodeSubnets(index);
 
             // All nodes bootstrap from the bootnode
-            const avalanchegoArgs = ''//`./avalanchego --bootstrap-ips=${bootNodeIP} --bootstrap-ids="${bootNodeId}"`;
+            // const avalanchegoArgs = ''//`./avalanchego --bootstrap-ips=${bootNodeIP} --bootstrap-ids="${bootNodeId}"`;
+            const avalanchegoArgs = "";
 
-            compose.services[nodeId] = {
+            compose.services[containerName] = {
                 image: 'avaplatform/subnet-evm_avalanchego:latest',
-                container_name: nodeId,
+                container_name: containerName,
                 volumes: [
-                    `/avadata/${nodeId}:/root/.avalanchego`
+                    `/avadata/${containerName}:/root/.avalanchego`
                 ],
                 environment: {
                     AVAGO_TRACK_SUBNETS: subnets.sort().join(',') || '',
@@ -157,19 +165,19 @@ export async function generateDockerCompose(): Promise<void> {
                 cpus: '1',
                 mem_limit: '1g'
             };
-        });
+        }
     } else {
         console.log('Bootnode not bootstrapped yet - only starting bootnode and tunnel');
     }
 
     // Add Cloudflare tunnel service - needs host network to access API on host:3000
-    if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+    if (CLOUDFLARE_TUNNEL_TOKEN) {
         compose.services['tunnel'] = {
             image: 'cloudflare/cloudflared:latest',
             container_name: 'tunnel',
             restart: 'unless-stopped',
             network_mode: 'host',
-            command: `tunnel --no-autoupdate run --token ${process.env.CLOUDFLARE_TUNNEL_TOKEN}`
+            command: `tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}`
         };
     }
 

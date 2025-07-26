@@ -1,12 +1,15 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
+import { SUBNET_EXPIRATION_TIME, SUBNETS_PER_NODE, DATA_DIR, NODE_COUNT } from './config';
 
-const SUBNETS_PER_NODE = 1;
+type SubnetEntry = {
+    nodeIds: number[];
+    dateCreated: number;
+    expiresAt: number;
+};
 
 interface NodeDatabase {
-    [nodeId: string]: {
-        [subnetId: string]: number; // timestamp
-    };
+    [subnetId: string]: SubnetEntry;
 }
 
 class Database {
@@ -14,11 +17,10 @@ class Database {
     private dataDir: string;
     private filePath: string;
 
-    constructor() {
-        this.dataDir = process.env.DATA_DIR || './data';
+    constructor(private nodeCount: number) {
+        this.dataDir = DATA_DIR;
         this.filePath = path.join(this.dataDir, 'chains.json');
         this.loadFromDisk();
-        this.initializeNodes();
     }
 
     private loadFromDisk(): void {
@@ -59,204 +61,141 @@ class Database {
         }
     }
 
-    private initializeNodes(): void {
-        const nodeCount = parseInt(process.env.NODE_COUNT || '3');
-        if (nodeCount > 999) {
-            throw new Error('NODE_COUNT cannot exceed 999');
+    private writeSubnet(subnetData: SubnetEntry | undefined, subnetId: string): void {
+        if (typeof subnetData === "undefined") {
+            delete this.data[subnetId];
+        } else {
+            this.data[subnetId] = subnetData;
         }
-
-        let needsSave = false;
-        for (let i = 1; i <= nodeCount; i++) {
-            const nodeId = `node${i.toString().padStart(3, '0')}`;
-            if (!this.data[nodeId]) {
-                this.data[nodeId] = {};
-                needsSave = true;
-            }
-        }
-
-        if (needsSave) {
-            this.saveToDisk(); // Database just saves data
-        }
-    }
-
-    getAllNodes(): string[] {
-        return Object.keys(this.data);
-    }
-
-    getNodeSubnets(nodeId: string): string[] {
-        return Object.keys(this.data[nodeId] || {});
-    }
-
-    addSubnetToNode(nodeId: string, subnetId: string): void {
-        if (!this.data[nodeId]) {
-            this.data[nodeId] = {};
-        }
-        this.data[nodeId][subnetId] = Date.now();
         this.saveToDisk();
     }
 
-    removeSubnetFromNode(nodeId: string, subnetId: string): void {
-        if (this.data[nodeId] && this.data[nodeId][subnetId]) {
-            delete this.data[nodeId][subnetId];
-            this.saveToDisk();
-        }
-    }
-
-    isSubnetRegistered(subnetId: string): { isRegistered: boolean; nodeId: string | null } {
-        for (const [nodeId, subnets] of Object.entries(this.data)) {
-            if (subnets[subnetId]) {
-                return { isRegistered: true, nodeId };
-            }
-        }
-        return { isRegistered: false, nodeId: null };
-    }
-
-    getNodeWithLowestSubnetCount(): string {
-        let lowestNode = '';
-        let lowestCount = Infinity;
-
-        for (const [nodeId, subnets] of Object.entries(this.data)) {
-            const count = Object.keys(subnets).length;
-            if (count < lowestCount) {
-                lowestCount = count;
-                lowestNode = nodeId;
-            }
+    public addOrAdjustSubnet(subnetId: string, count: number): void {
+        if (count > this.nodeCount) {
+            throw new Error('NODE_COUNT must be greater than 0 to assign subnets');
         }
 
-        return lowestNode;
-    }
-
-    areAllNodesFull(): boolean {
-        for (const [nodeId, subnets] of Object.entries(this.data)) {
-            if (Object.keys(subnets).length < SUBNETS_PER_NODE) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    getOldestSubnetAcrossAllNodes(): { nodeId: string; subnetId: string; timestamp: number } | null {
-        let oldest: { nodeId: string; subnetId: string; timestamp: number } | null = null;
-
-        for (const [nodeId, subnets] of Object.entries(this.data)) {
-            for (const [subnetId, timestamp] of Object.entries(subnets)) {
-                if (!oldest || timestamp < oldest.timestamp) {
-                    oldest = { nodeId, subnetId, timestamp };
-                }
-            }
-        }
-
-        return oldest;
-    }
-
-    // getDatabase(): NodeDatabase {
-    //     return this.data;
-    // }
-
-    // Assign subnet to appropriate node, handling full capacity automatically
-    assignSubnetToNode(subnetId: string): {
-        nodeId: string;
-        replacedSubnet: string | null;
-        isNewAssignment: boolean
-    } {
-        // Check if subnet is already registered
-        const { isRegistered, nodeId: existingNode } = this.isSubnetRegistered(subnetId);
-        if (isRegistered && existingNode) {
-            return {
-                nodeId: existingNode,
-                replacedSubnet: null,
-                isNewAssignment: false
-            };
-        }
-
-        let targetNode: string;
-        let replacedSubnet: string | null = null;
-
-        if (this.areAllNodesFull()) {
-            // All nodes are full, replace oldest subnet
-            const oldest = this.getOldestSubnetAcrossAllNodes();
-            if (!oldest) {
-                throw new Error('All nodes full but no subnets found');
-            }
-
-            targetNode = oldest.nodeId;
-            replacedSubnet = oldest.subnetId;
-            this.removeSubnetFromNode(oldest.nodeId, oldest.subnetId); // Just remove from DB
-
-            console.log(`Replacing ${replacedSubnet} with ${subnetId} on ${targetNode}`);
-        } else {
-            // Find node with lowest subnet count
-            targetNode = this.getNodeWithLowestSubnetCount();
-            console.log(`Assigning ${subnetId} to ${targetNode}`);
-        }
-
-        // Add subnet to node
-        this.addSubnetToNode(targetNode, subnetId);
-
-        return {
-            nodeId: targetNode,
-            replacedSubnet,
-            isNewAssignment: true
+        const subnetData = this.data[subnetId] || {
+            nodeIds: [],
+            dateCreated: Date.now(),
+            expiresAt: Date.now() + SUBNET_EXPIRATION_TIME,
         };
-    }
 
-    // Adjust node count based on NODE_COUNT environment variable
-    adjustNodeCount(): void {
-        const targetNodeCount = parseInt(process.env.NODE_COUNT || '3');
-        if (targetNodeCount > 999) {
-            throw new Error('NODE_COUNT cannot exceed 999');
-        }
+        const currentCount = subnetData.nodeIds.length;
 
-        const currentNodes = this.getAllNodes();
-        const currentNodeCount = currentNodes.length;
-
-        if (targetNodeCount === currentNodeCount) {
-            console.log(`Node count already correct: ${currentNodeCount} nodes`);
+        if (count === 0) {
+            console.log(`Removing subnet ${subnetId} from all nodes due to count 0`);
+            // If count is 0, remove the subnet
+            this.writeSubnet(undefined, subnetId);
             return;
         }
 
-        if (targetNodeCount > currentNodeCount) {
-            // Add new empty nodes
-            let needsSave = false;
-            for (let i = currentNodeCount + 1; i <= targetNodeCount; i++) {
-                const nodeId = `node${i.toString().padStart(3, '0')}`;
-                this.data[nodeId] = {};
-                needsSave = true;
-                console.log(`Added empty node: ${nodeId}`);
-            }
-            if (needsSave) {
-                this.saveToDisk();
-            }
-        } else {
-            // Remove nodes from the end, but only if they're empty
-            const nodesToRemove = currentNodes.slice(targetNodeCount);
+        if (count < currentCount) {
+            //remove some nodes if count is less than current   
+            subnetData.nodeIds = subnetData.nodeIds.slice(0, count);
+        } else if (count > currentCount) {
+            // More nodes needed, find available slots
+            const requiredCount = count - currentCount;
+            const slots = this.findSlots(subnetData.nodeIds, requiredCount);
+            subnetData.nodeIds.push(...slots);
+            this.writeSubnet(subnetData, subnetId);
+            return;
+        }
+    }
 
-            for (const nodeId of nodesToRemove) {
-                const subnets = this.getNodeSubnets(nodeId);
-                if (subnets.length > 0) {
-                    throw new Error(
-                        `Cannot reduce NODE_COUNT from ${currentNodeCount} to ${targetNodeCount}: ` +
-                        `Node ${nodeId} contains ${subnets.length} subnets (${subnets.join(', ')}). ` +
-                        `Remove subnets first or increase NODE_COUNT.`
-                    );
+    private findSlots(excludeNodes: number[], requiredCount: number): number[] {
+        for (let i = 0; i < 100; i++) {//curcuit breaker
+            const counts = this.getCountsByNode(excludeNodes);
+
+            let result: number[] = [];
+
+            for (let j = 0; j < this.nodeCount; j++) {
+                if (!excludeNodes.includes(j) && counts[j] < SUBNETS_PER_NODE) {
+                    result.push(j);
                 }
             }
 
-            // All nodes to remove are empty, safe to delete
-            let needsSave = false;
-            for (const nodeId of nodesToRemove) {
-                delete this.data[nodeId];
-                needsSave = true;
-                console.log(`Removed empty node: ${nodeId}`);
+            if (result.length >= requiredCount) {
+                return result.sort((a, b) => counts[a] - counts[b]).slice(0, requiredCount);
             }
 
-            if (needsSave) {
-                this.saveToDisk();
+            // If we reach here, it means we need to remove some subnets
+            const expiresAtMap = extractExpiresAt(this.data);
+            if (Object.keys(expiresAtMap).length === 0) {
+                throw new Error('No subnets available to remove. Something went wrong in implementation.');
+            }
+            const { minKey: oldestSubnetId } = findMinValueKey(expiresAtMap);
+            if (!oldestSubnetId) {
+                throw new Error('No subnets available to remove. Something went wrong in impementation.');
+            }
+
+            console.log(`Removing oldest subnet ${oldestSubnetId} to free up space`, this.data[oldestSubnetId]);
+            this.writeSubnet(undefined, oldestSubnetId);
+        }
+        throw new Error(`Unable to find ${requiredCount} available slots after 100 attempts. Curcuit breaker triggered, this should never happen.`);
+    }
+
+    private getCountsByNode(excludeNodes: number[]): Record<number, number> {
+        const counts: Record<number, number> = {};
+
+        for (let i = 0; i < this.nodeCount; i++) {
+            counts[i] = 0; // Initialize all nodes with 0 count
+        }
+
+        for (const subnet of Object.values(this.data)) {
+            for (const nodeId of subnet.nodeIds) {
+                counts[nodeId] = (counts[nodeId] || 0) + 1;
             }
         }
 
-        console.log(`Node count adjusted from ${currentNodeCount} to ${targetNodeCount}`);
+        for (const nodeId of excludeNodes) {
+            delete counts[nodeId];
+        }
+
+        return counts;
+    }
+
+    public getSubnet(subnetId: string): SubnetEntry | undefined {
+        return this.data[subnetId] ? { ...this.data[subnetId] } : undefined;
+    }
+
+    public getNodesCount(): number {
+        return this.nodeCount;
+    }
+
+    public getNodeSubnets(nodeId: number): string[] {
+        const subnets: string[] = [];
+        for (const [subnetId, entry] of Object.entries(this.data)) {
+            if (entry.nodeIds.includes(nodeId)) {
+                subnets.push(subnetId);
+            }
+        }
+        return subnets;
     }
 }
 
-export const database = new Database(); 
+
+function findMinValueKey(obj: Record<string, number>): { minKey: string | null, minValue: number } {
+    let minKey: string | null = null;
+    let minValue = Infinity;
+
+    for (const key in obj) {
+        if (obj[key] < minValue) {
+            minValue = obj[key];
+            minKey = key;
+        }
+    }
+
+    return { minKey, minValue };
+}
+
+function extractExpiresAt(data: NodeDatabase): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [subnetId, entry] of Object.entries(data)) {
+        result[subnetId] = entry.expiresAt;
+    }
+    return result;
+}
+
+export let database = new Database(NODE_COUNT);
+

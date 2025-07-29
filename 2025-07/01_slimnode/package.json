@@ -5,8 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
-    "openapi": "npx -y @hey-api/openapi-ts -i http://localhost:3000/docs/json -o ./example/client"
+    "dev": "tsx watch src/index.ts"
   },
   "keywords": [
     "avalanche",
@@ -27,8 +26,5 @@
     "fastify": "^5.4.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
-  },
-  "devDependencies": {
-    "@hey-api/openapi-ts": "^0.80.1"
   }
 }

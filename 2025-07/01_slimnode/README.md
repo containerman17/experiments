@@ -1,119 +1,54 @@
 # SlimNode
 
-API service that manages multiple Avalanche nodes with automatic subnet
-registration and explicit node assignment.
+API service for managing Avalanche subnet nodes with Docker container
+orchestration.
 
-## Features
+## Overview
 
-- Explicit node assignment for subnets (add/remove specific nodes)
-- Node pooling with 1 subnet per node by default
-- Automatic container management via Docker
-- Independent expiration timers per node assignment
-- Rate limiting (100 req/minute per IP with @fastify/rate-limit)
-- Cloudflare tunnel support
-- **OpenAPI 3.0 documentation with Swagger UI**
+SlimNode provides HTTP endpoints to dynamically assign/remove Avalanche nodes to
+subnets. It automatically manages Docker containers running subnet-evm
+avalanchego nodes.
 
-## Quick Start
+## Configuration
 
-1. Copy `.env.example` to `.env` and set your admin password:
-   ```bash
-   cp .env.example .env
-   # Edit .env and set ADMIN_PASSWORD
-   ```
+Environment variables:
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+- `ADMIN_PASSWORD` (required) - Password for admin endpoints
+- `NODE_COUNT` - Number of subnet nodes to manage (default: 0)
+- `DATA_DIR` - Directory for database file (default: ./data)
+- `CLOUDFLARE_TUNNEL_TOKEN` - Optional Cloudflare tunnel token
 
-3. Run the server:
-   ```bash
-   npm start
-   ```
+Fixed configuration values:
 
-The server will automatically start Docker containers for nodes based on your
-configuration.
+- Assignment expiration: 5 minutes
+- Subnets per node: 1
+- Max nodes per subnet: 3
+- Container initialization interval: 30 seconds
 
 ## API Endpoints
 
-### Add Node to Subnet
+All admin endpoints require `?password=<ADMIN_PASSWORD>` query parameter.
 
-```
-POST /node_admin/subnets/add/:subnetId?password=<admin_password>
-```
+### GET /node_admin/subnets/status/:subnetId
 
-Assigns an available node to the subnet. Returns the assigned node information.
-
-Example:
-
-```bash
-curl -X POST "http://localhost:3000/node_admin/subnets/add/FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1?password=test123"
-```
+Returns nodes assigned to a subnet.
 
 Response:
 
 ```json
 {
-  "nodeId": 0,
-  "nodeInfo": {
-    "nodeID": "NodeID-...",
-    "nodePOP": { ... }
-  },
-  "dateCreated": 1234567890,
-  "expiresAt": 1234567890
-}
-```
-
-### Remove Node from Subnet
-
-```
-DELETE /node_admin/subnets/delete/:subnetId/:nodeId?password=<admin_password>
-```
-
-Removes a specific node from the subnet.
-
-Example:
-
-```bash
-curl -X DELETE "http://localhost:3000/node_admin/subnets/delete/FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1/0?password=test123"
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "message": "Removed node 0 from subnet FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1"
-}
-```
-
-### Get Subnet Status
-
-```
-GET /node_admin/subnets/status/:subnetId?password=<admin_password>
-```
-
-Returns detailed information about all nodes assigned to a subnet, including
-when each was assigned and when it expires. If no nodes are assigned, returns an
-empty nodes array.
-
-Example:
-
-```bash
-curl "http://localhost:3000/node_admin/subnets/status/FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1?password=test123"
-```
-
-Response:
-
-```json
-{
-  "subnetId": "FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1",
+  "subnetId": "...",
   "nodes": [
     {
-      "nodeId": 0,
+      "nodeIndex": 0,
       "nodeInfo": {
-        "nodeID": "NodeID-...",
-        "nodePOP": { ... }
+        "result": {
+          "nodeID": "NodeID-...",
+          "nodePOP": {
+            "publicKey": "...",
+            "proofOfPossession": "..."
+          }
+        }
       },
       "dateCreated": 1234567890,
       "expiresAt": 1234567890
@@ -122,107 +57,92 @@ Response:
 }
 ```
 
-If no nodes are assigned:
+### POST /node_admin/subnets/add/:subnetId
 
-```json
-{
-  "subnetId": "FWbUFNjYSpZeSXkDmL8oCCEH3Ks735etnoyicoihpMxAVd1U1",
-  "nodes": []
-}
-```
+Assigns an available node to the subnet. Maximum 3 nodes per subnet. Validates
+subnet exists on Avalanche network before assignment.
 
-### RPC Proxy
+Returns the same response format as status endpoint with all assigned nodes.
 
-```
-GET/POST /ext/bc/:chainId/rpc
-```
+### DELETE /node_admin/subnets/delete/:subnetId/:nodeIndex
 
-Proxies RPC requests to the appropriate node based on chain ID.
+Removes a specific node from the subnet.
 
-Example:
+Returns the same response format as status endpoint with remaining nodes.
 
-```bash
-# Check status
-curl "http://localhost:3000/ext/bc/98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp/rpc"
+### GET /ext/bc/:chainId/rpc
 
-# RPC call
-curl -X POST "http://localhost:3000/ext/bc/98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp/rpc" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
-```
+Health check for blockchain RPC endpoint. Returns status text including EVM
+chain ID if healthy.
 
-## Environment Variables
+### POST /ext/bc/:chainId/rpc
 
-- `ADMIN_PASSWORD` - Required: Admin API password
-- `NODE_COUNT` - Number of nodes to manage (default: 0)
-- `DATA_DIR` - Data directory path (default: ./data)
-- `CLOUDFLARE_TUNNEL_TOKEN` - Optional: Cloudflare tunnel token
-- `ASSIGNMENT_EXPIRATION_TIME` - Node assignment expiration time (default: 5
-  minutes)
-
-## Architecture
-
-- **API**: Runs on port 3000 with automatic Docker container management
-- **Bootnode**: Dedicated bootstrap node on ports 9650/9651
-- **Subnet Nodes**: Start from ports 9652/9653 onwards
-- **Database**: JSON file storage with automatic backups, flat array of node
-  assignments
-
-## Docker Management
-
-The API automatically manages Docker containers:
-
-- Generates `compose.yml` based on subnet assignments
-- Starts containers on API startup
-- Restarts containers when subnet assignments change
-- Fast bootstrap by copying bootnode data to new nodes
+Proxies JSON-RPC requests to the appropriate node hosting the chain's subnet.
 
 ## Rate Limiting
 
 All endpoints are rate limited to 100 requests per minute per IP address using
-the official `@fastify/rate-limit` plugin.
-
-When the rate limit is exceeded, the API returns:
-
-- Status code: `429 Too Many Requests`
-- Headers include `x-ratelimit-limit`, `x-ratelimit-remaining`, and
-  `retry-after`
-- Response body includes when to retry
-
-## Development
-
-```bash
-# Development mode
-npm run dev
-
-# View logs
-docker logs bootnode
-docker logs node_0000
-```
+@fastify/rate-limit.
 
 ## API Documentation
 
-The API includes built-in OpenAPI 3.0 documentation with an interactive Swagger
-UI.
+Interactive OpenAPI 3.0 documentation available at:
 
-### Accessing Documentation
+- Swagger UI: http://localhost:3000/docs
+- OpenAPI JSON: http://localhost:3000/docs/json
+- OpenAPI YAML: http://localhost:3000/docs/yaml
 
-- **Swagger UI**: http://localhost:3000/docs
-- **OpenAPI JSON**: http://localhost:3000/docs/json
-- **OpenAPI YAML**: http://localhost:3000/docs/yaml
+## Database
 
-### Features
+JSON file database stored at `{DATA_DIR}/chains.json` containing:
 
-- Interactive API explorer with "Try it out" functionality
-- Full request/response schemas
-- Authentication support (enter admin password in Swagger UI)
-- Organized by tags (admin, proxy)
-- Auto-generated from route schemas
+```json
+{
+  "assignments": [
+    {
+      "nodeIndex": 0,
+      "subnetId": "...",
+      "dateCreated": 1234567890,
+      "expiresAt": 1234567890
+    }
+  ]
+}
+```
 
-### Using Swagger UI
+Automatic backup saved to `chains.backup.json` on every write.
 
-1. Navigate to http://localhost:3000/docs
-2. Click "Authorize" button
-3. Enter your admin password in the `password` field
-4. Click "Authorize" to save
-5. Explore and test endpoints directly from the browser
+## Docker Architecture
+
+- **bootnode**: Runs on ports 9650/9651, serves as bootstrap node
+- **node_0000, node_0001, etc**: Subnet nodes starting from ports 9652/9653
+  (increment by 2)
+- **tunnel**: Optional Cloudflare tunnel container if CLOUDFLARE_TUNNEL_TOKEN is
+  set
+
+Containers use:
+
+- Image: `avaplatform/subnet-evm_avalanchego:latest`
+- Network: host mode
+- Volumes: `/avadata/{container_name}:/root/.avalanchego`
+- Environment: Fuji testnet configuration
+
+Fast bootstrap feature copies bootnode data to new nodes for faster
+initialization.
+
+## Node Assignment Logic
+
+1. When adding a node to subnet:
+   - Validates subnet exists on Avalanche network
+   - Finds available node (not already assigned to subnet, under subnet limit)
+   - If no slots available, removes oldest assignment by expiration time
+   - Creates assignment with 5-minute expiration
+
+2. Docker compose regeneration:
+   - Triggered on any assignment change
+   - Runs every 30 seconds to check bootnode bootstrap status
+   - Only starts subnet nodes after bootnode is bootstrapped
+
+## Example Usage
+
+See `example/example-usage.ts` for a complete example using the TypeScript API
+client.

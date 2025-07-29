@@ -19,7 +19,7 @@ export async function checkSubnetExists(subnetId: string): Promise<boolean> {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json() as { result?: any; error?: any };
         // TASK.md: check if this request returns a result, and not error field
         return !!data.result && !data.error;
     } catch (error) {
@@ -60,7 +60,15 @@ export async function getSubnetIdFromChainId(chainId: string): Promise<string | 
             })
         });
 
-        const data = await response.json();
+        const data = await response.json() as {
+            result?: {
+                tx?: {
+                    unsignedTx?: {
+                        subnetID?: string
+                    }
+                }
+            }
+        };
 
         if (data.result?.tx?.unsignedTx?.subnetID) {
             const subnetId = data.result.tx.unsignedTx.subnetID;
@@ -124,7 +132,7 @@ export async function getNodeInfo(nodePort: number): Promise<NodeInfoResponse> {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json() as NodeInfoResponse;
 
         // Cache forever since this never changes
         nodeInfoCache.set(nodePort, data);
@@ -153,7 +161,7 @@ export async function getNodeIP(nodePort: number): Promise<string | undefined> {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json() as { result?: { ip?: string } };
         const ip = data.result?.ip;
 
         // Cache forever since this never changes
@@ -185,7 +193,7 @@ export async function checkNodeBootstrap(nodePort: number): Promise<boolean> {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json() as { result?: { isBootstrapped?: boolean } };
         return data.result?.isBootstrapped === true;
     } catch (error) {
         return false;

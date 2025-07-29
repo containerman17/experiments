@@ -35,8 +35,8 @@ export const getPorts = (index: number) => {
     }
 }
 
-function getNodeContainerName(nodeId: number): string {
-    return `node_${nodeId.toString().padStart(4, '0')}`;
+function getNodeContainerName(nodeIndex: number): string {
+    return `node_${nodeIndex.toString().padStart(4, '0')}`;
 }
 
 
@@ -67,8 +67,8 @@ function copyBootnodeToNewNodes(): void {
 
 
         // Copy bootnode data to each new node
-        for (const nodeId of nodesToCopy) {
-            const nodeContainerName = getNodeContainerName(nodeId);
+        for (const nodeIndex of nodesToCopy) {
+            const nodeContainerName = getNodeContainerName(nodeIndex);
 
             console.log(`Copying bootnode data to ${nodeContainerName}...`);
             execSync(`sudo cp -r /avadata/bootnode/ /avadata/${nodeContainerName}/`, { stdio: 'inherit' });

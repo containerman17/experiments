@@ -1,5 +1,6 @@
-export const SUBNET_EXPIRATION_TIME = 1000 * 60 * 5; // 5 minutes
+export const ASSIGNMENT_EXPIRATION_TIME = 1000 * 60 * 5; // 5 minutes
 export const SUBNETS_PER_NODE = 1;
+export const MAX_NODES_PER_SUBNET = 3;
 export const DATA_DIR = process.env.DATA_DIR || './data';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -15,3 +16,5 @@ if (!process.env.ADMIN_PASSWORD) {
 }
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 export const CLOUDFLARE_TUNNEL_TOKEN = process.env.CLOUDFLARE_TUNNEL_TOKEN;
+
+export const INIT_CONTAINERS_INTERVAL_MS = 30 * 1000

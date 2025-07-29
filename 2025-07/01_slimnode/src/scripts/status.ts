@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import path from 'path';
 
 interface NodeDatabase {
-    [nodeId: string]: {
+    [nodeIndex: string]: {
         [subnetId: string]: number; // timestamp
     };
 }
@@ -78,7 +78,7 @@ async function main() {
     console.log(`Checking ${nodes.length} nodes...\n`);
 
     // First pass: check status and identify nodes eligible for restart
-    const eligibleForRestart: Array<{ nodeId: string, port: number }> = [];
+    const eligibleForRestart: Array<{ nodeIndex: string, port: number }> = [];
     let totalSubnets = 0;
 
     // Check bootnode first (always on port 9650)
@@ -88,16 +88,16 @@ async function main() {
     const bootnodeStatus = bootnodeBootstrapped ? '✅' : '❌';
 
     if (!bootnodeBootstrapped && bootnodePeerCount === 0) {
-        eligibleForRestart.push({ nodeId: 'bootnode', port: 9650 });
+        eligibleForRestart.push({ nodeIndex: 'bootnode', port: 9650 });
     }
 
     console.log(`${bootnodeStatus} bootnode (port 9650) - bootstrap node, ${bootnodePeerCount} peers\n`);
 
     // Check subnet nodes (start from port 9652)
     for (let i = 0; i < nodes.length; i++) {
-        const nodeId = nodes[i];
+        const nodeIndex = nodes[i];
         const nodePort = 9652 + (i * 2);  // Start from 9652 (bootnode uses 9650)
-        const subnetCount = Object.keys(database[nodeId]).length;
+        const subnetCount = Object.keys(database[nodeIndex]).length;
         totalSubnets += subnetCount;
 
         const isBootstrapped = await checkNodeBootstrap(nodePort);
@@ -105,10 +105,10 @@ async function main() {
         const status = isBootstrapped ? '✅' : '❌';
 
         if (!isBootstrapped && peerCount === 0) {
-            eligibleForRestart.push({ nodeId, port: nodePort });
+            eligibleForRestart.push({ nodeIndex, port: nodePort });
         }
 
-        console.log(`${status} ${nodeId} (port ${nodePort}) - ${subnetCount} subnets, ${peerCount} peers`);
+        console.log(`${status} ${nodeIndex} (port ${nodePort}) - ${subnetCount} subnets, ${peerCount} peers`);
     }
 
     // Restart up to 5 random nodes that are failing and have 0 peers
@@ -121,19 +121,19 @@ async function main() {
             const nodesToRestart = eligibleForRestart
                 .sort(() => Math.random() - 0.5)  // Shuffle array
                 .slice(0, 5)  // Take first 5
-                .map(node => node.nodeId);
+                .map(node => node.nodeIndex);
 
             console.log(`\nFound ${eligibleForRestart.length} nodes eligible for restart (failing + 0 peers)`);
             console.log(`Randomly selected ${nodesToRestart.length} nodes to restart: ${nodesToRestart.join(', ')}\n`);
 
-            for (const nodeId of nodesToRestart) {
+            for (const nodeIndex of nodesToRestart) {
                 try {
-                    console.log(`🔄 Restarting ${nodeId}...`);
-                    execSync(`docker restart ${nodeId}`, { stdio: 'inherit' });
-                    console.log(`✅ Successfully restarted ${nodeId}`);
-                    restartedNodes.push(nodeId);
+                    console.log(`🔄 Restarting ${nodeIndex}...`);
+                    execSync(`docker restart ${nodeIndex}`, { stdio: 'inherit' });
+                    console.log(`✅ Successfully restarted ${nodeIndex}`);
+                    restartedNodes.push(nodeIndex);
                 } catch (error) {
-                    console.log(`❌ Failed to restart ${nodeId}:`, error);
+                    console.log(`❌ Failed to restart ${nodeIndex}:`, error);
                 }
             }
         }
@@ -146,22 +146,22 @@ async function main() {
             console.log('Rechecking restarted nodes...\n');
 
             // Second pass: check only restarted nodes
-            for (const nodeId of restartedNodes) {
-                if (nodeId === 'bootnode') {
+            for (const nodeIndex of restartedNodes) {
+                if (nodeIndex === 'bootnode') {
                     const isBootstrapped = await checkNodeBootstrap(9650);
                     const peerCount = await checkNodePeerCount(9650);
                     const status = isBootstrapped ? '✅' : '❌';
                     console.log(`${status} bootnode (port 9650) - bootstrap node, ${peerCount} peers 🔄`);
                 } else {
-                    const nodeIndex = nodes.indexOf(nodeId);
-                    const nodePort = 9652 + (nodeIndex * 2);  // Start from 9652 (bootnode uses 9650)
-                    const subnetCount = Object.keys(database[nodeId]).length;
+                    const nodeIdx = nodes.indexOf(nodeIndex);
+                    const nodePort = 9652 + (nodeIdx * 2);  // Start from 9652 (bootnode uses 9650)
+                    const subnetCount = Object.keys(database[nodeIndex]).length;
 
                     const isBootstrapped = await checkNodeBootstrap(nodePort);
                     const peerCount = await checkNodePeerCount(nodePort);
                     const status = isBootstrapped ? '✅' : '❌';
 
-                    console.log(`${status} ${nodeId} (port ${nodePort}) - ${subnetCount} subnets, ${peerCount} peers 🔄`);
+                    console.log(`${status} ${nodeIndex} (port ${nodePort}) - ${subnetCount} subnets, ${peerCount} peers 🔄`);
                 }
             }
         }

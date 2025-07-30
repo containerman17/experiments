@@ -5,7 +5,7 @@ set -exu
 # npm run build
 # rsync -av --delete ./dist/ idx5:~/assets/
 
-# npx tsx ./scripts/updateChains.ts
+npx tsx ./scripts/updateChains.ts
 
 # Ensure remote data directory exists and copy chains.json
 ssh idx5 "mkdir -p ~/data ~/plugins"

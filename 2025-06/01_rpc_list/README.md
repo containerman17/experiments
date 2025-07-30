@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (53)
+## Chains with Public RPC URLs (60)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -167,6 +167,15 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/playa3ull
 
+**DOS Chain**
+- Blocks Count: 1m+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 7979
+- Blockchain ID: 22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv
+- RPC URL: http://142.132.150.152:8080/ext/bc/22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
 **Space**
 - Blocks Count: 1m+
 - Estimated Tx Count: Unknown
@@ -193,6 +202,15 @@
 - RPC URL: https://subnets.avax.network/plyr/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/plyr
+
+**numbersevm**
+- Blocks Count: 100k+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 10507
+- Blockchain ID: 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE
+- RPC URL: http://142.132.150.152:8080/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
 
 **Artery**
 - Blocks Count: 100k+
@@ -311,6 +329,15 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/numi
 
+**Hatchyverse**
+- Blocks Count: 10k+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 8198
+- Blockchain ID: 2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
+- RPC URL: http://142.132.150.152:8080/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
 **BangoL**
 - Blocks Count: 10k+
 - Estimated Tx Count: Unknown
@@ -428,6 +455,15 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/frqtalnet
 
+**ienium**
+- Blocks Count: 100+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 2345
+- Blockchain ID: 23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
+- RPC URL: http://142.132.150.152:8080/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
 **ULALO**
 - Blocks Count: 10+
 - Estimated Tx Count: Unknown
@@ -446,6 +482,15 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/etx
 
+**Monsoon**
+- Blocks Count: 10+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 100610
+- Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
+- RPC URL: http://142.132.150.152:8080/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
 **TITANL**
 - Blocks Count: 10+
 - Estimated Tx Count: Unknown
@@ -461,6 +506,24 @@
 - EVM Chain ID: 1001
 - Blockchain ID: R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN
 - RPC URL: http://142.132.150.152:8080/ext/bc/R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
+**Gentle Flawless Enemies Chain**
+- Blocks Count: 10+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 588785742
+- Blockchain ID: 2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53
+- RPC URL: http://142.132.150.152:8080/ext/bc/2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
+**Republic Chain**
+- Blocks Count: 10+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 14594
+- Blockchain ID: WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER
+- RPC URL: http://142.132.150.152:8080/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -484,16 +547,11 @@
 
 
 
-## Chains without Public RPC URLs (29)
+## Chains without Public RPC URLs (22)
 
 **Growfitter**
 - EVM Chain ID: N/A
 - Blockchain ID: 2PdUCtQocNDvbVWy8ch4PdaicTHA2h5keHLAAPcs9Pr8tYaUg3
-- Comment: TODO: investigate
-
-**Gentle Flawless Enemies Chain**
-- EVM Chain ID: N/A
-- Blockchain ID: 2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53
 - Comment: TODO: investigate
 
 **DComm**
@@ -509,16 +567,6 @@
 **oumla**
 - EVM Chain ID: N/A
 - Blockchain ID: 3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr
-- Comment: TODO: investigate
-
-**Republic Chain**
-- EVM Chain ID: N/A
-- Blockchain ID: WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER
-- Comment: TODO: investigate
-
-**Monsoon**
-- EVM Chain ID: N/A
-- Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
 - Comment: TODO: investigate
 
 **Bitcoin Content Network**
@@ -556,11 +604,6 @@
 - Blockchain ID: 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB
 - Comment: The RPC URL is behind an aggressive Cloudflare Protection
 
-**Hatchyverse**
-- EVM Chain ID: N/A
-- Blockchain ID: 2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
-- Comment: TODO: investigate
-
 **STLINK**
 - EVM Chain ID: N/A
 - Blockchain ID: 2HR9yTVXBwxJjmejn9yt1UQnrBpQVQRpxUQe6YUtEaWh9yqnPN
@@ -570,11 +613,6 @@
 - EVM Chain ID: N/A
 - Blockchain ID: 2FUHgWJcZ4j8FrEi1DsdGyq6vMWQXeQGbZLuzcU6sFAazvnrYd
 - Comment: Looks like a japanese company. Probably a private chain.
-
-**ienium**
-- EVM Chain ID: N/A
-- Blockchain ID: 23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
-- Comment: TODO: investigate
 
 **MUGEN**
 - EVM Chain ID: N/A
@@ -606,11 +644,6 @@
 - Blockchain ID: HnECQEqpvvXcBF9Jup1ti1XMowQGrSWiQSkKdwcjxEbzmTHMC
 - Comment: See "Rymedi Transaction Subnet"
 
-**DOS Chain**
-- EVM Chain ID: N/A
-- Blockchain ID: 22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv
-- Comment: TODO: investigate
-
 **gunzilla**
 - EVM Chain ID: N/A
 - Blockchain ID: 222KARi6VgSZXbewFp1BvZgyuSKVa9JPb7swhbwN9fUHFKgxUD
@@ -625,9 +658,4 @@
 - EVM Chain ID: N/A
 - Blockchain ID: 2MrmXmx4nrSn5BS3EAtWg5Pf9madiBoN7MRaByM88g49VArjDt
 - Comment: Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc
-
-**numbersevm**
-- EVM Chain ID: N/A
-- Blockchain ID: 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE
-- Comment: TODO: investigate
 

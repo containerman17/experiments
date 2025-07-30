@@ -46,6 +46,7 @@ const RPS_PER_HOST = {
     "subnets.avax.network": 20,
     "api.avax.network": 20,
     "default": 20,
+    "142.132.150.152": 100000,
 }
 
 const DISABLE_BLOCK_GROWTH = [
@@ -62,6 +63,7 @@ const MAX_CONCURRENCY_PER_HOST = {
     "rpc.amichain.org": 100,
     "rpc-codenekt-mainnet.cogitus.io": 100,
     "default": 100,
+    "142.132.150.152": 300,
 }
 
 const REQUEST_BATCH_SIZE_PER_HOST = {

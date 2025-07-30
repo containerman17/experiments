@@ -26,19 +26,5 @@
             "enableBatchSizeGrowth": false,
             "blocksPerBatch": 10000
         }
-    },
-    {
-        "chainName": "NUMINEMainnet",
-        "blockchainId": "2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf",
-        "evmChainId": 8021,
-        "rpcConfig": {
-            "rpcUrl": "https://meganode.solokhin.com/ext/bc/2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf/rpc",
-            "requestBatchSize": 100,
-            "maxConcurrentRequests": 100,
-            "rps": 1000,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 10000
-        }
     }
 ]

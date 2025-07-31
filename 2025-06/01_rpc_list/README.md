@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (60)
+## Chains with Public RPC URLs (62)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -122,15 +122,6 @@
 - Explorer URL: ❌
 - Comment: also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
 
-**HighOctane**
-- Blocks Count: 1m+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 1853
-- Blockchain ID: 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
-- RPC URL: https://subnets.avax.network/highoctane/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/highoctane
-
 **coqnet**
 - Blocks Count: 1m+
 - Estimated Tx Count: Unknown
@@ -139,6 +130,15 @@
 - RPC URL: https://subnets.avax.network/coqnet/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/coqnet
+
+**HighOctane**
+- Blocks Count: 1m+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 1853
+- Blockchain ID: 25friWasfe2pMdVHQAh5inDBz5XQq42a1V8DYqAGnxeKks5Bkp
+- RPC URL: https://subnets.avax.network/highoctane/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/highoctane
 
 **Tiltyard**
 - Blocks Count: 1m+
@@ -500,6 +500,15 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/titan
 
+**SSHIVANSH**
+- Blocks Count: 10+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 222345
+- Blockchain ID: 2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW
+- RPC URL: http://142.132.150.152:8080/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
+
 **Martian Chain**
 - Blocks Count: 10+
 - Estimated Tx Count: Unknown
@@ -517,6 +526,15 @@
 - RPC URL: http://142.132.150.152:8080/ext/bc/2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
+
+**lucid**
+- Blocks Count: 10+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 62521
+- Blockchain ID: 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
+- RPC URL: https://subnets.avax.network/lucid/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/lucid
 
 **Republic Chain**
 - Blocks Count: 10+
@@ -547,7 +565,7 @@
 
 
 
-## Chains without Public RPC URLs (22)
+## Chains without Public RPC URLs (21)
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -587,11 +605,6 @@
 **amichainMainnet**
 - EVM Chain ID: N/A
 - Blockchain ID: 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc
-- Comment: TODO: investigate
-
-**lucid**
-- EVM Chain ID: N/A
-- Blockchain ID: 2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb
 - Comment: TODO: investigate
 
 **FIZIT**

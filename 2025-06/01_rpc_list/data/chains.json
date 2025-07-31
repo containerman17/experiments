@@ -560,11 +560,12 @@
     "chainName": "lucid",
     "blockchainId": "2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb",
     "subnetId": "hbP3PrnQS71Py1VVxvHfnCnr7MWos3XQesEsCKQoA9hpciyVR",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://subnets.avax.network/lucid/mainnet/rpc",
+    "evmChainId": "62521",
+    "blocksCount": "10+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
+    "glacierChainId": "62521",
+    "comment": null,
     "debugEnabled": false
   },
   {
@@ -600,6 +601,17 @@
     "glacierChainId": "27827",
     "comment": null,
     "debugEnabled": false
+  },
+  {
+    "chainName": "SSHIVANSH",
+    "blockchainId": "2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW",
+    "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
+    "rpcUrl": "http://142.132.150.152:8080/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
+    "evmChainId": "222345",
+    "blocksCount": "10+",
+    "estimatedTxCount": null,
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "even",

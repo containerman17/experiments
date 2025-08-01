@@ -1,10 +1,43 @@
 import { type IndexingPlugin, abiUtils, encodingUtils, evmTypes, viem } from "frostbyte-sdk";
-import ERC20TokenHome from './abi/ERC20TokenHome.abi.json';
+import ERC20TokenHome from './abi/ERC20TokenHome.json';
+import NativeTokenHome from './abi/NativeTokenHome.json';
+// TEMPORARILY COMMENTED OUT - Only indexing Home contracts
+// import ERC20TokenRemote from './abi/ERC20TokenRemote.json';
+// import NativeTokenRemote from './abi/NativeTokenRemote.json';
 import type { ContractHomeData, RemoteData } from './types/ictt.types';
 
 interface ContractHomeRow {
     address: string;
     data: string; // JSON string from SQLite
+}
+
+interface PendingRegistration {
+    contractAddress: string;
+    coinAddress: string;
+    tokenDecimals: number;
+    contractType: 'ERC20Home' | 'NativeHome' | 'ERC20Remote' | 'NativeRemote';
+}
+
+interface RecognizedHome {
+    contract_address: string;
+    coin_address: string;
+    token_decimals: number;
+    contract_type: string;
+}
+
+interface TokenMovement {
+    blockTimestamp: number;
+    isInbound: boolean;
+    amount: bigint;
+    pairChain: string;
+    contractAddress: string;
+}
+
+interface ContractTypeDetection {
+    contractType: 'ERC20Home' | 'NativeHome' | 'ERC20Remote' | 'NativeRemote';
+    decoded: any[];
+    coinAddress: string;
+    tokenDecimals: number;
 }
 
 /**
@@ -41,32 +74,93 @@ const decodeConstructorParams = (txInput: string, abi: viem.Abi): any[] | null =
     return decoded;
 };
 
+/**
+ * Detects ICTT contract type from deployment transaction and decodes constructor parameters
+ * @param txInput - The full transaction input data (bytecode + constructor params)
+ * @param contractAddress - The deployed contract address (for logging)
+ * @returns Contract type detection result or null if not an ICTT contract
+ */
+const detectICTTContract = (txInput: string, contractAddress: string): ContractTypeDetection | null => {
+    const contractsToCheck = [
+        {
+            type: 'ERC20Home' as const,
+            abi: ERC20TokenHome.abi as viem.Abi,
+            expectedParams: 5,
+            getCoinAddress: (decoded: any[]) => decoded[3] as string, // tokenAddress
+            getTokenDecimals: (decoded: any[]) => Number(decoded[4]) // tokenDecimals
+        },
+        {
+            type: 'NativeHome' as const,
+            abi: NativeTokenHome.abi as viem.Abi,
+            expectedParams: 4,
+            getCoinAddress: (decoded: any[]) => decoded[3] as string, // wrappedTokenAddress
+            getTokenDecimals: () => 18 // Always 18 for native tokens
+        },
+        // TEMPORARILY COMMENTED OUT - Only indexing Home contracts
+        // {
+        //     type: 'ERC20Remote' as const,
+        //     abi: ERC20TokenRemote.abi as viem.Abi,
+        //     expectedParams: 4, // settings (tuple), tokenName, tokenSymbol, tokenDecimals
+        //     getCoinAddress: () => '0x0000000000000000000000000000000000000000', // No specific token on remote
+        //     getTokenDecimals: (decoded: any[]) => Number(decoded[3]) // tokenDecimals
+        // },
+        // {
+        //     type: 'NativeRemote' as const,
+        //     abi: NativeTokenRemote.abi as viem.Abi,
+        //     expectedParams: 4, // settings (tuple), nativeAssetSymbol, initialReserveImbalance, burnedFeesReportingRewardPercentage
+        //     getCoinAddress: () => '0x0000000000000000000000000000000000000000', // Native on remote
+        //     getTokenDecimals: () => 18 // Always 18 for native tokens
+        // }
+    ];
 
-const decodeRemoteRegistered = (log: viem.Log) => {
-    const args = viem.decodeEventLog({
-        abi: ERC20TokenHome as abiUtils.AbiItem[],
-        data: log.data,
-        topics: log.topics,
-    }).args as {
-        remoteBlockchainID: string;
-        remoteTokenTransferrerAddress: `0x${string}`;
-        initialCollateralNeeded: bigint;
-        tokenDecimals: number;
-    };
-    return {
-        ...args,
-        initialCollateralNeeded: args.initialCollateralNeeded !== 0n,
-    };
+    for (const contractDef of contractsToCheck) {
+        try {
+            const decoded = decodeConstructorParams(txInput, contractDef.abi);
+            if (decoded && decoded.length === contractDef.expectedParams) {
+                const tokenDecimals = contractDef.getTokenDecimals(decoded);
+
+                // Sanity check for decimals
+                if (tokenDecimals > 0 && tokenDecimals < 100) {
+                    return {
+                        contractType: contractDef.type,
+                        decoded,
+                        coinAddress: contractDef.getCoinAddress(decoded),
+                        tokenDecimals
+                    };
+                }
+            }
+        } catch (error) {
+            // Continue to next contract type
+        }
+    }
+
+    return null;
+};
+
+
+
+// Combine event hashes from all ABIs
+const events: Map<string, string> = new Map();
+
+// Home contract events (these are what we track in this indexer)
+const homeAbis = [
+    ERC20TokenHome.abi as abiUtils.AbiItem[],
+    NativeTokenHome.abi as abiUtils.AbiItem[]
+];
+
+for (const abi of homeAbis) {
+    const abiEvents = abiUtils.getEventHashesMap(abi);
+    for (const [hash, name] of abiEvents) {
+        events.set(hash, name);
+    }
 }
 
-
-const events: Map<string, string> = abiUtils.getEventHashesMap(ERC20TokenHome as abiUtils.AbiItem[]);
 const eventHexes = Array.from(events.keys());
 
 
 const module: IndexingPlugin = {
     name: "ictt_homes",
-    version: Math.floor(Date.now()),
+    version: Math.floor(Date.now() / 1000) + 6, // Removed is_active and RemoteRegistered, only track recognized homes
     usesTraces: false,
     filterEvents: [
         ...eventHexes,
@@ -75,85 +169,149 @@ const module: IndexingPlugin = {
 
     initialize: (db) => {
         db.exec(`
-            CREATE TABLE IF NOT EXISTS contract_to_coin_home (
-                contract_address BLOB NOT NULL,
-                coin_address BLOB NOT NULL,
+            CREATE TABLE IF NOT EXISTS token_movements(
+                block_timestamp INTEGER NOT NULL, 
+                is_inbound BOOLEAN NOT NULL,
+                amount REAL NOT NULL,
+                pair_chain TEXT NOT NULL,
+                contract_address TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS recognized_token_homes(
+                contract_address TEXT NOT NULL,
+                coin_address TEXT NOT NULL,
                 token_decimals INTEGER NOT NULL,
-                PRIMARY KEY (contract_address, coin_address)
-            )
+                contract_type TEXT NOT NULL,
+                PRIMARY KEY (contract_address)
+            );
         `);
     },
 
     handleTxBatch: (db, blocksDb, batch) => {
-        console.log('------------ handleTxBatch ictt_homes', batch.txs.length);
-        const deployments: Array<{ contractAddress: string; coinAddress: string; tokenDecimals: number }> = [];
+        const pendingRegistrations: PendingRegistration[] = [];
+        const movements: TokenMovement[] = [];
 
-        const debugContractsToCoins: Map<string, string> = new Map();
+        // Load all recognized homes into memory for quick lookup
+        const recognizedHomes = new Map<string, RecognizedHome>();
+        //FIXME: pull on demand if throws out of memory on the C-Chain
+        const existingHomes = db.prepare('SELECT * FROM recognized_token_homes').all() as RecognizedHome[];
+        for (const home of existingHomes) {
+            recognizedHomes.set(home.contract_address, home);
+        }
 
-
-        for (const tx of batch.txs) {
-            const originalTx = tx.tx;
-            const txReceipt = tx.receipt;
-
-
-            // First, try to check if this is a contract creation
-            if (tx.receipt.contractAddress) {
-                // Try to decode constructor parameters from deployment transaction
-                let decoded: any[] | null = null;
-                try {
-                    decoded = decodeConstructorParams(originalTx.input as string, ERC20TokenHome as viem.Abi);
-                } catch (error) {
-                    //skip
-                }
-
-                if (tx.receipt.contractAddress.toLowerCase() === '0xbd00e449d05af4210ef9e8bd535d32377dcc1bb9') {
-                    console.log(`------------ Well, this is a contract creation`, { decoded, contractAddress: tx.receipt.contractAddress });
-                }
-
-                if (decoded && decoded.length === 5 && decoded[4] < 1000) {
-                    const [, , , tokenAddress, tokenDecimals] = decoded;
-                    // console.log(`------------ Home ${tx.receipt.contractAddress} represents ${tokenAddress} with ${tokenDecimals} decimals`);
-
-                    debugContractsToCoins.set(tx.receipt.contractAddress!.toLowerCase(), tokenAddress.toLowerCase() as string);
+        // First pass: Collect all deployments and events
+        for (const { tx, receipt, blockTs } of batch.txs) {
 
 
-                    // Store the deployment data
-                    deployments.push({
-                        contractAddress: txReceipt.contractAddress!,
-                        coinAddress: tokenAddress as string,
-                        tokenDecimals: Number(tokenDecimals)
+            // Check if this is a contract creation
+            if (receipt.contractAddress) {
+                const contractAddress = receipt.contractAddress;
+                const detection = detectICTTContract(tx.input as string, contractAddress);
+
+                // Log unknown contracts for debugging
+                if (detection) {
+                    pendingRegistrations.push({
+                        contractAddress: contractAddress,
+                        coinAddress: detection.coinAddress,
+                        tokenDecimals: detection.tokenDecimals,
+                        contractType: detection.contractType
                     });
                 }
             }
 
-
-            // Now check for typical contract home events
-            for (const log of tx.receipt.logs) {
+            // Check for ICTT events
+            for (const log of receipt.logs) {
                 const eventName = events.get(log.topics[0] || "");
                 if (!eventName) continue;
 
-                console.log("------------ eventName", eventName);
+                const contractAddress = log.address;
 
-                const contractAddress = log.address.toLowerCase();
+                // Only process events for recognized home contracts
+                if (!recognizedHomes.has(contractAddress)) {
+                    continue;
+                }
 
-                if (eventName === "RemoteRegistered") {
-                    const event = decodeRemoteRegistered(log as unknown as viem.Log);
-                    const remoteBlockchainId = encodingUtils.hexToCB58(event.remoteBlockchainID);
-                    const remoteTokenAddress = event.remoteTokenTransferrerAddress.toLowerCase();
+                // Handle token movement events
+                const movementEvents = ["TokensSent", "TokensAndCallSent", "TokensRouted", "TokensAndCallRouted"];
+                if (movementEvents.includes(eventName)) {
+                    const isInbound = eventName.includes("Routed");
 
-                    if (debugContractsToCoins.has(contractAddress)) {
-                        const coinAddress = debugContractsToCoins.get(contractAddress)!;
-                        console.log(`--------------- Got RemoteRegistered WITH coinAddress`, { contractAddress, remoteBlockchainId, remoteTokenAddress, coinAddress });
-                    } else {
-                        console.log(`--------------- Got RemoteRegistered WITHOUT coinAddress`, { contractAddress, remoteBlockchainId, remoteTokenAddress });
+                    // Decode event arguments (try both ABIs)
+                    let args;
+                    try {
+                        args = viem.decodeEventLog({
+                            abi: ERC20TokenHome.abi as abiUtils.AbiItem[],
+                            data: log.data as `0x${string}`,
+                            topics: log.topics as [signature: `0x${string}`, ...args: `0x${string}`[]],
+                        }).args as any;
+                    } catch {
+                        args = viem.decodeEventLog({
+                            abi: NativeTokenHome.abi as abiUtils.AbiItem[],
+                            data: log.data as `0x${string}`,
+                            topics: log.topics as [signature: `0x${string}`, ...args: `0x${string}`[]],
+                        }).args as any;
                     }
 
+                    const pairChain = encodingUtils.hexToCB58(args.input.destinationBlockchainID);
+                    const amount = args.amount;
+
+                    movements.push({
+                        blockTimestamp: blockTs,
+                        isInbound: isInbound,
+                        amount: amount,
+                        pairChain: pairChain,
+                        contractAddress: contractAddress
+                    });
                 }
             }
-
         }
-        console.log(`------------ debugContractsToCoins`, debugContractsToCoins);
 
+        // Database operations
+
+        // 1. Register pending contracts (from constructor)
+        if (pendingRegistrations.length > 0) {
+            console.log(`------------ Registering ${pendingRegistrations.length} new ICTT contracts`);
+
+            const stmt = db.prepare(`
+                INSERT OR IGNORE INTO recognized_token_homes 
+                (contract_address, coin_address, token_decimals, contract_type) 
+                VALUES (?, ?, ?, ?)
+            `);
+
+            for (const reg of pendingRegistrations) {
+                stmt.run(reg.contractAddress, reg.coinAddress, reg.tokenDecimals, reg.contractType);
+            }
+        }
+
+        // 2. Record all token movements
+        if (movements.length > 0) {
+            const insertStmt = db.prepare(`
+                INSERT INTO token_movements 
+                (block_timestamp, is_inbound, amount, pair_chain, contract_address) 
+                VALUES (?, ?, ?, ?, ?)
+            `);
+
+            for (const movement of movements) {
+                // Already verified contract is recognized in event processing
+                const contractInfo = recognizedHomes.get(movement.contractAddress)!;
+                const decimals = contractInfo.token_decimals;
+                const divisor = BigInt(10) ** BigInt(decimals);
+
+                // Perform division in bigint space to avoid overflow, then convert to Number
+                // For extra precision, we'll keep some decimal places during bigint division
+                const scaleFactor = BigInt(1e9); // Keep 9 decimal places for precision
+                const scaledAmount = (movement.amount * scaleFactor) / divisor;
+                const humanAmount = Number(scaledAmount) / 1e9;
+
+                insertStmt.run(
+                    movement.blockTimestamp,
+                    movement.isInbound ? 1 : 0,
+                    humanAmount,
+                    movement.pairChain,
+                    movement.contractAddress
+                );
+            }
+        }
     }
 
 }

@@ -15,13 +15,16 @@ scp ./prod_chains.json idx5:~/data/chains.json
 rsync -av --delete ./plugins/ idx5:~/plugins/
 
 # Copy compose.yml to remote
-scp ./compose.yml idx5:~/compose.yml
+# scp ./compose.yml idx5:~/compose.yml
 
-# Deploy to idx5
-ssh -T idx5 << 'EOF'
-# Run docker compose
-cd ~
-docker compose pull
-docker compose up -d --remove-orphans
-docker compose restart api fetcher indexer
-EOF
+# # Deploy to idx5
+# ssh -T idx5 << 'EOF'
+# # Run docker compose
+# cd ~
+# docker compose pull
+# docker compose up -d --remove-orphans
+# docker compose restart api fetcher indexer
+# EOF
+
+# TODO: This is a hack to restart the api and indexer services without starting fetcher
+ssh -T idx5 "docker compose restart api indexer"

@@ -7,10 +7,10 @@
             "rpcUrl": "https://subnets.avax.network/dispatch/testnet/rpc",
             "requestBatchSize": 10,
             "maxConcurrentRequests": 50,
-            "rps": 25,
+            "rps": 20,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 1000
+            "blocksPerBatch": 100
         }
     },
     {
@@ -19,12 +19,26 @@
         "evmChainId": 16180,
         "rpcConfig": {
             "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
-            "requestBatchSize": 100,
+            "requestBatchSize": 20,
             "maxConcurrentRequests": 100,
-            "rps": 1000,
+            "rps": 20,
+            "rpcSupportsDebug": false,
+            "enableBatchSizeGrowth": true,
+            "blocksPerBatch": 100
+        }
+    },
+    {
+        "chainName": "Echo L1 Testnet",
+        "blockchainId": "98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp",
+        "evmChainId": 173750,
+        "rpcConfig": {
+            "rpcUrl": "https://subnets.avax.network/echo/testnet/rpc",
+            "requestBatchSize": 10,
+            "maxConcurrentRequests": 100,
+            "rps": 20,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
-            "blocksPerBatch": 10000
+            "blocksPerBatch": 1000
         }
     }
 ]

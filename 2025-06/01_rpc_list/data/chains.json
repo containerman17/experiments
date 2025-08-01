@@ -883,12 +883,11 @@
     "chainName": "KALICHAIN",
     "blockchainId": "TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3",
     "subnetId": "x1C95jnFyLV3x8tiiCW7ZFRoRFgq9SX1Yprwfxx4GCTujggYB",
-    "rpcUrl": "https://subnets.avax.network/kalichain/mainnet/rpc",
-    "evmChainId": "6533",
-    "blocksCount": "100k+",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
     "estimatedTxCount": null,
-    "glacierChainId": "6533",
-    "comment": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {

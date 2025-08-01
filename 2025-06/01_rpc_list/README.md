@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (62)
+## Chains with Public RPC URLs (61)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -275,15 +275,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/intersect
 
-**KALICHAIN**
-- Blocks Count: 100k+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 6533
-- Blockchain ID: TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
-- RPC URL: https://subnets.avax.network/kalichain/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/kalichain
-
 **even**
 - Blocks Count: 100k+
 - Estimated Tx Count: Unknown
@@ -320,15 +311,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/lamina1id
 
-**NUMINEMainnet**
-- Blocks Count: 10k+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 8021
-- Blockchain ID: 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
-- RPC URL: https://subnets.avax.network/numi/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/numi
-
 **Hatchyverse**
 - Blocks Count: 10k+
 - Estimated Tx Count: Unknown
@@ -337,6 +319,15 @@
 - RPC URL: http://142.132.150.152:8080/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
+
+**NUMINEMainnet**
+- Blocks Count: 10k+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 8021
+- Blockchain ID: 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
+- RPC URL: https://subnets.avax.network/numi/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/numi
 
 **BangoL**
 - Blocks Count: 10k+
@@ -383,15 +374,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/feature
 
-**Letsbuyhealthcare**
-- Blocks Count: 1k+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 50776
-- Blockchain ID: 29vwJsYDCuAHpCCGkvvWh8K2MiHAyCXYKUNobCMg4c7ZQvSkJu
-- RPC URL: https://subnets.avax.network/letsbuyhc/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/letsbuyhc
-
 **TheLYLTYEconomy**
 - Blocks Count: 1k+
 - Estimated Tx Count: Unknown
@@ -400,6 +382,15 @@
 - RPC URL: https://subnets.avax.network/lylty/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/lylty
+
+**Letsbuyhealthcare**
+- Blocks Count: 1k+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 50776
+- Blockchain ID: 29vwJsYDCuAHpCCGkvvWh8K2MiHAyCXYKUNobCMg4c7ZQvSkJu
+- RPC URL: https://subnets.avax.network/letsbuyhc/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/letsbuyhc
 
 **InnovoMarketsMainnet**
 - Blocks Count: 1k+
@@ -565,7 +556,7 @@
 
 
 
-## Chains without Public RPC URLs (21)
+## Chains without Public RPC URLs (22)
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -616,6 +607,11 @@
 - EVM Chain ID: 68414
 - Blockchain ID: 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB
 - Comment: The RPC URL is behind an aggressive Cloudflare Protection
+
+**KALICHAIN**
+- EVM Chain ID: N/A
+- Blockchain ID: TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
+- Comment: TODO: investigate
 
 **STLINK**
 - EVM Chain ID: N/A

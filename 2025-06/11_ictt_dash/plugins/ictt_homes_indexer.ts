@@ -7,6 +7,40 @@ interface ContractHomeRow {
     data: string; // JSON string from SQLite
 }
 
+/**
+ * Decodes constructor parameters from a contract creation transaction
+ * @param txInput - The full transaction input data (bytecode + constructor params)
+ * @param abi - The contract ABI
+ * @returns Decoded constructor parameters or null if decoding fails
+ */
+const decodeConstructorParams = (txInput: string, abi: viem.Abi): any[] | null => {
+    // Find the constructor in the ABI
+    const constructorAbi = abi.find(
+        (item) => item.type === 'constructor'
+    ) as viem.AbiItem & { inputs?: viem.AbiParameter[] };
+
+    if (!constructorAbi || !constructorAbi.inputs || constructorAbi.inputs.length === 0) {
+        console.error("Constructor ABI not found or has no inputs");
+        return null;
+    }
+
+    // For simple types (address, uint, etc), each parameter is 32 bytes (64 hex chars)
+    // This is a simplified approach that works for most cases
+    // TODO: Handle dynamic types (strings, arrays) properly
+    const constructorParamsLength = constructorAbi.inputs.length * 64;
+
+    // Extract constructor params from the end of the input
+    const constructorParams = `0x${txInput.slice(-constructorParamsLength)}` as `0x${string}`;
+
+    // Decode the constructor parameters
+    const decoded = viem.decodeAbiParameters(
+        constructorAbi.inputs,
+        constructorParams
+    );
+
+    return decoded;
+};
+
 
 const decodeRemoteRegistered = (log: viem.Log) => {
     const args = viem.decodeEventLog({
@@ -54,87 +88,41 @@ const module: IndexingPlugin = {
         console.log('------------ handleTxBatch ictt_homes', batch.txs.length);
         const deployments: Array<{ contractAddress: string; coinAddress: string; tokenDecimals: number }> = [];
 
+        const debugContractsToCoins: Map<string, string> = new Map();
+
+
         for (const tx of batch.txs) {
             const originalTx = tx.tx;
             const txReceipt = tx.receipt;
 
-            if (tx.receipt.contractAddress === "0x5260d9ef1f31f11a5f289dd79e032cfc3aa85a1e") {
-                console.log(tx);
 
+            // First, try to check if this is a contract creation
+            if (tx.receipt.contractAddress) {
+                // Try to decode constructor parameters from deployment transaction
+                let decoded: any[] | null = null;
                 try {
-                    // Get the constructor ABI
-                    const constructorAbi = (ERC20TokenHome as viem.Abi).find(
-                        (item) => item.type === 'constructor'
-                    ) as viem.AbiConstructor;
+                    decoded = decodeConstructorParams(originalTx.input as string, ERC20TokenHome as viem.Abi);
+                } catch (error) {
+                    //skip
+                }
 
-                    if (!constructorAbi || !constructorAbi.inputs) {
-                        console.error("Constructor ABI not found");
-                        return;
-                    }
+                if (tx.receipt.contractAddress.toLowerCase() === '0xbd00e449d05af4210ef9e8bd535d32377dcc1bb9') {
+                    console.log(`------------ Well, this is a contract creation`, { decoded, contractAddress: tx.receipt.contractAddress });
+                }
 
-                    // Constructor parameters are ABI-encoded, each parameter is 32 bytes
-                    // 5 parameters = 160 bytes = 320 hex chars (plus 0x prefix)
-                    const constructorParamsLength = constructorAbi.inputs.length * 64; // 32 bytes = 64 hex chars
-                    const input = originalTx.input as string;
+                if (decoded && decoded.length === 5 && decoded[4] < 1000) {
+                    const [, , , tokenAddress, tokenDecimals] = decoded;
+                    // console.log(`------------ Home ${tx.receipt.contractAddress} represents ${tokenAddress} with ${tokenDecimals} decimals`);
 
-                    // Extract constructor params from the end of the input
-                    const constructorParams = `0x${input.slice(-constructorParamsLength)}` as `0x${string}`;
+                    debugContractsToCoins.set(tx.receipt.contractAddress!.toLowerCase(), tokenAddress.toLowerCase() as string);
 
-                    // Decode the constructor parameters
-                    const decoded = viem.decodeAbiParameters(
-                        constructorAbi.inputs,
-                        constructorParams
-                    );
-
-                    console.log("Decoded creation params for a well known contract 0x5260d9ef1f31f11a5f289dd79e032cfc3aa85a1e", {
-                        teleporterRegistryAddress: decoded[0],
-                        teleporterManager: decoded[1],
-                        minTeleporterVersion: decoded[2],
-                        tokenAddress: decoded[3],
-                        tokenDecimals: decoded[4]
-                    });
 
                     // Store the deployment data
                     deployments.push({
-                        contractAddress: tx.receipt.contractAddress!,
-                        coinAddress: decoded[3] as string,
-                        tokenDecimals: Number(decoded[4])
+                        contractAddress: txReceipt.contractAddress!,
+                        coinAddress: tokenAddress as string,
+                        tokenDecimals: Number(tokenDecimals)
                     });
-
-                } catch (error) {
-                    console.error("Failed to decode constructor params:", error);
-                }
-                return
-            }
-
-            // First, try to check if this is a contract creation
-            if (originalTx.to === null && txReceipt.status === '0x1') {
-
-                // Decode constructor parameters from deployment transaction
-                try {
-                    // The transaction input contains bytecode + encoded constructor params
-                    // We need to decode just the constructor parameters at the end
-                    const decoded = viem.decodeDeployData({
-                        abi: ERC20TokenHome as viem.Abi,
-                        bytecode: '0x', // We don't need to verify bytecode
-                        data: originalTx.input as `0x${string}`
-                    });
-
-
-                    if (decoded.args && decoded.args.length >= 5 && decoded.bytecode !== '0x') {
-                        console.log(decoded);
-
-                        const [, , , tokenAddress, tokenDecimals] = decoded.args;
-
-                        // Store the deployment data
-                        deployments.push({
-                            contractAddress: txReceipt.contractAddress!,
-                            coinAddress: tokenAddress as string,
-                            tokenDecimals: Number(tokenDecimals)
-                        });
-                    }
-                } catch (error) {
-                    // Not an ERC20TokenHome deployment or decoding failed
                 }
             }
 
@@ -144,6 +132,8 @@ const module: IndexingPlugin = {
                 const eventName = events.get(log.topics[0] || "");
                 if (!eventName) continue;
 
+                // console.log("------------ eventName", eventName);
+
                 const contractAddress = log.address.toLowerCase();
 
                 if (eventName === "RemoteRegistered") {
@@ -151,11 +141,21 @@ const module: IndexingPlugin = {
                     const remoteBlockchainId = encodingUtils.hexToCB58(event.remoteBlockchainID);
                     const remoteTokenAddress = event.remoteTokenTransferrerAddress.toLowerCase();
 
-                    console.log(`--------------- Got RemoteRegistered`, { contractAddress, remoteBlockchainId, remoteTokenAddress });
+                    if (debugContractsToCoins.has(contractAddress)) {
+                        const coinAddress = debugContractsToCoins.get(contractAddress)!;
+                        console.log(`--------------- Got RemoteRegistered WITH coinAddress`, { contractAddress, remoteBlockchainId, remoteTokenAddress, coinAddress });
+                    } else {
+                        console.log(`--------------- Got RemoteRegistered WITHOUT coinAddress`, { contractAddress, remoteBlockchainId, remoteTokenAddress });
+                    }
+
                 }
             }
+
         }
+        console.log(`------------ debugContractsToCoins`, debugContractsToCoins);
+
     }
+
 }
 
 export default module;

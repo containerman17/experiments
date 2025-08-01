@@ -1,33 +1,5 @@
 [
     {
-        "chainName": "Dispatch",
-        "blockchainId": "2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY",
-        "evmChainId": 779672,
-        "rpcConfig": {
-            "rpcUrl": "https://subnets.avax.network/dispatch/testnet/rpc",
-            "requestBatchSize": 10,
-            "maxConcurrentRequests": 50,
-            "rps": 20,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 100
-        }
-    },
-    {
-        "chainName": "PLYRPHI",
-        "blockchainId": "HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4",
-        "evmChainId": 16180,
-        "rpcConfig": {
-            "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
-            "requestBatchSize": 20,
-            "maxConcurrentRequests": 100,
-            "rps": 20,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 100
-        }
-    },
-    {
         "chainName": "Echo L1 Testnet",
         "blockchainId": "98qnjenm7MBd8G2cPZoRvZrgJC33JGSAAKghsQ6eojbLCeRNp",
         "evmChainId": 173750,

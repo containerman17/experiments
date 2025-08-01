@@ -132,7 +132,7 @@ const module: IndexingPlugin = {
                 const eventName = events.get(log.topics[0] || "");
                 if (!eventName) continue;
 
-                // console.log("------------ eventName", eventName);
+                console.log("------------ eventName", eventName);
 
                 const contractAddress = log.address.toLowerCase();
 

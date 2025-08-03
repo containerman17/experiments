@@ -11,14 +11,14 @@ export default function NotFound() {
                         The page you're looking for doesn't exist or has been moved.
                     </p>
                 </div>
-                
-                <Link 
-                    to="/" 
+
+                <Link
+                    to="/"
                     className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                 >
                     ← Back to Home
                 </Link>
-                
+
                 <div className="mt-8 pt-8 border-t border-gray-200">
                     <p className="text-sm text-gray-500">
                         Available pages:
@@ -37,6 +37,8 @@ export default function NotFound() {
                         <Link to="/daily-message-volume" className="text-blue-700 hover:underline text-sm">Daily Messages</Link>
                         <span className="text-gray-400">•</span>
                         <Link to="/leaderboard" className="text-blue-700 hover:underline text-sm">Leaderboard</Link>
+                        <span className="text-gray-400">•</span>
+                        <Link to="/ictt-transfers" className="text-blue-700 hover:underline text-sm">ICTT Transfers</Link>
                     </div>
                 </div>
             </div>

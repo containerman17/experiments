@@ -1,44 +1,28 @@
 import YAML from 'yaml'
 
-// Interface for service configuration
-interface ServiceConfig {
-    serviceName: string
-    containerName: string
-    folderSuffix: string
-    httpPort: number
-    stakingPort: number
-    subnetIds: string[]
-    blockchainIds: string[]
-    skipCChain: boolean
-}
-
-// Function to pad numbers with leading zeros
-function padzero(num: number, size: number): string {
-    return num.toString().padStart(size, '0')
-}
-
-// Function to generate a service configuration
-function generateService(config: ServiceConfig) {
+// Function to generate a service configuration for a single subnet
+function generateSubnetService(subnetId: string, httpPort: number, stakingPort: number) {
     return {
         image: 'containerman17/subnet-evm-plus:latest',
-        container_name: config.containerName,
+        container_name: subnetId,
         restart: 'always',
         networks: ['default'],
         ports: [
-            `127.0.0.1:${config.httpPort}:${config.httpPort}`,
-            `${config.stakingPort}:${config.stakingPort}`
+            `127.0.0.1:${httpPort}:${httpPort}`,
+            `${stakingPort}:${stakingPort}`
         ],
         volumes: [
-            `~/nodes/${config.folderSuffix}/:/root/.avalanchego`
+            `~/nodes/${subnetId}/:/root/.avalanchego`
         ],
         environment: [
-            `AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=${config.skipCChain ? 'true' : 'false'}`,
+            `AVAGO_PARTIAL_SYNC_PRIMARY_NETWORK=true`,
             'AVAGO_PUBLIC_IP_RESOLUTION_SERVICE=opendns',
             'AVAGO_HTTP_HOST=0.0.0.0',
             'AVAGO_HTTP_ALLOWED_HOSTS=*',
-            `AVAGO_HTTP_PORT=${config.httpPort}`,
-            `AVAGO_STAKING_PORT=${config.stakingPort}`,
-            `AVAGO_TRACK_SUBNETS=${config.subnetIds.join(',')}`,
+            `AVAGO_HTTP_PORT=${httpPort}`,
+            `AVAGO_STAKING_PORT=${stakingPort}`,
+            `AVAGO_TRACK_SUBNETS=${subnetId}`,
+            `AVAGO_DB_TYPE=pebbledb`,
         ],
         logging: {
             driver: 'json-file',
@@ -80,38 +64,10 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
 http {
     # Concurrent connection limiting: max 500 active connections per IP
     limit_conn_zone $$binary_remote_addr zone=perip:10m;
-    
-    # P-Chain upstream
-    upstream backend_p_chain {
-        server meganode01:9004;
-    }
-    
-    # C-Chain upstream  
-    upstream backend_c_chain {
-        server meganode00:9002;
-    }${upstreams}
+    ${upstreams}
     
     server {
         listen 80;
-        
-        # Route P-Chain to meganode01
-        location /ext/bc/P {
-            limit_conn perip 500;
-            proxy_pass http://backend_p_chain;
-            proxy_connect_timeout 5s;
-            proxy_send_timeout 300s;
-            proxy_read_timeout 300s;
-        }
-        
-        # Route C-Chain (anything starting with /ext/bc/C) to meganode00
-        location ~ ^/ext/bc/C {
-            limit_conn perip 500;
-            proxy_pass http://backend_c_chain;
-            proxy_connect_timeout 5s;
-            proxy_send_timeout 300s;
-            proxy_read_timeout 300s;
-        }
-             
         ${locations}
         
         location / {
@@ -122,7 +78,7 @@ http {
 }`
 }
 
-export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnetsToBlockchainId: { [key: string]: string[] }, domain: string): string {
+export function generateCompose(subnets: string[], subnetsToBlockchainId: { [key: string]: string[] }, domain: string): string {
     const composeObject: {
         services: { [key: string]: any }
         configs: { [key: string]: any }
@@ -134,36 +90,23 @@ export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnet
     let nextHttpPort = 9000
     const serviceConfigs: { serviceName: string, httpPort: number, blockchainIds: string[] }[] = []
 
-    // Generate services for each node
-    Object.entries(nodeSubnets).forEach(([nodeId, subnets]) => {
-        const nodeIdPadded = padzero(parseInt(nodeId), 2)
-        const serviceName = `meganode${nodeIdPadded}`
+    // Generate one service per subnet
+    subnets.forEach((subnetId) => {
+        const blockchainIds = subnetsToBlockchainId[subnetId] || []
 
-        nextHttpPort += 2
-
-        // Collect all blockchain IDs for this node's subnets
-        const blockchainIds: string[] = []
-        subnets.forEach(subnetId => {
-            const blockchainIdsForSubnet = subnetsToBlockchainId[subnetId] || []
-            blockchainIds.push(...blockchainIdsForSubnet)
-        })
-
-        composeObject.services[serviceName] = generateService({
-            serviceName: serviceName,
-            containerName: serviceName,
-            folderSuffix: nodeIdPadded,
-            httpPort: nextHttpPort,
-            stakingPort: nextHttpPort + 1,
-            subnetIds: subnets,
-            blockchainIds: blockchainIds,
-            skipCChain: true//parseInt(nodeId) !== 0, // Only node 0 syncs C-Chain
-        })
+        composeObject.services[subnetId] = generateSubnetService(
+            subnetId,
+            nextHttpPort,
+            nextHttpPort + 1
+        )
 
         serviceConfigs.push({
-            serviceName,
+            serviceName: subnetId,
             httpPort: nextHttpPort,
             blockchainIds
         })
+
+        nextHttpPort += 2
     })
 
     // Add nginx service
@@ -181,7 +124,7 @@ export function generateCompose(nodeSubnets: { [key: string]: string[] }, subnet
             '8080:80'
         ],
         restart: 'unless-stopped',
-        depends_on: Object.keys(composeObject.services)
+        depends_on: Object.keys(composeObject.services).filter(s => s !== 'nginx')
     }
 
     // Add nginx config

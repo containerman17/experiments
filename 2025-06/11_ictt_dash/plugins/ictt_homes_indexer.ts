@@ -155,12 +155,16 @@ for (const abi of homeAbis) {
     }
 }
 
+// Add MessageExecuted event hash manually (from TeleporterMessenger)
+// MessageExecuted(bytes32 indexed messageID, bytes32 indexed sourceBlockchainID)
+events.set('0x34795cc6b122b9a0ae684946319f1e14a577b4e8f9b3dda9ac94c21a54d3188c', 'MessageExecuted');
+
 const eventHexes = Array.from(events.keys());
 
 
 const module: IndexingPlugin = {
     name: "ictt_homes",
-    version: Math.floor(Date.now() / 1000) + 6, // Removed is_active and RemoteRegistered, only track recognized homes
+    version: 3,
     usesTraces: false,
     filterEvents: [
         ...eventHexes,
@@ -216,6 +220,13 @@ const module: IndexingPlugin = {
                         tokenDecimals: detection.tokenDecimals,
                         contractType: detection.contractType
                     });
+
+                    recognizedHomes.set(contractAddress, {
+                        contract_address: contractAddress,
+                        coin_address: detection.coinAddress,
+                        token_decimals: detection.tokenDecimals,
+                        contract_type: detection.contractType
+                    });
                 }
             }
 
@@ -231,11 +242,10 @@ const module: IndexingPlugin = {
                     continue;
                 }
 
-                // Handle token movement events
-                const movementEvents = ["TokensSent", "TokensAndCallSent", "TokensRouted", "TokensAndCallRouted"];
-                if (movementEvents.includes(eventName)) {
-                    const isInbound = eventName.includes("Routed");
+                // Handle outbound token movement events
+                const outboundEvents = ["TokensSent", "TokensAndCallSent"];
 
+                if (outboundEvents.includes(eventName)) {
                     // Decode event arguments (try both ABIs)
                     let args;
                     try {
@@ -257,11 +267,56 @@ const module: IndexingPlugin = {
 
                     movements.push({
                         blockTimestamp: blockTs,
-                        isInbound: isInbound,
+                        isInbound: false,
                         amount: amount,
                         pairChain: pairChain,
                         contractAddress: contractAddress
                     });
+                }
+
+                // Handle inbound transfers via CallSucceeded
+                if (eventName === "CallSucceeded") {
+                    // Decode CallSucceeded event
+                    let args;
+                    try {
+                        args = viem.decodeEventLog({
+                            abi: ERC20TokenHome.abi as abiUtils.AbiItem[],
+                            data: log.data as `0x${string}`,
+                            topics: log.topics as [signature: `0x${string}`, ...args: `0x${string}`[]],
+                        }).args as any;
+                    } catch {
+                        args = viem.decodeEventLog({
+                            abi: NativeTokenHome.abi as abiUtils.AbiItem[],
+                            data: log.data as `0x${string}`,
+                            topics: log.topics as [signature: `0x${string}`, ...args: `0x${string}`[]],
+                        }).args as any;
+                    }
+
+                    // Look for MessageExecuted event in the same receipt to get source blockchain
+                    let sourceBlockchainID: string | null = null;
+                    for (const otherLog of receipt.logs) {
+                        if (otherLog.topics[0] === '0x34795cc6b122b9a0ae684946319f1e14a577b4e8f9b3dda9ac94c21a54d3188c') {
+                            // This is a MessageExecuted event
+                            // sourceBlockchainID is the second indexed parameter (topics[2])
+                            if (otherLog.topics[2]) {
+                                sourceBlockchainID = otherLog.topics[2];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (sourceBlockchainID) {
+                        const pairChain = encodingUtils.hexToCB58(sourceBlockchainID);
+                        const amount = args.amount;
+
+                        movements.push({
+                            blockTimestamp: blockTs,
+                            isInbound: true,
+                            amount: amount,
+                            pairChain: pairChain,
+                            contractAddress: contractAddress
+                        });
+                    }
                 }
             }
         }

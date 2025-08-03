@@ -69,6 +69,35 @@ export type PostApiByEvmChainIdRpcResponses = {
 
 export type PostApiByEvmChainIdRpcResponse = PostApiByEvmChainIdRpcResponses[keyof PostApiByEvmChainIdRpcResponses];
 
+export type GetApiReplicationChainsJsonData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/replication/chains.json';
+};
+
+export type GetApiReplicationChainsJsonResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        chainName: string;
+        blockchainId: string;
+        evmChainId: number;
+        rpcConfig: {
+            rpcUrl: string;
+            requestBatchSize: number;
+            maxConcurrentRequests: number;
+            rps: number;
+            rpcSupportsDebug: boolean;
+            enableBatchSizeGrowth: boolean;
+            blocksPerBatch: number;
+        };
+    }>;
+};
+
+export type GetApiReplicationChainsJsonResponse = GetApiReplicationChainsJsonResponses[keyof GetApiReplicationChainsJsonResponses];
+
 export type GetApiByEvmChainIdStatsIcmGasUsageData = {
     body?: never;
     path: {
@@ -102,6 +131,34 @@ export type GetApiByEvmChainIdStatsIcmGasUsageResponses = {
 };
 
 export type GetApiByEvmChainIdStatsIcmGasUsageResponse = GetApiByEvmChainIdStatsIcmGasUsageResponses[keyof GetApiByEvmChainIdStatsIcmGasUsageResponses];
+
+export type GetApiIcttTransfersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        startTs?: number;
+        endTs?: number;
+    };
+    url: '/api/ictt/transfers';
+};
+
+export type GetApiIcttTransfersResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        homeChainBlockchainId: string;
+        homeChainName: string;
+        remoteChainBlockchainId: string;
+        remoteChainName: string;
+        direction: 'in' | 'out';
+        coinAddress: string;
+        transferCount: number;
+        transferCoinsTotal: number;
+    }>;
+};
+
+export type GetApiIcttTransfersResponse = GetApiIcttTransfersResponses[keyof GetApiIcttTransfersResponses];
 
 export type GetApiByChainIdStatsTpsData = {
     body?: never;

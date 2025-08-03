@@ -1,7 +1,7 @@
 import { GoogleGenAI, Content, Part } from "@google/genai";
 import * as fs from "fs/promises";
 import mime from "mime-types";
-import { ProcessWithAiFunction, PayloadElement, FilePayload, AiMode, STREAMING_CHUNK_SIZE } from "./types";
+import { ProcessWithAiFunction, PayloadElement, FilePayload, AiMode, STREAMING_CHUNK_SIZE, TokenUsage } from "./types";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -30,26 +30,32 @@ async function fileToPart(file: FilePayload): Promise<Part> {
     };
 }
 
-export const processWithGemini: ProcessWithAiFunction = async (history, mode = 'light', onStream, language = 'en') => {
+// Gemini 2.5 Pro pricing per million tokens
+const PRICING = {
+    input: {
+        standard: 1.25,  // ≤200k tokens
+        extended: 2.50   // >200k tokens
+    },
+    output: {
+        standard: 10.0,  // ≤200k tokens
+        extended: 15.0   // >200k tokens
+    }
+};
+
+export const processWithGemini: ProcessWithAiFunction = async (history, onStream, mode = 'light', language = 'en') => {
     console.log("<<< Processing with Gemini");
 
     const contents: Content[] = [];
 
     // Add system prompt based on mode and language
     const systemPrompts = {
-        light: {
-            en: "You are a helpful AI assistant. Respond naturally and conversationally. Use plain text only - no markdown formatting, no asterisks for bold/italic, no backticks for code, no tables. Just simple, flat text.",
-            ru: "Ты полезный AI-ассистент. Отвечай естественно и дружелюбно, используя русский язык. Используй только простой текст - без markdown форматирования, без звездочек для жирного/курсива, без обратных кавычек для кода, без таблиц. Только простой, плоский текст."
-        },
-        heavy: {
-            en: "You are an advanced AI assistant with enhanced reasoning capabilities. Take your time to think deeply and provide comprehensive, well-reasoned responses. Use plain text only - no markdown formatting, no asterisks for bold/italic, no backticks for code, no tables. Just simple, flat text.",
-            ru: "Ты продвинутый AI-ассистент с расширенными возможностями рассуждения. Не торопись, думай глубоко и предоставляй всесторонние, хорошо обоснованные ответы на русском языке. Используй только простой текст - без markdown форматирования, без звездочек для жирного/курсива, без обратных кавычек для кода, без таблиц. Только простой, плоский текст."
-        }
+        en: "You are a helpful AI assistant. Be concise and direct. Get straight to the point without sacrificing important details. Adapt your tone to match the user's speaking style - find a balance between neutral professionalism and their way of communicating. Stay concise unless they explicitly ask for more detail. Use plain text only - no markdown, no formatting.",
+        ru: "Ты полезный AI-ассистент. Будь краток и точен. Переходи сразу к сути, сохраняя важные детали. Адаптируй свой тон под стиль общения пользователя - найди баланс между нейтральной вежливостью и его манерой общения. Оставайся кратким, если только не попросят подробнее. Используй только простой текст - без markdown, без форматирования."
     };
 
     contents.push({
         role: 'user',
-        parts: [{ text: systemPrompts[mode][language] }]
+        parts: [{ text: systemPrompts[language] }]
     });
 
     for (const item of history) {
@@ -77,7 +83,7 @@ export const processWithGemini: ProcessWithAiFunction = async (history, mode = '
             en: "Hello there! How can I help you today?",
             ru: "Привет! Чем могу помочь?"
         };
-        return greetings[language];
+        return { response: greetings[language] };
     }
 
     // Configure thinking budget based on mode
@@ -87,60 +93,78 @@ export const processWithGemini: ProcessWithAiFunction = async (history, mode = '
     };
 
     try {
-        // Use streaming if callback provided
-        if (onStream) {
-            const stream = await ai.models.generateContentStream({ model, config, contents });
-            console.log("<<< Sent request");
-            let fullText = '';
-            let buffer = '';
-            let hassentFirstNewline = false;
+        const stream = await ai.models.generateContentStream({ model, config, contents });
+        console.log("<<< Sent request");
+        let fullText = '';
+        let buffer = '';
+        let hassentFirstNewline = false;
+        let lastChunk: any = null;
 
-            for await (const chunk of stream) {
+        for await (const chunk of stream) {
+            lastChunk = chunk;
+            const chunkText = chunk.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            fullText += chunkText;
+            buffer += chunkText;
 
-                const chunkText = chunk.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                fullText += chunkText;
-                buffer += chunkText;
+            console.log("chunk >>>", chunkText);
 
-                console.log("chunk >>>", chunkText);
-
-                // Send immediately on first newline
-                if (!hassentFirstNewline && buffer.includes('\n')) {
-                    const firstNewline = buffer.indexOf('\n');
-                    const chunkToSend = buffer.substring(0, firstNewline + 1);
-                    await onStream(chunkToSend, false);
-                    buffer = buffer.substring(firstNewline + 1);
-                    hassentFirstNewline = true;
-                    continue;
-                }
-
-                // After first newline, use normal chunking logic
-                const shouldSend = buffer.length >= STREAMING_CHUNK_SIZE && buffer.includes('\n');
-                if (shouldSend) {
-                    // Find the last newline to send a complete chunk
-                    const lastNewline = buffer.lastIndexOf('\n');
-                    const chunkToSend = buffer.substring(0, lastNewline + 1);
-                    await onStream(chunkToSend, false);
-                    buffer = buffer.substring(lastNewline + 1); // Keep remainder in buffer
-                }
+            // Send immediately on first newline
+            if (!hassentFirstNewline && buffer.includes('\n')) {
+                const firstNewline = buffer.indexOf('\n');
+                const chunkToSend = buffer.substring(0, firstNewline + 1);
+                await onStream(chunkToSend, false);
+                buffer = buffer.substring(firstNewline + 1);
+                hassentFirstNewline = true;
+                continue;
             }
 
-            // Send final chunk if there's remaining content
-            if (buffer.length > 0) {
-                await onStream(buffer, true);
-            } else {
-                // Signal completion if all text was already sent
-                await onStream('', true);
+            // After first newline, use normal chunking logic
+            const shouldSend = buffer.length >= STREAMING_CHUNK_SIZE && buffer.includes('\n');
+            if (shouldSend) {
+                // Find the last newline to send a complete chunk
+                const lastNewline = buffer.lastIndexOf('\n');
+                const chunkToSend = buffer.substring(0, lastNewline + 1);
+                await onStream(chunkToSend, false);
+                buffer = buffer.substring(lastNewline + 1); // Keep remainder in buffer
             }
-
-            return fullText || "[No response from Gemini]";
-        } else {
-            // Non-streaming fallback
-            const result = await ai.models.generateContent({ model, config, contents });
-            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            return text || "[No response from Gemini]";
         }
+
+        // Send final chunk if there's remaining content
+        if (buffer.length > 0) {
+            await onStream(buffer, true);
+        } else {
+            // Signal completion if all text was already sent
+            await onStream('', true);
+        }
+
+        // Get token usage from the last chunk's usage metadata
+        let tokenUsage: TokenUsage | undefined;
+
+        const usage = lastChunk?.usageMetadata;
+
+        if (usage) {
+            const inputTokens = usage.promptTokenCount || 0;
+            const outputTokens = usage.candidatesTokenCount || 0;
+
+            // Calculate price based on token count thresholds
+            const inputPrice = inputTokens > 200000 ? PRICING.input.extended : PRICING.input.standard;
+            const outputPrice = outputTokens > 200000 ? PRICING.output.extended : PRICING.output.standard;
+
+            // Calculate total cost in USD
+            const inputCost = (inputTokens / 1_000_000) * inputPrice;
+            const outputCost = (outputTokens / 1_000_000) * outputPrice;
+            const totalCost = inputCost + outputCost;
+
+            tokenUsage = {
+                inputTokens,
+                outputTokens,
+                totalCost
+            };
+        }
+
+        return { response: fullText || "[No response from Gemini]", tokenUsage };
     } catch (e) {
         console.error("Error processing with Gemini:", e);
-        return "Sorry, I had an issue with the AI. Please try again.";
+        return { response: "Sorry, I had an issue with the AI. Please try again." };
     }
 };

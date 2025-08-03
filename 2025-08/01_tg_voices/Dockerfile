@@ -40,6 +40,8 @@ FROM base
 # Copy built application
 COPY --from=build /app /app
 
+ENV DATA_DIR=/data/
+
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
 CMD [ "npm", "run", "start" ]

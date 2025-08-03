@@ -14,12 +14,18 @@ export type AiMode = 'light' | 'heavy';
 
 export type StreamCallback = (text: string, isComplete: boolean) => Promise<void>;
 
+export type TokenUsage = {
+    inputTokens: number;
+    outputTokens: number;
+    totalCost: number;
+}
+
 export type ProcessWithAiFunction = (
     history: PayloadElement[],
+    onStream: StreamCallback,  // Required for streaming-only API
     mode?: AiMode,
-    onStream?: StreamCallback,
     language?: 'ru' | 'en'
-) => Promise<string>;
+) => Promise<{ response: string; tokenUsage?: TokenUsage }>;
 
 export const MAX_MESSAGE_LENGTH = 4096;
 export const STREAMING_CHUNK_SIZE = MAX_MESSAGE_LENGTH * 0.7;

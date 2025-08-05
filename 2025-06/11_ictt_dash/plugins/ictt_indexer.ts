@@ -23,6 +23,7 @@ interface RecognizedHome {
     coin_address: string;
     token_decimals: number;
     contract_type: string;
+    at_least_one_remote_registered: number; // SQLite boolean (0/1)
 }
 
 interface TokenMovement {
@@ -156,15 +157,16 @@ for (const abi of homeAbis) {
 }
 
 // Add MessageExecuted event hash manually (from TeleporterMessenger)
+const TELEPORTER_MESSAGE_EXECUTED_HASH = '0x34795cc6b122b9a0ae684946319f1e14a577b4e8f9b3dda9ac94c21a54d3188c';
 // MessageExecuted(bytes32 indexed messageID, bytes32 indexed sourceBlockchainID)
-events.set('0x34795cc6b122b9a0ae684946319f1e14a577b4e8f9b3dda9ac94c21a54d3188c', 'MessageExecuted');
+events.set(TELEPORTER_MESSAGE_EXECUTED_HASH, 'MessageExecuted');
 
 const eventHexes = Array.from(events.keys());
 
 
 const module: IndexingPlugin = {
-    name: "ictt_homes",
-    version: 3,
+    name: "ictt",
+    version: 7,
     usesTraces: false,
     filterEvents: [
         ...eventHexes,
@@ -186,6 +188,7 @@ const module: IndexingPlugin = {
                 coin_address TEXT NOT NULL,
                 token_decimals INTEGER NOT NULL,
                 contract_type TEXT NOT NULL,
+                at_least_one_remote_registered BOOLEAN NOT NULL DEFAULT 0,
                 PRIMARY KEY (contract_address)
             );
         `);
@@ -194,6 +197,7 @@ const module: IndexingPlugin = {
     handleTxBatch: (db, blocksDb, batch) => {
         const pendingRegistrations: PendingRegistration[] = [];
         const movements: TokenMovement[] = [];
+        const homesWithRemoteRegistered: Set<string> = new Set();
 
         // Load all recognized homes into memory for quick lookup
         const recognizedHomes = new Map<string, RecognizedHome>();
@@ -225,7 +229,8 @@ const module: IndexingPlugin = {
                         contract_address: contractAddress,
                         coin_address: detection.coinAddress,
                         token_decimals: detection.tokenDecimals,
-                        contract_type: detection.contractType
+                        contract_type: detection.contractType,
+                        at_least_one_remote_registered: 0
                     });
                 }
             }
@@ -234,6 +239,12 @@ const module: IndexingPlugin = {
             for (const log of receipt.logs) {
                 const eventName = events.get(log.topics[0] || "");
                 if (!eventName) continue;
+
+                // Handle RemoteRegistered event to update flag
+                if (eventName === "RemoteRegistered") {
+                    console.log(`------------ RemoteRegistered event found for contract: ${log.address}`);
+                    homesWithRemoteRegistered.add(log.address);
+                }
 
                 const contractAddress = log.address;
 
@@ -295,7 +306,7 @@ const module: IndexingPlugin = {
                     // Look for MessageExecuted event in the same receipt to get source blockchain
                     let sourceBlockchainID: string | null = null;
                     for (const otherLog of receipt.logs) {
-                        if (otherLog.topics[0] === '0x34795cc6b122b9a0ae684946319f1e14a577b4e8f9b3dda9ac94c21a54d3188c') {
+                        if (otherLog.topics[0] === TELEPORTER_MESSAGE_EXECUTED_HASH) {
                             // This is a MessageExecuted event
                             // sourceBlockchainID is the second indexed parameter (topics[2])
                             if (otherLog.topics[2]) {
@@ -325,12 +336,10 @@ const module: IndexingPlugin = {
 
         // 1. Register pending contracts (from constructor)
         if (pendingRegistrations.length > 0) {
-            console.log(`------------ Registering ${pendingRegistrations.length} new ICTT contracts`);
-
             const stmt = db.prepare(`
                 INSERT OR IGNORE INTO recognized_token_homes 
-                (contract_address, coin_address, token_decimals, contract_type) 
-                VALUES (?, ?, ?, ?)
+                (contract_address, coin_address, token_decimals, contract_type, at_least_one_remote_registered) 
+                VALUES (?, ?, ?, ?, 0)
             `);
 
             for (const reg of pendingRegistrations) {
@@ -365,6 +374,18 @@ const module: IndexingPlugin = {
                     movement.pairChain,
                     movement.contractAddress
                 );
+            }
+        }
+
+        // 3. Update at_least_one_remote_registered flag for buffered contracts
+        if (homesWithRemoteRegistered.size > 0) {
+            const updateStmt = db.prepare(`
+                UPDATE recognized_token_homes 
+                SET at_least_one_remote_registered = 1 
+                WHERE contract_address = ? AND at_least_one_remote_registered = 0
+            `);
+            for (const contractAddress of homesWithRemoteRegistered) {
+                updateStmt.run(contractAddress);
             }
         }
     }

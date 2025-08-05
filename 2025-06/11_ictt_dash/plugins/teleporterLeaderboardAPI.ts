@@ -123,7 +123,7 @@ const module: ApiPlugin = {
         };
 
         // Day leaderboard endpoint
-        app.get('/api/leaderboard/day', {
+        app.get('/api/global/leaderboard/day', {
             schema: {
                 response: {
                     200: {
@@ -148,7 +148,7 @@ const module: ApiPlugin = {
         });
 
         // Week leaderboard endpoint
-        app.get('/api/leaderboard/week', {
+        app.get('/api/global/leaderboard/week', {
             schema: {
                 response: {
                     200: {

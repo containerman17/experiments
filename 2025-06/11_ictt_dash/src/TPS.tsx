@@ -1,13 +1,13 @@
 import { useState } from "react"
-import { getApiChains, getApiByChainIdStatsTps, getApiStatsTps } from "./client/sdk.gen"
-import { type GetApiChainsResponses, type GetApiByChainIdStatsTpsResponses } from "./client/types.gen"
+import { getApiChains, getApiByEvmChainIdStatsTps, getApiGlobalStatsTps } from "./client/sdk.gen"
+import { type GetApiChainsResponses, type GetApiByEvmChainIdStatsTpsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 type Chain = GetApiChainsResponses[200][0]
-type TPSData = GetApiByChainIdStatsTpsResponses[200]
+type TPSData = GetApiByEvmChainIdStatsTpsResponses[200]
 
 interface ChartDataPoint {
     time: string
@@ -27,8 +27,8 @@ function TPSChart({ selectedChainId, period }: { selectedChainId: number | null,
         queryKey: ['tps', selectedChainId, period],
         queryFn: async () => {
             if (!selectedChainId) return null
-            const res = await getApiByChainIdStatsTps({
-                path: { chainId: String(selectedChainId) },
+            const res = await getApiByEvmChainIdStatsTps({
+                path: { evmChainId: String(selectedChainId) },
                 query: { count: periodToCount[period] }
             })
             return res.data
@@ -111,7 +111,7 @@ function NetworkTPSChart({ period }: { period: '1h' | '1d' | '7d' | '30d' }) {
     const { data: tpsData, isLoading, error } = useQuery({
         queryKey: ['networkTps', period],
         queryFn: async () => {
-            const res = await getApiStatsTps({
+            const res = await getApiGlobalStatsTps({
                 query: { period }
             })
             return res.data

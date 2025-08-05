@@ -9,6 +9,7 @@ import CumulativeTxs from './CumulativeTxs'
 import DailyMessageVolume from './DailyMessageVolume'
 import Leaderboard from './Leaderboard'
 import ICTTTransfers from './ICTTTransfers'
+import ICTTTransfersList from './ICTTTransfersList'
 import NotFound from './NotFound'
 
 
@@ -29,6 +30,7 @@ function App() {
               <Link to="/cumulative-txs" className={`${location.pathname === '/cumulative-txs' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Cumulative Txs</Link>
               <Link to="/daily-message-volume" className={`${location.pathname === '/daily-message-volume' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Daily Messages</Link>
               <Link to="/ictt-transfers" className={`${location.pathname === '/ictt-transfers' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICTT Transfers</Link>
+              <Link to="/ictt-transfers-list" className={`${location.pathname === '/ictt-transfers-list' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICTT List</Link>
               <a href="/api/docs" className="text-blue-700 hover:underline flex items-center gap-1" target="api">
                 API Docs
                 <ExternalLink size={16} />
@@ -46,6 +48,7 @@ function App() {
               <Route path="/daily-message-volume" element={<DailyMessageVolume />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/ictt-transfers" element={<ICTTTransfers />} />
+              <Route path="/ictt-transfers-list" element={<ICTTTransfersList />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

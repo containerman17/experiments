@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { getApiChains, getApiByChainIdStatsCumulativeTxs } from "./client/sdk.gen"
+import { getApiChains, getApiByEvmChainIdStatsCumulativeTxs } from "./client/sdk.gen"
 import { type GetApiChainsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
@@ -37,8 +37,8 @@ function CumulativeTxsList({ timestamp }: { timestamp: number }) {
             const results = await Promise.allSettled(
                 chains.map(async (chain) => {
                     try {
-                        const res = await getApiByChainIdStatsCumulativeTxs({
-                            path: { chainId: String(chain.evmChainId) },
+                        const res = await getApiByEvmChainIdStatsCumulativeTxs({
+                            path: { evmChainId: String(chain.evmChainId) },
                             query: { timestamp }
                         })
                         return {

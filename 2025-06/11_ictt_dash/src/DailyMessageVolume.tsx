@@ -1,20 +1,20 @@
 import { useState } from "react"
-import { getApiChains, getApiMetricsDailyMessageVolume, getApiByChainIdMetricsDailyMessageVolume } from "./client/sdk.gen"
-import { type GetApiChainsResponses, type GetApiMetricsDailyMessageVolumeResponses, type GetApiByChainIdMetricsDailyMessageVolumeResponses } from "./client/types.gen"
+import { getApiChains, getApiGlobalMetricsDailyMessageVolume, getApiByEvmChainIdMetricsDailyMessageVolume } from "./client/sdk.gen"
+import { type GetApiChainsResponses, type GetApiGlobalMetricsDailyMessageVolumeResponses, type GetApiByEvmChainIdMetricsDailyMessageVolumeResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 
 type Chain = GetApiChainsResponses[200][0]
-type DailyMessageVolumeData = GetApiMetricsDailyMessageVolumeResponses[200][0]
-type ChainDailyMessageVolumeData = GetApiByChainIdMetricsDailyMessageVolumeResponses[200][0]
+type DailyMessageVolumeData = GetApiGlobalMetricsDailyMessageVolumeResponses[200][0]
+type ChainDailyMessageVolumeData = GetApiByEvmChainIdMetricsDailyMessageVolumeResponses[200][0]
 
 function DailyMessageVolumeChart({ days }: { days: number }) {
     const { data, error, isError, isLoading } = useQuery<DailyMessageVolumeData[]>({
         queryKey: ['dailyMessageVolume', days],
         queryFn: async () => {
-            const res = await getApiMetricsDailyMessageVolume({
+            const res = await getApiGlobalMetricsDailyMessageVolume({
                 query: { days }
             })
             if (res.data) {
@@ -76,8 +76,8 @@ function ChainDailyMessageVolumeChart({ selectedChainId, days }: { selectedChain
         queryKey: ['chainDailyMessageVolume', selectedChainId, days],
         queryFn: async () => {
             if (!selectedChainId) return []
-            const res = await getApiByChainIdMetricsDailyMessageVolume({
-                path: { chainId: String(selectedChainId) },
+            const res = await getApiByEvmChainIdMetricsDailyMessageVolume({
+                path: { evmChainId: String(selectedChainId) },
                 query: { days }
             })
             if (res.data) {

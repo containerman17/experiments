@@ -132,17 +132,17 @@ export type GetApiByEvmChainIdStatsIcmGasUsageResponses = {
 
 export type GetApiByEvmChainIdStatsIcmGasUsageResponse = GetApiByEvmChainIdStatsIcmGasUsageResponses[keyof GetApiByEvmChainIdStatsIcmGasUsageResponses];
 
-export type GetApiIcttTransfersData = {
+export type GetApiGlobalIcttTransfersData = {
     body?: never;
     path?: never;
     query?: {
         startTs?: number;
         endTs?: number;
     };
-    url: '/api/ictt/transfers';
+    url: '/api/global/ictt/transfers';
 };
 
-export type GetApiIcttTransfersResponses = {
+export type GetApiGlobalIcttTransfersResponses = {
     /**
      * Default Response
      */
@@ -152,26 +152,67 @@ export type GetApiIcttTransfersResponses = {
         remoteChainBlockchainId: string;
         remoteChainName: string;
         direction: 'in' | 'out';
+        contractAddress: string;
         coinAddress: string;
         transferCount: number;
         transferCoinsTotal: number;
     }>;
 };
 
-export type GetApiIcttTransfersResponse = GetApiIcttTransfersResponses[keyof GetApiIcttTransfersResponses];
+export type GetApiGlobalIcttTransfersResponse = GetApiGlobalIcttTransfersResponses[keyof GetApiGlobalIcttTransfersResponses];
 
-export type GetApiByChainIdStatsTpsData = {
+export type GetApiGlobalIcttTransfersListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        startTs?: number;
+        endTs?: number;
+        homeChain?: string;
+        remoteChain?: string;
+        contractAddress?: string;
+        coinAddress?: string;
+    };
+    url: '/api/global/ictt/transfers-list';
+};
+
+export type GetApiGlobalIcttTransfersListResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        transfers: Array<{
+            homeChainBlockchainId: string;
+            homeChainName: string;
+            remoteChainBlockchainId: string;
+            remoteChainName: string;
+            direction: 'in' | 'out';
+            contractAddress: string;
+            coinAddress: string;
+            amount: number;
+            blockTimestamp: number;
+        }>;
+        totalCount: number;
+        availableChains: Array<{
+            blockchainId: string;
+            chainName: string;
+        }>;
+    };
+};
+
+export type GetApiGlobalIcttTransfersListResponse = GetApiGlobalIcttTransfersListResponses[keyof GetApiGlobalIcttTransfersListResponses];
+
+export type GetApiByEvmChainIdStatsTpsData = {
     body?: never;
     path: {
-        chainId: string;
+        evmChainId: string;
     };
     query?: {
         count?: number;
     };
-    url: '/api/{chainId}/stats/tps';
+    url: '/api/{evmChainId}/stats/tps';
 };
 
-export type GetApiByChainIdStatsTpsErrors = {
+export type GetApiByEvmChainIdStatsTpsErrors = {
     /**
      * Default Response
      */
@@ -180,9 +221,9 @@ export type GetApiByChainIdStatsTpsErrors = {
     };
 };
 
-export type GetApiByChainIdStatsTpsError = GetApiByChainIdStatsTpsErrors[keyof GetApiByChainIdStatsTpsErrors];
+export type GetApiByEvmChainIdStatsTpsError = GetApiByEvmChainIdStatsTpsErrors[keyof GetApiByEvmChainIdStatsTpsErrors];
 
-export type GetApiByChainIdStatsTpsResponses = {
+export type GetApiByEvmChainIdStatsTpsResponses = {
     /**
      * Default Response
      */
@@ -193,12 +234,12 @@ export type GetApiByChainIdStatsTpsResponses = {
     }>;
 };
 
-export type GetApiByChainIdStatsTpsResponse = GetApiByChainIdStatsTpsResponses[keyof GetApiByChainIdStatsTpsResponses];
+export type GetApiByEvmChainIdStatsTpsResponse = GetApiByEvmChainIdStatsTpsResponses[keyof GetApiByEvmChainIdStatsTpsResponses];
 
-export type GetApiByChainIdStatsCumulativeTxsData = {
+export type GetApiByEvmChainIdStatsCumulativeTxsData = {
     body?: never;
     path: {
-        chainId: string;
+        evmChainId: string;
     };
     query?: {
         /**
@@ -206,10 +247,10 @@ export type GetApiByChainIdStatsCumulativeTxsData = {
          */
         timestamp?: number;
     };
-    url: '/api/{chainId}/stats/cumulative-txs';
+    url: '/api/{evmChainId}/stats/cumulative-txs';
 };
 
-export type GetApiByChainIdStatsCumulativeTxsErrors = {
+export type GetApiByEvmChainIdStatsCumulativeTxsErrors = {
     /**
      * Default Response
      */
@@ -218,9 +259,9 @@ export type GetApiByChainIdStatsCumulativeTxsErrors = {
     };
 };
 
-export type GetApiByChainIdStatsCumulativeTxsError = GetApiByChainIdStatsCumulativeTxsErrors[keyof GetApiByChainIdStatsCumulativeTxsErrors];
+export type GetApiByEvmChainIdStatsCumulativeTxsError = GetApiByEvmChainIdStatsCumulativeTxsErrors[keyof GetApiByEvmChainIdStatsCumulativeTxsErrors];
 
-export type GetApiByChainIdStatsCumulativeTxsResponses = {
+export type GetApiByEvmChainIdStatsCumulativeTxsResponses = {
     /**
      * Default Response
      */
@@ -230,18 +271,18 @@ export type GetApiByChainIdStatsCumulativeTxsResponses = {
     };
 };
 
-export type GetApiByChainIdStatsCumulativeTxsResponse = GetApiByChainIdStatsCumulativeTxsResponses[keyof GetApiByChainIdStatsCumulativeTxsResponses];
+export type GetApiByEvmChainIdStatsCumulativeTxsResponse = GetApiByEvmChainIdStatsCumulativeTxsResponses[keyof GetApiByEvmChainIdStatsCumulativeTxsResponses];
 
-export type GetApiMetricsDailyMessageVolumeData = {
+export type GetApiGlobalMetricsDailyMessageVolumeData = {
     body?: never;
     path?: never;
     query?: {
         days?: number;
     };
-    url: '/api/metrics/dailyMessageVolume';
+    url: '/api/global/metrics/dailyMessageVolume';
 };
 
-export type GetApiMetricsDailyMessageVolumeResponses = {
+export type GetApiGlobalMetricsDailyMessageVolumeResponses = {
     /**
      * Default Response
      */
@@ -252,20 +293,20 @@ export type GetApiMetricsDailyMessageVolumeResponses = {
     }>;
 };
 
-export type GetApiMetricsDailyMessageVolumeResponse = GetApiMetricsDailyMessageVolumeResponses[keyof GetApiMetricsDailyMessageVolumeResponses];
+export type GetApiGlobalMetricsDailyMessageVolumeResponse = GetApiGlobalMetricsDailyMessageVolumeResponses[keyof GetApiGlobalMetricsDailyMessageVolumeResponses];
 
-export type GetApiByChainIdMetricsDailyMessageVolumeData = {
+export type GetApiByEvmChainIdMetricsDailyMessageVolumeData = {
     body?: never;
     path: {
-        chainId: string;
+        evmChainId: string;
     };
     query?: {
         days?: number;
     };
-    url: '/api/{chainId}/metrics/dailyMessageVolume';
+    url: '/api/{evmChainId}/metrics/dailyMessageVolume';
 };
 
-export type GetApiByChainIdMetricsDailyMessageVolumeErrors = {
+export type GetApiByEvmChainIdMetricsDailyMessageVolumeErrors = {
     /**
      * Default Response
      */
@@ -274,9 +315,9 @@ export type GetApiByChainIdMetricsDailyMessageVolumeErrors = {
     };
 };
 
-export type GetApiByChainIdMetricsDailyMessageVolumeError = GetApiByChainIdMetricsDailyMessageVolumeErrors[keyof GetApiByChainIdMetricsDailyMessageVolumeErrors];
+export type GetApiByEvmChainIdMetricsDailyMessageVolumeError = GetApiByEvmChainIdMetricsDailyMessageVolumeErrors[keyof GetApiByEvmChainIdMetricsDailyMessageVolumeErrors];
 
-export type GetApiByChainIdMetricsDailyMessageVolumeResponses = {
+export type GetApiByEvmChainIdMetricsDailyMessageVolumeResponses = {
     /**
      * Default Response
      */
@@ -289,16 +330,16 @@ export type GetApiByChainIdMetricsDailyMessageVolumeResponses = {
     }>;
 };
 
-export type GetApiByChainIdMetricsDailyMessageVolumeResponse = GetApiByChainIdMetricsDailyMessageVolumeResponses[keyof GetApiByChainIdMetricsDailyMessageVolumeResponses];
+export type GetApiByEvmChainIdMetricsDailyMessageVolumeResponse = GetApiByEvmChainIdMetricsDailyMessageVolumeResponses[keyof GetApiByEvmChainIdMetricsDailyMessageVolumeResponses];
 
-export type GetApiLeaderboardDayData = {
+export type GetApiGlobalLeaderboardDayData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/leaderboard/day';
+    url: '/api/global/leaderboard/day';
 };
 
-export type GetApiLeaderboardDayResponses = {
+export type GetApiGlobalLeaderboardDayResponses = {
     /**
      * Default Response
      */
@@ -311,16 +352,16 @@ export type GetApiLeaderboardDayResponses = {
     }>;
 };
 
-export type GetApiLeaderboardDayResponse = GetApiLeaderboardDayResponses[keyof GetApiLeaderboardDayResponses];
+export type GetApiGlobalLeaderboardDayResponse = GetApiGlobalLeaderboardDayResponses[keyof GetApiGlobalLeaderboardDayResponses];
 
-export type GetApiLeaderboardWeekData = {
+export type GetApiGlobalLeaderboardWeekData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/leaderboard/week';
+    url: '/api/global/leaderboard/week';
 };
 
-export type GetApiLeaderboardWeekResponses = {
+export type GetApiGlobalLeaderboardWeekResponses = {
     /**
      * Default Response
      */
@@ -333,18 +374,18 @@ export type GetApiLeaderboardWeekResponses = {
     }>;
 };
 
-export type GetApiLeaderboardWeekResponse = GetApiLeaderboardWeekResponses[keyof GetApiLeaderboardWeekResponses];
+export type GetApiGlobalLeaderboardWeekResponse = GetApiGlobalLeaderboardWeekResponses[keyof GetApiGlobalLeaderboardWeekResponses];
 
-export type GetApiStatsTpsData = {
+export type GetApiGlobalStatsTpsData = {
     body?: never;
     path?: never;
     query?: {
         period?: '1d' | '7d' | '30d' | '1h';
     };
-    url: '/api/stats/tps';
+    url: '/api/global/stats/tps';
 };
 
-export type GetApiStatsTpsResponses = {
+export type GetApiGlobalStatsTpsResponses = {
     /**
      * Default Response
      */
@@ -357,7 +398,7 @@ export type GetApiStatsTpsResponses = {
     }>;
 };
 
-export type GetApiStatsTpsResponse = GetApiStatsTpsResponses[keyof GetApiStatsTpsResponses];
+export type GetApiGlobalStatsTpsResponse = GetApiGlobalStatsTpsResponses[keyof GetApiGlobalStatsTpsResponses];
 
 export type GetApiOpenapiJsonData = {
     body?: never;

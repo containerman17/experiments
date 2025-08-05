@@ -21,16 +21,16 @@ const module: ApiPlugin = {
 
     registerRoutes: (app, dbCtx) => {
         app.get<{
-            Params: { chainId: string };
+            Params: { evmChainId: string };
             Querystring: { count?: number }
-        }>('/api/:chainId/stats/tps', {
+        }>('/api/:evmChainId/stats/tps', {
             schema: {
                 params: {
                     type: 'object',
                     properties: {
-                        chainId: { type: 'string' }
+                        evmChainId: { type: 'string' }
                     },
-                    required: ['chainId']
+                    required: ['evmChainId']
                 },
                 querystring: {
                     type: 'object',
@@ -61,16 +61,16 @@ const module: ApiPlugin = {
                 }
             }
         }, async (request, reply) => {
-            const chainId = parseInt(request.params.chainId);
+            const evmChainId = parseInt(request.params.evmChainId);
             const count = request.query.count || 30;
 
             // Validate chain exists
-            const chainConfig = dbCtx.getAllChainConfigs().find(c => c.evmChainId === chainId);
+            const chainConfig = dbCtx.getAllChainConfigs().find(c => c.evmChainId === evmChainId);
             if (!chainConfig) {
-                return reply.code(404).send({ error: `Chain ${chainId} not found` });
+                return reply.code(404).send({ error: `Chain ${evmChainId} not found` });
             }
 
-            const indexerConn = dbCtx.getIndexerDbConnection(chainId, 'minute_tx_counter');
+            const indexerConn = dbCtx.getIndexerDbConnection(evmChainId, 'minute_tx_counter');
             const results: DailyTpsDataPoint[] = [];
 
             // Get current timestamp in seconds
@@ -106,16 +106,16 @@ const module: ApiPlugin = {
 
         // Cumulative transactions endpoint
         app.get<{
-            Params: { chainId: string };
+            Params: { evmChainId: string };
             Querystring: { timestamp?: number }
-        }>('/api/:chainId/stats/cumulative-txs', {
+        }>('/api/:evmChainId/stats/cumulative-txs', {
             schema: {
                 params: {
                     type: 'object',
                     properties: {
-                        chainId: { type: 'string' }
+                        evmChainId: { type: 'string' }
                     },
-                    required: ['chainId']
+                    required: ['evmChainId']
                 },
                 querystring: {
                     type: 'object',
@@ -142,16 +142,16 @@ const module: ApiPlugin = {
                 }
             }
         }, async (request, reply) => {
-            const chainId = parseInt(request.params.chainId);
+            const evmChainId = parseInt(request.params.evmChainId);
             const queryTimestamp = request.query.timestamp;
 
             // Validate chain exists
-            const chainConfig = dbCtx.getAllChainConfigs().find(c => c.evmChainId === chainId);
+            const chainConfig = dbCtx.getAllChainConfigs().find(c => c.evmChainId === evmChainId);
             if (!chainConfig) {
-                return reply.code(404).send({ error: `Chain ${chainId} not found` });
+                return reply.code(404).send({ error: `Chain ${evmChainId} not found` });
             }
 
-            const indexerConn = dbCtx.getIndexerDbConnection(chainId, 'minute_tx_counter');
+            const indexerConn = dbCtx.getIndexerDbConnection(evmChainId, 'minute_tx_counter');
 
             let result: CumulativeResult | undefined;
 

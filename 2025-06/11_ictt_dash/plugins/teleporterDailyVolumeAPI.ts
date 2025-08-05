@@ -19,7 +19,7 @@ const module: ApiPlugin = {
     requiredIndexers: ["teleporter_messages"],
 
     registerRoutes: (app, dbCtx) => {
-        app.get('/api/metrics/dailyMessageVolume', {
+        app.get('/api/global/metrics/dailyMessageVolume', {
             schema: {
                 querystring: {
                     type: 'object',
@@ -130,16 +130,16 @@ const module: ApiPlugin = {
 
         // Per-chain daily message volume endpoint
         app.get<{
-            Params: { chainId: string };
+            Params: { evmChainId: string };
             Querystring: { days?: number }
-        }>('/api/:chainId/metrics/dailyMessageVolume', {
+        }>('/api/:evmChainId/metrics/dailyMessageVolume', {
             schema: {
                 params: {
                     type: 'object',
                     properties: {
-                        chainId: { type: 'string' }
+                        evmChainId: { type: 'string' }
                     },
-                    required: ['chainId']
+                    required: ['evmChainId']
                 },
                 querystring: {
                     type: 'object',
@@ -176,18 +176,18 @@ const module: ApiPlugin = {
                 }
             }
         }, async (request, reply) => {
-            const chainId = parseInt(request.params.chainId);
+            const evmChainId = parseInt(request.params.evmChainId);
             const { days = 7 } = request.query;
 
             // Validate chain exists
-            const chainConfig = dbCtx.getAllChainConfigs().find(c => c.evmChainId === chainId);
+            const chainConfig = dbCtx.getAllChainConfigs().find(c => c.evmChainId === evmChainId);
             if (!chainConfig) {
-                return reply.code(404).send({ error: `Chain ${chainId} not found` });
+                return reply.code(404).send({ error: `Chain ${evmChainId} not found` });
             }
 
             // Check if chain has teleporter indexer
             try {
-                const indexerConn = dbCtx.getIndexerDbConnection(chainId, "teleporter_messages");
+                const indexerConn = dbCtx.getIndexerDbConnection(evmChainId, "teleporter_messages");
 
                 // Get current timestamp in seconds
                 const now = Math.floor(Date.now() / 1000);
@@ -237,7 +237,7 @@ const module: ApiPlugin = {
 
                 return reply.send(dailyVolumes);
             } catch (error) {
-                return reply.code(404).send({ error: `Teleporter indexer not found for chain ${chainId}` });
+                return reply.code(404).send({ error: `Teleporter indexer not found for chain ${evmChainId}` });
             }
         });
     }

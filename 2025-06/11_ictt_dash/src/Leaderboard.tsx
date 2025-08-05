@@ -1,17 +1,17 @@
-import { getApiLeaderboardDay, getApiLeaderboardWeek } from "./client/sdk.gen"
-import { type GetApiLeaderboardDayResponses, type GetApiLeaderboardWeekResponses } from "./client/types.gen"
+import { getApiGlobalLeaderboardDay, getApiGlobalLeaderboardWeek } from "./client/sdk.gen"
+import { type GetApiGlobalLeaderboardDayResponses, type GetApiGlobalLeaderboardWeekResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 import SankeyChart from "./components/SankeyChart"
-type DailyLeaderboardData = GetApiLeaderboardDayResponses[200]
-type WeeklyLeaderboardData = GetApiLeaderboardWeekResponses[200]
+type DailyLeaderboardData = GetApiGlobalLeaderboardDayResponses[200]
+type WeeklyLeaderboardData = GetApiGlobalLeaderboardWeekResponses[200]
 
 function DailyLeaderboard() {
     const { data, error, isError, isLoading } = useQuery<DailyLeaderboardData>({
         queryKey: ['leaderboardDay'],
         queryFn: async () => {
-            const res = await getApiLeaderboardDay()
+            const res = await getApiGlobalLeaderboardDay()
             if (res.data) {
                 return res.data
             }
@@ -38,7 +38,7 @@ function WeeklyLeaderboard() {
     const { data, error, isError, isLoading } = useQuery<WeeklyLeaderboardData>({
         queryKey: ['leaderboardWeek'],
         queryFn: async () => {
-            const res = await getApiLeaderboardWeek()
+            const res = await getApiGlobalLeaderboardWeek()
             if (res.data) {
                 return res.data
             }

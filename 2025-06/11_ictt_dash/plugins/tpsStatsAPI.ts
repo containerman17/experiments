@@ -19,7 +19,7 @@ const module: ApiPlugin = {
     registerRoutes: (app, dbCtx) => {
         app.get<{
             Querystring: { period?: '1d' | '7d' | '30d' | '1h' }
-        }>('/api/stats/tps', {
+        }>('/api/global/stats/tps', {
             schema: {
                 querystring: {
                     type: 'object',

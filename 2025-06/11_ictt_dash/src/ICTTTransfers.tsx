@@ -1,11 +1,11 @@
 import { useState } from "react"
-import { getApiIcttTransfers } from "./client/sdk.gen"
-import { type GetApiIcttTransfersResponses } from "./client/types.gen"
+import { getApiGlobalIcttTransfers } from "./client/sdk.gen"
+import { type GetApiGlobalIcttTransfersResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 
-type TransferData = GetApiIcttTransfersResponses[200][0]
+type TransferData = GetApiGlobalIcttTransfersResponses[200][0]
 
 export default function ICTTTransfers() {
     const [startTs, setStartTs] = useState<number>(0)
@@ -14,7 +14,7 @@ export default function ICTTTransfers() {
     const { data, error, isError, isLoading } = useQuery<TransferData[]>({
         queryKey: ['icttTransfers', startTs, endTs],
         queryFn: async () => {
-            const res = await getApiIcttTransfers({
+            const res = await getApiGlobalIcttTransfers({
                 query: { startTs, endTs }
             })
             if (res.data) {
@@ -71,6 +71,7 @@ export default function ICTTTransfers() {
                         <li><span className="font-semibold">Home Chain:</span> Chain where the ICTT contract is deployed</li>
                         <li><span className="font-semibold">Remote Chain:</span> Partner chain in the transfer</li>
                         <li><span className="font-semibold">Direction:</span> → for outbound (home to remote), ← for inbound (remote to home)</li>
+                        <li><span className="font-semibold">ICTT Contract:</span> The ICTT contract address handling the transfers</li>
                         <li><span className="font-semibold">Coin Address:</span> Token contract address</li>
                         <li><span className="font-semibold">Transfer Count:</span> Number of transfers in the period</li>
                         <li><span className="font-semibold">Total Amount:</span> Sum of all transferred tokens</li>
@@ -134,13 +135,15 @@ export default function ICTTTransfers() {
                                         Home
                                     </th>
                                     <th className="px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-
                                     </th>
                                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Remote
                                     </th>
                                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Coin Address on Home Chain
+                                        ICTT Home Contract
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Coin Address
                                     </th>
                                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Transfer Count
@@ -160,7 +163,7 @@ export default function ICTTTransfers() {
                                     const remoteDisplay = showRemoteChainId ? transfer.remoteChainBlockchainId : transfer.remoteChainName;
 
                                     return (
-                                        <tr key={`${transfer.homeChainBlockchainId}-${transfer.remoteChainBlockchainId}-${transfer.direction}-${transfer.coinAddress}-${index}`} className="hover:bg-gray-50">
+                                        <tr key={`${transfer.homeChainBlockchainId}-${transfer.remoteChainBlockchainId}-${transfer.direction}-${transfer.contractAddress}-${transfer.coinAddress}-${index}`} className="hover:bg-gray-50">
                                             <td className="px-3 py-2 text-sm">
                                                 <span className={showHomeChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
                                                     {homeDisplay}
@@ -175,6 +178,9 @@ export default function ICTTTransfers() {
                                                 <span className={showRemoteChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
                                                     {remoteDisplay}
                                                 </span>
+                                            </td>
+                                            <td className="px-3 py-2 text-sm font-mono text-gray-600">
+                                                {transfer.contractAddress}
                                             </td>
                                             <td className="px-3 py-2 text-sm font-mono text-gray-600">
                                                 {transfer.coinAddress}

@@ -4,6 +4,8 @@ import { type GetApiGlobalIcttTransfersListResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
+import NamedCoin from "./components/NamedCoin"
+import TimeTimestamp from "./components/TimeTimestamp"
 
 type TransferListData = GetApiGlobalIcttTransfersListResponses[200]
 
@@ -240,7 +242,7 @@ export default function ICTTTransfersList() {
                                         return (
                                             <tr key={`transfer-${index}`} className="hover:bg-gray-50">
                                                 <td className="px-3 py-2 text-sm text-gray-600">
-                                                    {formatTimestamp(transfer.blockTimestamp)}
+                                                    <TimeTimestamp timestamp={transfer.blockTimestamp} />
                                                 </td>
                                                 <td className="px-3 py-2 text-sm">
                                                     <span className={showHomeChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
@@ -261,7 +263,12 @@ export default function ICTTTransfersList() {
                                                     {transfer.contractAddress}
                                                 </td>
                                                 <td className="px-3 py-2 text-sm font-mono text-gray-600">
-                                                    {transfer.coinAddress}
+                                                    <NamedCoin
+                                                        address={transfer.coinAddress}
+                                                        extras={{
+                                                            "0x0000000000000000000000000000000000000000": `${transfer.homeChainName} Native Token`
+                                                        }}
+                                                    />
                                                 </td>
                                                 <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-medium">
                                                     {transfer.amount.toLocaleString()}

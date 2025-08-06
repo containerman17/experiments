@@ -1,7 +1,7 @@
 import { ResponsiveSankey } from '@nivo/sankey'
-import { type GetApiLeaderboardDayResponses, type GetApiLeaderboardWeekResponses } from '../client/types.gen'
+import { type GetApiGlobalLeaderboardDayResponses, type GetApiGlobalLeaderboardWeekResponses } from '../client/types.gen'
 
-type FlowData = GetApiLeaderboardDayResponses[200] | GetApiLeaderboardWeekResponses[200]
+type FlowData = GetApiGlobalLeaderboardDayResponses[200] | GetApiGlobalLeaderboardWeekResponses[200]
 
 interface SankeyNode {
     id: string

@@ -1,15 +1,18 @@
 import { useState } from "react"
-import { getApiGlobalIcttTransfers } from "./client/sdk.gen"
-import { type GetApiGlobalIcttTransfersResponses } from "./client/types.gen"
+import { getApiGlobalIcttTransfers, getApiGlobalIcttTvl } from "./client/sdk.gen"
+import { type GetApiGlobalIcttTransfersResponses, type GetApiGlobalIcttTvlResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
+import NamedCoin from "./components/NamedCoin"
 
 type TransferData = GetApiGlobalIcttTransfersResponses[200][0]
+type TVLData = GetApiGlobalIcttTvlResponses[200][0]
 
 export default function ICTTTransfers() {
     const [startTs, setStartTs] = useState<number>(0)
     const [endTs, setEndTs] = useState<number>(Math.floor(Date.now() / 1000))
+    const [tvlTimestamp, setTvlTimestamp] = useState<number>(Math.floor(Date.now() / 1000))
 
     const { data, error, isError, isLoading } = useQuery<TransferData[]>({
         queryKey: ['icttTransfers', startTs, endTs],
@@ -21,6 +24,19 @@ export default function ICTTTransfers() {
                 return res.data
             }
             throw new Error('Failed to fetch ICTT transfers data')
+        }
+    })
+
+    const { data: tvlData, error: tvlError, isError: isTvlError, isLoading: isTvlLoading } = useQuery<TVLData[]>({
+        queryKey: ['icttTvl', tvlTimestamp],
+        queryFn: async () => {
+            const res = await getApiGlobalIcttTvl({
+                query: { timestamp: tvlTimestamp }
+            })
+            if (res.data) {
+                return res.data
+            }
+            throw new Error('Failed to fetch ICTT TVL data')
         }
     })
 
@@ -53,8 +69,20 @@ export default function ICTTTransfers() {
         setEndTs(Math.floor(dateTime.getTime() / 1000))
     }
 
-    if (isError) {
-        return <ErrorComponent message={error?.message || 'Failed to load ICTT transfers data'} />
+    const handleTvlTimestampChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const value = parseInt(event.target.value)
+        if (!isNaN(value) && value >= 0) {
+            setTvlTimestamp(value)
+        }
+    }
+
+    const handleTvlDateTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const dateTime = new Date(event.target.value)
+        setTvlTimestamp(Math.floor(dateTime.getTime() / 1000))
+    }
+
+    if (isError || isTvlError) {
+        return <ErrorComponent message={error?.message || tvlError?.message || 'Failed to load ICTT data'} />
     }
 
     return (
@@ -120,7 +148,7 @@ export default function ICTTTransfers() {
 
             <ExampleCard
                 name="ICTT Token Transfer Statistics"
-                curlString={`curl -X GET "${window.location.origin}/api/ictt/transfers?startTs=${startTs}&endTs=${endTs}"`}
+                curlString={`curl -X GET "${window.location.origin}/api/global/ictt/transfers?startTs=${startTs}&endTs=${endTs}"`}
             >
                 {isLoading ? (
                     <div className="text-center py-8">Loading transfer data...</div>
@@ -183,7 +211,12 @@ export default function ICTTTransfers() {
                                                 {transfer.contractAddress}
                                             </td>
                                             <td className="px-3 py-2 text-sm font-mono text-gray-600">
-                                                {transfer.coinAddress}
+                                                <NamedCoin
+                                                    address={transfer.coinAddress}
+                                                    extras={{
+                                                        "0x0000000000000000000000000000000000000000": `${transfer.homeChainName} Native Token`
+                                                    }}
+                                                />
                                             </td>
                                             <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-medium">
                                                 {transfer.transferCount.toLocaleString()}
@@ -199,6 +232,109 @@ export default function ICTTTransfers() {
                     </div>
                 )}
             </ExampleCard>
+
+            {/* TVL Table */}
+            <div className="mt-8">
+                <div className="border border-gray-200 rounded-xl bg-white p-6 mb-6">
+                    <div className="mb-3 text-base">Total Value Locked (TVL)</div>
+                    <p className="text-sm mb-3">
+                        TVL represents the difference between total outbound and inbound transfers for each token on each chain pair.
+                        Positive values indicate net outflow from the home chain, negative values indicate net inflow.
+                    </p>
+
+                    <div className="max-w-md">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            TVL as of
+                        </label>
+                        <input
+                            type="datetime-local"
+                            value={formatTimestampForInput(tvlTimestamp)}
+                            onChange={handleTvlDateTimeChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <input
+                            type="number"
+                            value={tvlTimestamp}
+                            onChange={handleTvlTimestampChange}
+                            className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Unix timestamp"
+                        />
+                    </div>
+                </div>
+
+                <ExampleCard
+                    name="ICTT Total Value Locked (TVL)"
+                    curlString={`curl -X GET "${window.location.origin}/api/global/ictt/tvl?timestamp=${tvlTimestamp}"`}
+                >
+                    {isTvlLoading ? (
+                        <div className="text-center py-8">Loading TVL data...</div>
+                    ) : !tvlData || tvlData.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No TVL data found</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Home Chain
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Remote Chain
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            ICTT Home Contract
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Coin Address
+                                        </th>
+                                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            TVL
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {tvlData.map((item, index) => {
+                                        const showHomeChainId = item.homeChainName === item.homeChainBlockchainId;
+                                        const showRemoteChainId = item.remoteChainName === item.remoteChainBlockchainId;
+                                        const homeDisplay = showHomeChainId ? item.homeChainBlockchainId : item.homeChainName;
+                                        const remoteDisplay = showRemoteChainId ? item.remoteChainBlockchainId : item.remoteChainName;
+                                        const tvlClass = item.tvl > 0 ? 'text-red-600' : item.tvl < 0 ? 'text-green-600' : 'text-gray-900';
+
+                                        return (
+                                            <tr key={`${item.homeChainBlockchainId}-${item.remoteChainBlockchainId}-${item.contractAddress}-${item.coinAddress}-${index}`} className="hover:bg-gray-50">
+                                                <td className="px-3 py-2 text-sm">
+                                                    <span className={showHomeChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
+                                                        {homeDisplay}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-sm">
+                                                    <span className={showRemoteChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
+                                                        {remoteDisplay}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-sm font-mono text-gray-600">
+                                                    {item.contractAddress}
+                                                </td>
+                                                <td className="px-3 py-2 text-sm font-mono text-gray-600">
+                                                    <NamedCoin
+                                                        address={item.coinAddress}
+                                                        extras={{
+                                                            "0x0000000000000000000000000000000000000000": `${item.homeChainName} Native Token`
+                                                        }}
+                                                    />
+                                                </td>
+                                                <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium ${tvlClass}`}>
+                                                    {item.tvl.toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </ExampleCard>
+            </div>
         </div>
     )
 }

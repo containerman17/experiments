@@ -98,39 +98,36 @@ export type GetApiReplicationChainsJsonResponses = {
 
 export type GetApiReplicationChainsJsonResponse = GetApiReplicationChainsJsonResponses[keyof GetApiReplicationChainsJsonResponses];
 
-export type GetApiByEvmChainIdStatsIcmGasUsageData = {
+export type GetApiGlobalIcmGasUsageData = {
     body?: never;
-    path: {
-        evmChainId: string;
-    };
+    path?: never;
     query?: {
-        period?: '1d' | '7d' | '30d' | '1h';
-        count?: number;
+        chain?: string;
+        startTs?: number;
+        endTs?: number;
     };
-    url: '/api/{evmChainId}/stats/icm-gas-usage';
+    url: '/api/global/icm-gas-usage';
 };
 
-export type GetApiByEvmChainIdStatsIcmGasUsageResponses = {
+export type GetApiGlobalIcmGasUsageResponses = {
     /**
      * Default Response
      */
-    200: {
-        [key: string]: {
-            name: string;
-            evmChainId: number;
-            values: Array<{
-                sendCount: number;
-                receiveCount: number;
-                sendGasCost: number;
-                receiveGasCost: number;
-                totalGasCost: number;
-                intervalTs: number;
-            }>;
-        };
-    };
+    200: Array<{
+        chainName: string;
+        chainBlockchainId: string;
+        otherChainName: string;
+        otherChainBlockchainId: string;
+        sendCount: number;
+        receiveCount: number;
+        sendGasCost: number;
+        receiveGasCost: number;
+        totalCount: number;
+        totalGasCost: number;
+    }>;
 };
 
-export type GetApiByEvmChainIdStatsIcmGasUsageResponse = GetApiByEvmChainIdStatsIcmGasUsageResponses[keyof GetApiByEvmChainIdStatsIcmGasUsageResponses];
+export type GetApiGlobalIcmGasUsageResponse = GetApiGlobalIcmGasUsageResponses[keyof GetApiGlobalIcmGasUsageResponses];
 
 export type GetApiGlobalIcttTransfersData = {
     body?: never;
@@ -200,6 +197,32 @@ export type GetApiGlobalIcttTransfersListResponses = {
 };
 
 export type GetApiGlobalIcttTransfersListResponse = GetApiGlobalIcttTransfersListResponses[keyof GetApiGlobalIcttTransfersListResponses];
+
+export type GetApiGlobalIcttTvlData = {
+    body?: never;
+    path?: never;
+    query?: {
+        timestamp?: number;
+    };
+    url: '/api/global/ictt/tvl';
+};
+
+export type GetApiGlobalIcttTvlResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        homeChainBlockchainId: string;
+        homeChainName: string;
+        remoteChainBlockchainId: string;
+        remoteChainName: string;
+        contractAddress: string;
+        coinAddress: string;
+        tvl: number;
+    }>;
+};
+
+export type GetApiGlobalIcttTvlResponse = GetApiGlobalIcttTvlResponses[keyof GetApiGlobalIcttTvlResponses];
 
 export type GetApiByEvmChainIdStatsTpsData = {
     body?: never;

@@ -1,172 +1,60 @@
 import { useState } from "react"
-import { getApiChains, getApiByEvmChainIdStatsIcmGasUsage } from "./client/sdk.gen"
-import { type GetApiChainsResponses, type GetApiByEvmChainIdStatsIcmGasUsageResponses } from "./client/types.gen"
+import { getApiGlobalIcmGasUsage } from "./client/sdk.gen"
+import { type GetApiGlobalIcmGasUsageResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-type Chain = GetApiChainsResponses[200][0]
-type ICMGasUsageData = GetApiByEvmChainIdStatsIcmGasUsageResponses[200]
-
-interface ChartDataPoint {
-    time: string
-    timestamp: number
-    [key: string]: number | string
-}
-
-const CHAIN_COLORS = [
-    '#3B82F6', // blue-500
-    '#EF4444', // red-500
-    '#10B981', // emerald-500
-    '#F59E0B', // amber-500
-    '#8B5CF6', // violet-500
-    '#EC4899', // pink-500
-    '#14B8A6', // teal-500
-    '#F97316', // orange-500
-    '#6366F1', // indigo-500
-    '#84CC16', // lime-500
-]
-
-function ICMGasUsageChart({ selectedChainId }: { selectedChainId: number | null }) {
-    const { data: gasUsageData, isLoading, error } = useQuery({
-        queryKey: ['icm-gas-usage', selectedChainId],
-        queryFn: async () => {
-            if (!selectedChainId) return null
-            const res = await getApiByEvmChainIdStatsIcmGasUsage({
-                path: { evmChainId: String(selectedChainId) },
-                query: { period: '1d', count: 30 }
-            })
-            return res.data
-        },
-        enabled: !!selectedChainId
-    })
-
-    const formatTime = (timestamp: number): string => {
-        return new Date(timestamp * 1000).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric'
-        })
-    }
-
-    const transformDataForChart = (data: ICMGasUsageData): ChartDataPoint[] => {
-        if (!data) return []
-
-        // Include all time periods
-        const timePoints = new Set<number>()
-        Object.values(data).forEach(chain => {
-            chain.values.forEach(value => timePoints.add(value.intervalTs))
-        })
-
-        const sortedTimePoints = Array.from(timePoints).sort((a, b) => a - b)
-
-        return sortedTimePoints.map(timestamp => {
-            const dataPoint: ChartDataPoint = {
-                time: formatTime(timestamp),
-                timestamp
-            }
-
-            Object.entries(data).forEach(([chainId, chainData]) => {
-                const value = chainData.values.find(v => v.intervalTs === timestamp)
-                const sendKey = `${chainData.name}_${chainId}_send`
-                const receiveKey = `${chainData.name}_${chainId}_receive`
-
-                dataPoint[sendKey] = value?.sendGasCost || 0
-                dataPoint[receiveKey] = value?.receiveGasCost || 0
-            })
-
-            return dataPoint
-        })
-    }
-
-    const chartData = transformDataForChart(gasUsageData || {})
-
-    if (error) {
-        return <div className="text-center py-8 text-red-600">Error loading gas usage data</div>
-    }
-
-    if (isLoading) {
-        return <div className="text-center py-8">Loading gas usage data...</div>
-    }
-
-    if (!gasUsageData || Object.keys(gasUsageData).length === 0) {
-        return <div className="text-center py-8 text-gray-500">No gas usage data available</div>
-    }
-
-    return (
-        <div className="h-96">
-            <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                        dataKey="time"
-                        tick={{ fontSize: 12 }}
-                        interval="preserveStartEnd"
-                    />
-                    <YAxis
-                        tick={{ fontSize: 12 }}
-                        label={{ value: 'Gas Cost (Native Token)', angle: -90, position: 'insideLeft' }}
-                        domain={[0, 'dataMax']}
-                    />
-                    <Tooltip
-                        formatter={(value: number, name: string) => [
-                            `${Number(value).toFixed(2)} Native Token`,
-                            name.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
-                        ]}
-                        labelFormatter={(label: string) => `Time: ${label}`}
-                    />
-                    <Legend />
-                    {Object.entries(gasUsageData || {})
-                        .filter(([, chain]) => {
-                            // Only show chains that have actual data
-                            return chain.values.some(v => v.sendGasCost > 0 || v.receiveGasCost > 0)
-                        })
-                        .map(([chainId, chain], index) => {
-                            const colorIndex = index % CHAIN_COLORS.length
-                            const sendColor = CHAIN_COLORS[colorIndex]
-                            const receiveColor = CHAIN_COLORS[colorIndex] + '80' // Add transparency
-                            const sendKey = `${chain.name}_${chainId}_send`
-                            const receiveKey = `${chain.name}_${chainId}_receive`
-
-                            return [
-                                <Bar
-                                    key={sendKey}
-                                    dataKey={sendKey}
-                                    stackId={chainId}
-                                    fill={sendColor}
-                                    name={`${chain.name} Send`}
-                                />,
-                                <Bar
-                                    key={receiveKey}
-                                    dataKey={receiveKey}
-                                    stackId={chainId}
-                                    fill={receiveColor}
-                                    name={`${chain.name} Receive`}
-                                />
-                            ]
-                        }).flat()}
-                </BarChart>
-            </ResponsiveContainer>
-        </div>
-    )
-}
+type GasUsageData = GetApiGlobalIcmGasUsageResponses[200][0]
 
 export default function ICMGasUsage() {
-    const [selectedChainId, setSelectedChainId] = useState<number | null>(null)
+    const [startTs, setStartTs] = useState<number>(Math.floor(Date.now() / 1000) - 30 * 86400)
+    const [endTs, setEndTs] = useState<number>(Math.floor(Date.now() / 1000))
 
-    const { data: chains = [], error, isError } = useQuery<Chain[]>({
-        queryKey: ['chains'],
+    const { data, error, isError, isLoading } = useQuery<GasUsageData[]>({
+        queryKey: ['icmGasUsage', startTs, endTs],
         queryFn: async () => {
-            const res = await getApiChains()
+            const res = await getApiGlobalIcmGasUsage({
+                query: { startTs, endTs }
+            })
             if (res.data) {
-                return res.data.sort((a, b) => a.chainName.localeCompare(b.chainName))
+                return res.data
             }
-            throw new Error('Failed to fetch chains')
+            throw new Error('Failed to fetch ICM gas usage data')
         }
     })
 
+    const handleStartTsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const value = parseInt(event.target.value)
+        if (!isNaN(value) && value >= 0) {
+            setStartTs(value)
+        }
+    }
+
+    const handleEndTsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const value = parseInt(event.target.value)
+        if (!isNaN(value) && value >= 0) {
+            setEndTs(value)
+        }
+    }
+
+    const formatTimestampForInput = (ts: number): string => {
+        if (ts === 0) return new Date(0).toISOString().slice(0, 16)
+        return new Date(ts * 1000).toISOString().slice(0, 16)
+    }
+
+    const handleStartDateTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const dateTime = new Date(event.target.value)
+        setStartTs(Math.floor(dateTime.getTime() / 1000))
+    }
+
+    const handleEndDateTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const dateTime = new Date(event.target.value)
+        setEndTs(Math.floor(dateTime.getTime() / 1000))
+    }
+
     if (isError) {
-        return <ErrorComponent message={error?.message || 'Failed to load chain data'} />
+        return <ErrorComponent message={error?.message || 'Failed to load ICM gas usage data'} />
     }
 
     return (
@@ -177,30 +65,141 @@ export default function ICMGasUsage() {
                 <div className="border border-gray-200 rounded-xl bg-white p-6">
                     <div className="mb-3 text-base">Inter-Chain Messaging Gas Usage</div>
                     <p className="text-sm mb-3">
-                        Track gas costs for sending and receiving cross-chain messages over time:
+                        Track gas costs for sending and receiving cross-chain messages:
                     </p>
-                    <ul className="space-y-1 mb-3">
-                        <li><span className="font-semibold">Send Gas Cost:</span> Gas used to send messages to other chains</li>
-                        <li><span className="font-semibold">Receive Gas Cost:</span> Gas used to receive messages from other chains</li>
-                        <li><span className="font-semibold">Time Intervals:</span> Data aggregated in 5-minute intervals</li>
-                        <li><span className="font-semibold">Units:</span> All costs displayed in native token for selected chain</li>
+                    <ul className="space-y-1 mb-4">
+                        <li><span className="font-semibold">Chain:</span> The chain where gas is consumed</li>
+                        <li><span className="font-semibold">Other Chain:</span> The partner chain in the messaging</li>
+                        <li><span className="font-semibold">Send Count/Gas:</span> Outgoing messages from this chain (gas paid in this chain's native token)</li>
+                        <li><span className="font-semibold">Receive Count/Gas:</span> Incoming messages to this chain (gas paid in this chain's native token)</li>
+                        <li><span className="font-semibold">Total:</span> Combined send and receive activity on this chain</li>
                     </ul>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Start Time
+                            </label>
+                            <input
+                                type="datetime-local"
+                                value={formatTimestampForInput(startTs)}
+                                onChange={handleStartDateTimeChange}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                                type="number"
+                                value={startTs}
+                                onChange={handleStartTsChange}
+                                className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Unix timestamp"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                End Time
+                            </label>
+                            <input
+                                type="datetime-local"
+                                value={formatTimestampForInput(endTs)}
+                                onChange={handleEndDateTimeChange}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                                type="number"
+                                value={endTs}
+                                onChange={handleEndTsChange}
+                                className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Unix timestamp"
+                            />
+                        </div>
+                    </div>
                 </div>
-
             </div>
 
-            <div className="grid grid-cols-1">
-                <ExampleCard
-                    name="ICM Gas Usage Chart"
-                    curlString={`curl -X GET "${window.location.origin}/api/${selectedChainId || '{evmChainId}'}/stats/icm-gas-usage?period=7d&count=50"`}
-                    chains={chains}
-                    selectedChainId={selectedChainId}
-                    onChainSelect={setSelectedChainId}
-                    defaultChainId={779672}
-                >
-                    <ICMGasUsageChart selectedChainId={selectedChainId} />
-                </ExampleCard>
-            </div>
+            <ExampleCard
+                name="ICM Gas Usage by Chain"
+                curlString={`curl -X GET "${window.location.origin}/api/global/icm-gas-usage?startTs=${startTs}&endTs=${endTs}"`}
+            >
+                {isLoading ? (
+                    <div className="text-center py-8">Loading gas usage data...</div>
+                ) : !data || data.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">No gas usage data found in the selected time range</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Chain
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Other Chain
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Send Count
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Send Gas
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Receive Count
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Receive Gas
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Total Count
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Total Gas
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {data.map((row, index) => {
+                                    const showChainId = row.chainName === row.chainBlockchainId;
+                                    const showOtherChainId = row.otherChainName === row.otherChainBlockchainId;
+                                    const chainDisplay = showChainId ? row.chainBlockchainId : row.chainName;
+                                    const otherChainDisplay = showOtherChainId ? row.otherChainBlockchainId : row.otherChainName;
+
+                                    return (
+                                        <tr key={`${row.chainBlockchainId}-${row.otherChainBlockchainId}-${index}`} className="hover:bg-gray-50">
+                                            <td className="px-3 py-2 text-sm">
+                                                <span className={showChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
+                                                    {chainDisplay}
+                                                </span>
+                                            </td>
+                                            <td className="px-3 py-2 text-sm">
+                                                <span className={showOtherChainId ? "font-mono text-gray-600" : "font-medium text-gray-900"}>
+                                                    {otherChainDisplay}
+                                                </span>
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                                                {row.sendCount.toLocaleString()}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-mono">
+                                                {row.sendGasCost.toFixed(4)}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                                                {row.receiveCount.toLocaleString()}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-mono">
+                                                {row.receiveGasCost.toFixed(4)}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-medium">
+                                                {row.totalCount.toLocaleString()}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-medium font-mono">
+                                                {row.totalGasCost.toFixed(4)}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </ExampleCard>
         </div>
     )
 }

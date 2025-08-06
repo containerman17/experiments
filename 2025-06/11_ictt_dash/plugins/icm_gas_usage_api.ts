@@ -1,36 +1,20 @@
 import type { ApiPlugin } from "frostbyte-sdk";
 
 type IcmGasUsageStats = {
-    name: string;
-    blockchainId: string;
-    evmChainId: number;
-    chainId: string;
+    chainName: string;
+    chainBlockchainId: string;
+    otherChainName: string;
+    otherChainBlockchainId: string;
     sendCount: number;
     receiveCount: number;
-    sendGasCost: number;  // Changed to number for float representation
-    receiveGasCost: number;  // Changed to number for float representation
-    totalGasCost: number;  // Changed to number for float representation
-    intervalTs: number;
-}
-
-type IcmGasUsageValue = {
-    sendCount: number;
-    receiveCount: number;
-    sendGasCost: number;  // Changed to number for float representation
-    receiveGasCost: number;  // Changed to number for float representation  
-    totalGasCost: number;  // Changed to number for float representation
-    intervalTs: number;
-}
-
-type IcmGasUsageChainData = {
-    name: string;
-    evmChainId: number;
-    values: IcmGasUsageValue[];
+    sendGasCost: number;
+    receiveGasCost: number;
+    totalCount: number;
+    totalGasCost: number;
 }
 
 interface ChainStatsResult {
     other_chain_id: string;
-    interval_index: number;
     send_count: number;
     receive_count: number;
     send_gas_cost: number;
@@ -43,155 +27,120 @@ const module: ApiPlugin = {
 
     registerRoutes: (app, dbCtx) => {
         app.get<{
-            Params: { evmChainId: string };
             Querystring: {
-                period?: '1d' | '7d' | '30d' | '1h';
-                count?: number;
+                chain?: string;
+                startTs?: number;
+                endTs?: number;
             }
-        }>('/api/:evmChainId/stats/icm-gas-usage', {
+        }>('/api/global/icm-gas-usage', {
             schema: {
-                params: {
-                    type: 'object',
-                    properties: {
-                        evmChainId: { type: 'string' }
-                    },
-                    required: ['evmChainId']
-                },
                 querystring: {
                     type: 'object',
                     properties: {
-                        period: { type: 'string', enum: ['1d', '7d', '30d', '1h'], default: '1d' },
-                        count: { type: 'number', minimum: 1, maximum: 100, default: 50 }
+                        chain: { type: 'string' },
+                        startTs: { type: 'number' },
+                        endTs: { type: 'number' }
                     },
                     required: []
                 },
                 response: {
                     200: {
-                        type: 'object',
-                        additionalProperties: {
+                        type: 'array',
+                        items: {
                             type: 'object',
                             properties: {
-                                name: { type: 'string' },
-                                evmChainId: { type: 'number' },
-                                values: {
-                                    type: 'array',
-                                    items: {
-                                        type: 'object',
-                                        properties: {
-                                            sendCount: { type: 'number' },
-                                            receiveCount: { type: 'number' },
-                                            sendGasCost: { type: 'number' },  // Changed to number
-                                            receiveGasCost: { type: 'number' },  // Changed to number
-                                            totalGasCost: { type: 'number' },  // Changed to number
-                                            intervalTs: { type: 'number' }
-                                        },
-                                        required: ['sendCount', 'receiveCount', 'sendGasCost', 'receiveGasCost', 'totalGasCost', 'intervalTs']
-                                    }
-                                }
+                                chainName: { type: 'string' },
+                                chainBlockchainId: { type: 'string' },
+                                otherChainName: { type: 'string' },
+                                otherChainBlockchainId: { type: 'string' },
+                                sendCount: { type: 'number' },
+                                receiveCount: { type: 'number' },
+                                sendGasCost: { type: 'number' },
+                                receiveGasCost: { type: 'number' },
+                                totalCount: { type: 'number' },
+                                totalGasCost: { type: 'number' }
                             },
-                            required: ['name', 'evmChainId', 'values']
+                            required: ['chainName', 'chainBlockchainId', 'otherChainName', 'otherChainBlockchainId',
+                                'sendCount', 'receiveCount', 'sendGasCost', 'receiveGasCost', 'totalCount', 'totalGasCost']
                         }
                     }
                 }
             }
         }, async (request, reply) => {
-            const evmChainId = parseInt(request.params.evmChainId);
-            const config = dbCtx.getChainConfig(evmChainId);
+            const { chain, startTs, endTs } = request.query;
 
-            if (!config) {
-                return reply.code(404).send({ error: 'Chain not found' });
-            }
+            // Get all chains
+            const chains = dbCtx.getAllChainConfigs();
+            const selectedChain = chain ? chains.find(c => c.blockchainId === chain || c.evmChainId.toString() === chain) : null;
 
-            // Get current timestamp in seconds
+            // Default time range: last 30 days
             const now = Math.floor(Date.now() / 1000);
-            const period = request.query.period || '1d';
-            const count = request.query.count || 50;
+            const start = startTs || now - 30 * 86400;
+            const end = endTs || now;
 
-            let periodSeconds: number;
-            if (period === '7d') periodSeconds = 86400 * 7;
-            else if (period === '30d') periodSeconds = 86400 * 30;
-            else if (period === '1h') periodSeconds = 3600;
-            else if (period === '1d') periodSeconds = 86400;
-            else throw new Error(`Invalid period: ${period}`);
+            // Collect stats from all chains
+            const results: IcmGasUsageStats[] = [];
 
-            const since = now - count * periodSeconds;
+            for (const chainConfig of chains) {
+                // Skip if we're filtering and this isn't the selected chain
+                if (selectedChain && chainConfig.blockchainId !== selectedChain.blockchainId) {
+                    continue;
+                }
 
-            const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, 'icm_gas_usage');
+                try {
+                    const indexerConn = dbCtx.getIndexerDbConnection(chainConfig.evmChainId, 'icm_gas_usage');
 
-            // Generate intervals using SQLite aggregation with sliding windows relative to 'now'
-            const query = `
-                SELECT 
-                    other_chain_id,
-                    CAST((? - interval_ts) / ? AS INTEGER) as interval_index,
-                    SUM(send_count) as send_count,
-                    SUM(receive_count) as receive_count,
-                    SUM(send_gas_cost) as send_gas_cost,
-                    SUM(receive_gas_cost) as receive_gas_cost
-                FROM icm_chain_interval_stats
-                WHERE interval_ts >= ? AND interval_ts <= ?
-                GROUP BY other_chain_id, interval_index
-                ORDER BY other_chain_id, interval_index
-            `;
+                    const query = `
+                        SELECT 
+                            other_chain_id,
+                            SUM(send_count) as send_count,
+                            SUM(receive_count) as receive_count,
+                            SUM(send_gas_cost) as send_gas_cost,
+                            SUM(receive_gas_cost) as receive_gas_cost
+                        FROM icm_chain_interval_stats
+                        WHERE interval_ts >= ? AND interval_ts <= ?
+                        GROUP BY other_chain_id
+                    `;
 
-            const stmt = indexerConn.prepare(query);
-            const results = stmt.all(now, periodSeconds, since, now) as ChainStatsResult[];
+                    const stmt = indexerConn.prepare(query);
+                    const rows = stmt.all(start, end) as ChainStatsResult[];
 
-            // Group results by chain
-            const resultsByChain: Record<string, IcmGasUsageChainData> = {};
+                    for (const row of rows) {
+                        const otherChainConfig = dbCtx.getChainConfig(row.other_chain_id);
 
-            // Initialize all intervals for all chains
-            const allChains = [...new Set(results.map(r => r.other_chain_id))];
+                        // Skip if filtering and the other chain isn't the selected chain
+                        if (selectedChain && row.other_chain_id !== selectedChain.blockchainId) {
+                            continue;
+                        }
 
-            for (const otherChainId of allChains) {
-                const chainConfig = dbCtx.getChainConfig(otherChainId) || {
-                    chainName: "Unknown",
-                    evmChainId: 0
-                };
+                        const totalCount = row.send_count + row.receive_count;
+                        const totalGasCost = row.send_gas_cost + row.receive_gas_cost;
 
-                resultsByChain[otherChainId] = {
-                    name: chainConfig.chainName,
-                    evmChainId: chainConfig.evmChainId,
-                    values: []
-                };
-
-                // Create a map for quick lookup by interval index
-                const chainResults = results.filter(r => r.other_chain_id === otherChainId);
-                const resultMap = new Map(chainResults.map(r => [r.interval_index, r]));
-
-                // Generate all intervals, filling with zeros where no data exists
-                for (let i = 0; i < count; i++) {
-                    const intervalEnd = now - i * periodSeconds;
-                    const intervalStart = intervalEnd - periodSeconds;
-                    const data = resultMap.get(i);
-
-                    if (data) {
-                        // Values are already in ETH/AVAX from the database
-                        const sendGasCost = data.send_gas_cost;
-                        const receiveGasCost = data.receive_gas_cost;
-                        const totalGasCost = sendGasCost + receiveGasCost;
-
-                        resultsByChain[otherChainId].values.push({
-                            sendCount: data.send_count,
-                            receiveCount: data.receive_count,
-                            sendGasCost: sendGasCost,
-                            receiveGasCost: receiveGasCost,
-                            totalGasCost: totalGasCost,
-                            intervalTs: intervalStart
-                        });
-                    } else {
-                        resultsByChain[otherChainId].values.push({
-                            sendCount: 0,
-                            receiveCount: 0,
-                            sendGasCost: 0,
-                            receiveGasCost: 0,
-                            totalGasCost: 0,
-                            intervalTs: intervalStart
-                        });
+                        if (totalCount > 0) {
+                            results.push({
+                                chainName: chainConfig.chainName,
+                                chainBlockchainId: chainConfig.blockchainId,
+                                otherChainName: otherChainConfig?.chainName || row.other_chain_id,
+                                otherChainBlockchainId: row.other_chain_id,
+                                sendCount: row.send_count,
+                                receiveCount: row.receive_count,
+                                sendGasCost: row.send_gas_cost,
+                                receiveGasCost: row.receive_gas_cost,
+                                totalCount,
+                                totalGasCost
+                            });
+                        }
                     }
+                } catch (error) {
+                    // Chain might not have the indexer, skip
+                    continue;
                 }
             }
 
-            return reply.send(resultsByChain);
+            // Sort by total count (descending)
+            results.sort((a, b) => b.totalCount - a.totalCount);
+
+            return reply.send(results);
         });
     }
 };

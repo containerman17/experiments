@@ -40,5 +40,47 @@
             "enableBatchSizeGrowth": false,
             "blocksPerBatch": 1000
         }
+    },
+    {
+        "chainName": "NUMINEMainnet",
+        "blockchainId": "2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf",
+        "evmChainId": 8021,
+        "rpcConfig": {
+            "rpcUrl": "http://idx6.solokhin.com/api/8021/rpc",
+            "requestBatchSize": 20,
+            "maxConcurrentRequests": 300,
+            "rps": 1000,
+            "rpcSupportsDebug": false,
+            "enableBatchSizeGrowth": false,
+            "blocksPerBatch": 1000
+        }
+    },
+    {
+        "chainName": "KOROSHIL",
+        "blockchainId": "26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ",
+        "evmChainId": 379,
+        "rpcConfig": {
+            "rpcUrl": "http://idx6.solokhin.com/api/379/rpc",
+            "requestBatchSize": 20,
+            "maxConcurrentRequests": 300,
+            "rps": 1000,
+            "rpcSupportsDebug": false,
+            "enableBatchSizeGrowth": false,
+            "blocksPerBatch": 1000
+        }
+    },
+    {
+        "chainName": "GOODCARE",
+        "blockchainId": "2AB5dDcGsw86kroZ81AZXzdez3CgA1x9uXkyQDhxr98hjrkVhu",
+        "evmChainId": 741741,
+        "rpcConfig": {
+            "rpcUrl": "http://idx6.solokhin.com/api/741741/rpc",
+            "requestBatchSize": 20,
+            "maxConcurrentRequests": 300,
+            "rps": 1000,
+            "rpcSupportsDebug": false,
+            "enableBatchSizeGrowth": false,
+            "blocksPerBatch": 1000
+        }
     }
 ]

@@ -32,6 +32,7 @@ interface TokenMovement {
     amount: bigint;
     pairChain: string;
     contractAddress: string;
+    txHash: string;
 }
 
 interface ContractTypeDetection {
@@ -166,7 +167,7 @@ const eventHexes = Array.from(events.keys());
 
 const module: IndexingPlugin = {
     name: "ictt",
-    version: 7,
+    version: 9,
     usesTraces: false,
     filterEvents: [
         ...eventHexes,
@@ -180,7 +181,8 @@ const module: IndexingPlugin = {
                 is_inbound BOOLEAN NOT NULL,
                 amount REAL NOT NULL,
                 pair_chain TEXT NOT NULL,
-                contract_address TEXT NOT NULL
+                contract_address TEXT NOT NULL,
+                tx_hash TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS recognized_token_homes(
@@ -281,7 +283,8 @@ const module: IndexingPlugin = {
                         isInbound: false,
                         amount: amount,
                         pairChain: pairChain,
-                        contractAddress: contractAddress
+                        contractAddress: contractAddress,
+                        txHash: tx.hash
                     });
                 }
 
@@ -325,7 +328,8 @@ const module: IndexingPlugin = {
                             isInbound: true,
                             amount: amount,
                             pairChain: pairChain,
-                            contractAddress: contractAddress
+                            contractAddress: contractAddress,
+                            txHash: tx.hash
                         });
                     }
                 }
@@ -351,8 +355,8 @@ const module: IndexingPlugin = {
         if (movements.length > 0) {
             const insertStmt = db.prepare(`
                 INSERT INTO token_movements 
-                (block_timestamp, is_inbound, amount, pair_chain, contract_address) 
-                VALUES (?, ?, ?, ?, ?)
+                (block_timestamp, is_inbound, amount, pair_chain, contract_address, tx_hash) 
+                VALUES (?, ?, ?, ?, ?, ?)
             `);
 
             for (const movement of movements) {
@@ -372,7 +376,8 @@ const module: IndexingPlugin = {
                     movement.isInbound ? 1 : 0,
                     humanAmount,
                     movement.pairChain,
-                    movement.contractAddress
+                    movement.contractAddress,
+                    movement.txHash
                 );
             }
         }

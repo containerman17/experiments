@@ -6,6 +6,7 @@ import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 import NamedCoin from "./components/NamedCoin"
 import TimeTimestamp from "./components/TimeTimestamp"
+import ShortHash from "./components/ShortHash"
 
 type TransferListData = GetApiGlobalIcttTransfersListResponses[200]
 
@@ -224,6 +225,9 @@ export default function ICTTTransfersList() {
                                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Amount
                                         </th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            TX Hash
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
@@ -256,7 +260,7 @@ export default function ICTTTransfersList() {
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2 text-sm font-mono text-gray-600">
-                                                    {transfer.contractAddress}
+                                                    <ShortHash hash={transfer.contractAddress} />
                                                 </td>
                                                 <td className="px-3 py-2 text-sm font-mono text-gray-600">
                                                     <NamedCoin
@@ -268,6 +272,9 @@ export default function ICTTTransfersList() {
                                                 </td>
                                                 <td className="px-3 py-2 whitespace-nowrap text-sm text-right font-medium">
                                                     {transfer.amount.toLocaleString()}
+                                                </td>
+                                                <td className="px-3 py-2 text-xs font-mono text-gray-600">
+                                                    <ShortHash hash={transfer.txHash} />
                                                 </td>
                                             </tr>
                                         )

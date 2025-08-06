@@ -187,6 +187,7 @@ export type GetApiGlobalIcttTransfersListResponses = {
             coinAddress: string;
             amount: number;
             blockTimestamp: number;
+            txHash: string;
         }>;
         totalCount: number;
         availableChains: Array<{

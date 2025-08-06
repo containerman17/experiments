@@ -33,6 +33,7 @@ interface TokenMovementRow {
     pair_chain: string;
     contract_address: string;
     coin_address: string;
+    tx_hash: string;
 }
 
 const module: ApiPlugin = {
@@ -181,9 +182,10 @@ const module: ApiPlugin = {
                                         contractAddress: { type: 'string' },
                                         coinAddress: { type: 'string' },
                                         amount: { type: 'number' },
-                                        blockTimestamp: { type: 'number' }
+                                        blockTimestamp: { type: 'number' },
+                                        txHash: { type: 'string' }
                                     },
-                                    required: ['homeChainBlockchainId', 'homeChainName', 'remoteChainBlockchainId', 'remoteChainName', 'direction', 'contractAddress', 'coinAddress', 'amount', 'blockTimestamp']
+                                    required: ['homeChainBlockchainId', 'homeChainName', 'remoteChainBlockchainId', 'remoteChainName', 'direction', 'contractAddress', 'coinAddress', 'amount', 'blockTimestamp', 'txHash']
                                 }
                             },
                             totalCount: { type: 'number' },
@@ -247,6 +249,7 @@ const module: ApiPlugin = {
                 coinAddress: string;
                 amount: number;
                 blockTimestamp: number;
+                txHash: string;
             }
 
             const allTransfers: TransferRecord[] = [];
@@ -268,7 +271,8 @@ const module: ApiPlugin = {
                             tm.amount,
                             tm.pair_chain,
                             tm.contract_address,
-                            rth.coin_address
+                            rth.coin_address,
+                            tm.tx_hash
                         FROM token_movements tm
                         JOIN recognized_token_homes rth ON tm.contract_address = rth.contract_address
                         WHERE tm.block_timestamp >= ? AND tm.block_timestamp <= ?
@@ -315,7 +319,8 @@ const module: ApiPlugin = {
                         contractAddress: row.contract_address,
                         coinAddress: row.coin_address,
                         amount: row.amount,
-                        blockTimestamp: row.block_timestamp
+                        blockTimestamp: row.block_timestamp,
+                        txHash: row.tx_hash
                     });
                 }
             }

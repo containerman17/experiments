@@ -42,10 +42,6 @@ export default function ICTTTransfersList() {
         return new Date(ts * 1000).toISOString().slice(0, 16)
     }
 
-    const formatTimestamp = (ts: number): string => {
-        return new Date(ts * 1000).toLocaleString()
-    }
-
     const handleStartTsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const value = parseInt(event.target.value)
         if (!isNaN(value) && value >= 0) {

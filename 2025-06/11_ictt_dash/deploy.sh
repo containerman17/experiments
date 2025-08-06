@@ -2,33 +2,63 @@
 
 set -exu
 
-# Define the deployment host
-HOST="idx6"
-# HOST="root@168.119.154.241"
+updateMasterChainsJson() {
+    local host=$1
+    npx tsx ./scripts/updateChains.ts
+    scp ./prod_chains.json $host:~/data/chains.json
+}
 
-npm run build
-rsync -av --delete ./dist/ $HOST:~/assets/
+updateReplicaChainsJson() {
+    local host=$1
+    ssh $host "curl -fsSL https://idx6.solokhin.com/api/replication/chains.json -o ~/data/chains.json"
+}
 
-npx tsx ./scripts/updateChains.ts
+updateAssets() {
+    local host=$1
+    #     npm run build
+    rsync -av --delete ./dist/ $host:~/assets/
+}
 
-# Ensure remote data directory exists and copy chains.json
-ssh $HOST "mkdir -p ~/data ~/plugins"
-scp ./prod_chains.json $HOST:~/data/chains.json
+updatePlugins() {
+    local host=$1
+    # Ensure remote directories exist
+    ssh $host "mkdir -p ~/data ~/plugins"
+    # Sync local plugins to remote (removing any remote plugins not present locally)
+    rsync -av --delete ./plugins/ $host:~/plugins/
+}
 
-# Sync local plugins to remote (removing any remote plugins not present locally)
-rsync -av --delete ./plugins/ $HOST:~/plugins/
+updateCompose() {
+    local host=$1
+    scp ./compose.yml $host:~/compose.yml
+}
 
-# Copy compose.yml to remote
-scp ./compose.yml $HOST:~/compose.yml
-
-# Deploy to $HOST
-ssh -T $HOST << 'EOF'
+restart() {
+    local host=$1
+    ssh -T $host << 'EOF'
 # Run docker compose
 cd ~
 docker compose pull
 docker compose up -d --remove-orphans
 docker compose restart api fetcher indexer
 EOF
+}
 
-# TODO: This is a hack to restart the api and indexer services without starting fetcher
-# ssh -T idx6 "docker compose restart api indexer"
+
+# Single build for all hosts
+npm run build
+
+# First - update replica(s)
+HOST="ubuntu@3.113.33.67"
+updateReplicaChainsJson $HOST
+updateAssets $HOST
+updatePlugins $HOST
+updateCompose $HOST
+restart $HOST
+
+# Then - update master
+HOST="idx6"
+updateMasterChainsJson $HOST
+updateAssets $HOST
+updatePlugins $HOST
+updateCompose $HOST
+restart $HOST

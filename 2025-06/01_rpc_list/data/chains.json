@@ -590,17 +590,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "SSHIVANSH",
-    "blockchainId": "2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW",
-    "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
-    "rpcUrl": "http://142.132.150.152:8080/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc",
-    "evmChainId": "222345",
-    "blocksCount": "10+",
-    "estimatedTxCount": null,
-    "comment": null,
-    "debugEnabled": true
-  },
-  {
     "chainName": "even",
     "blockchainId": "2YnwDMW9shSuV6nuYpAhm3DE2KvYJP2GFDvUde6XG8jE5gxvpL",
     "subnetId": "VsxF67NQTACc2fLQL9fD3F8LzJ5eezcSGFNitGsk7VxKbPwcD",
@@ -743,11 +732,12 @@
     "chainName": "PLAYA3ULL",
     "blockchainId": "k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1",
     "subnetId": "2wLe8Ma7YcUmxMJ57JVWETMSHz1mjXmJc5gmssvKm3Pw8GkcFq",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://subnets.avax.network/playa3ull/mainnet/rpc",
+    "evmChainId": "3011",
+    "blocksCount": "1m+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
+    "glacierChainId": "3011",
+    "comment": null,
     "debugEnabled": false
   },
   {

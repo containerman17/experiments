@@ -149,6 +149,15 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
+**PLAYA3ULL**
+- Blocks Count: 1m+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 3011
+- Blockchain ID: k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
+- RPC URL: https://subnets.avax.network/playa3ull/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/playa3ull
+
 **DOS Chain**
 - Blocks Count: 1m+
 - Estimated Tx Count: Unknown
@@ -302,15 +311,6 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
-**NUMINEMainnet**
-- Blocks Count: 10k+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 8021
-- Blockchain ID: 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
-- RPC URL: https://subnets.avax.network/numi/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/numi
-
 **BangoL**
 - Blocks Count: 10k+
 - Estimated Tx Count: Unknown
@@ -319,6 +319,15 @@
 - RPC URL: https://subnets.avax.network/bangochain/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/bangochain
+
+**NUMINEMainnet**
+- Blocks Count: 10k+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 8021
+- Blockchain ID: 2c1BN4N9qEhNmW4yCpeLK24SfjFQLyS1Z7FtgRDaYxZWFUUKxf
+- RPC URL: https://subnets.avax.network/numi/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/numi
 
 **QRTMS**
 - Blocks Count: 10k+
@@ -446,15 +455,6 @@
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
-**SSHIVANSH**
-- Blocks Count: 10+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 222345
-- Blockchain ID: 2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW
-- RPC URL: http://142.132.150.152:8080/ext/bc/2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW/rpc
-- Debug Enabled: ✅
-- Explorer URL: ❌
-
 **EthixETX**
 - Blocks Count: 10+
 - Estimated Tx Count: Unknown
@@ -538,7 +538,7 @@
 
 
 
-## Chains without Public RPC URLs (23)
+## Chains without Public RPC URLs (22)
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -634,11 +634,6 @@
 - EVM Chain ID: N/A
 - Blockchain ID: HnECQEqpvvXcBF9Jup1ti1XMowQGrSWiQSkKdwcjxEbzmTHMC
 - Comment: See "Rymedi Transaction Subnet"
-
-**PLAYA3ULL**
-- EVM Chain ID: N/A
-- Blockchain ID: k2SFEZ2MZr9UGXiycnA1DdaLqZTKDaHK7WUXVLhJk5F9DD8r1
-- Comment: TODO: investigate
 
 **gunzilla**
 - EVM Chain ID: N/A

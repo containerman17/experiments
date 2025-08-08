@@ -175,6 +175,7 @@ const module: IndexingPlugin = {
     ],
 
     initialize: (db) => {
+        //FIXME: add undexes if slow. For now full table scan is ok.
         db.exec(`
             CREATE TABLE IF NOT EXISTS token_movements(
                 block_timestamp INTEGER NOT NULL, 

@@ -26,3 +26,5 @@ require() statements.
 do not call toLowerCase ever. in a loop it is a CPU hoarder
 
 Do not use text color, unless absolutely necessary.
+
+blocksDbHelper methods are synchronous (not async) and don't throw unless something incredibly horrible happened - no need for try/catch or await.

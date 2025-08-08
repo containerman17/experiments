@@ -225,6 +225,34 @@ export type GetApiGlobalIcttTvlResponses = {
 
 export type GetApiGlobalIcttTvlResponse = GetApiGlobalIcttTvlResponses[keyof GetApiGlobalIcttTvlResponses];
 
+export type GetApiGlobalMessagingComparisonData = {
+    body?: never;
+    path?: never;
+    query?: {
+        count?: number;
+    };
+    url: '/api/global/messaging/comparison';
+};
+
+export type GetApiGlobalMessagingComparisonResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        chainId: number;
+        chainName: string;
+        blockchainId: string;
+        data: Array<{
+            fromTs: number;
+            toTs: number;
+            layerzero: number;
+            icm: number;
+        }>;
+    }>;
+};
+
+export type GetApiGlobalMessagingComparisonResponse = GetApiGlobalMessagingComparisonResponses[keyof GetApiGlobalMessagingComparisonResponses];
+
 export type GetApiByEvmChainIdStatsTpsData = {
     body?: never;
     path: {

@@ -17,6 +17,8 @@ export default function ShortHash({ hash }: ShortHashProps) {
         }
     }
 
+    if (!navigator.clipboard) return hash
+
     if (!hash) return null
 
     // Remove 0x prefix if present for processing

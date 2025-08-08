@@ -117,17 +117,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "CertaLink Subnet",
-    "blockchainId": "27xa71ERzSzir2KuPmmsAFkceVA74Xfh8Fys8SrmHjdKyj1vqd",
-    "subnetId": "2hZa4RMWAkiQAQ5zpbPSkNziYSHyCqBGeKNnbqWfJL2GKmy8eq",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "not connected to enough stake: connected to 60.000000%; required at least 80.000000%",
-    "debugEnabled": false
-  },
-  {
     "chainName": "QRTMS",
     "blockchainId": "28Z2DcNiiV6dD5LAm1KNZGBmpbokWaHVBaTXV9HoUCh7o1ahEc",
     "subnetId": "TsijYHafTXCUZGoisGnMorh2HGwY9Vg2YzviEo8nrmtZZESp9",
@@ -721,12 +710,12 @@
     "chainName": "BnryMainnet",
     "blockchainId": "J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ",
     "subnetId": "23dqTMHK186m4Rzcn1ukJdmHy13nqido4LjTp5Kh9W6qBKaFib",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "http://142.132.150.152:8080/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc",
+    "evmChainId": "836",
+    "blocksCount": "1m+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "PLAYA3ULL",
@@ -801,12 +790,12 @@
     "chainName": "Pulsar",
     "blockchainId": "QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v",
     "subnetId": "DxanjptkyaeM1eUew2gzUMngHM3n5ttUyMj7BuHw9riXh9pJC",
-    "rpcUrl": "https://subnets.avax.network/pulsar/mainnet/rpc",
+    "rpcUrl": null,
     "evmChainId": "357",
-    "blocksCount": "10m+",
+    "blocksCount": null,
     "estimatedTxCount": null,
     "glacierChainId": "357",
-    "comment": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {

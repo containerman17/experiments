@@ -31,15 +31,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/dexalot
 
-**Pulsar**
-- Blocks Count: 10m+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 357
-- Blockchain ID: QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
-- RPC URL: https://subnets.avax.network/pulsar/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/pulsar
-
 **UPTN**
 - Blocks Count: 10m+
 - Estimated Tx Count: Unknown
@@ -175,6 +166,15 @@
 - RPC URL: https://subnets.avax.network/space/mainnet/rpc
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/space
+
+**BnryMainnet**
+- Blocks Count: 1m+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 836
+- Blockchain ID: J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ
+- RPC URL: http://142.132.150.152:8080/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
+- Debug Enabled: ✅
+- Explorer URL: ❌
 
 **TradeXMarkets**
 - Blocks Count: 1m+
@@ -538,7 +538,7 @@
 
 
 
-## Chains without Public RPC URLs (22)
+## Chains without Public RPC URLs (21)
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -558,11 +558,6 @@
 **Bitcoin Content Network**
 - EVM Chain ID: N/A
 - Blockchain ID: apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
-- Comment: TODO: investigate
-
-**BnryMainnet**
-- EVM Chain ID: N/A
-- Blockchain ID: J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ
 - Comment: TODO: investigate
 
 **Memoria**
@@ -605,11 +600,6 @@
 - Blockchain ID: 2vEit8MMxLNNfbMdoiBjvFP7MFwPwo1YmiLaBBxQU2YRGvdjJx
 - Comment: Not sure which network is this, looks like NUMINEMainnet is the right one. 
 
-**CertaLink Subnet**
-- EVM Chain ID: N/A
-- Blockchain ID: 27xa71ERzSzir2KuPmmsAFkceVA74Xfh8Fys8SrmHjdKyj1vqd
-- Comment: not connected to enough stake: connected to 60.000000%; required at least 80.000000%
-
 **Tiltyard**
 - EVM Chain ID: N/A
 - Blockchain ID: 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
@@ -649,4 +639,9 @@
 - EVM Chain ID: N/A
 - Blockchain ID: 2MrmXmx4nrSn5BS3EAtWg5Pf9madiBoN7MRaByM88g49VArjDt
 - Comment: Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc
+
+**Pulsar**
+- EVM Chain ID: 357
+- Blockchain ID: QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
+- Comment: TODO: investigate
 

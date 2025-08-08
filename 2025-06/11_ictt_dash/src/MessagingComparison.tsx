@@ -3,6 +3,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
 
+const MONTHS_COUNT = 18;
+
 interface WindowDataPoint {
     fromTs: number
     toTs: number
@@ -193,7 +195,7 @@ export default function MessagingComparison() {
     const { data, error, isError, isLoading } = useQuery<ChainComparison[]>({
         queryKey: ['messagingComparison'],
         queryFn: async () => {
-            const response = await fetch(`${window.location.origin}/api/global/messaging/comparison?count=12`)
+            const response = await fetch(`${window.location.origin}/api/global/messaging/comparison?count=${MONTHS_COUNT}`)
 
             if (!response.ok) {
                 throw new Error('Failed to fetch messaging comparison data')
@@ -226,17 +228,16 @@ export default function MessagingComparison() {
                             <ul className="ml-6 mt-1 text-xs space-y-1">
                                 <li>• Contract: <code>0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf</code></li>
                                 <li>• Events tracked: <code>SendCrossChainMessage</code> (outgoing) and <code>ReceiveCrossChainMessage</code> (incoming)</li>
-                                <li>• ICM event Topic hashes: <code>0x2a211ad4...</code> (send), <code>0x292ee90b...</code> (receive)</li>
                             </ul>
                         </li>
                         <li>
                             <span className="font-semibold text-purple-600">LayerZero V2 (Purple):</span> Cross-chain messaging protocol
                             <ul className="ml-6 mt-1 text-xs space-y-1">
-                                <li>• Events tracked: <code>PacketSent</code> (outgoing) and <code>PacketReceived</code> (incoming)</li>
+                                <li>• Events tracked: <code>PacketSent</code> (outgoing) and <code>PacketDelivered</code> (incoming)</li>
                                 <li>• From LayerZero Endpoint V2 contracts deployed on each chain</li>
                             </ul>
                         </li>
-                        <li><span className="font-semibold">Time Windows:</span> Last 12 months, each showing a 30-day rolling window</li>
+                        <li><span className="font-semibold">Time Windows:</span> Last {MONTHS_COUNT} months, each showing a 30-day rolling window</li>
                         <li><span className="font-semibold">Data Points:</span> Message counts aggregated per 30-day period from indexed events</li>
                     </ul>
                 </div>
@@ -252,7 +253,7 @@ export default function MessagingComparison() {
                     <div className="mb-8">
                         <ExampleCard
                             name="Network Total (All Chains Combined)"
-                            curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison?count=12"`}
+                            curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison?count=${MONTHS_COUNT}"`}
                         >
                             <TotalChart data={totalData} />
                         </ExampleCard>
@@ -264,7 +265,7 @@ export default function MessagingComparison() {
                             <ExampleCard
                                 key={chain.chainId}
                                 name={chain.chainName}
-                                curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison?count=12"`}
+                                curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison?count=${MONTHS_COUNT}"`}
                             >
                                 <ChainChart chain={chain} />
                             </ExampleCard>

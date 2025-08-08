@@ -220,11 +220,24 @@ export default function MessagingComparison() {
                     <p className="text-sm mb-3">
                         Compare messaging activity between Inter-Chain Messaging (ICM) and LayerZero protocols across different chains:
                     </p>
-                    <ul className="space-y-1">
-                        <li><span className="font-semibold text-blue-600">ICM (Blue):</span> Avalanche's native Inter-Chain Messaging protocol (Teleporter)</li>
-                        <li><span className="font-semibold text-purple-600">LayerZero (Purple):</span> Cross-chain messaging protocol</li>
+                    <ul className="space-y-2">
+                        <li>
+                            <span className="font-semibold text-blue-600">ICM/Teleporter (Blue):</span> Avalanche's native Inter-Chain Messaging protocol
+                            <ul className="ml-6 mt-1 text-xs space-y-1">
+                                <li>• Contract: <code>0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf</code></li>
+                                <li>• Events tracked: <code>SendCrossChainMessage</code> (outgoing) and <code>ReceiveCrossChainMessage</code> (incoming)</li>
+                                <li>• ICM event Topic hashes: <code>0x2a211ad4...</code> (send), <code>0x292ee90b...</code> (receive)</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <span className="font-semibold text-purple-600">LayerZero V2 (Purple):</span> Cross-chain messaging protocol
+                            <ul className="ml-6 mt-1 text-xs space-y-1">
+                                <li>• Events tracked: <code>PacketSent</code> (outgoing) and <code>PacketReceived</code> (incoming)</li>
+                                <li>• From LayerZero Endpoint V2 contracts deployed on each chain</li>
+                            </ul>
+                        </li>
                         <li><span className="font-semibold">Time Windows:</span> Last 12 months, each showing a 30-day rolling window</li>
-                        <li><span className="font-semibold">Data Points:</span> Message counts aggregated per 30-day period</li>
+                        <li><span className="font-semibold">Data Points:</span> Message counts aggregated per 30-day period from indexed events</li>
                     </ul>
                 </div>
             </div>

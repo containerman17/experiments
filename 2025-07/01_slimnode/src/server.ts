@@ -71,9 +71,13 @@ async function createServer() {
             },
             servers: [
                 {
+                    url: 'https://multinode-experimental.solokhin.com',
+                    description: 'Dev preview server'
+                },
+                {
                     url: 'http://localhost:3000',
                     description: 'Development server'
-                }
+                },
             ],
             tags: [
                 {

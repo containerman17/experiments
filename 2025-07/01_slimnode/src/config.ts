@@ -15,6 +15,5 @@ if (!process.env.ADMIN_PASSWORD) {
     process.exit(1)
 }
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
-export const CLOUDFLARE_TUNNEL_TOKEN = process.env.CLOUDFLARE_TUNNEL_TOKEN;
 
 export const INIT_CONTAINERS_INTERVAL_MS = 30 * 1000

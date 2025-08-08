@@ -3,7 +3,6 @@ import { execSync } from 'child_process';
 import { database } from './database.js';
 import path from 'path';
 import { checkNodeBootstrap, getNodeIP, getNodeId } from './node_apis.js';
-import { CLOUDFLARE_TUNNEL_TOKEN } from './config.js';
 
 interface ComposeService {
     image: string;
@@ -170,16 +169,7 @@ export async function generateDockerCompose(): Promise<void> {
         console.log('Bootnode not bootstrapped yet - only starting bootnode and tunnel');
     }
 
-    // Add Cloudflare tunnel service - needs host network to access API on host:3000
-    if (CLOUDFLARE_TUNNEL_TOKEN) {
-        compose.services['tunnel'] = {
-            image: 'cloudflare/cloudflared:latest',
-            container_name: 'tunnel',
-            restart: 'unless-stopped',
-            network_mode: 'host',
-            command: `tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}`
-        };
-    }
+
 
     // Write to file
     const yamlContent = generateYaml(compose);
@@ -202,7 +192,7 @@ export async function generateDockerCompose(): Promise<void> {
         if (bootnodeBootstrapped) {
             console.log('Docker containers restarted with new configuration');
         } else {
-            console.log('Docker containers started (bootnode + tunnel only)');
+            console.log('Docker containers started (bootnode only)');
         }
     } catch (error) {
         console.error('Failed to restart docker containers:', error);

@@ -16,7 +16,6 @@ Environment variables:
 - `ADMIN_PASSWORD` (required) - Password for admin endpoints
 - `NODE_COUNT` - Number of subnet nodes to manage (default: 0)
 - `DATA_DIR` - Directory for database file (default: ./data)
-- `CLOUDFLARE_TUNNEL_TOKEN` - Optional Cloudflare tunnel token
 
 Fixed configuration values:
 
@@ -116,8 +115,6 @@ Automatic backup saved to `chains.backup.json` on every write.
 - **bootnode**: Runs on ports 9650/9651, serves as bootstrap node
 - **node_0000, node_0001, etc**: Subnet nodes starting from ports 9652/9653
   (increment by 2)
-- **tunnel**: Optional Cloudflare tunnel container if CLOUDFLARE_TUNNEL_TOKEN is
-  set
 
 Containers use:
 

@@ -20,6 +20,8 @@ export async function checkSubnetExists(subnetId: string): Promise<boolean> {
         });
 
         const data = await response.json() as { result?: any; error?: any };
+
+        console.log('DEBUG checkSubnetExists', data);
         // TASK.md: check if this request returns a result, and not error field
         return !!data.result && !data.error;
     } catch (error) {

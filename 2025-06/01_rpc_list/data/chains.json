@@ -35,17 +35,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "DOS Chain",
-    "blockchainId": "22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv",
-    "subnetId": "nQCwF6V9y8VFjvMuPeQVWWYn6ba75518Dpf6ZMWZNb3NyTA94",
-    "rpcUrl": "http://142.132.150.152:8080/ext/bc/22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv/rpc",
-    "evmChainId": "7979",
-    "blocksCount": "1m+",
-    "estimatedTxCount": null,
-    "comment": null,
-    "debugEnabled": true
-  },
-  {
     "chainName": "coqnet",
     "blockchainId": "23aQU1537YseCJmXW11XHjPra6bptBSps5D4xXupt8hN2QUeaG",
     "subnetId": "5moznRzaAEhzWkNTQVdT1U4Kb9EU7dbsKZQNmHwtN5MGVQRyT",
@@ -481,7 +470,7 @@
     "subnetId": "2Mi7V6HwKCEPxXTRG87o5tHACECkMPnJKP6UA3w1ote7j46GYT",
     "rpcUrl": "http://142.132.150.152:8080/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc",
     "evmChainId": "8198",
-    "blocksCount": "10k+",
+    "blocksCount": "100k+",
     "estimatedTxCount": null,
     "comment": null,
     "debugEnabled": true
@@ -545,17 +534,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "amichainMainnet",
-    "blockchainId": "2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc",
-    "subnetId": "6uH9zL2ZhPLWB1W1qodgRRm42YfLWdPKtQe2xzAWjr5TAhkmm",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
-  },
-  {
     "chainName": "deraalpha",
     "blockchainId": "2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du",
     "subnetId": "B7hA9WibSJu2fKdHT2XZs2RYg1rZTtxwg6cMYBKYjvcJjbqsp",
@@ -576,6 +554,17 @@
     "estimatedTxCount": null,
     "glacierChainId": "27827",
     "comment": null,
+    "debugEnabled": false
+  },
+  {
+    "chainName": "SSHIVANSH",
+    "blockchainId": "2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW",
+    "subnetId": "qgTibewjtRUB4xfAqvA8t51xzyiK3Lfg3opJrQvbszs5jW1Gp",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -744,12 +733,12 @@
     "chainName": "Mirai",
     "blockchainId": "Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM",
     "subnetId": "2kyZRnEHakKriNufphojbeFR5hi247bJeTjFDgQgo7VRRjoqyq",
-    "rpcUrl": "http://142.132.150.152:8080/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc",
-    "evmChainId": "2718",
-    "blocksCount": "100k+",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
     "estimatedTxCount": null,
-    "comment": null,
-    "debugEnabled": true
+    "comment": "TODO: investigate",
+    "debugEnabled": false
   },
   {
     "chainName": "IntainMarkets",
@@ -791,10 +780,9 @@
     "blockchainId": "QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v",
     "subnetId": "DxanjptkyaeM1eUew2gzUMngHM3n5ttUyMj7BuHw9riXh9pJC",
     "rpcUrl": null,
-    "evmChainId": "357",
+    "evmChainId": null,
     "blocksCount": null,
     "estimatedTxCount": null,
-    "glacierChainId": "357",
     "comment": "TODO: investigate",
     "debugEnabled": false
   },

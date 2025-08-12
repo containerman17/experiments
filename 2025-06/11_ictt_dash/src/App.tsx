@@ -11,6 +11,7 @@ import Leaderboard from './Leaderboard'
 import ICTTTransfers from './ICTTTransfers'
 import ICTTTransfersList from './ICTTTransfersList'
 import MessagingComparison from './MessagingComparison'
+import ChainComparison from './ChainComparison'
 import NotFound from './NotFound'
 
 
@@ -33,6 +34,7 @@ function App() {
               <Link to="/messaging-comparison" className={`${location.pathname === '/messaging-comparison' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICM vs LZ</Link>
               <Link to="/ictt-transfers" className={`${location.pathname === '/ictt-transfers' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICTT Transfers</Link>
               <Link to="/ictt-transfers-list" className={`${location.pathname === '/ictt-transfers-list' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICTT List</Link>
+              <Link to="/chain-comparison" className={`${location.pathname === '/chain-comparison' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Chain Comparison</Link>
               <a href="/api/docs" className="text-blue-700 hover:underline flex items-center gap-1" target="api">
                 API Docs
                 <ExternalLink size={16} />
@@ -52,6 +54,7 @@ function App() {
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/ictt-transfers" element={<ICTTTransfers />} />
               <Route path="/ictt-transfers-list" element={<ICTTTransfersList />} />
+              <Route path="/chain-comparison" element={<ChainComparison />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

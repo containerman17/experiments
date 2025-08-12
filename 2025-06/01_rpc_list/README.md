@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (59)
+## Chains with Public RPC URLs (57)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -149,15 +149,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/playa3ull
 
-**DOS Chain**
-- Blocks Count: 1m+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 7979
-- Blockchain ID: 22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv
-- RPC URL: http://142.132.150.152:8080/ext/bc/22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv/rpc
-- Debug Enabled: ✅
-- Explorer URL: ❌
-
 **Space**
 - Blocks Count: 1m+
 - Estimated Tx Count: Unknown
@@ -209,15 +200,6 @@
 - EVM Chain ID: 10507
 - Blockchain ID: 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE
 - RPC URL: http://142.132.150.152:8080/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
-- Debug Enabled: ✅
-- Explorer URL: ❌
-
-**Mirai**
-- Blocks Count: 100k+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 2718
-- Blockchain ID: Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
-- RPC URL: http://142.132.150.152:8080/ext/bc/Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -303,7 +285,7 @@
 - Explorer URL: https://subnets.avax.network/lamina1id
 
 **Hatchyverse**
-- Blocks Count: 10k+
+- Blocks Count: 100k+
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 8198
 - Blockchain ID: 2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
@@ -538,7 +520,7 @@
 
 
 
-## Chains without Public RPC URLs (21)
+## Chains without Public RPC URLs (22)
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -555,6 +537,11 @@
 - Blockchain ID: 3ZtS5VvsATbGWZhs2ymHNCmVkRVwW3QxhwbTtwxWK3XXVopsr
 - Comment: TODO: investigate
 
+**SSHIVANSH**
+- EVM Chain ID: N/A
+- Blockchain ID: 2XWN3PW4Qdjw3AtG6eqH8PCzj49G9Qay6SLNWbGLjsDF1qPgsW
+- Comment: TODO: investigate
+
 **Bitcoin Content Network**
 - EVM Chain ID: N/A
 - Blockchain ID: apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i
@@ -563,11 +550,6 @@
 **Memoria**
 - EVM Chain ID: N/A
 - Blockchain ID: kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
-- Comment: TODO: investigate
-
-**amichainMainnet**
-- EVM Chain ID: N/A
-- Blockchain ID: 2X863aybDh9FxQfwhqU3MZJuLMuH8EorG5j1d14zfWkAdMXPc
 - Comment: TODO: investigate
 
 **FIZIT**
@@ -610,6 +592,11 @@
 - Blockchain ID: 2QGraMRcH8gEnQbLviM4ykgyY31jFfLhaEtEvPHk8q8pPfe7Kj
 - Comment: TODO: investigate
 
+**Mirai**
+- EVM Chain ID: N/A
+- Blockchain ID: Lgiwfx9L11MLt8RD5Aj7SZ5kEcWQz5NnyCc5hDd5k25J8LoxM
+- Comment: TODO: investigate
+
 **Rymedi Compliance Subnet**
 - EVM Chain ID: N/A
 - Blockchain ID: 2Zqzt687kQ4G7RiWYKypiWrid4ZPrFW3jg9Hy5SmNAVgebB2ph
@@ -641,7 +628,7 @@
 - Comment: Seems dead, no recent blocks, RPC is not responding. https://8888.snowtrace.io/ Has a dead RPC https://mainnet.xana.net/rpc
 
 **Pulsar**
-- EVM Chain ID: 357
+- EVM Chain ID: N/A
 - Blockchain ID: QVbrD172sAF1TgCvN9DZG93nAd2YBGCJVZP4cngdEKCTy2F9v
 - Comment: TODO: investigate
 

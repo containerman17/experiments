@@ -98,6 +98,83 @@ export type GetApiReplicationChainsJsonResponses = {
 
 export type GetApiReplicationChainsJsonResponse = GetApiReplicationChainsJsonResponses[keyof GetApiReplicationChainsJsonResponses];
 
+export type GetApiByEvmChainIdStatsActiveAddressesPeriodData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query: {
+        /**
+         * Start of period (Unix timestamp)
+         */
+        startTimestamp: number;
+        /**
+         * End of period (Unix timestamp)
+         */
+        endTimestamp: number;
+    };
+    url: '/api/{evmChainId}/stats/active-addresses-period';
+};
+
+export type GetApiByEvmChainIdStatsActiveAddressesPeriodErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdStatsActiveAddressesPeriodError = GetApiByEvmChainIdStatsActiveAddressesPeriodErrors[keyof GetApiByEvmChainIdStatsActiveAddressesPeriodErrors];
+
+export type GetApiByEvmChainIdStatsActiveAddressesPeriodResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        totalActiveAddresses: number;
+        avgDailyActiveAddresses: number;
+        totalTransactions: number;
+    };
+};
+
+export type GetApiByEvmChainIdStatsActiveAddressesPeriodResponse = GetApiByEvmChainIdStatsActiveAddressesPeriodResponses[keyof GetApiByEvmChainIdStatsActiveAddressesPeriodResponses];
+
+export type GetApiByEvmChainIdStatsDailyActiveAddressesData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query?: {
+        days?: number;
+    };
+    url: '/api/{evmChainId}/stats/daily-active-addresses';
+};
+
+export type GetApiByEvmChainIdStatsDailyActiveAddressesErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdStatsDailyActiveAddressesError = GetApiByEvmChainIdStatsDailyActiveAddressesErrors[keyof GetApiByEvmChainIdStatsDailyActiveAddressesErrors];
+
+export type GetApiByEvmChainIdStatsDailyActiveAddressesResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        timestamp: number;
+        activeAddresses: number;
+        transactions: number;
+    }>;
+};
+
+export type GetApiByEvmChainIdStatsDailyActiveAddressesResponse = GetApiByEvmChainIdStatsDailyActiveAddressesResponses[keyof GetApiByEvmChainIdStatsDailyActiveAddressesResponses];
+
 export type GetApiGlobalIcmGasUsageData = {
     body?: never;
     path?: never;

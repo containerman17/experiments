@@ -4,7 +4,8 @@ set -exu
 
 # Master and slave addresses
 MASTER_ADDRESS="idx6"
-SLAVE_ADDRESSES=("ubuntu@3.113.33.67")
+# SLAVE_ADDRESSES=("ubuntu@x.x.x.x")
+SLAVE_ADDRESSES=()
 
 # Pre-connect to all hosts to trigger YubiKey confirmations
 echo "Pre-connecting to all hosts for YubiKey authentication..."

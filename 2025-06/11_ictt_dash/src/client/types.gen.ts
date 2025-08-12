@@ -175,6 +175,118 @@ export type GetApiByEvmChainIdStatsDailyActiveAddressesResponses = {
 
 export type GetApiByEvmChainIdStatsDailyActiveAddressesResponse = GetApiByEvmChainIdStatsDailyActiveAddressesResponses[keyof GetApiByEvmChainIdStatsDailyActiveAddressesResponses];
 
+export type GetApiByEvmChainIdStatsGasUsagePeriodData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query: {
+        /**
+         * Start of period (Unix timestamp)
+         */
+        startTimestamp: number;
+        /**
+         * End of period (Unix timestamp)
+         */
+        endTimestamp: number;
+    };
+    url: '/api/{evmChainId}/stats/gas-usage-period';
+};
+
+export type GetApiByEvmChainIdStatsGasUsagePeriodErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdStatsGasUsagePeriodError = GetApiByEvmChainIdStatsGasUsagePeriodErrors[keyof GetApiByEvmChainIdStatsGasUsagePeriodErrors];
+
+export type GetApiByEvmChainIdStatsGasUsagePeriodResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        totalGasUsed: number;
+        avgDailyGasUsed: number;
+    };
+};
+
+export type GetApiByEvmChainIdStatsGasUsagePeriodResponse = GetApiByEvmChainIdStatsGasUsagePeriodResponses[keyof GetApiByEvmChainIdStatsGasUsagePeriodResponses];
+
+export type GetApiByEvmChainIdStatsCumulativeGasData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query?: {
+        /**
+         * Unix timestamp to get cumulative gas at. If not provided, returns latest.
+         */
+        timestamp?: number;
+    };
+    url: '/api/{evmChainId}/stats/cumulative-gas';
+};
+
+export type GetApiByEvmChainIdStatsCumulativeGasErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdStatsCumulativeGasError = GetApiByEvmChainIdStatsCumulativeGasErrors[keyof GetApiByEvmChainIdStatsCumulativeGasErrors];
+
+export type GetApiByEvmChainIdStatsCumulativeGasResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        timestamp: number;
+        cumulativeGasUsed: number;
+    };
+};
+
+export type GetApiByEvmChainIdStatsCumulativeGasResponse = GetApiByEvmChainIdStatsCumulativeGasResponses[keyof GetApiByEvmChainIdStatsCumulativeGasResponses];
+
+export type GetApiByEvmChainIdStatsDailyGasData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query?: {
+        days?: number;
+    };
+    url: '/api/{evmChainId}/stats/daily-gas';
+};
+
+export type GetApiByEvmChainIdStatsDailyGasErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdStatsDailyGasError = GetApiByEvmChainIdStatsDailyGasErrors[keyof GetApiByEvmChainIdStatsDailyGasErrors];
+
+export type GetApiByEvmChainIdStatsDailyGasResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        timestamp: number;
+        gasUsed: number;
+    }>;
+};
+
+export type GetApiByEvmChainIdStatsDailyGasResponse = GetApiByEvmChainIdStatsDailyGasResponses[keyof GetApiByEvmChainIdStatsDailyGasResponses];
+
 export type GetApiGlobalIcmGasUsageData = {
     body?: never;
     path?: never;
@@ -504,6 +616,57 @@ export type GetApiGlobalLeaderboardWeekResponses = {
 };
 
 export type GetApiGlobalLeaderboardWeekResponse = GetApiGlobalLeaderboardWeekResponses[keyof GetApiGlobalLeaderboardWeekResponses];
+
+export type GetApiByEvmChainIdStatsIcmMessagesTotalData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query?: {
+        /**
+         * Unix timestamp to get cumulative messages at. If not provided, returns latest.
+         */
+        timestamp?: number;
+    };
+    url: '/api/{evmChainId}/stats/icm-messages-total';
+};
+
+export type GetApiByEvmChainIdStatsIcmMessagesTotalErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdStatsIcmMessagesTotalError = GetApiByEvmChainIdStatsIcmMessagesTotalErrors[keyof GetApiByEvmChainIdStatsIcmMessagesTotalErrors];
+
+export type GetApiByEvmChainIdStatsIcmMessagesTotalResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        /**
+         * The timestamp for which the counts are valid
+         */
+        timestamp: number;
+        /**
+         * Total number of ICM messages (incoming + outgoing) up to timestamp
+         */
+        totalMessages: number;
+        /**
+         * Total number of outgoing ICM messages up to timestamp
+         */
+        totalOutgoing: number;
+        /**
+         * Total number of incoming ICM messages up to timestamp
+         */
+        totalIncoming: number;
+    };
+};
+
+export type GetApiByEvmChainIdStatsIcmMessagesTotalResponse = GetApiByEvmChainIdStatsIcmMessagesTotalResponses[keyof GetApiByEvmChainIdStatsIcmMessagesTotalResponses];
 
 export type GetApiGlobalStatsTpsData = {
     body?: never;

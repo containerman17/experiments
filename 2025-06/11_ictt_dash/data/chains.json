@@ -7,10 +7,10 @@
             "rpcUrl": "https://subnets.avax.network/dispatch/testnet/rpc",
             "requestBatchSize": 10,
             "maxConcurrentRequests": 50,
-            "rps": 20,
+            "rps": 10,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 100
+            "blocksPerBatch": 1000
         }
     },
     {
@@ -21,10 +21,10 @@
             "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
             "requestBatchSize": 20,
             "maxConcurrentRequests": 100,
-            "rps": 30,
+            "rps": 10,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 5000
+            "blocksPerBatch": 1000
         }
     },
     {
@@ -35,7 +35,7 @@
             "rpcUrl": "https://subnets.avax.network/echo/testnet/rpc",
             "requestBatchSize": 10,
             "maxConcurrentRequests": 100,
-            "rps": 20,
+            "rps": 10,
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
             "blocksPerBatch": 1000
@@ -81,20 +81,6 @@
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
             "blocksPerBatch": 1000
-        }
-    },
-    {
-        "chainName": "DOS Chain",
-        "blockchainId": "22v7AG7h6qaVxd4bLvAsSsg2LZ4RCn5iVYgFn7a2Fj1LCuYwjv",
-        "evmChainId": 7979,
-        "rpcConfig": {
-            "rpcUrl": "http://idx6.solokhin.com/api/7979/rpc",
-            "requestBatchSize": 100,
-            "maxConcurrentRequests": 100,
-            "rps": 7693,
-            "rpcSupportsDebug": false,
-            "enableBatchSizeGrowth": true,
-            "blocksPerBatch": 10000
         }
     }
 ]

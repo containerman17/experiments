@@ -18,7 +18,7 @@
         "blockchainId": "HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4",
         "evmChainId": 16180,
         "rpcConfig": {
-            "rpcUrl": "https://subnets.avax.network/plyr/mainnet/rpc",
+            "rpcUrl": "http://idx6.solokhin.com/api/16180/rpc",
             "requestBatchSize": 20,
             "maxConcurrentRequests": 100,
             "rps": 10,
@@ -81,6 +81,20 @@
             "rpcSupportsDebug": false,
             "enableBatchSizeGrowth": false,
             "blocksPerBatch": 1000
+        }
+    },
+    {
+        "chainName": "Space",
+        "blockchainId": "22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt",
+        "evmChainId": 8227,
+        "rpcConfig": {
+            "rpcUrl": "http://idx6.solokhin.com/api/8227/rpc",
+            "requestBatchSize": 100,
+            "maxConcurrentRequests": 100,
+            "rps": 1000,
+            "rpcSupportsDebug": false,
+            "enableBatchSizeGrowth": true,
+            "blocksPerBatch": 10000
         }
     }
 ]

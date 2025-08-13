@@ -442,6 +442,65 @@ export type GetApiGlobalMessagingComparisonResponses = {
 
 export type GetApiGlobalMessagingComparisonResponse = GetApiGlobalMessagingComparisonResponses[keyof GetApiGlobalMessagingComparisonResponses];
 
+export type GetApiGlobalMessagingComparisonDetailedData = {
+    body?: never;
+    path?: never;
+    query?: {
+        startTs?: number;
+        endTs?: number;
+    };
+    url: '/api/global/messaging/comparison/detailed';
+};
+
+export type GetApiGlobalMessagingComparisonDetailedResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        chainId: number;
+        chainName: string;
+        blockchainId: string;
+        layerzeroTotal: number;
+        icmTotal: number;
+        chainPairs: Array<{
+            otherChainId: string;
+            protocol: 'icm' | 'layerzero';
+            inbound: number;
+            outbound: number;
+            total: number;
+        }>;
+    }>;
+};
+
+export type GetApiGlobalMessagingComparisonDetailedResponse = GetApiGlobalMessagingComparisonDetailedResponses[keyof GetApiGlobalMessagingComparisonDetailedResponses];
+
+export type GetApiGlobalMessagingChainPairsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        days?: number;
+    };
+    url: '/api/global/messaging/chain-pairs';
+};
+
+export type GetApiGlobalMessagingChainPairsResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        sourceChainId: number;
+        sourceChainName: string;
+        sourceBlockchainId: string;
+        otherChainId: string;
+        protocol: 'icm' | 'layerzero';
+        inbound: number;
+        outbound: number;
+        total: number;
+    }>;
+};
+
+export type GetApiGlobalMessagingChainPairsResponse = GetApiGlobalMessagingChainPairsResponses[keyof GetApiGlobalMessagingChainPairsResponses];
+
 export type GetApiByEvmChainIdStatsTpsData = {
     body?: never;
     path: {

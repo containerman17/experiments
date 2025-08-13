@@ -132,7 +132,7 @@ export function Products() {
                 </div>
             )}
 
-            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+            <div>
                 {sorted.map((p) => (
                     <div
                         key={p.id}

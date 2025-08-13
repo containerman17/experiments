@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { useStore } from '../store'
 import type { PlateItem, Product } from '../types'
 import { formatNumber, scaleMacros, sumTotals } from '../utils'
@@ -13,7 +13,10 @@ export function Calculator() {
     const [selectedId, setSelectedId] = useState<string>('')
     const selected = products.find((p) => p.id === selectedId)
     const [amount, setAmount] = useState<string>('')
+    const [copied, setCopied] = useState<boolean>(false)
+    const copyTimer = useRef<number | null>(null)
 
+    const sortedProducts = useMemo(() => [...products].sort((a, b) => a.name.localeCompare(b.name, 'ru')), [products])
     const productsById = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products]) as Record<string, Product>
     const totals = useMemo(() => {
         const list = plate.map((pi) => scaleMacros(productsById[pi.productId], pi.amount))
@@ -28,8 +31,45 @@ export function Calculator() {
         setAmount('')
     }
 
+    function copyPlate() {
+        try {
+            const lines = plate.map((pi) => {
+                const product = productsById[pi.productId]
+                const scaled = scaleMacros(product, pi.amount)
+                const amountStr = product.mode === 'per100g' ? `${formatNumber(pi.amount)}г.` : `${formatNumber(pi.amount)} пор.`
+                const perUnitStr = product.mode === 'per100g' ? 'на 100г' : 'на пор.'
+                return `- ${product.name} ${amountStr} БЖУ ${formatNumber(scaled.protein)}/${formatNumber(scaled.fat)}/${formatNumber(scaled.carbs)} (${formatNumber(product.macros.protein)}/${formatNumber(product.macros.fat)}/${formatNumber(product.macros.carbs)} ${perUnitStr})`
+            })
+            const summary = `${formatNumber(totals.protein)} Белк., ${formatNumber(totals.fat)} Жир, ${formatNumber(totals.carbs)} Угл., ${formatNumber(totals.kcal)} ККал`
+            const text = [...lines, '---', 'Итого:', summary].join('\n')
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText(text)
+            } else {
+                const ta = document.createElement('textarea')
+                ta.value = text
+                ta.style.position = 'fixed'
+                ta.style.opacity = '0'
+                document.body.appendChild(ta)
+                ta.focus()
+                ta.select()
+                try { document.execCommand('copy') } finally { document.body.removeChild(ta) }
+            }
+            setCopied(true)
+            if (copyTimer.current !== null) clearTimeout(copyTimer.current)
+            copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+        } catch { }
+    }
+
+    useEffect(() => {
+        return () => {
+            if (copyTimer.current !== null) {
+                clearTimeout(copyTimer.current)
+            }
+        }
+    }, [])
+
     return (
-        <div className="flex flex-col h-full">
+        <div>
             <div className="p-3 border-b">
                 <h2 className="text-lg font-bold mb-3">Калькулятор</h2>
 
@@ -40,7 +80,7 @@ export function Calculator() {
                         onChange={(e) => setSelectedId(e.target.value)}
                     >
                         <option value="">Выберите продукт</option>
-                        {products.map((p) => (
+                        {sortedProducts.map((p) => (
                             <option key={p.id} value={p.id}>
                                 {p.name} {formatNumber(p.macros.protein)}/{formatNumber(p.macros.fat)}/{formatNumber(p.macros.carbs)}
                             </option>
@@ -71,7 +111,7 @@ export function Calculator() {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto" style={{ minHeight: '100px' }}>
+            <div>
                 {plate.map((pi) => (
                     <PlateRow
                         key={pi.id}
@@ -108,8 +148,15 @@ export function Calculator() {
                         <div className="text-xs text-gray-600">ккал</div>
                     </div>
                 </div>
-                {plate.length > 0 && (
-                    <div className="mt-4 text-center">
+                <div className="mt-4 flex gap-2 justify-center">
+                    <button
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
+                        onClick={copyPlate}
+                        disabled={plate.length === 0}
+                    >
+                        Скопировать текст
+                    </button>
+                    {plate.length > 0 && (
                         <button
                             className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors text-sm"
                             onClick={() => {
@@ -118,7 +165,10 @@ export function Calculator() {
                         >
                             Очистить
                         </button>
-                    </div>
+                    )}
+                </div>
+                {copied && (
+                    <div className="mt-2 text-center text-green-600 text-sm" aria-live="polite">Скопировано</div>
                 )}
             </div>
         </div>

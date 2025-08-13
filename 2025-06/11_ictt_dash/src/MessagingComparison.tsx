@@ -1,208 +1,111 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
+import TimeRangeSelector from "./components/TimeRangeSelector"
+import layerZeroIds from "./components/lz_data/layerZeroIds.json"
+import { WELL_KNOWN_CHAINS } from "../plugins/lib/WellKnownChains"
 
-const MONTHS_COUNT = 18;
+const layerZeroIdsMap: Map<string, {
+    name: string,
+    isAvalanche: boolean,
+}> = new Map(Object.entries(layerZeroIds) as [string, {
+    name: string,
+    isAvalanche: boolean,
+}][])
 
-interface WindowDataPoint {
-    fromTs: number
-    toTs: number
-    layerzero: number
-    icm: number
+interface ChainPair {
+    otherChainId: string
+    protocol: 'icm' | 'layerzero'
+    inbound: number
+    outbound: number
+    total: number
 }
 
-interface ChainComparison {
+interface DetailedChainComparison {
     chainId: number
     chainName: string
     blockchainId: string
-    data: WindowDataPoint[]
+    layerzeroTotal: number
+    icmTotal: number
+    chainPairs: ChainPair[]
 }
 
-function TotalChart({ data }: { data: WindowDataPoint[] }) {
-    const formatDateRange = (fromTs: number, toTs: number) => {
-        const from = new Date(fromTs * 1000)
-        const to = new Date(toTs * 1000)
-        const fromMonth = from.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const toMonth = to.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        return `${fromMonth} - ${toMonth}`
-    }
-
-    const chartData = data.map(item => ({
-        ...item,
-        label: formatDateRange(item.fromTs, item.toTs),
-        fullRange: `${new Date(item.fromTs * 1000).toLocaleDateString()} - ${new Date(item.toTs * 1000).toLocaleDateString()}`
-    }))
-
-    const maxValue = Math.max(
-        ...chartData.flatMap(d => [d.layerzero, d.icm])
-    )
-
-    return (
-        <div className="h-96">
-            <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                        dataKey="label"
-                        tick={{ fontSize: 11 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                    />
-                    <YAxis
-                        tick={{ fontSize: 12 }}
-                        domain={[0, maxValue > 0 ? 'dataMax' : 10]}
-                    />
-                    <Tooltip
-                        labelFormatter={(label, payload) => {
-                            if (payload && payload[0]) {
-                                return payload[0].payload.fullRange
-                            }
-                            return label
-                        }}
-                        formatter={(value: number, name: string) => [
-                            value.toLocaleString(),
-                            name === 'layerzero' ? 'LayerZero' : 'ICM'
-                        ]}
-                    />
-                    <Legend
-                        formatter={(value) => value === 'layerzero' ? 'LayerZero' : 'ICM'}
-                    />
-                    <Line
-                        type="monotone"
-                        dataKey="layerzero"
-                        stroke="#8b5cf6"
-                        strokeWidth={3}
-                        dot={{ fill: '#8b5cf6', r: 4 }}
-                        activeDot={{ r: 6 }}
-                    />
-                    <Line
-                        type="monotone"
-                        dataKey="icm"
-                        stroke="#3b82f6"
-                        strokeWidth={3}
-                        dot={{ fill: '#3b82f6', r: 4 }}
-                        activeDot={{ r: 6 }}
-                    />
-                </LineChart>
-            </ResponsiveContainer>
-        </div>
-    )
+interface TableRow {
+    chains: string
+    protocol: 'icm' | 'layerzero'
+    count: number
 }
 
-function ChainChart({ chain }: { chain: ChainComparison }) {
-    const formatDateRange = (fromTs: number, toTs: number) => {
-        const from = new Date(fromTs * 1000)
-        const to = new Date(toTs * 1000)
-        const fromMonth = from.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const toMonth = to.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        return `${fromMonth} - ${toMonth}`
-    }
-
-    const chartData = chain.data.map(item => ({
-        ...item,
-        label: formatDateRange(item.fromTs, item.toTs),
-        fullRange: `${new Date(item.fromTs * 1000).toLocaleDateString()} - ${new Date(item.toTs * 1000).toLocaleDateString()}`
-    }))
-
-    const maxValue = Math.max(
-        ...chartData.flatMap(d => [d.layerzero, d.icm])
-    )
-
-    return (
-        <div className="h-96">
-            <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                        dataKey="label"
-                        tick={{ fontSize: 11 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                    />
-                    <YAxis
-                        tick={{ fontSize: 12 }}
-                        domain={[0, maxValue > 0 ? 'dataMax' : 10]}
-                    />
-                    <Tooltip
-                        labelFormatter={(label, payload) => {
-                            if (payload && payload[0]) {
-                                return payload[0].payload.fullRange
-                            }
-                            return label
-                        }}
-                        formatter={(value: number, name: string) => [
-                            value.toLocaleString(),
-                            name === 'layerzero' ? 'LayerZero' : 'ICM'
-                        ]}
-                    />
-                    <Legend
-                        formatter={(value) => value === 'layerzero' ? 'LayerZero' : 'ICM'}
-                    />
-                    <Line
-                        type="monotone"
-                        dataKey="layerzero"
-                        stroke="#8b5cf6"
-                        strokeWidth={2}
-                        dot={{ fill: '#8b5cf6', r: 3 }}
-                        activeDot={{ r: 5 }}
-                    />
-                    <Line
-                        type="monotone"
-                        dataKey="icm"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        dot={{ fill: '#3b82f6', r: 3 }}
-                        activeDot={{ r: 5 }}
-                    />
-                </LineChart>
-            </ResponsiveContainer>
-        </div>
-    )
+// Color schemes
+const PROTOCOL_COLORS = {
+    icm: '#3b82f6',       // Blue
+    layerzero: '#8b5cf6'  // Purple
 }
 
-function aggregateChainData(chains: ChainComparison[]): WindowDataPoint[] {
-    if (chains.length === 0) return []
+// Common LayerZero endpoint IDs to chain names (fallback)
+const LAYERZERO_CHAINS: Record<string, string> = {
+    '101': 'External - Ethereum',
+    '30168': 'External - Solana',
+    // Add more as needed
+}
 
-    // Get all unique time windows from the first chain (they should be the same across all chains)
-    const windows = chains[0]?.data || []
-
-    return windows.map(window => {
-        let totalLayerZero = 0
-        let totalIcm = 0
-
-        // Sum up counts from all chains for this time window
-        chains.forEach(chain => {
-            const matchingWindow = chain.data.find(w => w.fromTs === window.fromTs && w.toTs === window.toTs)
-            if (matchingWindow) {
-                totalLayerZero += matchingWindow.layerzero
-                totalIcm += matchingWindow.icm
+// Helper to format chain ID
+function formatChainId(chainId: string, protocol: 'icm' | 'layerzero', chainLookup?: Map<string, string>): string {
+    if (protocol === 'layerzero') {
+        // Prefer dynamic lookup from the imported LayerZero IDs map
+        const direct = layerZeroIdsMap.get(chainId)
+        if (direct) {
+            const baseName = direct.name ?? `LZ ${chainId}`
+            if (direct.isAvalanche) {
+                return `🚨 ${baseName} (Avalanche L1)`
             }
-        })
-
-        return {
-            fromTs: window.fromTs,
-            toTs: window.toTs,
-            layerzero: totalLayerZero,
-            icm: totalIcm
+            return baseName
         }
-    })
+
+        // Fallback: some datasets use 301xx style endpoint IDs while the map might store 1xx
+        const numeric = Number(chainId)
+        if (!Number.isNaN(numeric) && numeric >= 30000) {
+            const maybeCoreId = String(numeric - 30000)
+            const alt = layerZeroIdsMap.get(maybeCoreId)
+            if (alt) {
+                const baseName = alt.name ?? `LZ ${chainId}`
+                if (alt.isAvalanche) {
+                    return `🚨 ${baseName} (Avalanche L1)`
+                }
+                return baseName
+            }
+        }
+
+        // Final fallback to a tiny hardcoded map or generic label
+        const fallback = LAYERZERO_CHAINS[chainId]
+        return fallback || `LZ ${chainId}`
+    }
+    // For ICM, use the chain lookup if available
+    if (chainLookup && chainLookup.has(chainId)) {
+        return chainLookup.get(chainId)!
+    }
+    // Return full blockchain ID without truncation
+    return chainId
 }
 
 export default function MessagingComparison() {
-    const { data, error, isError, isLoading } = useQuery<ChainComparison[]>({
-        queryKey: ['messagingComparison'],
+    const now = Math.floor(Date.now() / 1000)
+    const [startTs, setStartTs] = useState<number>(now - 90 * 86400) // Default: last 3 months
+    const [endTs, setEndTs] = useState<number>(now)
+
+    const { data, error, isError, isLoading } = useQuery<DetailedChainComparison[]>({
+        queryKey: ['messagingComparisonDetailed', startTs, endTs],
         queryFn: async () => {
-            const response = await fetch(`${window.location.origin}/api/global/messaging/comparison?count=${MONTHS_COUNT}`)
+            const response = await fetch(
+                `${window.location.origin}/api/global/messaging/comparison/detailed?startTs=${startTs}&endTs=${endTs}`
+            )
 
             if (!response.ok) {
                 throw new Error('Failed to fetch messaging comparison data')
             }
 
-            const data = await response.json()
-            return data as ChainComparison[]
+            return await response.json()
         }
     })
 
@@ -210,7 +113,56 @@ export default function MessagingComparison() {
         return <ErrorComponent message={error?.message || 'Failed to load messaging comparison data'} />
     }
 
-    const totalData = data ? aggregateChainData(data) : []
+    // Build a map of blockchain IDs to chain names from ALL chains in the API response
+    const chainsByBlockchainId = new Map<string, string>()
+
+    // First, get all chains data to build the complete lookup
+    const { data: allChainsData } = useQuery<Array<{ evmChainId: number; chainName: string; blockchainId: string }>>({
+        queryKey: ['allChains'],
+        queryFn: async () => {
+            const response = await fetch(`${window.location.origin}/api/chains`)
+            if (!response.ok) {
+                throw new Error('Failed to fetch chains data')
+            }
+            return await response.json()
+        }
+    })
+
+    // Build the lookup map
+    allChainsData?.forEach(chain => {
+        chainsByBlockchainId.set(chain.blockchainId, chain.chainName)
+    })
+
+    for (const [blockchainId, chainName] of Object.entries(WELL_KNOWN_CHAINS)) {
+        if (!chainsByBlockchainId.has(blockchainId)) {
+            chainsByBlockchainId.set(blockchainId, chainName)
+        }
+    }
+
+    // Transform data into table rows (combine inbound and outbound for each pair)
+    const tableRows: TableRow[] = []
+    data?.forEach(chain => {
+        chain.chainPairs.forEach(pair => {
+            if (pair.total > 0) {
+                const pairChainName = formatChainId(pair.otherChainId, pair.protocol, chainsByBlockchainId)
+                tableRows.push({
+                    chains: `${chain.chainName} ↔ ${pairChainName}`,
+                    protocol: pair.protocol,
+                    count: pair.total
+                })
+            }
+        })
+    })
+
+    // Sort by message count descending
+    tableRows.sort((a, b) => b.count - a.count)
+
+    // Calculate totals
+    const totals = data?.reduce((acc, chain) => ({
+        layerzero: acc.layerzero + chain.layerzeroTotal,
+        icm: acc.icm + chain.icmTotal,
+        total: acc.total + chain.layerzeroTotal + chain.icmTotal
+    }), { layerzero: 0, icm: 0, total: 0 }) || { layerzero: 0, icm: 0, total: 0 }
 
     return (
         <div className="py-8 px-4 md:px-8">
@@ -218,60 +170,101 @@ export default function MessagingComparison() {
                 <h1 className="text-3xl font-bold">📊 Messaging Protocol Comparison</h1>
 
                 <div className="border border-gray-200 rounded-xl bg-white p-6">
-                    <div className="mb-3 text-base">ICM vs LayerZero Message Volume</div>
+                    <div className="mb-3 text-base">Cross-Chain Messaging Activity</div>
                     <p className="text-sm mb-3">
-                        Compare messaging activity between Inter-Chain Messaging (ICM) and LayerZero protocols across different chains:
+                        All cross-chain messages between chains for both ICM and LayerZero protocols:
                     </p>
-                    <ul className="space-y-2">
-                        <li>
-                            <span className="font-semibold text-blue-600">ICM/Teleporter (Blue):</span> Avalanche's native Inter-Chain Messaging protocol
-                            <ul className="ml-6 mt-1 text-xs space-y-1">
-                                <li>• Contract: <code>0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf</code></li>
-                                <li>• Events tracked: <code>SendCrossChainMessage</code> (outgoing) and <code>ReceiveCrossChainMessage</code> (incoming)</li>
-                            </ul>
+                    <ul className="space-y-2 mb-4">
+                        <li className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PROTOCOL_COLORS.icm }} />
+                            <span><span className="font-semibold">ICM/Teleporter:</span> Avalanche's native Inter-Chain Messaging</span>
                         </li>
-                        <li>
-                            <span className="font-semibold text-purple-600">LayerZero V2 (Purple):</span> Cross-chain messaging protocol
-                            <ul className="ml-6 mt-1 text-xs space-y-1">
-                                <li>• Events tracked: <code>PacketSent</code> (outgoing) and <code>PacketDelivered</code> (incoming)</li>
-                                <li>• From LayerZero Endpoint V2 contracts deployed on each chain</li>
-                            </ul>
+                        <li className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PROTOCOL_COLORS.layerzero }} />
+                            <span><span className="font-semibold">LayerZero V2:</span> Cross-chain messaging protocol</span>
                         </li>
-                        <li><span className="font-semibold">Time Windows:</span> Last {MONTHS_COUNT} months, each showing a 30-day rolling window</li>
-                        <li><span className="font-semibold">Data Points:</span> Message counts aggregated per 30-day period from indexed events</li>
                     </ul>
+
+                    <TimeRangeSelector
+                        startTs={startTs}
+                        endTs={endTs}
+                        onStartTsChange={setStartTs}
+                        onEndTsChange={setEndTs}
+                    />
                 </div>
+
+                {/* Summary Statistics */}
+                {data && data.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-600">Total Messages</div>
+                            <div className="text-2xl font-bold">{totals.total.toLocaleString()}</div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-600">ICM Messages</div>
+                            <div className="text-2xl font-bold text-blue-600">{totals.icm.toLocaleString()}</div>
+                            <div className="text-xs text-gray-500">{totals.total > 0 ? `${((totals.icm / totals.total) * 100).toFixed(1)}%` : '0%'}</div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-600">LayerZero Messages</div>
+                            <div className="text-2xl font-bold text-purple-600">{totals.layerzero.toLocaleString()}</div>
+                            <div className="text-xs text-gray-500">{totals.total > 0 ? `${((totals.layerzero / totals.total) * 100).toFixed(1)}%` : '0%'}</div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {isLoading ? (
                 <div className="text-center py-8">Loading messaging data...</div>
-            ) : !data || data.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No messaging data available</div>
+            ) : !data || data.length === 0 || tableRows.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No messaging data available for the selected time range</div>
             ) : (
-                <>
-                    {/* Total across all chains */}
-                    <div className="mb-8">
-                        <ExampleCard
-                            name="Network Total (All Chains Combined)"
-                            curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison?count=${MONTHS_COUNT}"`}
-                        >
-                            <TotalChart data={totalData} />
-                        </ExampleCard>
-                    </div>
+                <ExampleCard
+                    name="Cross-Chain Messages"
+                    curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison/detailed?startTs=${startTs}&endTs=${endTs}"`}
+                >
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Protocol
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Chains
+                                    </th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Messages
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {tableRows.map((row, index) => (
+                                    <tr key={index} className="hover:bg-gray-50">
 
-                    {/* Individual chain charts */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {data.map(chain => (
-                            <ExampleCard
-                                key={chain.chainId}
-                                name={chain.chainName}
-                                curlString={`curl -X GET "${window.location.origin}/api/global/messaging/comparison?count=${MONTHS_COUNT}"`}
-                            >
-                                <ChainChart chain={chain} />
-                            </ExampleCard>
-                        ))}
+                                        <td className="px-4 py-3 text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="w-2 h-2 rounded-full"
+                                                    style={{ backgroundColor: PROTOCOL_COLORS[row.protocol] }}
+                                                />
+                                                <span style={{ color: PROTOCOL_COLORS[row.protocol] }} className="font-medium">
+                                                    {row.protocol === 'icm' ? 'ICM' : 'LayerZero'}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-gray-900">
+                                            {row.chains}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-right font-mono">
+                                            {row.count.toLocaleString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </>
+                </ExampleCard>
             )}
         </div>
     )

@@ -4,6 +4,7 @@ import { type GetApiGlobalIcmGasUsageResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
+import TimeRangeSelector from "./components/TimeRangeSelector"
 
 type GasUsageData = GetApiGlobalIcmGasUsageResponses[200][0]
 
@@ -23,35 +24,6 @@ export default function ICMGasUsage() {
             throw new Error('Failed to fetch ICM gas usage data')
         }
     })
-
-    const handleStartTsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const value = parseInt(event.target.value)
-        if (!isNaN(value) && value >= 0) {
-            setStartTs(value)
-        }
-    }
-
-    const handleEndTsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const value = parseInt(event.target.value)
-        if (!isNaN(value) && value >= 0) {
-            setEndTs(value)
-        }
-    }
-
-    const formatTimestampForInput = (ts: number): string => {
-        if (ts === 0) return new Date(0).toISOString().slice(0, 16)
-        return new Date(ts * 1000).toISOString().slice(0, 16)
-    }
-
-    const handleStartDateTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const dateTime = new Date(event.target.value)
-        setStartTs(Math.floor(dateTime.getTime() / 1000))
-    }
-
-    const handleEndDateTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const dateTime = new Date(event.target.value)
-        setEndTs(Math.floor(dateTime.getTime() / 1000))
-    }
 
     if (isError) {
         return <ErrorComponent message={error?.message || 'Failed to load ICM gas usage data'} />
@@ -75,44 +47,13 @@ export default function ICMGasUsage() {
                         <li><span className="font-semibold">Total:</span> Combined send and receive activity on this chain</li>
                     </ul>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Start Time
-                            </label>
-                            <input
-                                type="datetime-local"
-                                value={formatTimestampForInput(startTs)}
-                                onChange={handleStartDateTimeChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                            <input
-                                type="number"
-                                value={startTs}
-                                onChange={handleStartTsChange}
-                                className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Unix timestamp"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                End Time
-                            </label>
-                            <input
-                                type="datetime-local"
-                                value={formatTimestampForInput(endTs)}
-                                onChange={handleEndDateTimeChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                            <input
-                                type="number"
-                                value={endTs}
-                                onChange={handleEndTsChange}
-                                className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Unix timestamp"
-                            />
-                        </div>
-                    </div>
+                    <TimeRangeSelector
+                        startTs={startTs}
+                        endTs={endTs}
+                        onStartTsChange={setStartTs}
+                        onEndTsChange={setEndTs}
+                        className="mt-4"
+                    />
                 </div>
             </div>
 

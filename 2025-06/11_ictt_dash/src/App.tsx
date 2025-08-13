@@ -1,8 +1,9 @@
-import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
-import { ExternalLink } from 'lucide-react'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useState } from 'react'
+import Sidebar from './components/Sidebar'
 import Sync from './Sync'
 import RpcExamples from './RpcExamples'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ICMGasUsage from './ICMGasUsage'
 import TPS from './TPS'
 import CumulativeTxs from './CumulativeTxs'
@@ -17,31 +18,18 @@ import NotFound from './NotFound'
 
 function App() {
   const queryClient = new QueryClient()
-  const location = useLocation()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen bg-gray-100">
-        <div className="px-4">
-          <nav className="mb-6">
-            <div className="py-3 flex gap-6">
-              <Link to="/leaderboard" className={`${location.pathname === '/leaderboard' || location.pathname === '/' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Leaderboard</Link>
-              <Link to="/sync-status" className={`${location.pathname === '/sync-status' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Sync Status</Link>
-              <Link to="/rpc" className={`${location.pathname === '/rpc' ? 'font-bold' : ''} text-blue-700 hover:underline`}>RPC Demo</Link>
-              <Link to="/icm-gas-usage" className={`${location.pathname === '/icm-gas-usage' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICM Gas Usage</Link>
-              <Link to="/tps" className={`${location.pathname === '/tps' ? 'font-bold' : ''} text-blue-700 hover:underline`}>TPS</Link>
-              <Link to="/cumulative-txs" className={`${location.pathname === '/cumulative-txs' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Cumulative Txs</Link>
-              <Link to="/daily-message-volume" className={`${location.pathname === '/daily-message-volume' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Daily Messages</Link>
-              <Link to="/messaging-comparison" className={`${location.pathname === '/messaging-comparison' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICM vs LZ</Link>
-              <Link to="/ictt-transfers" className={`${location.pathname === '/ictt-transfers' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICTT Transfers</Link>
-              <Link to="/ictt-transfers-list" className={`${location.pathname === '/ictt-transfers-list' ? 'font-bold' : ''} text-blue-700 hover:underline`}>ICTT List</Link>
-              <Link to="/chain-comparison" className={`${location.pathname === '/chain-comparison' ? 'font-bold' : ''} text-blue-700 hover:underline`}>Chain Comparison</Link>
-              <a href="/api/docs" className="text-blue-700 hover:underline flex items-center gap-1" target="api">
-                API Docs
-                <ExternalLink size={16} />
-              </a>
-            </div>
-          </nav>
-          <main>
+        <Sidebar isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen} />
+        {/* Main content area with margin to account for sidebar */}
+        <div className={`
+          lg:ml-64 transition-transform duration-300 ease-in-out
+          ${isMobileMenuOpen ? 'translate-x-64' : 'translate-x-0'}
+        `}>
+          <main className="p-4 pt-16 lg:pt-4">
             <Routes>
               <Route path="/" element={<Navigate to="/leaderboard" replace />} />
               <Route path="/sync-status" element={<Sync />} />

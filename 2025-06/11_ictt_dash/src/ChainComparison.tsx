@@ -9,6 +9,7 @@ type Chain = GetApiChainsResponses[200][0]
 interface ChainStats {
     chain: Chain
     period1: {
+        startTxs: number
         totalTxs: number
         dailyTxs: number
         totalActiveAddresses: number
@@ -17,6 +18,7 @@ interface ChainStats {
         icmMessagesInPeriod: number
     }
     period2: {
+        startTxs: number
         totalTxs: number
         dailyTxs: number
         totalActiveAddresses: number
@@ -147,8 +149,8 @@ export default function ChainComparison() {
         const fetchStats = async (chain: Chain) => {
             setChainStats(prev => new Map(prev).set(chain.evmChainId, {
                 chain,
-                period1: { totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
-                period2: { totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
+                period1: { startTxs: 0, totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
+                period2: { startTxs: 0, totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
                 loading: true
             }))
 
@@ -248,6 +250,7 @@ export default function ChainComparison() {
                 setChainStats(prev => new Map(prev).set(chain.evmChainId, {
                     chain,
                     period1: {
+                        startTxs: period1StartTxs,
                         totalTxs: period1TotalTxs,
                         dailyTxs: period1TxsInPeriod / period1Days,
                         totalActiveAddresses: p1ActiveAddresses.totalActiveAddresses || 0,
@@ -256,6 +259,7 @@ export default function ChainComparison() {
                         icmMessagesInPeriod: icmP1MessagesInPeriod
                     },
                     period2: {
+                        startTxs: period2StartTxs,
                         totalTxs: period2TotalTxs,
                         dailyTxs: period2TxsInPeriod / period2Days,
                         totalActiveAddresses: p2ActiveAddresses.totalActiveAddresses || 0,
@@ -268,8 +272,8 @@ export default function ChainComparison() {
             } catch (error) {
                 setChainStats(prev => new Map(prev).set(chain.evmChainId, {
                     chain,
-                    period1: { totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
-                    period2: { totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
+                    period1: { startTxs: 0, totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
+                    period2: { startTxs: 0, totalTxs: 0, dailyTxs: 0, totalActiveAddresses: 0, avgDailyActiveAddresses: 0, avgDailyGasUsed: 0, icmMessagesInPeriod: 0 },
                     loading: false,
                     error: error instanceof Error ? error.message : 'Failed to fetch data'
                 }))
@@ -318,6 +322,23 @@ export default function ChainComparison() {
         } catch {
             return 'Invalid Date Range'
         }
+    }
+
+    const calculatePercentageChange = (period1Value: number, period2Value: number): number => {
+        if (period1Value === 0) return period2Value > 0 ? 100 : 0
+        return ((period2Value - period1Value) / period1Value) * 100
+    }
+
+    const formatPercentageChange = (value: number) => {
+        const formattedValue = value.toFixed(1)
+        const isPositive = value > 0
+        const isNeutral = value === 0
+
+        return (
+            <span className={`font-mono ${isPositive ? 'text-green-600' : isNeutral ? 'text-gray-600' : 'text-red-600'}`}>
+                {isPositive ? '+' : ''}{formattedValue}%
+            </span>
+        )
     }
 
     // Check if dates are valid
@@ -453,16 +474,36 @@ export default function ChainComparison() {
                                                     <th className="text-left py-2 px-4">Metric</th>
                                                     <th className="text-right py-2 px-4 text-sm">{formatDateRange(period1Start, period1End)}</th>
                                                     <th className="text-right py-2 px-4 text-sm">{formatDateRange(period2Start, period2End)}</th>
+                                                    <th className="text-right py-2 px-4 text-sm">Change</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <tr className="border-b">
+                                                    <td className="py-3 px-4">Total Transactions (start of period)</td>
+                                                    <td className="text-right py-3 px-4 font-mono">
+                                                        {stats.period1.startTxs.toLocaleString()}
+                                                        <div className="text-xs text-gray-500">{formatDate(period1Start)}</div>
+                                                    </td>
+                                                    <td className="text-right py-3 px-4 font-mono">
+                                                        {stats.period2.startTxs.toLocaleString()}
+                                                        <div className="text-xs text-gray-500">{formatDate(period2Start)}</div>
+                                                    </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.startTxs, stats.period2.startTxs))}
+                                                    </td>
+                                                </tr>
+                                                <tr className="border-b">
                                                     <td className="py-3 px-4">Total Transactions (end of period)</td>
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {stats.period1.totalTxs.toLocaleString()}
+                                                        <div className="text-xs text-gray-500">{formatDate(period1End)}</div>
                                                     </td>
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {stats.period2.totalTxs.toLocaleString()}
+                                                        <div className="text-xs text-gray-500">{formatDate(period2End)}</div>
+                                                    </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.totalTxs, stats.period2.totalTxs))}
                                                     </td>
                                                 </tr>
                                                 <tr className="border-b">
@@ -473,6 +514,9 @@ export default function ChainComparison() {
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {Math.round(stats.period2.dailyTxs).toLocaleString()}
                                                     </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.dailyTxs, stats.period2.dailyTxs))}
+                                                    </td>
                                                 </tr>
                                                 <tr className="border-b">
                                                     <td className="py-3 px-4">Active Addresses (during period)</td>
@@ -481,6 +525,9 @@ export default function ChainComparison() {
                                                     </td>
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {stats.period2.totalActiveAddresses.toLocaleString()}
+                                                    </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.totalActiveAddresses, stats.period2.totalActiveAddresses))}
                                                     </td>
                                                 </tr>
                                                 <tr className="border-b">
@@ -491,6 +538,9 @@ export default function ChainComparison() {
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {Math.round(stats.period2.avgDailyActiveAddresses).toLocaleString()}
                                                     </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.avgDailyActiveAddresses, stats.period2.avgDailyActiveAddresses))}
+                                                    </td>
                                                 </tr>
                                                 <tr className="border-b">
                                                     <td className="py-3 px-4">Daily Gas Used (avg)</td>
@@ -500,6 +550,9 @@ export default function ChainComparison() {
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {Math.round(stats.period2.avgDailyGasUsed).toLocaleString()}
                                                     </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.avgDailyGasUsed, stats.period2.avgDailyGasUsed))}
+                                                    </td>
                                                 </tr>
                                                 <tr className="border-b">
                                                     <td className="py-3 px-4">ICM Messages sent/received in period</td>
@@ -508,6 +561,9 @@ export default function ChainComparison() {
                                                     </td>
                                                     <td className="text-right py-3 px-4 font-mono">
                                                         {stats.period2.icmMessagesInPeriod.toLocaleString()}
+                                                    </td>
+                                                    <td className="text-right py-3 px-4">
+                                                        {formatPercentageChange(calculatePercentageChange(stats.period1.icmMessagesInPeriod, stats.period2.icmMessagesInPeriod))}
                                                     </td>
                                                 </tr>
                                             </tbody>

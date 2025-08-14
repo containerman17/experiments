@@ -318,6 +318,38 @@ export type GetApiGlobalIcmGasUsageResponses = {
 
 export type GetApiGlobalIcmGasUsageResponse = GetApiGlobalIcmGasUsageResponses[keyof GetApiGlobalIcmGasUsageResponses];
 
+export type GetApiByEvmChainIdIcmGasUsageData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query?: {
+        startTs?: number;
+        endTs?: number;
+    };
+    url: '/api/{evmChainId}/icm-gas-usage';
+};
+
+export type GetApiByEvmChainIdIcmGasUsageResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        chainName: string;
+        chainBlockchainId: string;
+        otherChainName: string;
+        otherChainBlockchainId: string;
+        sendCount: number;
+        receiveCount: number;
+        sendGasCost: number;
+        receiveGasCost: number;
+        totalCount: number;
+        totalGasCost: number;
+    }>;
+};
+
+export type GetApiByEvmChainIdIcmGasUsageResponse = GetApiByEvmChainIdIcmGasUsageResponses[keyof GetApiByEvmChainIdIcmGasUsageResponses];
+
 export type GetApiGlobalIcttTransfersData = {
     body?: never;
     path?: never;

@@ -2,6 +2,8 @@ import fastify from 'fastify';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
 import fastifyRateLimit from '@fastify/rate-limit';
+import fastifyHttpProxy from '@fastify/http-proxy';
+import fastifyWebsocket from '@fastify/websocket';
 import { database, type NodeAssignment } from './database.js';
 import { checkSubnetExists, getSubnetIdFromChainId, getNodeInfo, NodeInfoResult, NodeInfoResponse } from './node_apis.js';
 import { generateDockerCompose } from './docker-composer.js';
@@ -46,19 +48,29 @@ async function createServer() {
     const server = fastify({ logger: true });
 
     // Register rate limiting
-    await server.register(fastifyRateLimit, {
-        max: 100, // Maximum 100 requests
-        timeWindow: '1 minute', // Per 1 minute
-        cache: 10000,
-        errorResponseBuilder: function (request, context) {
-            return {
-                statusCode: 429,
-                error: 'Too Many Requests',
-                message: `Rate limit exceeded. Retry in ${context.after}`,
-                retryAfter: Math.round(context.ttl / 1000) // Convert ms to seconds
-            };
-        }
-    });
+    // await server.register(fastifyRateLimit, {
+    //     max: 100, // Maximum 100 requests
+    //     timeWindow: '1 minute', // Per 1 minute
+    //     cache: 10000,
+    //     skipOnError: false,
+    //     // Exclude WebSocket connections from rate limiting
+    //     keyGenerator: (request: any) => {
+    //         // Return null for WebSocket requests to skip rate limiting
+    //         if (request.headers.upgrade === 'websocket' || request.url.endsWith('/ws')) {
+    //             return null;
+    //         }
+    //         // Default key generator (IP-based)
+    //         return request.ip;
+    //     },
+    //     errorResponseBuilder: function (request, context) {
+    //         return {
+    //             statusCode: 429,
+    //             error: 'Too Many Requests',
+    //             message: `Rate limit exceeded. Retry in ${context.after}`,
+    //             retryAfter: Math.round(context.ttl / 1000) // Convert ms to seconds
+    //         };
+    //     }
+    // });
 
     // Register Swagger (OpenAPI) documentation
     await server.register(fastifySwagger, {
@@ -86,7 +98,7 @@ async function createServer() {
                 },
                 {
                     name: 'proxy',
-                    description: 'RPC proxy endpoints for blockchain interaction'
+                    description: 'Proxy endpoints for blockchain interaction. Supports both HTTP RPC at /ext/bc/:chainId/rpc and WebSocket connections at /ext/bc/:chainId/ws'
                 }
             ],
             components: {
@@ -472,240 +484,93 @@ async function createServer() {
         }
     });
 
-    // OPTIONS handler for CORS preflight
-    server.options('/ext/bc/:chainId/rpc', {
-        schema: {
-            hide: true // Hide from docs as it's just CORS
+    // Register WebSocket support (must be before http-proxy for WS support)
+    await server.register(fastifyWebsocket);
+
+    // Create a Map to cache chainId -> nodePort mappings for performance
+    const chainIdToNodePort = new Map<string, number>();
+
+    // Helper to get node port for a chainId
+    const getNodePortForChain = async (chainId: string): Promise<number | null> => {
+        // Check cache first
+        if (chainIdToNodePort.has(chainId)) {
+            return chainIdToNodePort.get(chainId)!;
         }
-    }, async (req, reply) => {
-        reply.header('Access-Control-Allow-Origin', '*');
-        reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', '*');
-        reply.code(200).send();
-    });
 
-    server.get('/ext/bc/:chainId/rpc', {
-        schema: {
-            tags: ['proxy'],
-            summary: 'Get RPC endpoint status',
-            description: 'Check the status of a blockchain RPC endpoint',
-            params: {
-                type: 'object',
-                properties: {
-                    chainId: {
-                        type: 'string',
-                        description: 'The blockchain ID'
-                    }
-                },
-                required: ['chainId']
-            },
-            response: {
-                200: {
-                    description: 'Healthy endpoint',
-                    type: 'string'
-                },
-                404: {
-                    description: 'Chain not found',
-                    type: 'object',
-                    properties: {
-                        error: { type: 'string' }
-                    }
-                },
-                500: {
-                    description: 'Internal error',
-                    type: 'object',
-                    properties: {
-                        error: { type: 'string' },
-                        chainId: { type: 'string' }
-                    }
-                },
-                503: {
-                    description: 'Service unavailable',
-                    type: 'string'
-                }
-            }
+        const subnetId = await getSubnetIdFromChainId(chainId);
+        if (!subnetId) {
+            return null;
         }
-    }, async (req, reply) => {
-        const { chainId } = req.params as { chainId: string };
 
-        // Add CORS headers
-        reply.header('Access-Control-Allow-Origin', '*');
-        reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', '*');
+        const assignments = database.getSubnetAssignments(subnetId);
+        if (assignments.length === 0) {
+            return null;
+        }
 
-        try {
-            // Get subnetId from chainId using cached lookup
-            const subnetId = await getSubnetIdFromChainId(chainId);
-            if (!subnetId) {
-                return reply.code(404).send({
-                    error: `Chain ${chainId} not found or invalid`
-                });
-            }
+        const nodePort = 9652 + (assignments[0].nodeIndex * 2);
+        chainIdToNodePort.set(chainId, nodePort);
+        return nodePort;
+    };
 
-            const assignments = database.getSubnetAssignments(subnetId);
-            if (assignments.length === 0) {
-                return reply.code(404).send({
-                    error: `Subnet ${subnetId} not found in database`
-                });
-            }
+    // HTTP RPC Proxy
+    server.all('/ext/bc/:chainId/rpc', async (request: any, reply: any) => {
+        const { chainId } = request.params as { chainId: string };
 
-            const nodeIndex = assignments[0].nodeIndex; // Get the first node hosting this subnet
-            const nodePort = 9652 + (nodeIndex * 2);
+        console.log(`[HTTP Proxy] ${request.method} request for chainId: ${chainId}, path: ${request.url}`);
 
-            let status = 'not healthy - node is not ready or still bootstrapping';
-            let evmChainIdText = '';
+        // Handle OPTIONS for CORS
+        if (request.method === 'OPTIONS') {
+            reply.header('Access-Control-Allow-Origin', '*');
+            reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            reply.header('Access-Control-Allow-Headers', '*');
+            return reply.code(200).send();
+        }
 
-            // Test if node is alive and get chain ID
-            try {
-                const targetUrl = `http://localhost:${nodePort}/ext/bc/${chainId}/rpc`;
-                const chainIdResponse = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        method: 'eth_chainId',
-                        params: [],
-                        id: 1
-                    })
-                });
-
-                if (chainIdResponse.ok) {
-                    const chainIdData = await chainIdResponse.json() as { result?: string };
-                    if (chainIdData.result) {
-                        const evmChainId = parseInt(chainIdData.result, 16);
-                        status = 'healthy';
-                        evmChainIdText = `, EVM Chain ID: ${evmChainId}`;
-                    }
-                }
-            } catch (error) {
-                // status already set to not healthy
-            }
-
-            if (status === 'healthy') {
-                return reply.code(200).send(`Blockchain ID: ${chainId}, Subnet ID: ${subnetId}, Status: ${status}${evmChainIdText}. To do actual RPC requests you need to issue a POST request.`);
-            } else {
-                return reply.code(503).send(`Blockchain ID: ${chainId}, Subnet ID: ${subnetId}, Status: ${status}`);
-            }
-
-        } catch (error) {
-            console.error('Error testing node health:', error);
-            return reply.code(500).send({
-                error: 'Internal proxy error',
-                chainId
+        const nodePort = await getNodePortForChain(chainId);
+        if (!nodePort) {
+            console.log(`[HTTP Proxy] Chain ${chainId} not found in database`);
+            return reply.code(404).send({
+                error: `Chain ${chainId} not found or not assigned to any node`
             });
         }
-    });
 
-    // Proxy endpoint - forwards RPC requests to appropriate node
-    server.post('/ext/bc/:chainId/rpc', {
-        schema: {
-            tags: ['proxy'],
-            summary: 'Forward RPC request',
-            description: 'Forwards JSON-RPC requests to the appropriate node',
-            params: {
-                type: 'object',
-                properties: {
-                    chainId: {
-                        type: 'string',
-                        description: 'The blockchain ID'
-                    }
-                },
-                required: ['chainId']
-            },
-            body: {
-                type: 'object',
-                description: 'JSON-RPC request body',
-                examples: [
-                    {
-                        jsonrpc: '2.0',
-                        method: 'eth_chainId',
-                        params: [],
-                        id: 1
-                    }
-                ]
-            },
-            response: {
-                200: {
-                    description: 'Successful RPC response',
-                    type: 'object'
-                },
-                404: {
-                    description: 'Chain not found',
-                    type: 'object',
-                    properties: {
-                        error: { type: 'string' }
-                    }
-                },
-                500: {
-                    description: 'Internal proxy error',
-                    type: 'object',
-                    properties: {
-                        error: { type: 'string' },
-                        chainId: { type: 'string' }
-                    }
-                },
-                503: {
-                    description: 'Node not ready',
-                    type: 'object',
-                    properties: {
-                        error: { type: 'string' },
-                        chainId: { type: 'string' },
-                        retry: { type: 'boolean' }
-                    }
-                }
-            }
-        }
-    }, async (req, reply) => {
-        const { chainId } = req.params as { chainId: string };
-
-        // Add CORS headers
-        reply.header('Access-Control-Allow-Origin', '*');
-        reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', '*');
+        console.log(`[HTTP Proxy] Routing to node port: ${nodePort}`);
 
         try {
-            const subnetId = await getSubnetIdFromChainId(chainId);
-            if (!subnetId) {
-                return reply.code(404).send({
-                    error: `Chain ${chainId} not found or invalid`
-                });
+            const targetUrl = `http://localhost:${nodePort}${request.url}`;
+            console.log(`[HTTP Proxy] Forwarding to: ${targetUrl}`);
+
+            // Add CORS headers
+            reply.header('Access-Control-Allow-Origin', '*');
+            reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            reply.header('Access-Control-Allow-Headers', '*');
+
+            const headers: any = { ...request.headers };
+            delete headers.host;
+            delete headers['content-length']; // Let fetch recalculate
+
+            const fetchOptions: any = {
+                method: request.method,
+                headers
+            };
+
+            if (request.method !== 'GET' && request.method !== 'HEAD' && request.body) {
+                fetchOptions.body = JSON.stringify(request.body);
+                fetchOptions.headers['content-type'] = 'application/json';
             }
 
-            const assignments = database.getSubnetAssignments(subnetId);
-            if (assignments.length === 0) {
-                return reply.code(404).send({
-                    error: `Subnet ${subnetId} not found in database`
-                });
-            }
+            const response = await fetch(targetUrl, fetchOptions);
+            const responseText = await response.text();
 
-            const nodeIndex = assignments[0].nodeIndex; // Get the first node hosting this subnet
-            const nodePort = 9652 + (nodeIndex * 2);
+            console.log(`[HTTP Proxy] Response status: ${response.status}`);
 
-            // Forward request to node
-            const targetUrl = `http://localhost:${nodePort}/ext/bc/${chainId}/rpc`;
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...Object.fromEntries(
-                        Object.entries(req.headers).filter(([key]) =>
-                            key.startsWith('x-') || key === 'user-agent'
-                        )
-                    )
-                },
-                body: JSON.stringify(req.body)
-            });
-
-            // Forward response as-is
-            const data = await response.text();
-            reply.code(response.status)
-                .header('Content-Type', response.headers.get('Content-Type') || 'application/json')
-                .send(data);
+            return reply
+                .code(response.status)
+                .header('Content-Type', response.headers.get('content-type') || 'application/json')
+                .send(responseText);
 
         } catch (error) {
-            console.error('Error proxying request:', error);
-
+            console.error('[HTTP Proxy] Error:', error);
             if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
                 return reply.code(503).send({
                     error: BOOTSTRAP_ERROR_MESSAGE,
@@ -713,16 +578,103 @@ async function createServer() {
                     retry: true
                 });
             }
-
-            return reply.code(500).send({
-                error: 'Internal proxy error',
-                chainId
+            return reply.code(502).send({
+                error: 'Bad Gateway',
+                details: error instanceof Error ? error.message : 'Unknown error'
             });
         }
+    });
+
+    // WebSocket Proxy - create separate instances for each chainId pattern
+    // This is a workaround for the context passing issue
+    server.get('/ext/bc/:chainId/ws', { websocket: true }, async (connection: any, request: any) => {
+        const { chainId } = request.params as { chainId: string };
+        console.log(`[WS Proxy] WebSocket connection for chainId: ${chainId}`);
+        console.log(`[WS Proxy] Connection object type:`, typeof connection, 'Has socket:', !!connection.socket);
+
+        // In Fastify WebSocket, connection is the socket itself
+        const socket = connection.socket || connection;
+
+        const nodePort = await getNodePortForChain(chainId);
+        if (!nodePort) {
+            console.log(`[WS Proxy] Chain ${chainId} not found in database`);
+            socket.close(1008, 'Chain not found');
+            return;
+        }
+
+        console.log(`[WS Proxy] Creating proxy to node port: ${nodePort}`);
+
+        // Import WebSocket dynamically
+        const WebSocket = (await import('ws')).default;
+
+        // Create connection to backend
+        const targetUrl = `ws://localhost:${nodePort}${request.url}`;
+        console.log(`[WS Proxy] Connecting to: ${targetUrl}`);
+
+        // Clean up headers - only pass necessary ones
+        const cleanHeaders: any = {};
+        const headersToForward = ['origin', 'user-agent'];
+        for (const header of headersToForward) {
+            if (request.headers[header]) {
+                cleanHeaders[header] = request.headers[header];
+            }
+        }
+
+        const backendWs = new WebSocket(targetUrl, {
+            headers: cleanHeaders
+        });
+
+        let isConnected = false;
+
+        // Handle backend connection
+        backendWs.on('open', () => {
+            console.log(`[WS Proxy] Connected to backend at ${targetUrl}`);
+            isConnected = true;
+        });
+
+        backendWs.on('message', (data: any) => {
+            console.log(`[WS Proxy] Received from backend:`, data.toString().substring(0, 100));
+            try {
+                socket.send(data);
+            } catch (error) {
+                console.error(`[WS Proxy] Error sending to client:`, error);
+            }
+        });
+
+        backendWs.on('error', (error: Error) => {
+            console.error(`[WS Proxy] Backend error for ${targetUrl}:`, error.message);
+            if (!isConnected) {
+                // Connection failed, close with specific error
+                socket.close(1011, `Backend connection failed: ${error.message}`);
+            } else {
+                socket.close(1011, 'Backend error');
+            }
+        });
+
+        backendWs.on('close', (code, reason) => {
+            console.log(`[WS Proxy] Backend closed with code ${code}, reason: ${reason}`);
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.close(1000);
+            }
+        });
+
+        // Handle client messages
+        socket.on('message', (message: any) => {
+            console.log(`[WS Proxy] Received from client:`, message.toString().substring(0, 100));
+            if (backendWs.readyState === WebSocket.OPEN) {
+                backendWs.send(message);
+            }
+        });
+
+        socket.on('close', () => {
+            console.log(`[WS Proxy] Client closed`);
+            backendWs.close();
+        });
     });
 
     return server;
 }
 
 // Export the createServer function
+
 export { createServer }; 

@@ -2,7 +2,7 @@ import type { IndexingPlugin } from "frostbyte-sdk";
 
 const module: IndexingPlugin = {
     name: "minute_tx_counter",
-    version: 7,
+    version: 11,
     usesTraces: false,
 
     initialize: (db) => {
@@ -63,16 +63,6 @@ const module: IndexingPlugin = {
 
         // Sort minutes to process them in chronological order
         const sortedMinutes = Array.from(minuteStats.entries()).sort((a, b) => a[0] - b[0]);
-        const firstMinuteTs = sortedMinutes[0]![0];
-
-        // Get the cumulative counts just before our first minute
-        const selectStmt = db.prepare(
-            'SELECT cumulative_count, cumulative_gas_used FROM cumulative_tx_counts WHERE minute_ts < ? ORDER BY minute_ts DESC LIMIT 1'
-        );
-        const previousCumulative = selectStmt.get(firstMinuteTs) as { cumulative_count: number, cumulative_gas_used: number } | undefined;
-
-        let runningTotal = previousCumulative?.cumulative_count || 0;
-        let runningGasTotal = previousCumulative?.cumulative_gas_used || 0;
 
         // Prepare statements for batch operations
         const insertMinuteStmt = db.prepare(`
@@ -83,7 +73,39 @@ const module: IndexingPlugin = {
                 gas_used = gas_used + excluded.gas_used
         `);
 
-        const insertCumulativeStmt = db.prepare(`
+        // Process each minute - just update counts, not cumulative
+        for (const [minuteTs, stats] of sortedMinutes) {
+            insertMinuteStmt.run(minuteTs, stats.count, stats.gasUsed);
+        }
+
+        // After all minutes are updated, recalculate cumulative counts for affected range
+        const minTs = sortedMinutes[0]![0];
+        const maxTs = sortedMinutes[sortedMinutes.length - 1]![0];
+
+        // Get cumulative totals before our range
+        const beforeStmt = db.prepare(`
+            SELECT 
+                COALESCE(SUM(tx_count), 0) as total_count,
+                COALESCE(SUM(gas_used), 0) as total_gas
+            FROM minute_tx_counts 
+            WHERE minute_ts < ?
+        `);
+        const beforeTotals = beforeStmt.get(minTs) as { total_count: number, total_gas: number };
+
+        // Get all minutes from minTs onwards to recalculate
+        const getMinutesStmt = db.prepare(`
+            SELECT minute_ts, tx_count, gas_used
+            FROM minute_tx_counts
+            WHERE minute_ts >= ?
+            ORDER BY minute_ts ASC
+        `);
+        const allMinutes = getMinutesStmt.all(minTs) as Array<{ minute_ts: number, tx_count: number, gas_used: number }>;
+
+        // Recalculate cumulative counts
+        let runningTotal = beforeTotals.total_count;
+        let runningGasTotal = beforeTotals.total_gas;
+
+        const upsertCumulativeStmt = db.prepare(`
             INSERT INTO cumulative_tx_counts (minute_ts, cumulative_count, cumulative_gas_used)
             VALUES (?, ?, ?)
             ON CONFLICT(minute_ts) DO UPDATE SET
@@ -91,15 +113,10 @@ const module: IndexingPlugin = {
                 cumulative_gas_used = excluded.cumulative_gas_used
         `);
 
-        // Process each minute
-        for (const [minuteTs, stats] of sortedMinutes) {
-            // Insert minute stats
-            insertMinuteStmt.run(minuteTs, stats.count, stats.gasUsed);
-
-            // Update running totals and insert cumulative counts
-            runningTotal += stats.count;
-            runningGasTotal += stats.gasUsed;
-            insertCumulativeStmt.run(minuteTs, runningTotal, runningGasTotal);
+        for (const minute of allMinutes) {
+            runningTotal += minute.tx_count;
+            runningGasTotal += minute.gas_used;
+            upsertCumulativeStmt.run(minute.minute_ts, runningTotal, runningGasTotal);
         }
     }
 };

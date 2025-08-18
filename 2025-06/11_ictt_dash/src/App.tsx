@@ -13,6 +13,7 @@ import ICTTTransfers from './ICTTTransfers'
 import ICTTTransfersList from './ICTTTransfersList'
 import MessagingComparison from './MessagingComparison'
 import ChainComparison from './ChainComparison'
+import Overview from './overview/Overview'
 import NotFound from './NotFound'
 
 
@@ -31,7 +32,9 @@ function App() {
         `}>
           <main className="p-4 pt-16 lg:pt-4">
             <Routes>
-              <Route path="/" element={<Navigate to="/leaderboard" replace />} />
+              {/* <Route path="/" element={<Navigate to="/overview" replace />} /> */}
+              <Route path="/" element={<Navigate to="/sync-status" replace />} />
+              <Route path="/overview" element={<Overview />} />
               <Route path="/sync-status" element={<Sync />} />
               <Route path="/rpc" element={<RpcExamples />} />
               <Route path="/icm-gas-usage" element={<ICMGasUsage />} />

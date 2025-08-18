@@ -3,7 +3,8 @@ reindex in a few minutes. For blocks db, ask me before doing any non-reverse
 compatible changes requiring manual upgrade.
 
 **I will run it myself**: Do not test, do not run anything, just write. I will
-test manually.
+test manually. DO NOT RUN npm run dev, npm run openapi, or any other commands
+that start the project or generate files. Only write code.
 
 Do not add tags and summary field on fastify api specs.
 

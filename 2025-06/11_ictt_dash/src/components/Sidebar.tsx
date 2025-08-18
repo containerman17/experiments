@@ -20,6 +20,7 @@ const menuGroups: MenuGroup[] = [
         title: 'Analytics',
         icon: <BarChart3 size={18} />,
         items: [
+            // { label: 'Overview', path: '/overview' },
             { label: 'Leaderboard', path: '/leaderboard' },
             { label: 'TPS', path: '/tps' },
             { label: 'Cumulative Txs', path: '/cumulative-txs' },
@@ -74,7 +75,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
     }
 
     const isActive = (path: string) => {
-        if (path === '/leaderboard' && location.pathname === '/') return true
+        if (path === '/overview' && location.pathname === '/') return true
         return location.pathname === path
     }
 

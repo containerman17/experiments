@@ -318,38 +318,6 @@ export type GetApiGlobalIcmGasUsageResponses = {
 
 export type GetApiGlobalIcmGasUsageResponse = GetApiGlobalIcmGasUsageResponses[keyof GetApiGlobalIcmGasUsageResponses];
 
-export type GetApiByEvmChainIdIcmGasUsageData = {
-    body?: never;
-    path: {
-        evmChainId: string;
-    };
-    query?: {
-        startTs?: number;
-        endTs?: number;
-    };
-    url: '/api/{evmChainId}/icm-gas-usage';
-};
-
-export type GetApiByEvmChainIdIcmGasUsageResponses = {
-    /**
-     * Default Response
-     */
-    200: Array<{
-        chainName: string;
-        chainBlockchainId: string;
-        otherChainName: string;
-        otherChainBlockchainId: string;
-        sendCount: number;
-        receiveCount: number;
-        sendGasCost: number;
-        receiveGasCost: number;
-        totalCount: number;
-        totalGasCost: number;
-    }>;
-};
-
-export type GetApiByEvmChainIdIcmGasUsageResponse = GetApiByEvmChainIdIcmGasUsageResponses[keyof GetApiByEvmChainIdIcmGasUsageResponses];
-
 export type GetApiGlobalIcttTransfersData = {
     body?: never;
     path?: never;
@@ -532,6 +500,132 @@ export type GetApiGlobalMessagingChainPairsResponses = {
 };
 
 export type GetApiGlobalMessagingChainPairsResponse = GetApiGlobalMessagingChainPairsResponses[keyof GetApiGlobalMessagingChainPairsResponses];
+
+export type GetApiGlobalOverviewLastWeekTxsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/lastWeekTxs';
+};
+
+export type GetApiGlobalOverviewLastWeekTxsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        totalTxs: number;
+    };
+};
+
+export type GetApiGlobalOverviewLastWeekTxsResponse = GetApiGlobalOverviewLastWeekTxsResponses[keyof GetApiGlobalOverviewLastWeekTxsResponses];
+
+export type GetApiGlobalOverviewMaxTpsObservedData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/maxTpsObserved';
+};
+
+export type GetApiGlobalOverviewMaxTpsObservedResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        maxTps: number;
+        timestamp: number;
+        totalTxsInMinute: number;
+    };
+};
+
+export type GetApiGlobalOverviewMaxTpsObservedResponse = GetApiGlobalOverviewMaxTpsObservedResponses[keyof GetApiGlobalOverviewMaxTpsObservedResponses];
+
+export type GetApiGlobalOverviewLastWeekActiveAddressesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/lastWeekActiveAddresses';
+};
+
+export type GetApiGlobalOverviewLastWeekActiveAddressesResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        uniqueAddresses: number;
+    };
+};
+
+export type GetApiGlobalOverviewLastWeekActiveAddressesResponse = GetApiGlobalOverviewLastWeekActiveAddressesResponses[keyof GetApiGlobalOverviewLastWeekActiveAddressesResponses];
+
+export type GetApiGlobalOverviewDailyTxsByChainData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/dailyTxsByChain';
+};
+
+export type GetApiGlobalOverviewDailyTxsByChainResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        data: Array<{
+            [key: string]: unknown;
+        }>;
+        chains: Array<{
+            evmChainId: number;
+            name: string;
+        }>;
+    };
+};
+
+export type GetApiGlobalOverviewDailyTxsByChainResponse = GetApiGlobalOverviewDailyTxsByChainResponses[keyof GetApiGlobalOverviewDailyTxsByChainResponses];
+
+export type GetApiGlobalOverviewDailyTxsByChainCompactData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/dailyTxsByChainCompact';
+};
+
+export type GetApiGlobalOverviewDailyTxsByChainCompactResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        dates: Array<string>;
+        chains: Array<{
+            evmChainId: number;
+            name: string;
+            values: Array<number>;
+        }>;
+    };
+};
+
+export type GetApiGlobalOverviewDailyTxsByChainCompactResponse = GetApiGlobalOverviewDailyTxsByChainCompactResponses[keyof GetApiGlobalOverviewDailyTxsByChainCompactResponses];
+
+export type GetApiGlobalOverviewMonthlyTxsByChainCompactData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/monthlyTxsByChainCompact';
+};
+
+export type GetApiGlobalOverviewMonthlyTxsByChainCompactResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        dates: Array<string>;
+        chains: Array<{
+            evmChainId: number;
+            name: string;
+            values: Array<number>;
+        }>;
+    };
+};
+
+export type GetApiGlobalOverviewMonthlyTxsByChainCompactResponse = GetApiGlobalOverviewMonthlyTxsByChainCompactResponses[keyof GetApiGlobalOverviewMonthlyTxsByChainCompactResponses];
 
 export type GetApiByEvmChainIdStatsTpsData = {
     body?: never;

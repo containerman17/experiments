@@ -154,17 +154,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "Tiltyard",
-    "blockchainId": "2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS",
-    "subnetId": "23LsHpx3wTPtNC4PUaTdtNQkaGbLxwiGimnZjHaUc28qLHs7Dn",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
-  },
-  {
     "chainName": "Marnisa",
     "blockchainId": "2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK",
     "subnetId": "sZ1zmoQx3NeV8WB5D3np8xYUJ2p5hKfWFXDeuSGvxyZkCABs2",
@@ -649,6 +638,28 @@
     "debugEnabled": false
   },
   {
+    "chainName": "NightShiftNet",
+    "blockchainId": "ELkY58nQg6oPdQYcDaKorjJU9mCiuoV2TwgLMMnswzjRnNEcP",
+    "subnetId": "7wfzTn2ef8QjPtUMvJyc6YzxGYoDxKeQ4Mc5t6aewLtwDTezw",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
+  },
+  {
+    "chainName": "Watr",
+    "blockchainId": "EypLFUSzC2wdbFJovYS3Af1E7ch1DJf7KxKoGR5QFPErxQkG1",
+    "subnetId": "QL49tBK9T84NSHQYYSP33Ru7h1KcybDR6MGA8dARVWhw1zLB8",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
+    "debugEnabled": false
+  },
+  {
     "chainName": "Rymedi Identity Subnet",
     "blockchainId": "HnECQEqpvvXcBF9Jup1ti1XMowQGrSWiQSkKdwcjxEbzmTHMC",
     "subnetId": "qWeo55RT2F7SNoWtVUuAGptPoz23hViLthjHHaj3BsV2pv7TM",
@@ -689,7 +700,7 @@
     "subnetId": "2QRKgBVT4zbcEWM4aXYRPNRazmas9on1QZodYakh1cF4RDrQE5",
     "rpcUrl": "https://mainnet.bloodloop.com/ext/bc/iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA/rpc",
     "evmChainId": "578",
-    "blocksCount": "1k+",
+    "blocksCount": "10k+",
     "estimatedTxCount": null,
     "glacierChainId": "578",
     "comment": null,
@@ -787,23 +798,12 @@
     "debugEnabled": false
   },
   {
-    "chainName": "Martian Chain",
-    "blockchainId": "R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN",
-    "subnetId": "28aQXYENwytzxEwyYMZDtGjpUmP67eWkyoHdGGyid6gEACeg9x",
-    "rpcUrl": "http://142.132.150.152:8080/ext/bc/R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN/rpc",
-    "evmChainId": "1001",
-    "blocksCount": "10+",
-    "estimatedTxCount": null,
-    "comment": null,
-    "debugEnabled": true
-  },
-  {
     "chainName": "Artery",
     "blockchainId": "rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6",
     "subnetId": "25VdGtdQPejyffNLpTqh4BH2NABXT8Zxup6ee3B4htrMryofUB",
     "rpcUrl": "https://subnets.avax.network/artery/mainnet/rpc",
     "evmChainId": "4313",
-    "blocksCount": "100k+",
+    "blocksCount": "1m+",
     "estimatedTxCount": null,
     "glacierChainId": "4313",
     "comment": null,
@@ -819,17 +819,6 @@
     "estimatedTxCount": null,
     "glacierChainId": "13322",
     "comment": null,
-    "debugEnabled": false
-  },
-  {
-    "chainName": "FIZIT",
-    "blockchainId": "tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN",
-    "subnetId": "2rQ8M43c9NTv1545VsTunmY95m8QLw8koNYawuTnMtDf97im99",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/",
     "debugEnabled": false
   },
   {
@@ -878,6 +867,17 @@
     "estimatedTxCount": null,
     "glacierChainId": "10036",
     "comment": null,
+    "debugEnabled": false
+  },
+  {
+    "chainName": "Pani Test",
+    "blockchainId": "wn28JpKXEZEB9DaJGqcgfgvFyFhJLKsEbLjDm152AGiNkj5sW",
+    "subnetId": "Qjop9jUh4AfLLb1CkjwS2XGdJY7tqbSf6vzdnEBZmWtkpmLwx",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {

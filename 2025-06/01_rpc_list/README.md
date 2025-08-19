@@ -2,7 +2,7 @@
 # Avalanche L1s public RPC URLs list
 
 
-## Chains with Public RPC URLs (57)
+## Chains with Public RPC URLs (56)
 
 **C-Chain**
 - Blocks Count: 10m+
@@ -149,15 +149,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/playa3ull
 
-**Space**
-- Blocks Count: 1m+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 8227
-- Blockchain ID: 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
-- RPC URL: https://subnets.avax.network/space/mainnet/rpc
-- Debug Enabled: ❌
-- Explorer URL: https://subnets.avax.network/space
-
 **BnryMainnet**
 - Blocks Count: 1m+
 - Estimated Tx Count: Unknown
@@ -166,6 +157,15 @@
 - RPC URL: http://142.132.150.152:8080/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
+
+**Space**
+- Blocks Count: 1m+
+- Estimated Tx Count: Unknown
+- EVM Chain ID: 8227
+- Blockchain ID: 22CN6x5LAPEkvLDdz4UwG3XXtZV69Su3bcspiYtkF9k5f9rcCt
+- RPC URL: https://subnets.avax.network/space/mainnet/rpc
+- Debug Enabled: ❌
+- Explorer URL: https://subnets.avax.network/space
 
 **TradeXMarkets**
 - Blocks Count: 1m+
@@ -186,7 +186,7 @@
 - Explorer URL: https://subnets.avax.network/plyr
 
 **Artery**
-- Blocks Count: 100k+
+- Blocks Count: 1m+
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 4313
 - Blockchain ID: rBabVhbJKGcKTEpzm9PdpQ7ModsxNpYQZ6ALN6g9p5JKjqfw6
@@ -330,7 +330,7 @@
 - Explorer URL: https://subnets.avax.network/lylty
 
 **bloodloop**
-- Blocks Count: 1k+
+- Blocks Count: 10k+
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 578
 - Blockchain ID: iNrFZ5vbEfURqFCQh8dF1AHvRfKnZ9gk9ksRgMHDKy4AfyYwA
@@ -464,15 +464,6 @@
 - Debug Enabled: ❌
 - Explorer URL: https://subnets.avax.network/titan
 
-**Martian Chain**
-- Blocks Count: 10+
-- Estimated Tx Count: Unknown
-- EVM Chain ID: 1001
-- Blockchain ID: R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN
-- RPC URL: http://142.132.150.152:8080/ext/bc/R3EqdkMTuZBrF52D8eCXzsrYTbBuce3ZA2pXDZqizhoiqQcGN/rpc
-- Debug Enabled: ✅
-- Explorer URL: ❌
-
 **Gentle Flawless Enemies Chain**
 - Blocks Count: 10+
 - Estimated Tx Count: Unknown
@@ -520,7 +511,22 @@
 
 
 
-## Chains without Public RPC URLs (22)
+## Chains without Public RPC URLs (23)
+
+**NightShiftNet**
+- EVM Chain ID: N/A
+- Blockchain ID: ELkY58nQg6oPdQYcDaKorjJU9mCiuoV2TwgLMMnswzjRnNEcP
+- Comment: TODO: investigate
+
+**Watr**
+- EVM Chain ID: N/A
+- Blockchain ID: EypLFUSzC2wdbFJovYS3Af1E7ch1DJf7KxKoGR5QFPErxQkG1
+- Comment: TODO: investigate
+
+**Pani Test**
+- EVM Chain ID: N/A
+- Blockchain ID: wn28JpKXEZEB9DaJGqcgfgvFyFhJLKsEbLjDm152AGiNkj5sW
+- Comment: TODO: investigate
 
 **Growfitter**
 - EVM Chain ID: N/A
@@ -552,11 +558,6 @@
 - Blockchain ID: kyY16vnR3Wc77KCsghGx1c2JM6FRKSP4EUxdfe19qE2az5TPC
 - Comment: TODO: investigate
 
-**FIZIT**
-- EVM Chain ID: N/A
-- Blockchain ID: tjoVGZ7f9FrXhi1QEH2NwHkPtvzmkGMPX6hkypYX6gK5YaXxN
-- Comment: Big corp chain managed by Zeeve, no luck with RPC. Explorer is down https://explorer.fizit.zeeve.net/
-
 **Henesys**
 - EVM Chain ID: 68414
 - Blockchain ID: 2LFmzhHDKxkreihEtPanVmofuFn63bsh8twnRXEbDhBtCJxURB
@@ -581,11 +582,6 @@
 - EVM Chain ID: N/A
 - Blockchain ID: 2vEit8MMxLNNfbMdoiBjvFP7MFwPwo1YmiLaBBxQU2YRGvdjJx
 - Comment: Not sure which network is this, looks like NUMINEMainnet is the right one. 
-
-**Tiltyard**
-- EVM Chain ID: N/A
-- Blockchain ID: 2cJ7FyNoqigEGoM7m8p4PY7a33B2SQxV8P7VuUVJZ9y5otyqNS
-- Comment: TODO: investigate
 
 **BLITZ SUBNET**
 - EVM Chain ID: N/A

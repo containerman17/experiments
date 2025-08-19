@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import Sidebar from './components/Sidebar'
@@ -32,8 +32,7 @@ function App() {
         `}>
           <main className="p-4 pt-16 lg:pt-4">
             <Routes>
-              {/* <Route path="/" element={<Navigate to="/overview" replace />} /> */}
-              <Route path="/" element={<Navigate to="/sync-status" replace />} />
+              <Route path="/" element={<Overview />} />
               <Route path="/overview" element={<Overview />} />
               <Route path="/sync-status" element={<Sync />} />
               <Route path="/rpc" element={<RpcExamples />} />

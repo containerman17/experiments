@@ -3,6 +3,8 @@ import MaxTpsNumber from "./nums/MaxTpsNumber";
 import ActiveAddressesNumber from "./nums/ActiveAddressesNumber";
 import DailyTxs from "./charts/dailyTxs";
 import MonthlyTxs from "./charts/monthlyTxs";
+import MonthlyICTTOperations from "./charts/monthlyICTTOperations";
+import MonthlyICMMessages from "./charts/monthlyICMMessages";
 
 export default function Overview() {
     return (
@@ -28,25 +30,16 @@ export default function Overview() {
                 {/* Monthly Transaction Count Chart */}
                 <MonthlyTxs />
 
-                {/* Daily Active Addresses Chart */}
-                <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <div className="mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900">Daily Active Addresses - All Indexed L1s</h3>
-                    </div>
-                    <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">
-                        <div className="w-0 h-0 border-l-[50px] border-r-[50px] border-b-[87px] border-l-transparent border-r-transparent border-b-gray-400"></div>
-                    </div>
-                </div>
 
-                {/* Monthly Active Addresses Chart */}
-                <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <div className="mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900">Monthly Active Addresses - All Indexed L1s</h3>
-                    </div>
-                    <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">
-                        <div className="w-0 h-0 border-l-[50px] border-r-[50px] border-b-[87px] border-l-transparent border-r-transparent border-b-gray-400"></div>
-                    </div>
-                </div>
+                {/* Monthly Outgoing ICM Messages Chart */}
+                <MonthlyICMMessages direction="outgoing" />
+
+                {/* Monthly Incoming ICM Messages Chart */}
+                <MonthlyICMMessages direction="incoming" />
+
+                {/* Monthly ICTT Operations Chart */}
+                <MonthlyICTTOperations />
+
             </div>
         </div>
     )

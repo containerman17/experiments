@@ -26,7 +26,7 @@ interface CacheEntry<T> {
 
 // Simple in-memory cache with 60s TTL
 const cache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL = 60 * 1000; // 60 seconds in milliseconds
+const CACHE_TTL = 15 * 1000; // 15 seconds in milliseconds
 
 function getCached<T>(key: string, factory: () => Promise<T>): Promise<T> {
     const now = Date.now();
@@ -45,7 +45,7 @@ function getCached<T>(key: string, factory: () => Promise<T>): Promise<T> {
 
 const module: ApiPlugin = {
     name: "overview_api",
-    requiredIndexers: ['minute_tx_counter', 'period_address_activity', 'period_tx_counter'],
+    requiredIndexers: ['minute_tx_counter', 'period_address_activity', 'period_tx_counter', 'ictt', 'icm_gas_usage'],
 
     registerRoutes: (app, dbCtx) => {
         app.get('/api/global/overview/lastWeekTxs', {
@@ -69,20 +69,15 @@ const module: ApiPlugin = {
                 let totalTxs = 0;
 
                 for (const config of configs) {
-                    try {
-                        const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "minute_tx_counter");
+                    const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "minute_tx_counter");
 
-                        const result = conn.prepare(`
-                            SELECT COALESCE(SUM(tx_count), 0) as total_txs
-                            FROM minute_tx_counts
-                            WHERE minute_ts >= ?
-                        `).get(weekAgo) as TxSumResult;
+                    const result = conn.prepare(`
+                        SELECT COALESCE(SUM(tx_count), 0) as total_txs
+                        FROM minute_tx_counts
+                        WHERE minute_ts >= ?
+                    `).get(weekAgo) as TxSumResult;
 
-                        totalTxs += result.total_txs || 0;
-                    } catch (error) {
-                        // Skip chains that don't have minute_tx_counter data
-                        continue;
-                    }
+                    totalTxs += result.total_txs || 0;
                 }
 
                 return { totalTxs };
@@ -173,23 +168,18 @@ const module: ApiPlugin = {
                 const uniqueAddresses = new Set<string>();
 
                 for (const config of configs) {
-                    try {
-                        const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "period_address_activity");
+                    const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "period_address_activity");
 
-                        // Get all unique addresses for this chain in the last 7 days
-                        const addresses = conn.prepare(`
-                            SELECT DISTINCT address
-                            FROM period_address_activity
-                            WHERE period_ts >= ?
-                        `).all(weekAgo) as Array<{ address: string }>;
+                    // Get all unique addresses for this chain in the last 7 days
+                    const addresses = conn.prepare(`
+                        SELECT DISTINCT address
+                        FROM period_address_activity
+                        WHERE period_ts >= ?
+                    `).all(weekAgo) as Array<{ address: string }>;
 
-                        // Add to the global set
-                        for (const row of addresses) {
-                            uniqueAddresses.add(row.address);
-                        }
-                    } catch (error) {
-                        // Skip chains that don't have minute_active_addresses data
-                        continue;
+                    // Add to the global set
+                    for (const row of addresses) {
+                        uniqueAddresses.add(row.address);
                     }
                 }
 
@@ -240,27 +230,22 @@ const module: ApiPlugin = {
 
                 // Collect data from all chains
                 for (const config of configs) {
-                    try {
-                        const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "period_tx_counter");
+                    const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "period_tx_counter");
 
-                        // Get all daily counts for this chain since Jan 1 2021
-                        const dailyCounts = conn.prepare(`
-                            SELECT day_ts, tx_count
-                            FROM daily_tx_counts
-                            WHERE day_ts >= ?
-                            ORDER BY day_ts ASC
-                        `).all(startDate) as DailyTxCount[];
+                    // Get all daily counts for this chain since Jan 1 2021
+                    const dailyCounts = conn.prepare(`
+                        SELECT day_ts, tx_count
+                        FROM daily_tx_counts
+                        WHERE day_ts >= ?
+                        ORDER BY day_ts ASC
+                    `).all(startDate) as DailyTxCount[];
 
-                        // Store in our map structure
-                        for (const count of dailyCounts) {
-                            if (!dailyData.has(count.day_ts)) {
-                                dailyData.set(count.day_ts, new Map());
-                            }
-                            dailyData.get(count.day_ts)!.set(config.evmChainId, count.tx_count);
+                    // Store in our map structure
+                    for (const count of dailyCounts) {
+                        if (!dailyData.has(count.day_ts)) {
+                            dailyData.set(count.day_ts, new Map());
                         }
-                    } catch (error) {
-                        // Skip chains that don't have period_tx_counter data
-                        continue;
+                        dailyData.get(count.day_ts)!.set(config.evmChainId, count.tx_count);
                     }
                 }
 
@@ -348,38 +333,29 @@ const module: ApiPlugin = {
                 }> = [];
 
                 for (const config of configs) {
-                    try {
-                        const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "period_tx_counter");
+                    const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "period_tx_counter");
 
-                        // Get counts for this chain in the specified period
-                        const query = period === 'daily'
-                            ? `SELECT day_ts as ts, tx_count FROM daily_tx_counts WHERE day_ts >= ? AND day_ts <= ? ORDER BY day_ts ASC`
-                            : `SELECT month_ts as ts, tx_count FROM monthly_tx_counts WHERE month_ts >= ? AND month_ts <= ? ORDER BY month_ts ASC`;
+                    // Get counts for this chain in the specified period
+                    const query = period === 'daily'
+                        ? `SELECT day_ts as ts, tx_count FROM daily_tx_counts WHERE day_ts >= ? AND day_ts <= ? ORDER BY day_ts ASC`
+                        : `SELECT month_ts as ts, tx_count FROM monthly_tx_counts WHERE month_ts >= ? AND month_ts <= ? ORDER BY month_ts ASC`;
 
-                        const counts = conn.prepare(query).all(startTs, endTs) as Array<{ ts: number; tx_count: number }>;
+                    const counts = conn.prepare(query).all(startTs, endTs) as Array<{ ts: number; tx_count: number }>;
 
-                        // Create a map for quick lookup
-                        const countMap = new Map<string, number>();
-                        for (const count of counts) {
-                            countMap.set(dateFormatter(count.ts), count.tx_count);
-                        }
-
-                        // Build values array in same order as dates
-                        const values: number[] = dates.map(date => countMap.get(date) || 0);
-
-                        chains.push({
-                            evmChainId: config.evmChainId,
-                            name: config.chainName,
-                            values
-                        });
-                    } catch (error) {
-                        // For chains without data, add zeros
-                        chains.push({
-                            evmChainId: config.evmChainId,
-                            name: config.chainName,
-                            values: new Array(dates.length).fill(0)
-                        });
+                    // Create a map for quick lookup
+                    const countMap = new Map<string, number>();
+                    for (const count of counts) {
+                        countMap.set(dateFormatter(count.ts), count.tx_count);
                     }
+
+                    // Build values array in same order as dates
+                    const values: number[] = dates.map(date => countMap.get(date) || 0);
+
+                    chains.push({
+                        evmChainId: config.evmChainId,
+                        name: config.chainName,
+                        values
+                    });
                 }
 
                 return { dates, chains };
@@ -460,6 +436,268 @@ const module: ApiPlugin = {
                 'monthlyTxsByChainCompact',
                 new Date('2020-09-01T00:00:00Z') // Start from September 2020
             );
+        });
+
+        app.get('/api/global/overview/monthlyICTTOperationsByChainCompact', {
+            schema: {
+                response: {
+                    200: {
+                        type: 'object',
+                        properties: {
+                            dates: {
+                                type: 'array',
+                                items: { type: 'string' }
+                            },
+                            chains: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        evmChainId: { type: 'number' },
+                                        name: { type: 'string' },
+                                        values: {
+                                            type: 'array',
+                                            items: { type: 'number' }
+                                        }
+                                    },
+                                    required: ['evmChainId', 'name', 'values']
+                                }
+                            }
+                        },
+                        required: ['dates', 'chains']
+                    }
+                }
+            }
+        }, async (request, reply) => {
+            return getCached('monthlyICTTOperationsByChainCompact', async () => {
+                const configs = dbCtx.getAllChainConfigs();
+
+                // Map blockchain IDs to evmChainIds for pair_chain lookups
+                const blockchainIdToEvmChainId = new Map<string, number>();
+                for (const config of configs) {
+                    blockchainIdToEvmChainId.set(config.blockchainId, config.evmChainId);
+                }
+
+                // January 1st 2024 00:00:00 UTC
+                const startDate = new Date('2024-06-01T00:00:00Z');
+
+                // Round to start of current month
+                const now = Math.floor(Date.now() / 1000);
+                const endDate = new Date(now * 1000);
+                endDate.setUTCDate(1);
+                endDate.setUTCHours(0, 0, 0, 0);
+
+                // Generate month labels
+                const dates: string[] = [];
+                const currentDate = new Date(startDate);
+                while (currentDate <= endDate) {
+                    dates.push(currentDate.toISOString().substring(0, 7)); // YYYY-MM format
+                    currentDate.setUTCMonth(currentDate.getUTCMonth() + 1);
+                }
+
+                // Map to accumulate operation counts: chainId -> month -> count
+                const operationCounts = new Map<number, Map<string, number>>();
+
+                // Initialize map for all chains
+                for (const config of configs) {
+                    const monthMap = new Map<string, number>();
+                    for (const date of dates) {
+                        monthMap.set(date, 0);
+                    }
+                    operationCounts.set(config.evmChainId, monthMap);
+                }
+
+                // Collect data from all chains
+                for (const config of configs) {
+                    const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "ictt");
+
+                    // Query movements grouped by month and pair_chain
+                    const movements = conn.prepare(`
+                        SELECT 
+                            strftime('%Y-%m', datetime(block_timestamp, 'unixepoch')) as month,
+                            pair_chain,
+                            COUNT(*) as movement_count
+                        FROM token_movements
+                        GROUP BY month, pair_chain
+                    `).all() as Array<{ month: string; pair_chain: string; movement_count: number }>;
+
+                    // Process movements
+                    for (const movement of movements) {
+                        if (!dates.includes(movement.month)) continue;
+
+                        // Add to source chain (current chain)
+                        const sourceChainCounts = operationCounts.get(config.evmChainId)!;
+                        sourceChainCounts.set(
+                            movement.month,
+                            sourceChainCounts.get(movement.month)! + movement.movement_count
+                        );
+
+                        // Add to destination chain (pair_chain)
+                        // pair_chain is a CB58-encoded blockchain ID
+                        const pairChainId = blockchainIdToEvmChainId.get(movement.pair_chain);
+
+                        // If found, add to destination chain counts
+                        if (pairChainId && operationCounts.has(pairChainId)) {
+                            const destChainCounts = operationCounts.get(pairChainId)!;
+                            destChainCounts.set(
+                                movement.month,
+                                destChainCounts.get(movement.month)! + movement.movement_count
+                            );
+                        }
+                    }
+                }
+
+                // Build result in compact format
+                const chains: Array<{
+                    evmChainId: number;
+                    name: string;
+                    values: number[];
+                }> = [];
+
+                for (const config of configs) {
+                    const chainCounts = operationCounts.get(config.evmChainId)!;
+                    const values = dates.map(date => chainCounts.get(date) || 0);
+
+                    chains.push({
+                        evmChainId: config.evmChainId,
+                        name: config.chainName,
+                        values
+                    });
+                }
+
+                return { dates, chains };
+            });
+        });
+
+        // Endpoint for monthly ICM messages by chain (incoming or outgoing)
+        app.get('/api/global/overview/monthlyICM/:direction/byChainCompact', {
+            schema: {
+                params: {
+                    type: 'object',
+                    properties: {
+                        direction: { type: 'string', enum: ['incoming', 'outgoing'] }
+                    },
+                    required: ['direction']
+                },
+                response: {
+                    200: {
+                        type: 'object',
+                        properties: {
+                            dates: {
+                                type: 'array',
+                                items: { type: 'string' }
+                            },
+                            chains: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        evmChainId: { type: 'number' },
+                                        name: { type: 'string' },
+                                        values: {
+                                            type: 'array',
+                                            items: { type: 'number' }
+                                        }
+                                    },
+                                    required: ['evmChainId', 'name', 'values']
+                                }
+                            }
+                        },
+                        required: ['dates', 'chains']
+                    }
+                }
+            }
+        }, async (request, reply) => {
+            const { direction } = request.params as { direction: 'incoming' | 'outgoing' };
+            const cacheKey = `monthlyICM_${direction}_byChainCompact`;
+
+            return getCached(cacheKey, async () => {
+                const configs = dbCtx.getAllChainConfigs();
+
+                // Map blockchain IDs to evmChainIds
+                const blockchainIdToEvmChainId = new Map<string, number>();
+                for (const config of configs) {
+                    blockchainIdToEvmChainId.set(config.blockchainId, config.evmChainId);
+                }
+
+                // January 1st 2024 00:00:00 UTC
+                const startDate = new Date('2024-06-01T00:00:00Z');
+
+                // Round to start of current month
+                const now = Math.floor(Date.now() / 1000);
+                const endDate = new Date(now * 1000);
+                endDate.setUTCDate(1);
+                endDate.setUTCHours(0, 0, 0, 0);
+
+                // Generate month labels
+                const dates: string[] = [];
+                const currentDate = new Date(startDate);
+                while (currentDate <= endDate) {
+                    dates.push(currentDate.toISOString().substring(0, 7)); // YYYY-MM format
+                    currentDate.setUTCMonth(currentDate.getUTCMonth() + 1);
+                }
+
+                // Map to accumulate message counts: chainId -> month -> count
+                const messageCounts = new Map<number, Map<string, number>>();
+
+                // Initialize map for all chains
+                for (const config of configs) {
+                    const monthMap = new Map<string, number>();
+                    for (const date of dates) {
+                        monthMap.set(date, 0);
+                    }
+                    messageCounts.set(config.evmChainId, monthMap);
+                }
+
+                // Collect data from all chains
+                for (const config of configs) {
+                    const conn = dbCtx.getIndexerDbConnection(config.evmChainId, "icm_gas_usage");
+
+                    // Query ICM stats grouped by month and other_chain_id
+                    const countColumn = direction === 'incoming' ? 'receive_count' : 'send_count';
+                    const stats = conn.prepare(`
+                        SELECT 
+                            strftime('%Y-%m', datetime(interval_ts, 'unixepoch')) as month,
+                            other_chain_id,
+                            SUM(${countColumn}) as message_count
+                        FROM icm_chain_interval_stats
+                        WHERE ${countColumn} > 0
+                        GROUP BY month, other_chain_id
+                    `).all() as Array<{ month: string; other_chain_id: string; message_count: number }>;
+
+                    // Process stats
+                    for (const stat of stats) {
+                        if (!dates.includes(stat.month)) continue;
+
+                        // Add to current chain's counts
+                        const chainCounts = messageCounts.get(config.evmChainId)!;
+                        chainCounts.set(
+                            stat.month,
+                            chainCounts.get(stat.month)! + stat.message_count
+                        );
+                    }
+                }
+
+                // Build result in compact format
+                const chains: Array<{
+                    evmChainId: number;
+                    name: string;
+                    values: number[];
+                }> = [];
+
+                for (const config of configs) {
+                    const chainCounts = messageCounts.get(config.evmChainId)!;
+                    const values = dates.map(date => chainCounts.get(date) || 0);
+
+                    chains.push({
+                        evmChainId: config.evmChainId,
+                        name: config.chainName,
+                        values
+                    });
+                }
+
+                return { dates, chains };
+            });
         });
     }
 };

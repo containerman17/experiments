@@ -627,6 +627,54 @@ export type GetApiGlobalOverviewMonthlyTxsByChainCompactResponses = {
 
 export type GetApiGlobalOverviewMonthlyTxsByChainCompactResponse = GetApiGlobalOverviewMonthlyTxsByChainCompactResponses[keyof GetApiGlobalOverviewMonthlyTxsByChainCompactResponses];
 
+export type GetApiGlobalOverviewMonthlyIcttOperationsByChainCompactData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/global/overview/monthlyICTTOperationsByChainCompact';
+};
+
+export type GetApiGlobalOverviewMonthlyIcttOperationsByChainCompactResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        dates: Array<string>;
+        chains: Array<{
+            evmChainId: number;
+            name: string;
+            values: Array<number>;
+        }>;
+    };
+};
+
+export type GetApiGlobalOverviewMonthlyIcttOperationsByChainCompactResponse = GetApiGlobalOverviewMonthlyIcttOperationsByChainCompactResponses[keyof GetApiGlobalOverviewMonthlyIcttOperationsByChainCompactResponses];
+
+export type GetApiGlobalOverviewMonthlyIcmByDirectionByChainCompactData = {
+    body?: never;
+    path: {
+        direction: 'incoming' | 'outgoing';
+    };
+    query?: never;
+    url: '/api/global/overview/monthlyICM/{direction}/byChainCompact';
+};
+
+export type GetApiGlobalOverviewMonthlyIcmByDirectionByChainCompactResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        dates: Array<string>;
+        chains: Array<{
+            evmChainId: number;
+            name: string;
+            values: Array<number>;
+        }>;
+    };
+};
+
+export type GetApiGlobalOverviewMonthlyIcmByDirectionByChainCompactResponse = GetApiGlobalOverviewMonthlyIcmByDirectionByChainCompactResponses[keyof GetApiGlobalOverviewMonthlyIcmByDirectionByChainCompactResponses];
+
 export type GetApiByEvmChainIdStatsTpsData = {
     body?: never;
     path: {

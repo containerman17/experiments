@@ -20,7 +20,7 @@ const menuGroups: MenuGroup[] = [
         title: 'Analytics',
         icon: <BarChart3 size={18} />,
         items: [
-            // { label: 'Overview', path: '/overview' },
+            { label: 'Overview', path: '/' },
             { label: 'Leaderboard', path: '/leaderboard' },
             { label: 'TPS', path: '/tps' },
             { label: 'Cumulative Txs', path: '/cumulative-txs' },

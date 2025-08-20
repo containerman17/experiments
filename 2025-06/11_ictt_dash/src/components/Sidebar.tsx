@@ -28,13 +28,20 @@ const menuGroups: MenuGroup[] = [
         ]
     },
     {
-        title: 'Cross-Chain',
+        title: 'ICM',
         icon: <ArrowLeftRight size={18} />,
         items: [
             { label: 'Daily Messages', path: '/daily-message-volume' },
             { label: 'ICM Gas Usage', path: '/icm-gas-usage' },
             { label: 'ICM vs LZ', path: '/messaging-comparison' },
+        ]
+    },
+    {
+        title: 'ICTT',
+        icon: <ArrowLeftRight size={18} />,
+        items: [
             { label: 'ICTT Transfers', path: '/ictt-transfers' },
+            { label: 'ICTT TVL', path: '/ictt-tvl' },
             { label: 'ICTT List', path: '/ictt-transfers-list' }
         ]
     },

@@ -1,6 +1,6 @@
 import AllTxsNumber from "./nums/AllTxsNumber";
 import MaxTpsNumber from "./nums/MaxTpsNumber";
-import ActiveAddressesNumber from "./nums/ActiveAddressesNumber";
+// import ActiveAddressesNumber from "./nums/ActiveAddressesNumber";
 import DailyTxs from "./charts/dailyTxs";
 import MonthlyTxs from "./charts/monthlyTxs";
 import MonthlyICTTOperations from "./charts/monthlyICTTOperations";
@@ -19,7 +19,7 @@ export default function Overview() {
 
                 <MaxTpsNumber />
 
-                <ActiveAddressesNumber />
+                {/* <ActiveAddressesNumber /> */}
             </div>
 
             {/* Charts Section */}

@@ -10,6 +10,7 @@ import CumulativeTxs from './CumulativeTxs'
 import DailyMessageVolume from './DailyMessageVolume'
 import Leaderboard from './Leaderboard'
 import ICTTTransfers from './ICTTTransfers'
+import ICTTTvl from './ICTTTvl'
 import ICTTTransfersList from './ICTTTransfersList'
 import MessagingComparison from './MessagingComparison'
 import ChainComparison from './ChainComparison'
@@ -43,6 +44,7 @@ function App() {
               <Route path="/messaging-comparison" element={<MessagingComparison />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/ictt-transfers" element={<ICTTTransfers />} />
+              <Route path="/ictt-tvl" element={<ICTTTvl />} />
               <Route path="/ictt-transfers-list" element={<ICTTTransfersList />} />
               <Route path="/chain-comparison" element={<ChainComparison />} />
               <Route path="*" element={<NotFound />} />

@@ -159,6 +159,7 @@ const module: ApiPlugin = {
                 }
             }
         }, async (request, reply) => {
+            throw new Error('Not implemented');
             return getCached('lastWeekActiveAddresses', async () => {
                 const configs = dbCtx.getAllChainConfigs();
                 const now = Math.floor(Date.now() / 1000);

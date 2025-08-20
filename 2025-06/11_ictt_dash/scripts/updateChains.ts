@@ -76,7 +76,7 @@ const URL_REPLACEMENTS = {
 }
 
 const DEFAULT_REQUEST_BATCH_SIZE = 10
-const DEFAULT_BLOCKS_PER_BATCH = 500
+const DEFAULT_BLOCKS_PER_BATCH = 20
 
 // First pass: determine final URLs and count chains per final host
 const hostCounts: { [host: string]: number } = {};

@@ -8,7 +8,7 @@ const module: IndexingPlugin = {
     initialize: (db) => {
         // Table to track unique addresses per 4-hour period
         db.exec(`
-            CREATE TABLE IF NOT EXISTS period_address_activity (
+            CREATE TABLE IF NOT EXISTS daily_address_activity (
                 period_ts INTEGER NOT NULL,  -- Unix timestamp rounded down to 4-hour period
                 address TEXT NOT NULL,
                 tx_count INTEGER NOT NULL DEFAULT 1,
@@ -23,11 +23,11 @@ const module: IndexingPlugin = {
     handleTxBatch: (db, blocksDb, batch) => {
         // Accumulate data in memory
         const periodAddressMap = new Map<number, Map<string, number>>();
-        const FOUR_HOURS = 14400; // 4 hours in seconds
+        const ONE_DAY = 86400; // 1 day in seconds
 
         for (const tx of batch.txs) {
-            // Round down to 4-hour period
-            const periodTs = Math.floor(tx.blockTs / FOUR_HOURS) * FOUR_HOURS;
+            // Round down to 1 day period
+            const periodTs = Math.floor(tx.blockTs / ONE_DAY) * ONE_DAY;
 
             // Get or create the address map for this period
             if (!periodAddressMap.has(periodTs)) {

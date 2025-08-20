@@ -14,6 +14,10 @@ type TransferStats = {
     transferCoinsTotal: number;
 }
 
+const hardcodedHomeToToken = {
+    "0x7d5041b9e8f144b2b3377a722df5dd6eaf447cf2": "0x420FcA0121DC28039145009570975747295f2329",
+}
+
 // Key for aggregating transfers: homeChain:remoteChain:direction:contractAddress:coinAddress
 type TransferKey = `${string}:${string}:${string}:${string}:${string}`;
 
@@ -138,6 +142,12 @@ const module: ApiPlugin = {
 
             // Sort by transferCount descending
             results.sort((a, b) => b.transferCount - a.transferCount);
+
+            for (const result of results) {
+                if (hardcodedHomeToToken[result.contractAddress]) {
+                    result.coinAddress = hardcodedHomeToToken[result.contractAddress];
+                }
+            }
 
             return reply.send(results);
         });
@@ -456,6 +466,14 @@ const module: ApiPlugin = {
                 coinAddress: data.coinAddress,
                 tvl: data.outboundTotal - data.inboundTotal
             }));
+
+
+
+            for (const result of results) {
+                if (hardcodedHomeToToken[result.contractAddress]) {
+                    result.coinAddress = hardcodedHomeToToken[result.contractAddress];
+                }
+            }
 
             // Sort by absolute TVL value descending
             results.sort((a, b) => Math.abs(b.tvl) - Math.abs(a.tvl));

@@ -360,9 +360,12 @@ const module: ApiPlugin = {
                                 remoteChainName: { type: 'string' },
                                 contractAddress: { type: 'string' },
                                 coinAddress: { type: 'string' },
-                                tvl: { type: 'number' }
+                                tvl: { type: 'number' },
+                                inboundTxCount: { type: 'number' },
+                                outboundTxCount: { type: 'number' },
+                                totalTxCount: { type: 'number' }
                             },
-                            required: ['homeChainBlockchainId', 'homeChainName', 'remoteChainBlockchainId', 'remoteChainName', 'contractAddress', 'coinAddress', 'tvl']
+                            required: ['homeChainBlockchainId', 'homeChainName', 'remoteChainBlockchainId', 'remoteChainName', 'contractAddress', 'coinAddress', 'tvl', 'inboundTxCount', 'outboundTxCount', 'totalTxCount']
                         }
                     }
                 }
@@ -391,6 +394,8 @@ const module: ApiPlugin = {
                 coinAddress: string;
                 outboundTotal: number;
                 inboundTotal: number;
+                inboundTxCount: number;
+                outboundTxCount: number;
             };
 
             // Map to store aggregated TVL data
@@ -400,14 +405,15 @@ const module: ApiPlugin = {
             for (const config of configs) {
                 const indexerConn = dbCtx.getIndexerDbConnection(config.evmChainId, "ictt");
 
-                // Query to get sum of inbound and outbound transfers
+                // Query to get sum of inbound and outbound transfers and transaction counts
                 const stmt = indexerConn.prepare(`
                     SELECT 
                         tm.is_inbound,
                         tm.pair_chain,
                         tm.contract_address,
                         rth.coin_address,
-                        SUM(tm.amount) as total_amount
+                        SUM(tm.amount) as total_amount,
+                        COUNT(*) as tx_count
                     FROM token_movements tm
                     JOIN recognized_token_homes rth ON tm.contract_address = rth.contract_address
                     WHERE tm.block_timestamp <= ?
@@ -421,6 +427,7 @@ const module: ApiPlugin = {
                     contract_address: string;
                     coin_address: string;
                     total_amount: number;
+                    tx_count: number;
                 }>;
 
                 // Process each aggregated row
@@ -442,7 +449,9 @@ const module: ApiPlugin = {
                             contractAddress: row.contract_address,
                             coinAddress: row.coin_address,
                             outboundTotal: 0,
-                            inboundTotal: 0
+                            inboundTotal: 0,
+                            inboundTxCount: 0,
+                            outboundTxCount: 0
                         };
                         tvlMap.set(key, tvlData);
                     }
@@ -450,8 +459,10 @@ const module: ApiPlugin = {
                     // is_inbound = 0 means outbound, is_inbound = 1 means inbound
                     if (row.is_inbound === 0) {
                         tvlData.outboundTotal += row.total_amount;
+                        tvlData.outboundTxCount += row.tx_count;
                     } else {
                         tvlData.inboundTotal += row.total_amount;
+                        tvlData.inboundTxCount += row.tx_count;
                     }
                 }
             }
@@ -464,7 +475,10 @@ const module: ApiPlugin = {
                 remoteChainName: data.remoteChainName,
                 contractAddress: data.contractAddress,
                 coinAddress: data.coinAddress,
-                tvl: data.outboundTotal - data.inboundTotal
+                tvl: data.outboundTotal - data.inboundTotal,
+                inboundTxCount: data.inboundTxCount,
+                outboundTxCount: data.outboundTxCount,
+                totalTxCount: data.inboundTxCount + data.outboundTxCount
             }));
 
 

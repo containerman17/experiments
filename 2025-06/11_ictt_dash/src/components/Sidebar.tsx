@@ -42,6 +42,7 @@ const menuGroups: MenuGroup[] = [
         items: [
             { label: 'ICTT Transfers', path: '/ictt-transfers' },
             { label: 'ICTT TVL', path: '/ictt-tvl' },
+            { label: 'ICTT by Token', path: '/ictt-by-token' },
             { label: 'ICTT List', path: '/ictt-transfers-list' }
         ]
     },

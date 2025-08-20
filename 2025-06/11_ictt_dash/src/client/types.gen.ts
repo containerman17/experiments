@@ -409,6 +409,9 @@ export type GetApiGlobalIcttTvlResponses = {
         contractAddress: string;
         coinAddress: string;
         tvl: number;
+        inboundTxCount: number;
+        outboundTxCount: number;
+        totalTxCount: number;
     }>;
 };
 

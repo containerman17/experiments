@@ -3,16 +3,17 @@ import coinNames from "./coinNames.json"
 interface NamedCoinProps {
     address: string
     extras?: Record<string, string>
+    showAddressWithName?: boolean
 }
 
-export default function NamedCoin({ address, extras }: NamedCoinProps) {
+export default function NamedCoin({ address, extras, showAddressWithName = true }: NamedCoinProps) {
     // Check extras first
     const extraName = extras?.[address]
     if (extraName) {
         return (
             <span>
                 {extraName}<br />
-                <span className="text-xs text-gray-500 font-mono">{address}</span>
+                {showAddressWithName && <span className="text-xs text-gray-500 font-mono">{address}</span>}
             </span>
         )
     }
@@ -23,7 +24,7 @@ export default function NamedCoin({ address, extras }: NamedCoinProps) {
         return (
             <span>
                 {name}<br />
-                <span className="text-xs text-gray-500 font-mono">{address}</span>
+                {showAddressWithName && <span className="text-xs text-gray-500 font-mono">{address}</span>}
             </span>
         )
     }

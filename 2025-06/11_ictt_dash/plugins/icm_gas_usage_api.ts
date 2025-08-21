@@ -75,8 +75,8 @@ const module: ApiPlugin = {
 
             // Default time range: last 30 days
             const now = Math.floor(Date.now() / 1000);
-            const start = startTs || now - 30 * 86400;
-            const end = endTs || now;
+            const start = typeof startTs === 'number' ? startTs : now - 30 * 86400;
+            const end = typeof endTs === 'number' ? endTs : now;
 
             // Collect stats from all chains
             const results: IcmGasUsageStats[] = [];

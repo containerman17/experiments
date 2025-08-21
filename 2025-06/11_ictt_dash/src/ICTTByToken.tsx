@@ -218,16 +218,20 @@ export default function ICTTByToken() {
                                                     )
                                                 })}
                                             </tbody>
+                                            <tfoot className="bg-gray-50 font-bold">
+                                                <tr>
+                                                    <td colSpan={2} className="px-3 py-2 text-sm">
+                                                        Total
+                                                    </td>
+                                                    <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                                                        {group.totalTvl.toLocaleString()}
+                                                    </td>
+                                                    <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                                                        {group.totalTxCount.toLocaleString()}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
                                         </table>
-                                    </div>
-                                </div>
-
-                                <div className="border-t pt-3 flex justify-between items-center">
-                                    <div className={`text-lg font-bold`}>
-                                        Total TVL: {group.totalTvl.toLocaleString()}
-                                    </div>
-                                    <div className="text-lg">
-                                        Total Transfers: <span className="font-bold">{group.totalTxCount.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>

@@ -33,6 +33,7 @@ const menuGroups: MenuGroup[] = [
         items: [
             { label: 'Daily Messages', path: '/daily-message-volume' },
             { label: 'ICM Gas Usage', path: '/icm-gas-usage' },
+            { label: 'ICM Gas Chart', path: '/icm-gas-usage-chart' },
             { label: 'ICM vs LZ', path: '/messaging-comparison' },
         ]
     },

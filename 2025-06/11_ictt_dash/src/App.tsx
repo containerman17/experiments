@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar'
 import Sync from './Sync'
 import RpcExamples from './RpcExamples'
 import ICMGasUsage from './ICMGasUsage'
+import ICMGasUsageChart from './ICMGasUsageChart'
 import TPS from './TPS'
 import CumulativeTxs from './CumulativeTxs'
 import DailyMessageVolume from './DailyMessageVolume'
@@ -39,6 +40,7 @@ function App() {
               <Route path="/sync-status" element={<Sync />} />
               <Route path="/rpc" element={<RpcExamples />} />
               <Route path="/icm-gas-usage" element={<ICMGasUsage />} />
+              <Route path="/icm-gas-usage-chart" element={<ICMGasUsageChart />} />
               <Route path="/tps" element={<TPS />} />
               <Route path="/cumulative-txs" element={<CumulativeTxs />} />
               <Route path="/daily-message-volume" element={<DailyMessageVolume />} />

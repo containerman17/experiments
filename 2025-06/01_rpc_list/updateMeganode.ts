@@ -1,4 +1,4 @@
-import chains from './data/chains.json' assert { type: 'json' };
+import chains from './data/chains.json';
 import trackExtraChains from './data/trackExtraChains.json' assert { type: 'json' };
 import { writeFileSync, existsSync, readFileSync } from 'fs';
 import { generateCompose } from './lib/generateCompose';

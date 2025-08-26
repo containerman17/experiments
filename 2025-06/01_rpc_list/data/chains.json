@@ -154,29 +154,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "Marnisa",
-    "blockchainId": "2CLqZNxr9j7w6DDVZEixybcBhMrkUeB4Vff3HLrfF1fuS7M6FK",
-    "subnetId": "sZ1zmoQx3NeV8WB5D3np8xYUJ2p5hKfWFXDeuSGvxyZkCABs2",
-    "rpcUrl": "https://subnets.avax.network/marnisa/mainnet/rpc",
-    "evmChainId": "5419",
-    "blocksCount": "100+",
-    "estimatedTxCount": null,
-    "glacierChainId": "5419",
-    "comment": null,
-    "debugEnabled": false
-  },
-  {
-    "chainName": "Gentle Flawless Enemies Chain",
-    "blockchainId": "2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53",
-    "subnetId": "5nw7KUi4vpwohKXdnFZFsJ5RJRST2gVXVScNksQHsKVxANq69",
-    "rpcUrl": "http://142.132.150.152:8080/ext/bc/2DfPkZ7jBmRb1sXeu5KkWZR4DJnuPDXaaiuSH7ELJ927gMxy53/rpc",
-    "evmChainId": "588785742",
-    "blocksCount": "10+",
-    "estimatedTxCount": null,
-    "comment": null,
-    "debugEnabled": true
-  },
-  {
     "chainName": "thegrowthprotocol",
     "blockchainId": "2DnTLFrwyrvDDdWWzXBZqnNZXsHbLDGBU2kkrenaF5M5xFgbDY",
     "subnetId": "2eq3DtJp4cWzvGd8Q3ZFo8VpZmmD235Xoxgq6CmX8anZ69M54",
@@ -198,6 +175,17 @@
     "estimatedTxCount": null,
     "glacierChainId": "1216",
     "comment": null,
+    "debugEnabled": false
+  },
+  {
+    "chainName": "rwa",
+    "blockchainId": "2FtR29YgdQu3az7UposcqVpAKXkcXYenvfeHax8Uz1dD4LpELS",
+    "subnetId": "2qJwkFcVKTyNK4PrLSqFzuavfA5t1tZgLZ2cJWo15D15CjT7NU",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -232,6 +220,17 @@
     "estimatedTxCount": null,
     "glacierChainId": "12150",
     "comment": null,
+    "debugEnabled": false
+  },
+  {
+    "chainName": "PandaSea",
+    "blockchainId": "2gYSmRb7tjS4wb5FHFx8NBhwQgARWEdr8MGVC7v8UWJJFkEpTj",
+    "subnetId": "26NzZkCTeUHfqdxRcUXDTAurNxDsT6mYLwSEqTz3s11G1rQV14",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
+    "estimatedTxCount": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -358,17 +357,6 @@
     "blocksCount": null,
     "estimatedTxCount": null,
     "comment": "TODO: investigate",
-    "debugEnabled": false
-  },
-  {
-    "chainName": "Rymedi Transaction Subnet",
-    "blockchainId": "2PKgDmUGYJEV3gSBkvM7ztJuSk3g7omGjDjHdQR28Tv8JSxFBK",
-    "subnetId": "LThVFg2aFviak8Ranf8nNX4UAEtLyzhyCNY2AQdXbgYkJdQTM",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "Seems private. Medical stuff managed by Zeeve.",
     "debugEnabled": false
   },
   {
@@ -591,6 +579,18 @@
     "debugEnabled": false
   },
   {
+    "chainName": "vocationalfuchsiawren",
+    "blockchainId": "4Ci8kcWroGE1rBWUJXxEsdcJiWrRtePph32mVaNeBUDRCPrBv",
+    "subnetId": "rNQNzPsd7G1tm48jDXxb2inZ2zucMivTiygiaUg2RMYMfYozy",
+    "rpcUrl": "https://subnets.avax.network/vocational/mainnet/rpc",
+    "evmChainId": "25726",
+    "blocksCount": "100+",
+    "estimatedTxCount": null,
+    "glacierChainId": "25726",
+    "comment": null,
+    "debugEnabled": false
+  },
+  {
     "chainName": "Bitcoin Content Network",
     "blockchainId": "apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i",
     "subnetId": "2pcw5qWCnrxQDS9uWd6gmcdj1WxUr777xo9BBzcqzmMwu7WtX8",
@@ -657,17 +657,6 @@
     "blocksCount": null,
     "estimatedTxCount": null,
     "comment": "TODO: investigate",
-    "debugEnabled": false
-  },
-  {
-    "chainName": "Rymedi Identity Subnet",
-    "blockchainId": "HnECQEqpvvXcBF9Jup1ti1XMowQGrSWiQSkKdwcjxEbzmTHMC",
-    "subnetId": "qWeo55RT2F7SNoWtVUuAGptPoz23hViLthjHHaj3BsV2pv7TM",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "See \"Rymedi Transaction Subnet\"",
     "debugEnabled": false
   },
   {
@@ -867,17 +856,6 @@
     "estimatedTxCount": null,
     "glacierChainId": "10036",
     "comment": null,
-    "debugEnabled": false
-  },
-  {
-    "chainName": "Pani Test",
-    "blockchainId": "wn28JpKXEZEB9DaJGqcgfgvFyFhJLKsEbLjDm152AGiNkj5sW",
-    "subnetId": "Qjop9jUh4AfLLb1CkjwS2XGdJY7tqbSf6vzdnEBZmWtkpmLwx",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {

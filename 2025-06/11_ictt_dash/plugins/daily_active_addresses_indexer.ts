@@ -1,6 +1,12 @@
-import type { IndexingPlugin } from "frostbyte-sdk";
+import type { IndexingPlugin, TxBatch, BlocksDBHelper, betterSqlite3 } from "frostbyte-sdk";
 
-const module: IndexingPlugin = {
+// Define the extracted data type
+interface DailyActiveAddressesData {
+    dailyAddressMap: Map<number, Map<string, number>>;
+    dailyTxCounts: Map<number, number>;
+}
+
+const module: IndexingPlugin<DailyActiveAddressesData> = {
     name: "daily_active_addresses",
     version: 1,
     usesTraces: false,
@@ -26,28 +32,13 @@ const module: IndexingPlugin = {
         `);
 
         // Create indexes for performance
-        try {
-            db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_daily_address_day_ts ON daily_address_activity(day_ts)
-            `);
-        } catch (error: any) {
-            if (!error.message.includes('already exists')) {
-                throw error;
-            }
-        }
-
-        try {
-            db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_daily_address_address ON daily_address_activity(address)
-            `);
-        } catch (error: any) {
-            if (!error.message.includes('already exists')) {
-                throw error;
-            }
-        }
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_daily_address_day_ts ON daily_address_activity(day_ts);
+            CREATE INDEX IF NOT EXISTS idx_daily_address_address ON daily_address_activity(address);
+        `);
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): DailyActiveAddressesData => {
         // Accumulate data in memory
         const dailyAddressMap = new Map<number, Map<string, number>>();
         const dailyTxCounts = new Map<number, number>();
@@ -70,7 +61,15 @@ const module: IndexingPlugin = {
             dailyTxCounts.set(dayTs, (dailyTxCounts.get(dayTs) || 0) + 1);
         }
 
-        if (dailyAddressMap.size === 0) return;
+        return { dailyAddressMap, dailyTxCounts };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: DailyActiveAddressesData
+    ) => {
+        if (data.dailyAddressMap.size === 0) return;
 
         // Prepare statements
         const insertAddressStmt = db.prepare(`
@@ -92,7 +91,7 @@ const module: IndexingPlugin = {
         `);
 
         // Process each day
-        for (const [dayTs, addressMap] of dailyAddressMap) {
+        for (const [dayTs, addressMap] of data.dailyAddressMap) {
             // Insert address activity
             for (const [address, txCount] of addressMap) {
                 insertAddressStmt.run(dayTs, address, txCount);

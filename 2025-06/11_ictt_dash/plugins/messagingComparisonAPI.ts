@@ -55,6 +55,7 @@ interface ChainPairSummary {
 const module: ApiPlugin = {
     name: "messaging_comparison",
     requiredIndexers: ['layerzero_messages', 'teleporter_messages'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get<{

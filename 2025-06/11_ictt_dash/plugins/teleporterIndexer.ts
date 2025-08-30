@@ -1,6 +1,13 @@
-import type { IndexingPlugin } from "frostbyte-sdk";
+import type { IndexingPlugin, TxBatch, BlocksDBHelper, betterSqlite3 } from "frostbyte-sdk";
 import { encodingUtils } from "frostbyte-sdk";
 
+interface TeleporterData {
+    teleporterMessages: Array<{
+        is_outgoing: boolean;
+        other_chain_id: string;
+        block_timestamp: number;
+    }>;
+}
 
 // Teleporter contract address
 const TELEPORTER_ADDRESS = "0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf";
@@ -10,14 +17,14 @@ const SEND_CROSS_CHAIN_MESSAGE_TOPIC = '0x2a211ad4a59ab9d003852404f9c57c690704ee
 const RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC = '0x292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34';
 
 
-const module: IndexingPlugin = {
+const module: IndexingPlugin<TeleporterData> = {
     name: "teleporter_messages",
     version: 9,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 
     // Initialize tables
-    initialize: (db) => {
+    initialize: (db: betterSqlite3.Database) => {
         db.exec(`
             CREATE TABLE IF NOT EXISTS teleporter_messages (
                 is_outgoing BOOLEAN NOT NULL,
@@ -32,13 +39,13 @@ const module: IndexingPlugin = {
         `);
     },
 
-    // Process transactions
-    handleTxBatch: (db, blocksDb, batch) => {
-        const teleporterMessages: {
+    // Extract data from transactions
+    extractData: (batch: TxBatch): TeleporterData => {
+        const teleporterMessages: Array<{
             is_outgoing: boolean;
             other_chain_id: string;
             block_timestamp: number;
-        }[] = [];
+        }> = [];
 
         for (const tx of batch.txs) {
             for (let i = 0; i < tx.receipt.logs.length; i++) {
@@ -76,8 +83,17 @@ const module: IndexingPlugin = {
             }
         }
 
+        return { teleporterMessages };
+    },
+
+    // Save extracted data to database
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: TeleporterData
+    ) => {
         // Insert messages into table
-        if (teleporterMessages.length === 0) {
+        if (data.teleporterMessages.length === 0) {
             return;
         }
 
@@ -88,7 +104,7 @@ const module: IndexingPlugin = {
         `);
 
         // Insert each message
-        for (const msg of teleporterMessages) {
+        for (const msg of data.teleporterMessages) {
             insertStmt.run(msg.is_outgoing ? 1 : 0, msg.other_chain_id, msg.block_timestamp);
         }
     }

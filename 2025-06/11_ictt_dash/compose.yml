@@ -2,7 +2,7 @@ services:
   fetcher:
     container_name: fetcher
     restart: on-failure:10
-    image: ghcr.io/containerman17/frostbyte:latest
+    image: ghcr.io/containerman17/frostbyte:faster
     volumes:
       - ~/plugins:/plugins
       - ~/data:/data
@@ -12,11 +12,15 @@ services:
       driver: "json-file"
       options:
         max-size: "150m"
-        max-file: "5" 
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "50"
   api:
     container_name: api
     restart: on-failure:10
-    image: ghcr.io/containerman17/frostbyte:latest
+    image: ghcr.io/containerman17/frostbyte:faster
     volumes:
       - ~/plugins:/plugins
       - ~/data:/data
@@ -31,11 +35,15 @@ services:
       driver: "json-file"
       options:
         max-size: "150m"
-        max-file: "5" 
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "50"
   indexer:
     container_name: indexer
     restart: on-failure:10
-    image: ghcr.io/containerman17/frostbyte:latest
+    image: ghcr.io/containerman17/frostbyte:faster
     volumes:
       - ~/plugins:/plugins
       - ~/data:/data
@@ -45,4 +53,8 @@ services:
       driver: "json-file"
       options:
         max-size: "150m"
-        max-file: "5" 
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "50"

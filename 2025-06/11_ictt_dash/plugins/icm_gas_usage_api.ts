@@ -24,6 +24,7 @@ interface ChainStatsResult {
 const module: ApiPlugin = {
     name: "icm_gas_usage_api",
     requiredIndexers: ['icm_gas_usage'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get<{

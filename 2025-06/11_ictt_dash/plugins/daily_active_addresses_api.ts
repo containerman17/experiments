@@ -18,6 +18,7 @@ interface UniqueAddressCount {
 const module: ApiPlugin = {
     name: "daily_active_addresses_api",
     requiredIndexers: ['daily_active_addresses'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         // Get active addresses for a period

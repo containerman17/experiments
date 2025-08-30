@@ -1,12 +1,7 @@
-import { ChainConfig } from "frostbyte-sdk";
+import { type ChainConfig } from "frostbyte-sdk";
 
 //@ts-ignore don't want to install @types/node just for this
 import fs from "fs";
-
-// TODO: Remember to handle excluded chains - currently excluding Avalanche C-Chain (43114)
-const EXCLUDED_CHAIN_IDS = {
-    // 43114: "Avalanche C-Chain" // Exclude this chain from processing
-};
 
 type ChainFromJson = {
     chainName: string;
@@ -40,104 +35,40 @@ const debugFilterChainIds = process.argv[2] ? process.argv[2].split(',') : undef
 
 const FORCE_DISABLE_DEBUG = true
 
-const RPS_PER_HOST = {
-    "meganode.solokhin.com": 20000,
-    "65.21.140.118": 20000,  // meganode IP should have same RPS
-    "subnets.avax.network": 20,
-    "api.avax.network": 20,
-    "default": 20,
-    "142.132.150.152": 100000,
-}
-
-const DISABLE_BLOCK_GROWTH = [
-    "meganode.solokhin.com",
-    "65.21.140.118",  // meganode IP should also disable block growth
+const ENABLE_BATCH_SIZE_GROWTH = [
+    "subnets.avax.network",
+    "api.avax.network"
 ]
 
-const MAX_CONCURRENCY_PER_HOST = {
-    "meganode.solokhin.com": 300,
-    "65.21.140.118": 300,  // meganode IP should have same concurrency  
-    "subnets.avax.network": 100,
-    "api.avax.network": 100,
-    "rpc.step.network": 100,
-    "rpc.amichain.org": 100,
-    "rpc-codenekt-mainnet.cogitus.io": 100,
-    "default": 100,
-    "142.132.150.152": 300,
-}
 
-const REQUEST_BATCH_SIZE_PER_HOST = {
-    "default": 10,
-    "subnets.avax.network": 4,
-}
-
-const URL_REPLACEMENTS = {
-    "https://meganode.solokhin.com/": "http://65.21.140.118/",
-}
-
-const DEFAULT_REQUEST_BATCH_SIZE = 10
 const DEFAULT_BLOCKS_PER_BATCH = 20
 
-// First pass: determine final URLs and count chains per final host
-const hostCounts: { [host: string]: number } = {};
-const chainWithFinalUrls: Array<{ chain: ChainFromJson, finalRpcUrl: string, finalHost: string }> = [];
-
+// Process chains and create configs with hardcoded values
 for (const chain of chains) {
     if (!chain.evmChainId || !chain.rpcUrl) {
         continue;
     }
 
-    // Skip excluded chains
-    if (EXCLUDED_CHAIN_IDS[chain.evmChainId]) {
-        console.log(`Skipping excluded chain: ${chain.chainName} (evmChainId: ${chain.evmChainId})`);
-        continue;
-    }
-
     // Determine final RPC URL - skip URL replacements for secret chains
-    let finalRpcUrl = chain.rpcUrl;
+    const host = new URL(chain.rpcUrl).hostname;
 
-    const finalUrl = new URL(finalRpcUrl);
-    let finalHost = finalUrl.hostname;
-
-    // Count based on final host
-    hostCounts[finalHost] = (hostCounts[finalHost] || 0) + 1;
-
-    chainWithFinalUrls.push({ chain, finalRpcUrl, finalHost });
-}
-
-// Second pass: create chain configs with calculated RPS and maxConcurrentRequests based on final hosts
-for (const { chain, finalRpcUrl, finalHost } of chainWithFinalUrls) {
-    const enableBatchSizeGrowth = !DISABLE_BLOCK_GROWTH.includes(finalHost);
-
-    const hostRps = RPS_PER_HOST[finalHost] || RPS_PER_HOST["default"];
-    const hostMaxConcurrency = MAX_CONCURRENCY_PER_HOST[finalHost] || MAX_CONCURRENCY_PER_HOST["default"];
-    const hostRequestBatchSize = REQUEST_BATCH_SIZE_PER_HOST[finalHost] || REQUEST_BATCH_SIZE_PER_HOST["default"];
-    const chainCount = hostCounts[finalHost];
-    const rpsPerChain = Math.ceil(hostRps / chainCount);
-    const maxConcurrentRequestsPerChain = Math.ceil(hostMaxConcurrency / chainCount);
+    const enableBatchSizeGrowth = ENABLE_BATCH_SIZE_GROWTH.includes(host);
 
     result.push({
         "chainName": chain.chainName,
         "blockchainId": chain.blockchainId,
         "evmChainId": Number(chain.evmChainId),
         "rpcConfig": {
-            "rpcUrl": finalRpcUrl,
-            "requestBatchSize": hostRequestBatchSize,
-            "maxConcurrentRequests": maxConcurrentRequestsPerChain,
-            "rps": rpsPerChain,
+            "rpcUrl": chain.rpcUrl,
+            "requestBatchSize": 10,
             "rpcSupportsDebug": chain.debugEnabled && !FORCE_DISABLE_DEBUG,
             "enableBatchSizeGrowth": enableBatchSizeGrowth,
             "blocksPerBatch": DEFAULT_BLOCKS_PER_BATCH
-        },
-
-    },);
+        }
+    });
 }
 // Limit the number of chains if maxChains is specified
 const finalResult = debugFilterChainIds ? result.filter(chain => debugFilterChainIds.includes(chain.blockchainId)) : result;
-// Ensure data directory exists
-if (!fs.existsSync("./data")) {
-    fs.mkdirSync("./data", { recursive: true });
-}
 
 fs.writeFileSync("./prod_chains.json", JSON.stringify(finalResult, null, 2));
 console.log(`Saved ${finalResult.length} chains in prod_chains.json${debugFilterChainIds ? ` (limited to ${debugFilterChainIds})` : ''}`);

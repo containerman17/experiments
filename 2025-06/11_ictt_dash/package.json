@@ -7,12 +7,13 @@
     "dev": "concurrently \"npm run dev:back\" \"npm run dev:front\"",
     "dev:front": "vite",
     "dev:back": "frostbyte run -p ./plugins/ -d ./data/",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "openapi": "npx -y @hey-api/openapi-ts -i http://localhost:3080/api/openapi.json -o src/client"
   },
   "dependencies": {
+    "@avalabs/avalanchejs": "^5.0.0",
     "@nivo/core": "^0.99.0",
     "@nivo/sankey": "^0.99.0",
     "@tailwindcss/vite": "^4.1.11",

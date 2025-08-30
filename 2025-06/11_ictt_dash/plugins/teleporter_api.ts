@@ -3,6 +3,7 @@ import type { ApiPlugin } from "frostbyte-sdk";
 const module: ApiPlugin = {
     name: "teleporter_api",
     requiredIndexers: ['teleporter_messages'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         // Get total ICM messages for a chain at a specific timestamp

@@ -1,15 +1,23 @@
-import type { IndexingPlugin } from "frostbyte-sdk";
+import type { IndexingPlugin, TxBatch, BlocksDBHelper, betterSqlite3 } from "frostbyte-sdk";
 
-const module: IndexingPlugin = {
+interface PeriodAddressActivityData {
+    periodAddressActivity: Array<{
+        periodTs: number;
+        address: string;
+        txCount: number;
+    }>;
+}
+
+const module: IndexingPlugin<PeriodAddressActivityData> = {
     name: "period_address_activity",
     version: 2,
     usesTraces: false,
 
-    initialize: (db) => {
-        // Table to track unique addresses per 4-hour period
+    initialize: (db: betterSqlite3.Database) => {
+        // Table to track unique addresses per day
         db.exec(`
             CREATE TABLE IF NOT EXISTS daily_address_activity (
-                period_ts INTEGER NOT NULL,  -- Unix timestamp rounded down to 4-hour period
+                period_ts INTEGER NOT NULL,  -- Unix timestamp rounded down to 1 day period
                 address TEXT NOT NULL,
                 tx_count INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (period_ts, address)
@@ -20,7 +28,7 @@ const module: IndexingPlugin = {
         // is sufficient for both INSERT ON CONFLICT operations and queries
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): PeriodAddressActivityData => {
         // Accumulate data in memory
         const periodAddressMap = new Map<number, Map<string, number>>();
         const ONE_DAY = 86400; // 1 day in seconds
@@ -46,22 +54,40 @@ const module: IndexingPlugin = {
             }
         }
 
-        if (periodAddressMap.size === 0) return;
+        // Convert nested maps to flat array for easier processing
+        const periodAddressActivity: Array<{
+            periodTs: number;
+            address: string;
+            txCount: number;
+        }> = [];
+
+        for (const [periodTs, addressMap] of periodAddressMap) {
+            for (const [address, txCount] of addressMap) {
+                periodAddressActivity.push({ periodTs, address, txCount });
+            }
+        }
+
+        return { periodAddressActivity };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: PeriodAddressActivityData
+    ) => {
+        if (data.periodAddressActivity.length === 0) return;
 
         // Prepare statement for batch operations
         const insertAddressStmt = db.prepare(`
-            INSERT INTO period_address_activity (period_ts, address, tx_count)
+            INSERT INTO daily_address_activity (period_ts, address, tx_count)
             VALUES (?, ?, ?)
             ON CONFLICT(period_ts, address) DO UPDATE SET
                 tx_count = tx_count + excluded.tx_count
         `);
 
-        // Process each period
-        for (const [periodTs, addressMap] of periodAddressMap) {
-            // Insert address activity
-            for (const [address, txCount] of addressMap) {
-                insertAddressStmt.run(periodTs, address, txCount);
-            }
+        // Insert all address activity
+        for (const activity of data.periodAddressActivity) {
+            insertAddressStmt.run(activity.periodTs, activity.address, activity.txCount);
         }
     }
 };

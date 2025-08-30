@@ -4,7 +4,7 @@ import { type GetApiChainsResponses } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
-import { encodingUtils } from "frostbyte-sdk"
+import { hexToCB58 } from "./lib/encodingUtils"
 
 type Chain = GetApiChainsResponses[200][0]
 
@@ -155,7 +155,7 @@ function EthCallCard({ selectedChainId, chains, onChainSelect, defaultChainId }:
                 <div className="text-sm uppercase tracking-wider  mb-3">Blockchain ID</div>
                 <div className="font-mono text-lg text-purple-600 break-all px-4 text-center">
                     {callData
-                        ? encodingUtils.hexToCB58(callData)
+                        ? hexToCB58(callData)
                         : '...'}
                 </div>
                 <div className="text-xs  mt-3 font-mono text-center">

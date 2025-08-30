@@ -1,5 +1,5 @@
-import { type IndexingPlugin, abiUtils, viem } from "frostbyte-sdk";
-import DexalotLayerZeroEndpointV2ABI from './abi/DexalotLayerZeroEndpointV2ABI.json';
+import { type IndexingPlugin, type TxBatch, type BlocksDBHelper, type betterSqlite3, abiUtils, viem } from "frostbyte-sdk";
+import DexalotLayerZeroEndpointV2ABI from './abi/DexalotLayerZeroEndpointV2ABI.json' with { type: "json" };
 
 // Extract PacketSent and PacketVerified event hashes
 const lzEvents: Map<string, string> = new Map();
@@ -29,7 +29,19 @@ function decodeDstEidFromPayload(encodedPayload: string): number {
     return parseInt(dstEidHex, 16);
 }
 
-const module: IndexingPlugin = {
+// Define the extracted data type
+interface LayerZeroMessage {
+    sender: string;
+    is_outgoing: boolean;
+    block_timestamp: number;
+    chain_id: number;
+}
+
+interface LayerZeroExtractedData {
+    messages: LayerZeroMessage[];
+}
+
+const module: IndexingPlugin<LayerZeroExtractedData> = {
     name: "layerzero_messages",
     version: 2,
     usesTraces: false,
@@ -51,14 +63,9 @@ const module: IndexingPlugin = {
         `);
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): LayerZeroExtractedData => {
         // Accumulate messages in memory
-        const layerzeroMessages: {
-            sender: string;
-            is_outgoing: boolean;
-            block_timestamp: number;
-            chain_id: number;
-        }[] = [];
+        const messages: LayerZeroMessage[] = [];
 
         for (const { tx, receipt, blockTs } of batch.txs) {
             for (const log of receipt.logs) {
@@ -95,7 +102,7 @@ const module: IndexingPlugin = {
                         chain_id = Number(origin.srcEid);
                     }
 
-                    layerzeroMessages.push({
+                    messages.push({
                         sender: tx.from,
                         is_outgoing,
                         block_timestamp: blockTs,
@@ -109,14 +116,24 @@ const module: IndexingPlugin = {
             }
         }
 
+        return { messages };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: LayerZeroExtractedData
+    ) => {
+        const { messages } = data;
+
         // Insert messages into database
-        if (layerzeroMessages.length > 0) {
+        if (messages.length > 0) {
             const insertStmt = db.prepare(`
                 INSERT INTO layerzero_messages (sender, is_outgoing, block_timestamp, chain_id) 
                 VALUES (?, ?, ?, ?)
             `);
 
-            for (const msg of layerzeroMessages) {
+            for (const msg of messages) {
                 insertStmt.run(msg.sender, msg.is_outgoing ? 1 : 0, msg.block_timestamp, msg.chain_id);
             }
         }

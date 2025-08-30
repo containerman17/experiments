@@ -1,5 +1,5 @@
 import type { ApiPlugin } from "frostbyte-sdk";
-import { WELL_KNOWN_CHAINS } from "./lib/WellKnownChains";
+import { WELL_KNOWN_CHAINS } from "./lib/WellKnownChains.ts";
 
 
 type TransferStats = {
@@ -34,6 +34,7 @@ interface TokenMovementRow {
 const module: ApiPlugin = {
     name: "ictt_api",
     requiredIndexers: ["ictt"],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get('/api/global/ictt/transfers', {

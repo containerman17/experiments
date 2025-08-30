@@ -1,15 +1,6 @@
-import { type IndexingPlugin, abiUtils, encodingUtils, evmTypes, viem } from "frostbyte-sdk";
-import ERC20TokenHome from './abi/ERC20TokenHome.json';
-import NativeTokenHome from './abi/NativeTokenHome.json';
-// TEMPORARILY COMMENTED OUT - Only indexing Home contracts
-// import ERC20TokenRemote from './abi/ERC20TokenRemote.json';
-// import NativeTokenRemote from './abi/NativeTokenRemote.json';
-import type { ContractHomeData, RemoteData } from './types/ictt.types';
-
-interface ContractHomeRow {
-    address: string;
-    data: string; // JSON string from SQLite
-}
+import { type IndexingPlugin, type TxBatch, type BlocksDBHelper, type betterSqlite3, abiUtils, encodingUtils, evmTypes, viem } from "frostbyte-sdk";
+import ERC20TokenHome from './abi/ERC20TokenHome.json' with { type: "json" };
+import NativeTokenHome from './abi/NativeTokenHome.json' with { type: "json" };
 
 interface PendingRegistration {
     contractAddress: string;
@@ -40,6 +31,14 @@ interface ContractTypeDetection {
     decoded: any[];
     coinAddress: string;
     tokenDecimals: number;
+}
+
+// Define the extracted data type
+interface ICTTExtractedData {
+    pendingRegistrations: PendingRegistration[];
+    movements: TokenMovement[];
+    homesWithRemoteRegistered: Set<string>;
+    existingHomes: RecognizedHome[];
 }
 
 /**
@@ -165,7 +164,7 @@ events.set(TELEPORTER_MESSAGE_EXECUTED_HASH, 'MessageExecuted');
 const eventHexes = Array.from(events.keys());
 
 
-const module: IndexingPlugin = {
+const module: IndexingPlugin<ICTTExtractedData> = {
     name: "ictt",
     version: 9,
     usesTraces: false,
@@ -197,43 +196,27 @@ const module: IndexingPlugin = {
         `);
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): ICTTExtractedData => {
         const pendingRegistrations: PendingRegistration[] = [];
         const movements: TokenMovement[] = [];
         const homesWithRemoteRegistered: Set<string> = new Set();
 
-        // Load all recognized homes into memory for quick lookup
-        const recognizedHomes = new Map<string, RecognizedHome>();
-        //FIXME: pull on demand if throws out of memory on the C-Chain
-        const existingHomes = db.prepare('SELECT * FROM recognized_token_homes').all() as RecognizedHome[];
-        for (const home of existingHomes) {
-            recognizedHomes.set(home.contract_address, home);
-        }
+        // Note: We'll need existing homes for filtering, but that will be handled in saveExtractedData
+        // For now, collect all potential movements and filter later
 
         // First pass: Collect all deployments and events
         for (const { tx, receipt, blockTs } of batch.txs) {
-
-
             // Check if this is a contract creation
             if (receipt.contractAddress) {
                 const contractAddress = receipt.contractAddress;
                 const detection = detectICTTContract(tx.input as string, contractAddress);
 
-                // Log unknown contracts for debugging
                 if (detection) {
                     pendingRegistrations.push({
                         contractAddress: contractAddress,
                         coinAddress: detection.coinAddress,
                         tokenDecimals: detection.tokenDecimals,
                         contractType: detection.contractType
-                    });
-
-                    recognizedHomes.set(contractAddress, {
-                        contract_address: contractAddress,
-                        coin_address: detection.coinAddress,
-                        token_decimals: detection.tokenDecimals,
-                        contract_type: detection.contractType,
-                        at_least_one_remote_registered: 0
                     });
                 }
             }
@@ -250,11 +233,6 @@ const module: IndexingPlugin = {
                 }
 
                 const contractAddress = log.address;
-
-                // Only process events for recognized home contracts
-                if (!recognizedHomes.has(contractAddress)) {
-                    continue;
-                }
 
                 // Handle outbound token movement events
                 const outboundEvents = ["TokensSent", "TokensAndCallSent"];
@@ -337,6 +315,40 @@ const module: IndexingPlugin = {
             }
         }
 
+        return {
+            pendingRegistrations,
+            movements,
+            homesWithRemoteRegistered,
+            existingHomes: [] // Will be populated in saveExtractedData
+        };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: ICTTExtractedData
+    ) => {
+        const { pendingRegistrations, movements, homesWithRemoteRegistered } = data;
+
+        // Load all recognized homes into memory for quick lookup
+        const recognizedHomes = new Map<string, RecognizedHome>();
+        //FIXME: pull on demand if throws out of memory on the C-Chain
+        const existingHomes = db.prepare('SELECT * FROM recognized_token_homes').all() as RecognizedHome[];
+        for (const home of existingHomes) {
+            recognizedHomes.set(home.contract_address, home);
+        }
+
+        // Add pending registrations to recognizedHomes map for movement processing
+        for (const reg of pendingRegistrations) {
+            recognizedHomes.set(reg.contractAddress, {
+                contract_address: reg.contractAddress,
+                coin_address: reg.coinAddress,
+                token_decimals: reg.tokenDecimals,
+                contract_type: reg.contractType,
+                at_least_one_remote_registered: 0
+            });
+        }
+
         // Database operations
 
         // 1. Register pending contracts (from constructor)
@@ -352,16 +364,17 @@ const module: IndexingPlugin = {
             }
         }
 
-        // 2. Record all token movements
-        if (movements.length > 0) {
+        // 2. Record all token movements (only for recognized contracts)
+        const validMovements = movements.filter(m => recognizedHomes.has(m.contractAddress));
+
+        if (validMovements.length > 0) {
             const insertStmt = db.prepare(`
                 INSERT INTO token_movements 
                 (block_timestamp, is_inbound, amount, pair_chain, contract_address, tx_hash) 
                 VALUES (?, ?, ?, ?, ?, ?)
             `);
 
-            for (const movement of movements) {
-                // Already verified contract is recognized in event processing
+            for (const movement of validMovements) {
                 const contractInfo = recognizedHomes.get(movement.contractAddress)!;
                 const decimals = contractInfo.token_decimals;
                 const divisor = BigInt(10) ** BigInt(decimals);

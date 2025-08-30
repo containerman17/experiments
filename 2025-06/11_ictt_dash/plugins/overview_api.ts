@@ -46,6 +46,7 @@ function getCached<T>(key: string, factory: () => Promise<T>): Promise<T> {
 const module: ApiPlugin = {
     name: "overview_api",
     requiredIndexers: ['minute_tx_counter', 'period_address_activity', 'period_tx_counter', 'ictt', 'icm_gas_usage'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get('/api/global/overview/lastWeekTxs', {

@@ -24,6 +24,7 @@ interface MessageCountRow {
 const module: ApiPlugin = {
     name: "teleporter_leaderboard",
     requiredIndexers: ["teleporter_messages"],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         // Helper function to get leaderboard data for a time period

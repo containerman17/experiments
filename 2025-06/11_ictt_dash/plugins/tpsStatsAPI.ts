@@ -15,6 +15,7 @@ interface TxSumResult {
 const module: ApiPlugin = {
     name: "tps_stats",
     requiredIndexers: ['minute_tx_counter'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get<{

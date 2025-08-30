@@ -1,11 +1,24 @@
-import type { IndexingPlugin } from "frostbyte-sdk";
+import type { IndexingPlugin, TxBatch, BlocksDBHelper, betterSqlite3 } from "frostbyte-sdk";
 
-const module: IndexingPlugin = {
+interface PeriodTxCounterData {
+    dayStats: Array<{
+        dayTs: number;
+        count: number;
+        gasUsed: number;
+    }>;
+    monthStats: Array<{
+        monthTs: number;
+        count: number;
+        gasUsed: number;
+    }>;
+}
+
+const module: IndexingPlugin<PeriodTxCounterData> = {
     name: "period_tx_counter",
     version: 2,
     usesTraces: false,
 
-    initialize: (db) => {
+    initialize: (db: betterSqlite3.Database) => {
         db.exec(`
             CREATE TABLE IF NOT EXISTS daily_tx_counts (
                 day_ts INTEGER NOT NULL,        -- Unix timestamp of start of day (00:00:00 UTC)
@@ -23,20 +36,13 @@ const module: IndexingPlugin = {
         `);
 
         // Index for efficient date range queries
-        try {
-            db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_daily_day_ts ON daily_tx_counts(day_ts);
-                CREATE INDEX IF NOT EXISTS idx_monthly_month_ts ON monthly_tx_counts(month_ts);
-            `);
-        } catch (error: any) {
-            // Ignore error if index already exists
-            if (!error.message.includes('already exists')) {
-                throw error;
-            }
-        }
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_daily_day_ts ON daily_tx_counts(day_ts);
+            CREATE INDEX IF NOT EXISTS idx_monthly_month_ts ON monthly_tx_counts(month_ts);
+        `);
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): PeriodTxCounterData => {
         // Accumulate tx counts and gas usage by day and month in memory
         const dayStats = new Map<number, { count: number, gasUsed: number }>();
         const monthStats = new Map<number, { count: number, gasUsed: number }>();
@@ -62,8 +68,32 @@ const module: IndexingPlugin = {
             monthStats.set(monthTs, monthData);
         }
 
+        // Convert maps to arrays for easier processing
+        const dayStatsArray = Array.from(dayStats.entries()).map(([dayTs, stats]) => ({
+            dayTs,
+            count: stats.count,
+            gasUsed: stats.gasUsed
+        }));
+
+        const monthStatsArray = Array.from(monthStats.entries()).map(([monthTs, stats]) => ({
+            monthTs,
+            count: stats.count,
+            gasUsed: stats.gasUsed
+        }));
+
+        return {
+            dayStats: dayStatsArray,
+            monthStats: monthStatsArray
+        };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: PeriodTxCounterData
+    ) => {
         // Only write to DB if we have accumulated data
-        if (dayStats.size === 0 && monthStats.size === 0) return;
+        if (data.dayStats.length === 0 && data.monthStats.length === 0) return;
 
         // Prepare statements for batch operations
         const upsertDayStmt = db.prepare(`
@@ -83,13 +113,13 @@ const module: IndexingPlugin = {
         `);
 
         // Process each day
-        for (const [dayTs, stats] of dayStats) {
-            upsertDayStmt.run(dayTs, stats.count, stats.gasUsed);
+        for (const stats of data.dayStats) {
+            upsertDayStmt.run(stats.dayTs, stats.count, stats.gasUsed);
         }
 
         // Process each month
-        for (const [monthTs, stats] of monthStats) {
-            upsertMonthStmt.run(monthTs, stats.count, stats.gasUsed);
+        for (const stats of data.monthStats) {
+            upsertMonthStmt.run(stats.monthTs, stats.count, stats.gasUsed);
         }
     }
 };

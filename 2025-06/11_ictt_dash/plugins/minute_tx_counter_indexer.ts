@@ -1,11 +1,19 @@
-import type { IndexingPlugin } from "frostbyte-sdk";
+import type { IndexingPlugin, TxBatch, BlocksDBHelper, betterSqlite3 } from "frostbyte-sdk";
 
-const module: IndexingPlugin = {
+interface MinuteTxCounterData {
+    minuteStats: Array<{
+        minuteTs: number;
+        count: number;
+        gasUsed: number;
+    }>;
+}
+
+const module: IndexingPlugin<MinuteTxCounterData> = {
     name: "minute_tx_counter",
     version: 11,
     usesTraces: false,
 
-    initialize: (db) => {
+    initialize: (db: betterSqlite3.Database) => {
         db.exec(`
             CREATE TABLE IF NOT EXISTS minute_tx_counts (
                 minute_ts INTEGER PRIMARY KEY,  -- Unix timestamp rounded down to minute
@@ -22,30 +30,16 @@ const module: IndexingPlugin = {
             )
         `);
 
-        try {
-            db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_minute_ts ON minute_tx_counts(minute_ts)
-            `);
-        } catch (error: any) {
-            // Ignore error if index already exists
-            if (!error.message.includes('already exists')) {
-                throw error;
-            }
-        }
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_minute_ts ON minute_tx_counts(minute_ts);
+        `);
 
-        try {
-            db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts)
-            `);
-        } catch (error: any) {
-            // Ignore error if index already exists
-            if (!error.message.includes('already exists')) {
-                throw error;
-            }
-        }
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_cumulative_minute_ts ON cumulative_tx_counts(minute_ts);
+        `);
     },
 
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): MinuteTxCounterData => {
         // Accumulate tx counts and gas usage by minute in memory
         const minuteStats = new Map<number, { count: number, gasUsed: number }>();
 
@@ -58,11 +52,27 @@ const module: IndexingPlugin = {
             minuteStats.set(minuteTs, stats);
         }
 
-        // Only write to DB if we have accumulated enough data
-        if (minuteStats.size === 0) return;
-
         // Sort minutes to process them in chronological order
-        const sortedMinutes = Array.from(minuteStats.entries()).sort((a, b) => a[0] - b[0]);
+        const sortedMinutes = Array.from(minuteStats.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([minuteTs, stats]) => ({
+                minuteTs,
+                count: stats.count,
+                gasUsed: stats.gasUsed
+            }));
+
+        return {
+            minuteStats: sortedMinutes
+        };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: MinuteTxCounterData
+    ) => {
+        // Only write to DB if we have accumulated data
+        if (data.minuteStats.length === 0) return;
 
         // Prepare statements for batch operations
         const insertMinuteStmt = db.prepare(`
@@ -74,13 +84,13 @@ const module: IndexingPlugin = {
         `);
 
         // Process each minute - just update counts, not cumulative
-        for (const [minuteTs, stats] of sortedMinutes) {
-            insertMinuteStmt.run(minuteTs, stats.count, stats.gasUsed);
+        for (const stats of data.minuteStats) {
+            insertMinuteStmt.run(stats.minuteTs, stats.count, stats.gasUsed);
         }
 
         // After all minutes are updated, recalculate cumulative counts for affected range
-        const minTs = sortedMinutes[0]![0];
-        const maxTs = sortedMinutes[sortedMinutes.length - 1]![0];
+        const minTs = data.minuteStats[0]!.minuteTs;
+        const maxTs = data.minuteStats[data.minuteStats.length - 1]!.minuteTs;
 
         // Get cumulative totals before our range
         const beforeStmt = db.prepare(`

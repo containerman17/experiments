@@ -18,6 +18,7 @@ interface CumulativeResult {
 const module: ApiPlugin = {
     name: "single_chain_tps",
     requiredIndexers: ['minute_tx_counter'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get<{

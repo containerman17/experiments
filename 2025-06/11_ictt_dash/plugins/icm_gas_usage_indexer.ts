@@ -1,5 +1,4 @@
-import type { IndexingPlugin } from "frostbyte-sdk";
-import { encodingUtils, viem } from "frostbyte-sdk";
+import { encodingUtils, type IndexingPlugin, type TxBatch, type BlocksDBHelper, type betterSqlite3 } from "frostbyte-sdk";
 
 // Teleporter contract address
 const TELEPORTER_ADDRESS = "0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf";
@@ -15,9 +14,14 @@ interface ChainIntervalStats {
     receive_gas_cost: bigint;
 }
 
+// Define the extracted data type
+interface ICMGasUsageData {
+    updates: Map<string, Map<number, ChainIntervalStats>>;
+}
+
 export const ICM_CHAIN_INTERVAL_SIZE = 300; // 5 minutes
 
-const module: IndexingPlugin = {
+const module: IndexingPlugin<ICMGasUsageData> = {
     name: "icm_gas_usage",
     version: 21,
     usesTraces: false,
@@ -39,20 +43,12 @@ const module: IndexingPlugin = {
         `);
 
         // Create index for queries
-        try {
-            db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_icm_chain_interval_ts ON icm_chain_interval_stats(interval_ts)
-            `);
-        } catch (error: any) {
-            // Ignore if already exists
-            if (!error.message.includes('already exists')) {
-                throw error;
-            }
-        }
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_icm_chain_interval_ts ON icm_chain_interval_stats(interval_ts);
+        `);
     },
 
-    // Process transactions
-    handleTxBatch: (db, blocksDb, batch) => {
+    extractData: (batch: TxBatch): ICMGasUsageData => {
         // Accumulate updates per chain per interval
         const updates = new Map<string, Map<number, ChainIntervalStats>>();
 
@@ -124,6 +120,18 @@ const module: IndexingPlugin = {
             }
         }
 
+        return { updates };
+    },
+
+    saveExtractedData: (
+        db: betterSqlite3.Database,
+        blocksDb: BlocksDBHelper,
+        data: ICMGasUsageData
+    ) => {
+        const { updates } = data;
+
+        if (updates.size === 0) return;
+
         // Prepare statements for batch insert/update
         const insertStmt = db.prepare(`
             INSERT INTO icm_chain_interval_stats 
@@ -148,9 +156,7 @@ const module: IndexingPlugin = {
         }
 
         // Optional logging
-        if (updates.size > 0) {
-            console.log(`ICM Burner: Updated stats for ${updates.size} chains across ${Array.from(updates.values()).reduce((sum, m) => sum + m.size, 0)} intervals`);
-        }
+        console.log(`ICM Burner: Updated stats for ${updates.size} chains across ${Array.from(updates.values()).reduce((sum, m) => sum + m.size, 0)} intervals`);
     }
 };
 

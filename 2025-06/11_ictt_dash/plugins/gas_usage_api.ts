@@ -17,6 +17,7 @@ interface MinuteGasSum {
 const module: ApiPlugin = {
     name: "gas_usage_api",
     requiredIndexers: ['minute_tx_counter'],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         // Get gas usage for a period

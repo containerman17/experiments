@@ -17,6 +17,7 @@ interface MessageCountRow {
 const module: ApiPlugin = {
     name: "teleporter_daily_volume",
     requiredIndexers: ["teleporter_messages"],
+    version: 1,
 
     registerRoutes: (app, dbCtx) => {
         app.get('/api/global/metrics/dailyMessageVolume', {

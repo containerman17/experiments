@@ -29,9 +29,9 @@ interface AppState {
     setLanguagePair: (pair: LanguagePair) => void
     setModel: (model: 'gemini-2.5-flash' | 'gemini-2.5-pro') => void
     setShowSettings: (show: boolean) => void
-      setError: (error: string) => void
-  addHistoryItem: (item: Omit<HistoryItem, 'id'>) => void
-  clearHistory: () => void
+    setError: (error: string) => void
+    addHistoryItem: (item: Omit<HistoryItem, 'id'>) => void
+    clearHistory: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -56,15 +56,15 @@ export const useAppStore = create<AppState>()(
 
             setError: (error: string) => set({ error }),
 
-                  addHistoryItem: (item: Omit<HistoryItem, 'id'>) => set((state) => {
-        const newItem = { ...item, id: Date.now() }
-        const newHistory = [...state.history, newItem]
-        // Keep only last 10 items
-        const trimmedHistory = newHistory.slice(-10)
-        return { history: trimmedHistory }
-      }),
-      
-      clearHistory: () => set({ history: [] }),
+            addHistoryItem: (item: Omit<HistoryItem, 'id'>) => set((state) => {
+                const newItem = { ...item, id: Date.now() }
+                const newHistory = [...state.history, newItem]
+                // Keep only last 10 items
+                const trimmedHistory = newHistory.slice(-10)
+                return { history: trimmedHistory }
+            }),
+
+            clearHistory: () => set({ history: [] }),
         }),
         {
             name: 'translator-storage',

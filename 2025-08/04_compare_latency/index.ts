@@ -1,7 +1,7 @@
 import { createPublicClient, webSocket, http } from 'viem';
 import { Table } from 'console-table-printer';
-import { getProviderConfigs, TEST_TIME } from './config';
-import { median } from './math';
+import { getProviderConfigs, TEST_TIME } from './config.ts';
+import { median } from './math.ts';
 
 const delays: Map<string, number[]> = new Map();
 

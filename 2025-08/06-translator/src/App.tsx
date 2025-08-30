@@ -208,6 +208,22 @@ function App() {
             <p className="text-base text-gray-500">Click the mic to start translating</p>
           </div>
         )}
+
+        {history.length > 0 && (
+          <div className="text-center py-4 border-b border-gray-100">
+            <button
+              onClick={() => {
+                if (confirm('Are you sure you want to clear all conversation history?')) {
+                  clearHistory()
+                }
+              }}
+              className="px-4 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              Clear History
+            </button>
+          </div>
+        )}
+
         {history.map(item => (
           <div key={item.id} className="py-6 border-b border-gray-100 last:border-b-0">
             <p className="text-xl text-gray-900 mb-4 leading-relaxed">{item.transcription}</p>

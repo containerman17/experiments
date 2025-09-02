@@ -17,7 +17,7 @@ import (
 
 func main() {
 	initializeOnly := false
-	if os.Args[1] == "initialize_only" {
+	if len(os.Args) > 1 && os.Args[1] == "initialize_only" {
 		initializeOnly = true
 		fmt.Println("🚀 Initializing peer store...")
 		fmt.Println("================================================")

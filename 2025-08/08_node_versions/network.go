@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -24,7 +23,8 @@ func newDiscoveryNetwork(peerStore *PeerStore) *discoveryNetwork {
 }
 
 func (n *discoveryNetwork) Connected(peerID ids.NodeID) {
-	fmt.Printf("  ✅ Network: Connected to %s\n", peerID)
+	// Removed printf to avoid concurrent output issues
+	// fmt.Printf("  ✅ Network: Connected to %s\n", peerID)
 }
 
 func (n *discoveryNetwork) AllowConnection(peerID ids.NodeID) bool {
@@ -46,17 +46,21 @@ func (n *discoveryNetwork) Track(peers []*ips.ClaimedIPPort) error {
 	}
 
 	if newPeers > 0 {
-		fmt.Printf("  📍 Network: Tracked %d new peers\n", newPeers)
+		// Removed printf to avoid concurrent output issues
+		// fmt.Printf("  📍 Network: Tracked %d new peers\n", newPeers)
 	}
 
 	return nil
 }
 
 func (n *discoveryNetwork) Disconnected(peerID ids.NodeID) {
-	fmt.Printf("  ❌ Network: Disconnected from %s\n", peerID)
+	// Removed printf to avoid concurrent output issues
+	// fmt.Printf("  ❌ Network: Disconnected from %s\n", peerID)
 }
 
 func (n *discoveryNetwork) KnownPeers() ([]byte, []byte) {
+	// Return our ACTUAL known peers so nodes only share NEW ones
+	// This is more efficient and honest
 	return n.peerStore.GetBloomFilter()
 }
 

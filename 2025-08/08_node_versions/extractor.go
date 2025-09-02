@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,7 +16,6 @@ import (
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/network/throttling"
-	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/snow/networking/router"
 	"github.com/ava-labs/avalanchego/snow/networking/tracker"
 	"github.com/ava-labs/avalanchego/snow/uptime"
@@ -45,6 +45,7 @@ func ExtractPeersFromPeer(
 	tlsCert *tls.Certificate,
 	network *discoveryNetwork,
 	trackedSubnets set.Set[ids.ID],
+	waitSeconds time.Duration,
 ) (*ExtractedPeerInfo, error) {
 	// Parse IP
 	addr, err := netip.ParseAddrPort(peerIP)
@@ -56,21 +57,17 @@ func ExtractPeersFromPeer(
 	network.ClearExtractedIPs()
 
 	// Create message handler to capture peer list
-	var receivedPeerList bool
 	msgHandler := router.InboundHandlerFunc(func(ctx context.Context, msg message.InboundMessage) {
 		defer msg.OnFinishedHandling()
 
 		switch msg.Op() {
 		case message.PeerListOp:
-			if pl, ok := msg.Message().(*p2p.PeerList); ok {
-				receivedPeerList = true
-				fmt.Printf("  📋 Received PeerList with %d peers\n", len(pl.ClaimedIpPorts))
-			}
+			// Peer list received - no action needed for summary mode
 		}
 	})
 
-	// Connect to peer
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// Overall timeout for entire operation - generous for busy nodes
+	ctx, cancel := context.WithTimeout(context.Background(), waitSeconds)
 	defer cancel()
 
 	p, err := connectToPeer(ctx, addr, tlsCert, network, msgHandler, trackedSubnets)
@@ -78,8 +75,13 @@ func ExtractPeersFromPeer(
 		return nil, err
 	}
 	defer func() {
-		p.StartClose()
-		p.AwaitClosed(context.Background())
+		if p != nil {
+			p.StartClose()
+			// Don't wait long for cleanup
+			closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer closeCancel()
+			_ = p.AwaitClosed(closeCtx)
+		}
 	}()
 
 	// Extract peer info
@@ -95,15 +97,18 @@ func ExtractPeersFromPeer(
 		peerInfo.TrackedSubnets = append(peerInfo.TrackedSubnets, subnet)
 	}
 
-	// Request peer list
-	fmt.Println("  📮 Requesting peer list...")
-	p.StartSendGetPeerList()
+	// Request peer list with AllSubnets=true to get ALL peers, not just subnet-matching ones
+	if err := sendGetPeerListAllSubnets(p, network); err != nil {
+		// Failed to send GetPeerList - continue anyway, peer might still Track new peers
+	}
 
-	// Wait for peer list response
-	time.Sleep(5 * time.Second)
-
-	if !receivedPeerList {
-		fmt.Println("  ⚠️  No peer list received")
+	// Wait for peer list response - use remaining context time minus a small buffer for cleanup
+	deadline, ok := ctx.Deadline()
+	if ok {
+		waitTime := time.Until(deadline) - 2*time.Second // Leave 2s for cleanup
+		if waitTime > 0 {
+			time.Sleep(waitTime)
+		}
 	}
 
 	// Get extracted IPs from network
@@ -120,11 +125,10 @@ func connectToPeer(
 	msgHandler router.InboundHandler,
 	trackedSubnets set.Set[ids.ID],
 ) (peer.Peer, error) {
-	// Connect to remote peer
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, constants.NetworkType, remoteIP.String())
+	// Connect to remote peer using context timeout
+	conn, err := (&net.Dialer{}).DialContext(ctx, constants.NetworkType, remoteIP.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect: %w", err)
+		return nil, fmt.Errorf("TCP connection failed: %w", err)
 	}
 
 	// Setup TLS
@@ -134,12 +138,26 @@ func connectToPeer(
 		prometheus.NewCounter(prometheus.CounterOpts{}),
 	)
 
-	peerID, conn, cert, err := clientUpgrader.Upgrade(conn)
+	// Store original connection in case Upgrade fails
+	origConn := conn
+	peerID, conn, cert, err := clientUpgrader.Upgrade(origConn)
 	if err != nil {
+		// Close original connection if upgrade failed
+		if origConn != nil {
+			_ = origConn.Close()
+		}
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 	}
 
-	fmt.Printf("  🔐 TLS handshake successful with NodeID: %s\n", peerID)
+	// Check if upgraded connection is valid
+	if conn == nil {
+		if origConn != nil {
+			_ = origConn.Close()
+		}
+		return nil, fmt.Errorf("TLS upgrade returned nil connection")
+	}
+
+	// TLS handshake successful
 
 	// Create message creator
 	mc, err := message.NewCreator(
@@ -175,18 +193,16 @@ func connectToPeer(
 		return nil, err
 	}
 
-	// Get our IP
-	ourIP := getOutboundIP()
-	if ourIP == netip.IPv4Unspecified() {
-		ourIP = netip.MustParseAddr("54.95.191.28")
-	}
-	ourPort := uint16(9651)
-
 	parsedCert, err := staking.ParseCertificate(tlsCert.Leaf.Raw)
 	if err != nil {
 		return nil, err
 	}
 	myNodeID := ids.NodeIDFromCert(parsedCert)
+
+	// Create validator manager that pretends we're a validator
+	// This makes other nodes send us unfiltered peer lists
+	fakeValidators := validators.NewManager()
+	fakeValidators.AddStaker(constants.PrimaryNetworkID, myNodeID, nil, ids.Empty, 1)
 
 	// Create peer configuration
 	config := &peer.Config{
@@ -200,15 +216,15 @@ func connectToPeer(
 		MyNodeID:             myNodeID,
 		MySubnets:            trackedSubnets,
 		Beacons:              validators.NewManager(),
-		Validators:           validators.NewManager(),
+		Validators:           fakeValidators, // Pretend we're a validator
 		NetworkID:            constants.MainnetID,
 		PingFrequency:        constants.DefaultPingFrequency,
 		PongTimeout:          constants.DefaultPingPongTimeout,
-		MaxClockDifference:   time.Minute,
+		MaxClockDifference:   10 * time.Second,
 		ResourceTracker:      resourceTracker,
 		UptimeCalculator:     uptime.NoOpCalculator,
 		IPSigner: peer.NewIPSigner(
-			utils.NewAtomic(netip.AddrPortFrom(ourIP, ourPort)),
+			utils.NewAtomic(netip.AddrPortFrom(getOutboundIP(), 9651)),
 			tlsKey,
 			blsKey,
 		),
@@ -228,9 +244,12 @@ func connectToPeer(
 		false,
 	)
 
-	// Wait for peer to be ready
+	// Wait for peer to be ready - use the parent context timeout
 	if err := p.AwaitReady(ctx); err != nil {
-		return nil, fmt.Errorf("peer failed to become ready: %w", err)
+		if p != nil {
+			p.StartClose()
+		}
+		return nil, fmt.Errorf("peer not ready: %w", err)
 	}
 
 	return p, nil
@@ -248,4 +267,41 @@ func getOutboundIP() netip.Addr {
 		return addr
 	}
 	return netip.IPv4Unspecified()
+}
+
+// sendGetPeerListAllSubnets sends a GetPeerList message with AllSubnets=true
+// to request ALL peers, not just those matching our tracked subnets
+func sendGetPeerListAllSubnets(p peer.Peer, network peer.Network) error {
+	// Get known peers bloom filter
+	knownPeersFilter, knownPeersSalt := network.KnownPeers()
+
+	// Get the peer's config through reflection (since we need MessageCreator)
+	// This is a bit hacky but necessary since peer.Config is embedded
+	peerVal := reflect.ValueOf(p).Elem()
+	configField := peerVal.FieldByName("Config")
+	if !configField.IsValid() {
+		return fmt.Errorf("couldn't access peer Config")
+	}
+
+	config := configField.Interface().(*peer.Config)
+
+	// Create GetPeerList message with AllSubnets=true
+	msg, err := config.MessageCreator.GetPeerList(
+		knownPeersFilter,
+		knownPeersSalt,
+		true, // AllSubnets=true to get ALL peers
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create GetPeerList message: %w", err)
+	}
+
+	// Send the message
+	sendCtx, sendCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer sendCancel()
+
+	if !p.Send(sendCtx, msg) {
+		return fmt.Errorf("failed to send GetPeerList message")
+	}
+
+	return nil
 }

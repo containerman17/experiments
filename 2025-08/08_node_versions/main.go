@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/genesis"
@@ -15,6 +16,13 @@ import (
 )
 
 func main() {
+	initializeOnly := false
+	if os.Args[1] == "initialize_only" {
+		initializeOnly = true
+		fmt.Println("🚀 Initializing peer store...")
+		fmt.Println("================================================")
+	}
+
 	fmt.Println("🚀 Starting one-by-one peer discovery...")
 	fmt.Println("================================================")
 
@@ -35,17 +43,15 @@ func main() {
 	fmt.Printf("🔑 Our NodeID: %s\n", myNodeID)
 
 	// Setup tracked subnets
-	subnet1, _ := ids.FromString("h7egyVb6fKHMDpVaEsTEcy7YaEnXrayxZS4A1AEU4pyBzmwGp")
-	subnet2, _ := ids.FromString("nQCwF6V9y8VFjvMuPeQVWWYn6ba75518Dpf6ZMWZNb3NyTA94")
-	subnet3, _ := ids.FromString("jmLmezoViv3F72XLzpdmSNk3qLEGb72g5EYkp3ij4wHXPF2KN")
+	subnet1, _ := ids.FromString("23dqTMHK186m4Rzcn1ukJdmHy13nqido4LjTp5Kh9W6qBKaFib")
+	// subnet2, _ := ids.FromString("nQCwF6V9y8VFjvMuPeQVWWYn6ba75518Dpf6ZMWZNb3NyTA94")
+	// subnet3, _ := ids.FromString("jmLmezoViv3F72XLzpdmSNk3qLEGb72g5EYkp3ij4wHXPF2KN")
+	// subnet4, _ := ids.FromString("2qJPnDkDH6hn3PVzxzkUdTqDD1HeAnTT8FL4t2BJagc2iuq8j7")
 	trackedSubnets := set.Set[ids.ID]{}
 	trackedSubnets.Add(subnet1)
-	trackedSubnets.Add(subnet2)
-	trackedSubnets.Add(subnet3)
-
-	fmt.Printf("🌐 Tracking subnets:\n")
-	fmt.Printf("   - %s\n", subnet1)
-	fmt.Printf("   - %s\n", subnet2)
+	// trackedSubnets.Add(subnet2)
+	// trackedSubnets.Add(subnet3)
+	// trackedSubnets.Add(subnet4)
 
 	// Initialize peer store
 	peerStore, err := NewPeerStore()
@@ -71,78 +77,103 @@ func main() {
 	// Create network
 	network := newDiscoveryNetwork(peerStore)
 
+	// Start API server in background
+	go StartAPI(peerStore)
+
 	fmt.Println("\n🔄 Starting discovery loop...")
 	fmt.Println("================================================\n")
 
+	// Batch size for parallel processing
+	batchSize := 400
+
 	// Main loop
 	for {
-		// Get peer with oldest contact time
-		peer := peerStore.GetOldestPeer()
-		if peer == nil {
-			fmt.Println("⚠️  No peers available")
+
+		minAge := 60 * time.Second
+		if initializeOnly {
+			minAge = 1000000 * time.Hour
+		}
+		// Get batch of peers with oldest contact time (older than 1 minute)
+		peers := peerStore.GetOldestPeers(batchSize, minAge)
+		if len(peers) == 0 {
+			if initializeOnly {
+				fmt.Println("🚀 Peer store initialized, exiting...")
+				return
+			}
+			fmt.Println("⚠️  No peers available (or all contacted recently)")
 			time.Sleep(10 * time.Second)
 			continue
 		}
 
-		fmt.Printf("\n🔗 Connecting to %s (%s)\n", peer.NodeID, peer.IP)
-		fmt.Printf("   Last contacted: %s\n", formatLastContacted(peer.LastContacted))
+		fmt.Printf("\n🔄 [%s] Processing batch of %d peers...\n",
+			time.Now().Format("15:04:05"), len(peers))
 
-		// Update last contacted time immediately
-		nodeID, _ := ids.NodeIDFromString(peer.NodeID)
-		peerStore.UpdateLastContacted(nodeID)
-
-		// Try to extract peers
-		peerInfo, err := ExtractPeersFromPeer(peer.IP, tlsCert, network, trackedSubnets)
-		if err != nil {
-			fmt.Printf("  ❌ Failed: %v\n", err)
-		} else {
-			fmt.Printf("  ✅ Success! Version: %s\n", peerInfo.Version)
-
-			// Update peer info
-			peerStore.UpdatePeerInfo(peerInfo.NodeID, peerInfo.Version, peerInfo.TrackedSubnets)
-
-			// Check if peer tracks our subnets
-			tracksOurSubnets := false
-			for _, subnet := range peerInfo.TrackedSubnets {
-				if subnet == subnet1 || subnet == subnet2 {
-					tracksOurSubnets = true
-					break
-				}
-			}
-
-			if tracksOurSubnets {
-				// Filter out empty subnet for display
-				displaySubnets := []ids.ID{}
-				for _, subnet := range peerInfo.TrackedSubnets {
-					if subnet != ids.Empty {
-						displaySubnets = append(displaySubnets, subnet)
-					}
-				}
-				fmt.Printf("  🎯 TRACKS OUR SUBNETS! Subnets: %v\n", displaySubnets)
-			} else if len(peerInfo.TrackedSubnets) > 0 {
-				// Count non-empty subnets
-				nonEmptyCount := 0
-				for _, subnet := range peerInfo.TrackedSubnets {
-					if subnet != ids.Empty {
-						nonEmptyCount++
-					}
-				}
-				if nonEmptyCount > 0 {
-					fmt.Printf("  🌐 Tracking %d subnet(s)\n", nonEmptyCount)
-				}
-			}
-
-			fmt.Printf("  📍 Discovered %d new peers\n", len(peerInfo.NewPeerIPs))
-		}
+		// Process peers in parallel
+		processPeerBatch(peers, peerStore, tlsCert, network, trackedSubnets, initializeOnly)
 
 		// Save updated peer list
 		if err := peerStore.Save(); err != nil {
 			fmt.Printf("⚠️  Failed to save peer list: %v\n", err)
 		}
-
-		// Print stats
-		fmt.Printf("\n📊 Total peers in database: %d\n", peerStore.PeerCount())
 	}
+}
+
+func processPeerBatch(
+	peers []*PeerInfo,
+	peerStore *PeerStore,
+	tlsCert *tls.Certificate,
+	network *discoveryNetwork,
+	trackedSubnets set.Set[ids.ID],
+	initializeOnly bool,
+) {
+	var wg sync.WaitGroup
+	wg.Add(len(peers))
+
+	// Counters for summary
+	var mu sync.Mutex
+	var successCount, failCount, totalNewPeers int
+
+	for _, peer := range peers {
+		// Process each peer concurrently
+		go func(p *PeerInfo) {
+			defer wg.Done()
+
+			// Create a separate network instance for this peer to avoid race conditions
+			peerNetwork := newDiscoveryNetwork(peerStore)
+
+			// Update last attempted time immediately
+			nodeID, _ := ids.NodeIDFromString(p.NodeID)
+			peerStore.UpdateLastAttempted(nodeID)
+
+			// Try to extract peers
+
+			waitSeconds := 20 * time.Second
+			if initializeOnly {
+				waitSeconds = 3 * time.Second
+			}
+			peerInfo, err := ExtractPeersFromPeer(p.IP, tlsCert, peerNetwork, trackedSubnets, waitSeconds)
+			if err != nil {
+				mu.Lock()
+				failCount++
+				mu.Unlock()
+			} else {
+				// Update peer info
+				peerStore.UpdatePeerInfo(peerInfo.NodeID, peerInfo.Version, peerInfo.TrackedSubnets)
+
+				mu.Lock()
+				successCount++
+				totalNewPeers += len(peerInfo.NewPeerIPs)
+				mu.Unlock()
+			}
+		}(peer)
+	}
+
+	// Wait for all peers to be processed
+	wg.Wait()
+
+	// Print summary
+	fmt.Printf("📊 Contacted %d/%d nodes (%d successful, %d failed), discovered %d new peers. Total peers: %d\n",
+		successCount+failCount, len(peers), successCount, failCount, totalNewPeers, peerStore.PeerCount())
 }
 
 func loadOrCreateCertificate() (*tls.Certificate, error) {
@@ -188,7 +219,7 @@ func loadOrCreateCertificate() (*tls.Certificate, error) {
 	return staking.LoadTLSCertFromBytes(stakingCert, stakingKey)
 }
 
-func formatLastContacted(t time.Time) string {
+func formatTimestamp(t time.Time) string {
 	if t.IsZero() {
 		return "Never"
 	}

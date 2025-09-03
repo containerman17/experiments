@@ -96,14 +96,6 @@ async function testRpcUrl(rpcUrl: string, expectedBlockchainId: string): Promise
 
 // Find working RPC URL for a chain
 async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, extraRpcUrl?: string): Promise<{ rpcUrl: string; debugEnabled: boolean } | undefined> {
-    const MEGANODE_DOMAIN = process.env.MEGANODE_DOMAIN
-    if (!MEGANODE_DOMAIN) {
-        console.log('MEGANODE_DOMAIN is not set. Please set it in the .env file.');
-        process.exit(1);
-    }
-    const meganodeUrl = `${MEGANODE_DOMAIN}/ext/bc/${blockchainId}/rpc`;
-
-    // Try extra RPC first
     if (extraRpcUrl && extraRpcUrl.trim() !== '') {
         const { isWorking, debugEnabled } = await testRpcUrl(extraRpcUrl, blockchainId);
         if (isWorking) {
@@ -112,12 +104,24 @@ async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, 
         }
     }
 
-    // Try meganode RPC second
-    const { isWorking: meganodeWorking, debugEnabled: meganodeDebug } = await testRpcUrl(meganodeUrl, blockchainId);
-    if (meganodeWorking) {
-        console.log(`RPC for ${blockchainId}: 🐊 Meganode${meganodeDebug ? ' (debug enabled)' : ''}`);
-        return { rpcUrl: meganodeUrl, debugEnabled: meganodeDebug };
+    const meganodeDomains = Object.keys(process.env)
+        .filter(key => key.startsWith('MEGANODE_DOMAIN'))
+        .map(key => process.env[key])
+        .sort();
+
+    for (const domain of meganodeDomains) {
+        const { isWorking, debugEnabled } = await testRpcUrl(`${domain}/ext/bc/${blockchainId}/rpc`, blockchainId);
+        if (isWorking) {
+            console.log(`RPC for ${blockchainId}: 🐊 Meganode${debugEnabled ? ' (debug enabled)' : ''}`);
+            return { rpcUrl: `${domain}/ext/bc/${blockchainId}/rpc`, debugEnabled };
+        }
     }
+    // // Try meganode RPC second
+    // const { isWorking: meganodeWorking, debugEnabled: meganodeDebug } = await testRpcUrl(meganodeUrl, blockchainId);
+    // if (meganodeWorking) {
+    //     console.log(`RPC for ${blockchainId}: 🐊 Meganode${meganodeDebug ? ' (debug enabled)' : ''}`);
+    //     return { rpcUrl: meganodeUrl, debugEnabled: meganodeDebug };
+    // }
 
     // Try official RPC last
     if (officialRpcUrl && officialRpcUrl.trim() !== '') {

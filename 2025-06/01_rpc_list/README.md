@@ -99,7 +99,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 20250320
 - Blockchain ID: 2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du
-- RPC URL: http://142.132.150.152:8080/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 - Comment: also https://rpc1.derachain.com/ext/bc/2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du/rpc
@@ -136,7 +136,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 2786
 - Blockchain ID: YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn
-- RPC URL: http://142.132.150.152:8080/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -145,7 +145,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 836
 - Blockchain ID: J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ
-- RPC URL: http://142.132.150.152:8080/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -181,7 +181,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 10507
 - Blockchain ID: 2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE
-- RPC URL: http://142.132.150.152:8080/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -217,8 +217,8 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 6533
 - Blockchain ID: TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3
-- RPC URL: https://subnets.avax.network/kalichain/mainnet/rpc
-- Debug Enabled: ❌
+- RPC URL: https://node00.solokhin.com/ext/bc/TT2vQnjSF9VZfjaA5dB1VNKVdqkVCDzSncxaMcGVwYedGaMG3/rpc
+- Debug Enabled: ✅
 - Explorer URL: https://subnets.avax.network/kalichain
 
 **KOROSHIL**
@@ -271,7 +271,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 8198
 - Blockchain ID: 2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm
-- RPC URL: http://142.132.150.152:8080/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -406,7 +406,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 2345
 - Blockchain ID: 23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK
-- RPC URL: http://142.132.150.152:8080/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/23YwvXVh5LvSX32iMsLWRMYGCNoDLDrZye16i1KQQWZZFb3QzK/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -415,7 +415,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 237007
 - Blockchain ID: 2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig
-- RPC URL: http://142.132.150.152:8080/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/2uN4Y9JHkLeAJK85Y48LExpNnEiepf7VoZAtmjnwDSZzpZcNig/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -451,7 +451,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 100610
 - Blockchain ID: 2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK
-- RPC URL: http://142.132.150.152:8080/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/2iPUhy8pWRswFtPHHMbzH1rCprpjyWMHCs8RHtazJsmxFw92vK/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 
@@ -478,7 +478,7 @@
 - Estimated Tx Count: Unknown
 - EVM Chain ID: 14594
 - Blockchain ID: WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER
-- RPC URL: http://142.132.150.152:8080/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc
+- RPC URL: https://node00.solokhin.com/ext/bc/WxE3tFpDTgw8VWKf3Yt5zW2Mv7mzipXG6Z2giKYXybcLxRAER/rpc
 - Debug Enabled: ✅
 - Explorer URL: ❌
 

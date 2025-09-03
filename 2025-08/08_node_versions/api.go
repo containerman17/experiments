@@ -17,13 +17,23 @@ type ValidatorResponse struct {
 	TrackedSubnets []string `json:"trackedSubnets"`
 	LastAttempted  int64    `json:"lastAttempted"`
 	LastSeenOnline int64    `json:"lastSeenOnline"`
+	IP             string   `json:"ip"`
 }
 
-// Global timer for idle shutdown
+// Cache for API responses
+type APICache struct {
+	data      []byte
+	timestamp time.Time
+	mu        sync.RWMutex
+}
+
+// Global timer for idle shutdown and response cache
 var (
 	lastRequestTime time.Time
 	lastRequestMu   sync.RWMutex
 	idleTimeout     = 24 * time.Hour // Default, can be overridden
+	responseCache   = &APICache{}
+	cacheDuration   = 10 * time.Second
 )
 
 // StartAPI starts the HTTP API server on port 8080
@@ -50,9 +60,34 @@ func StartAPI(peerStore *PeerStore) {
 }
 
 func handleValidators(w http.ResponseWriter, r *http.Request, peerStore *PeerStore) {
-	peerStore.mu.RLock()
-	defer peerStore.mu.RUnlock()
+	// Check cache first
+	responseCache.mu.RLock()
+	if time.Since(responseCache.timestamp) < cacheDuration && len(responseCache.data) > 0 {
+		// Cache hit - return cached response
+		cachedData := responseCache.data
+		responseCache.mu.RUnlock()
 
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=10")
+		w.Write(cachedData)
+		return
+	}
+	responseCache.mu.RUnlock()
+
+	// Cache miss - generate fresh response
+	responseCache.mu.Lock()
+	defer responseCache.mu.Unlock()
+
+	// Double-check cache after acquiring write lock (another goroutine might have updated it)
+	if time.Since(responseCache.timestamp) < cacheDuration && len(responseCache.data) > 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=10")
+		w.Write(responseCache.data)
+		return
+	}
+
+	// Generate fresh response
+	peerStore.mu.RLock()
 	validators := make([]ValidatorResponse, 0, len(peerStore.peers))
 
 	for _, peer := range peerStore.peers {
@@ -77,18 +112,30 @@ func handleValidators(w http.ResponseWriter, r *http.Request, peerStore *PeerSto
 			NodeID:         peer.NodeID,
 			Version:        peer.Version,
 			TrackedSubnets: trackedSubnets,
-			LastAttempted:  lastAttempted,
-			LastSeenOnline: lastSeenOnline,
+			LastAttempted:  lastAttempted * 1000,
+			LastSeenOnline: lastSeenOnline * 1000,
+			IP:             peer.IP,
 		}
 
 		validators = append(validators, validator)
 	}
+	peerStore.mu.RUnlock()
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(validators); err != nil {
+	// Marshal response
+	responseData, err := json.Marshal(validators)
+	if err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+
+	// Update cache
+	responseCache.data = responseData
+	responseCache.timestamp = time.Now()
+
+	// Send response with cache headers
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=10")
+	w.Write(responseData)
 }
 
 // monitorIdleShutdown watches for idle timeout and exits gracefully

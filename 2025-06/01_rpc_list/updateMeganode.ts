@@ -1,7 +1,7 @@
-import chains from './data/chains.json';
-import trackExtraChains from './data/trackExtraChains.json' assert { type: 'json' };
+import chains from './data/chains.json' with { type: 'json' };
+import trackExtraChains from './data/trackExtraChains.json' with { type: 'json' };
 import { writeFileSync, existsSync, readFileSync } from 'fs';
-import { generateCompose } from './lib/generateCompose';
+import { generateCompose } from './lib/generateCompose.ts';
 import { config } from 'dotenv';
 config()
 

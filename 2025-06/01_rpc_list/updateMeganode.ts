@@ -1,7 +1,7 @@
 import chains from './data/chains.json' with { type: 'json' };
 import trackExtraChains from './data/trackExtraChains.json' with { type: 'json' };
 import { writeFileSync, existsSync, readFileSync } from 'fs';
-import { generateCompose } from './lib/generateCompose.ts';
+import { generateCompose, generateNginxConfig } from './lib/generateCompose.ts';
 import { config } from 'dotenv';
 config()
 
@@ -81,8 +81,23 @@ if (trackedSubnets.length === 0 && subnetsToTrack.length > 0) {
     console.log(`Added first subnet: ${subnetsToTrack[0]}`);
 }
 
-const MEGANODE_DOMAIN = process.env.MEGANODE_DOMAIN
-if (!MEGANODE_DOMAIN) throw new Error("MEGANODE_DOMAIN is not set. Put it into .env")
+// Generate compose file
+const compose = generateCompose(trackedSubnets)
+writeFileSync('./data/meganode-compose.yml', compose)
 
-const compose = generateCompose(trackedSubnets, subnetsToBlockchainId, MEGANODE_DOMAIN)
-writeFileSync('./data/meganode-compose.yml', compose,)
+// Generate nginx config separately
+const serviceConfigs: { serviceName: string, httpPort: number, blockchainIds: string[] }[] = []
+let nextHttpPort = 9000
+trackedSubnets.forEach((subnetId) => {
+    const blockchainIds = subnetsToBlockchainId[subnetId] || []
+    serviceConfigs.push({
+        serviceName: subnetId,
+        httpPort: nextHttpPort,
+        blockchainIds
+    })
+    nextHttpPort += 2
+})
+
+const nginxConfig = generateNginxConfig(serviceConfigs)
+writeFileSync('./data/nginx.conf', nginxConfig)
+console.log('Generated nginx.conf')

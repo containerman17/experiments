@@ -106,13 +106,14 @@ async function findWorkingRpcUrl(blockchainId: string, officialRpcUrl?: string, 
 
     const meganodeDomains = Object.keys(process.env)
         .filter(key => key.startsWith('MEGANODE_DOMAIN'))
+        .sort()
         .map(key => process.env[key])
-        .sort();
+
 
     for (const domain of meganodeDomains) {
         const { isWorking, debugEnabled } = await testRpcUrl(`${domain}/ext/bc/${blockchainId}/rpc`, blockchainId);
         if (isWorking) {
-            console.log(`RPC for ${blockchainId}: 🐊 Meganode${debugEnabled ? ' (debug enabled)' : ''}`);
+            console.log(`RPC for ${blockchainId}: 🐊 Meganode${debugEnabled ? ' (debug enabled)' : ''} ${domain}`);
             return { rpcUrl: `${domain}/ext/bc/${blockchainId}/rpc`, debugEnabled };
         }
     }

@@ -50,12 +50,21 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
     }`
 
             locations += `
-        location /ext/bc/${blockchainId}/rpc {
+        location /ext/bc/${blockchainId}/ {
             limit_conn perip 500;
             proxy_pass http://${upstreamName};
             proxy_connect_timeout 5s;
             proxy_send_timeout 300s;
             proxy_read_timeout 300s;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }`
         })
     })
@@ -63,7 +72,13 @@ function generateNginxConfig(serviceConfigs: { serviceName: string, httpPort: nu
     return `events {}
 http {
     # Concurrent connection limiting: max 500 active connections per IP
-    limit_conn_zone $$binary_remote_addr zone=perip:10m;
+    limit_conn_zone $binary_remote_addr zone=perip:10m;
+    
+    # WebSocket upgrade mapping
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
     ${upstreams}
     
     server {
@@ -78,61 +93,42 @@ http {
 }`
 }
 
-export function generateCompose(subnets: string[], subnetsToBlockchainId: { [key: string]: string[] }, domain: string): string {
+export function generateCompose(subnets: string[]): string {
     const composeObject: {
         services: { [key: string]: any }
-        configs: { [key: string]: any }
     } = {
-        services: {},
-        configs: {}
+        services: {}
     }
 
     let nextHttpPort = 9000
-    const serviceConfigs: { serviceName: string, httpPort: number, blockchainIds: string[] }[] = []
 
     // Generate one service per subnet
     subnets.forEach((subnetId) => {
-        const blockchainIds = subnetsToBlockchainId[subnetId] || []
-
         composeObject.services[subnetId] = generateSubnetService(
             subnetId,
             nextHttpPort,
             nextHttpPort + 1
         )
 
-        serviceConfigs.push({
-            serviceName: subnetId,
-            httpPort: nextHttpPort,
-            blockchainIds
-        })
-
         nextHttpPort += 2
     })
 
-    // Add nginx service
+    // Add nginx service with volume mount for config
     composeObject.services.nginx = {
         image: 'nginx:1.25-alpine',
         container_name: 'nginx',
-        configs: [
-            {
-                source: 'nginx_conf',
-                target: '/etc/nginx/nginx.conf',
-                mode: '0444'
-            }
+        volumes: [
+            './nginx.conf:/etc/nginx/nginx.conf:ro'
         ],
         ports: [
-            '8080:80'
+            '127.0.0.1:8080:80'
         ],
         restart: 'unless-stopped',
         depends_on: Object.keys(composeObject.services).filter(s => s !== 'nginx')
     }
 
-    // Add nginx config
-    composeObject.configs = {
-        nginx_conf: {
-            content: generateNginxConfig(serviceConfigs)
-        }
-    }
-
     return YAML.stringify(composeObject)
 }
+
+// Export the nginx config generator for use in updateMeganode.ts
+export { generateNginxConfig }

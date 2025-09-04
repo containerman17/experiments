@@ -3,20 +3,21 @@
 set -exu
 
 # Master and slave addresses
-# MASTER_ADDRESS="idx6"
-MASTER_ADDRESS="" # TODO: Uncomment this when we are ready to update the master too
+MASTER_ADDRESS="idx6"
+# MASTER_ADDRESS="" # TODO: Uncomment this when we are ready to update the master too
 # SLAVE_ADDRESSES=("ubuntu@x.x.x.x")
-SLAVE_ADDRESSES=(idx5)
+# SLAVE_ADDRESSES=(idx5)
+SLAVE_ADDRESSES=()
 
 # Pre-connect to all hosts to trigger YubiKey confirmations
 echo "Pre-connecting to all hosts for YubiKey authentication..."
 for host in "${SLAVE_ADDRESSES[@]}"; do
     echo "Connecting to slave: $host"
-    ssh -o ConnectTimeout=10 $host exit || true
+    ssh -o ConnectTimeout=10 $host exit
 done
 if [ -n "$MASTER_ADDRESS" ]; then
     echo "Connecting to master: $MASTER_ADDRESS"
-    ssh -o ConnectTimeout=10 $MASTER_ADDRESS exit || true
+    ssh -o ConnectTimeout=10 $MASTER_ADDRESS exit
 fi
 echo "YubiKey authentication complete."
 echo ""

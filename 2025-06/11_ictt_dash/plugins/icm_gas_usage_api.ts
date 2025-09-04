@@ -1,4 +1,4 @@
-import type { ApiPlugin } from "frostbyte-sdk";
+import { type ApiPlugin, dbFunctions } from "frostbyte-sdk";
 
 type IcmGasUsageStats = {
     chainName: string;
@@ -17,8 +17,8 @@ interface ChainStatsResult {
     other_chain_id: string;
     send_count: number;
     receive_count: number;
-    send_gas_cost: number;
-    receive_gas_cost: number;
+    send_gas_cost: Buffer | null;
+    receive_gas_cost: Buffer | null;
 }
 
 const module: ApiPlugin = {
@@ -96,8 +96,8 @@ const module: ApiPlugin = {
                             other_chain_id,
                             SUM(send_count) as send_count,
                             SUM(receive_count) as receive_count,
-                            SUM(send_gas_cost) as send_gas_cost,
-                            SUM(receive_gas_cost) as receive_gas_cost
+                            CUSTOM_SUM_UINT256(send_gas_cost) as send_gas_cost,
+                            CUSTOM_SUM_UINT256(receive_gas_cost) as receive_gas_cost
                         FROM icm_chain_interval_stats
                         WHERE interval_ts >= ? AND interval_ts <= ?
                         GROUP BY other_chain_id
@@ -115,7 +115,16 @@ const module: ApiPlugin = {
                         }
 
                         const totalCount = row.send_count + row.receive_count;
-                        const totalGasCost = row.send_gas_cost + row.receive_gas_cost;
+
+                        // Convert blobs to wei and then to ETH/AVAX
+                        const sendGasWei = row.send_gas_cost ? dbFunctions.blobToUint256(row.send_gas_cost) : 0n;
+                        const receiveGasWei = row.receive_gas_cost ? dbFunctions.blobToUint256(row.receive_gas_cost) : 0n;
+                        const totalGasWei = sendGasWei + receiveGasWei;
+
+                        // Convert to ETH/AVAX for API response
+                        const sendGasCost = Number(sendGasWei) / 1e18;
+                        const receiveGasCost = Number(receiveGasWei) / 1e18;
+                        const totalGasCost = Number(totalGasWei) / 1e18;
 
                         if (totalCount > 0) {
                             results.push({
@@ -125,8 +134,8 @@ const module: ApiPlugin = {
                                 otherChainBlockchainId: row.other_chain_id,
                                 sendCount: row.send_count,
                                 receiveCount: row.receive_count,
-                                sendGasCost: row.send_gas_cost,
-                                receiveGasCost: row.receive_gas_cost,
+                                sendGasCost,
+                                receiveGasCost,
                                 totalCount,
                                 totalGasCost
                             });

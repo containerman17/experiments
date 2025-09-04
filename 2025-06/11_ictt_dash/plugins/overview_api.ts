@@ -395,10 +395,12 @@ const module: ApiPlugin = {
                 }
             }
         }, async (request, reply) => {
+            const now = new Date();
+            const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
             return getTxsByChainCompact(
                 'daily',
                 'dailyTxsByChainCompact',
-                new Date('2020-09-23T00:00:00Z')
+                oneYearAgo
             );
         });
 
@@ -433,10 +435,12 @@ const module: ApiPlugin = {
                 }
             }
         }, async (request, reply) => {
+            const now = new Date();
+            const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
             return getTxsByChainCompact(
                 'monthly',
                 'monthlyTxsByChainCompact',
-                new Date('2020-09-01T00:00:00Z') // Start from September 2020
+                oneYearAgo
             );
         });
 

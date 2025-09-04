@@ -1,4 +1,4 @@
-import { encodingUtils, type IndexingPlugin, type TxBatch, type BlocksDBHelper, type betterSqlite3 } from "frostbyte-sdk";
+import { encodingUtils, type IndexingPlugin, type TxBatch, type BlocksDBHelper, type betterSqlite3, dbFunctions } from "frostbyte-sdk";
 
 // Teleporter contract address
 const TELEPORTER_ADDRESS = "0x253b2784c75e510dd0ff1da844684a1ac0aa5fcf";
@@ -23,7 +23,7 @@ export const ICM_CHAIN_INTERVAL_SIZE = 300; // 5 minutes
 
 const module: IndexingPlugin<ICMGasUsageData> = {
     name: "icm_gas_usage",
-    version: 21,
+    version: 22,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 
@@ -36,8 +36,8 @@ const module: IndexingPlugin<ICMGasUsageData> = {
                 interval_ts INTEGER,
                 send_count INTEGER NOT NULL DEFAULT 0,
                 receive_count INTEGER NOT NULL DEFAULT 0,
-                send_gas_cost REAL NOT NULL DEFAULT 0,
-                receive_gas_cost REAL NOT NULL DEFAULT 0,
+                send_gas_cost BLOB,
+                receive_gas_cost BLOB,
                 PRIMARY KEY (other_chain_id, interval_ts)
             )
         `);
@@ -140,18 +140,18 @@ const module: IndexingPlugin<ICMGasUsageData> = {
             ON CONFLICT(other_chain_id, interval_ts) DO UPDATE SET
                 send_count = send_count + excluded.send_count,
                 receive_count = receive_count + excluded.receive_count,
-                send_gas_cost = send_gas_cost + excluded.send_gas_cost,
-                receive_gas_cost = receive_gas_cost + excluded.receive_gas_cost
+                send_gas_cost = UINT256_ADD(send_gas_cost, excluded.send_gas_cost),
+                receive_gas_cost = UINT256_ADD(receive_gas_cost, excluded.receive_gas_cost)
         `);
 
         // Update database
         for (const [chainId, chainMap] of updates) {
             for (const [intervalTs, stats] of chainMap) {
-                // Convert from wei to ETH/AVAX (divide by 10^18)
-                const sendGasCostInEth = Number(stats.send_gas_cost) / 1e18;
-                const receiveGasCostInEth = Number(stats.receive_gas_cost) / 1e18;
+                // Store raw wei values as uint256 blobs
+                const sendGasCostBlob = dbFunctions.uint256ToBlob(stats.send_gas_cost);
+                const receiveGasCostBlob = dbFunctions.uint256ToBlob(stats.receive_gas_cost);
 
-                insertStmt.run(chainId, intervalTs, stats.send_count, stats.receive_count, sendGasCostInEth, receiveGasCostInEth);
+                insertStmt.run(chainId, intervalTs, stats.send_count, stats.receive_count, sendGasCostBlob, receiveGasCostBlob);
             }
         }
 

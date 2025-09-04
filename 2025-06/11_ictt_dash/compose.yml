@@ -13,10 +13,6 @@ services:
       options:
         max-size: "150m"
         max-file: "5"
-    deploy:
-      resources:
-        limits:
-          cpus: "50"
   api:
     container_name: api
     restart: on-failure:10
@@ -36,10 +32,6 @@ services:
       options:
         max-size: "150m"
         max-file: "5"
-    deploy:
-      resources:
-        limits:
-          cpus: "50"
   indexer:
     container_name: indexer
     restart: on-failure:10
@@ -54,7 +46,3 @@ services:
       options:
         max-size: "150m"
         max-file: "5"
-    deploy:
-      resources:
-        limits:
-          cpus: "50"

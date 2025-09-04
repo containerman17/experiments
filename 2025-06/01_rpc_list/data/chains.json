@@ -97,12 +97,11 @@
     "chainName": "KOROSHIL",
     "blockchainId": "26Ee4Lm4R1bQbQLQU66exLiWgSC9qdDPJCvFpzVsd3raLrHBGZ",
     "subnetId": "pchqewRRQHwx1B3XJEq9p2HGSdjrHsyv48YzVUWXZbrmH4TM6",
-    "rpcUrl": "https://subnets.avax.network/koroshi/mainnet/rpc",
-    "evmChainId": "379",
-    "blocksCount": "100k+",
+    "rpcUrl": null,
+    "evmChainId": null,
+    "blocksCount": null,
     "estimatedTxCount": null,
-    "glacierChainId": "379",
-    "comment": null,
+    "comment": "TODO: investigate",
     "debugEnabled": false
   },
   {
@@ -181,12 +180,12 @@
     "chainName": "rwa",
     "blockchainId": "2FtR29YgdQu3az7UposcqVpAKXkcXYenvfeHax8Uz1dD4LpELS",
     "subnetId": "2qJwkFcVKTyNK4PrLSqFzuavfA5t1tZgLZ2cJWo15D15CjT7NU",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://node00.solokhin.com/ext/bc/2FtR29YgdQu3az7UposcqVpAKXkcXYenvfeHax8Uz1dD4LpELS/rpc",
+    "evmChainId": "1115",
+    "blocksCount": "1k+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "AIBTRUSTMainnet",
@@ -226,11 +225,11 @@
     "chainName": "PandaSea",
     "blockchainId": "2gYSmRb7tjS4wb5FHFx8NBhwQgARWEdr8MGVC7v8UWJJFkEpTj",
     "subnetId": "26NzZkCTeUHfqdxRcUXDTAurNxDsT6mYLwSEqTz3s11G1rQV14",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://node00.solokhin.com/ext/bc/2gYSmRb7tjS4wb5FHFx8NBhwQgARWEdr8MGVC7v8UWJJFkEpTj/rpc",
+    "evmChainId": "7776",
+    "blocksCount": "0+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
+    "comment": null,
     "debugEnabled": false
   },
   {
@@ -523,18 +522,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "lucid",
-    "blockchainId": "2vmiAUCfkXd67jEq2GQhzVgTfNs3tpUP89agEEvnRK7urMVpjb",
-    "subnetId": "hbP3PrnQS71Py1VVxvHfnCnr7MWos3XQesEsCKQoA9hpciyVR",
-    "rpcUrl": "https://subnets.avax.network/lucid/mainnet/rpc",
-    "evmChainId": "62521",
-    "blocksCount": "10+",
-    "estimatedTxCount": null,
-    "glacierChainId": "62521",
-    "comment": null,
-    "debugEnabled": false
-  },
-  {
     "chainName": "deraalpha",
     "blockchainId": "2XCTEc8CfNK9MtQWYMfgNt32QjZsZqq92LH7eTV5xY8YjY44du",
     "subnetId": "B7hA9WibSJu2fKdHT2XZs2RYg1rZTtxwg6cMYBKYjvcJjbqsp",
@@ -603,17 +590,6 @@
     "debugEnabled": false
   },
   {
-    "chainName": "Amichain",
-    "blockchainId": "48CGt26jWt2YauRcV222Uryzj1tLojpKBKYkXYzWBTnma7QrF",
-    "subnetId": "2LxjhW4wfLc26Jn1HnzEhcnvsBpbgKKz6LSvEwgRtT7qHw4y3u",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
-    "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
-  },
-  {
     "chainName": "Bitcoin Content Network",
     "blockchainId": "apkTBtq7snAMY68PR1zY3hkYg57XNNh3eFuHWuuHbF6m8nK7i",
     "subnetId": "2pcw5qWCnrxQDS9uWd6gmcdj1WxUr777xo9BBzcqzmMwu7WtX8",
@@ -664,12 +640,12 @@
     "chainName": "Watr",
     "blockchainId": "EypLFUSzC2wdbFJovYS3Af1E7ch1DJf7KxKoGR5QFPErxQkG1",
     "subnetId": "QL49tBK9T84NSHQYYSP33Ru7h1KcybDR6MGA8dARVWhw1zLB8",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://node00.solokhin.com/ext/bc/EypLFUSzC2wdbFJovYS3Af1E7ch1DJf7KxKoGR5QFPErxQkG1/rpc",
+    "evmChainId": "192",
+    "blocksCount": "10+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "Lamina1Identity",
@@ -687,12 +663,12 @@
     "chainName": "PLYRPHI",
     "blockchainId": "HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4",
     "subnetId": "axp7DUSPvFghTM883ug2B8btAReBAACxD1VyENmRDStH4Lfed",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://node00.solokhin.com/ext/bc/HUwWdyoExrb1HgVp5X5sh3AWqhYFnKkfXBfGmGL3qjDsnMoR4/rpc",
+    "evmChainId": "16180",
+    "blocksCount": "1m+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "bloodloop",
@@ -777,12 +753,12 @@
     "chainName": "Martian Chain",
     "blockchainId": "QCdAaQnYx6XMyr7NbSXwMizeFmqx1vA4Rd1LBGrnxf96mdNL6",
     "subnetId": "2MsjtNrK8BacanssVC2LmUrUHDMqwVFHdi5xS2BdpLPxbpiv1N",
-    "rpcUrl": null,
-    "evmChainId": null,
-    "blocksCount": null,
+    "rpcUrl": "https://node00.solokhin.com/ext/bc/QCdAaQnYx6XMyr7NbSXwMizeFmqx1vA4Rd1LBGrnxf96mdNL6/rpc",
+    "evmChainId": "2027",
+    "blocksCount": "10+",
     "estimatedTxCount": null,
-    "comment": "TODO: investigate",
-    "debugEnabled": false
+    "comment": null,
+    "debugEnabled": true
   },
   {
     "chainName": "BangoL",

@@ -1,20 +1,21 @@
 import type { IndexingPlugin, TxBatch, BlocksDBHelper, betterSqlite3 } from "frostbyte-sdk";
-import { dbFunctions } from "frostbyte-sdk";
 
-interface InteractionStats {
+interface InteractionRecord {
+    from: string;
+    to: string;
+    timestamp: number;
     txCount: number;
-    totalGasCost: bigint;
 }
 
 interface DailyInteractionsData {
-    interactions: Map<string, Map<number, InteractionStats>>; // key: "from-to", value: Map<timestamp, stats>
+    interactions: InteractionRecord[];
 }
 
 const SECONDS_PER_DAY = 86400;
 
 const module: IndexingPlugin<DailyInteractionsData> = {
     name: "daily_interactions",
-    version: 1,
+    version: 14,
     usesTraces: false,
 
     initialize: (db: betterSqlite3.Database) => {
@@ -25,7 +26,6 @@ const module: IndexingPlugin<DailyInteractionsData> = {
                 to_address TEXT NOT NULL,
                 timestamp INTEGER NOT NULL,
                 tx_count INTEGER NOT NULL DEFAULT 0,
-                total_gas_cost BLOB NOT NULL,
                 PRIMARY KEY (from_address, to_address, timestamp)
             )
         `);
@@ -43,40 +43,35 @@ const module: IndexingPlugin<DailyInteractionsData> = {
     },
 
     extractData: (batch: TxBatch): DailyInteractionsData => {
-        // Accumulate stats in memory
-        const interactions = new Map<string, Map<number, InteractionStats>>();
+        // Use Map for efficient deduplication, then convert to array
+        const interactionMap = new Map<string, InteractionRecord>();
 
-        for (const { tx, receipt, blockTs } of batch.txs) {
+        for (const { tx, blockTs } of batch.txs) {
             // Skip transactions without a recipient (contract creation)
             if (!tx.to) continue;
 
             // Round timestamp to day
             const dayTimestamp = Math.floor(blockTs / SECONDS_PER_DAY) * SECONDS_PER_DAY;
-            const gasUsed = BigInt(receipt.gasUsed || '0');
 
-            // Create interaction key from sender to recipient
-            const fromAddress = tx.from;
-            const toAddress = tx.to;
-            const interactionKey = `${fromAddress}-${toAddress}`;
+            // Use minimal string key for deduplication
+            const key = tx.from + tx.to + dayTimestamp;
 
-            if (!interactions.has(interactionKey)) {
-                interactions.set(interactionKey, new Map());
-            }
-            const interactionDayMap = interactions.get(interactionKey)!;
-
-            if (!interactionDayMap.has(dayTimestamp)) {
-                interactionDayMap.set(dayTimestamp, {
-                    txCount: 0,
-                    totalGasCost: 0n
+            const existing = interactionMap.get(key);
+            if (existing) {
+                existing.txCount += 1;
+            } else {
+                interactionMap.set(key, {
+                    from: tx.from,
+                    to: tx.to,
+                    timestamp: dayTimestamp,
+                    txCount: 1
                 });
             }
-            const interactionDayStats = interactionDayMap.get(dayTimestamp)!;
-            interactionDayStats.txCount += 1;
-            interactionDayStats.totalGasCost += gasUsed;
         }
 
+        // Convert to array for simpler iteration in save
         return {
-            interactions
+            interactions: Array.from(interactionMap.values())
         };
     },
 
@@ -88,36 +83,38 @@ const module: IndexingPlugin<DailyInteractionsData> = {
         const { interactions } = data;
 
         // Skip if no data to save
-        if (interactions.size === 0) return;
+        if (interactions.length === 0) return;
 
-        // Prepare statement for batch insert/update
-        const insertInteractionStmt = db.prepare(`
-            INSERT INTO daily_interactions (from_address, to_address, timestamp, tx_count, total_gas_cost)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(from_address, to_address, timestamp) DO UPDATE SET
-                tx_count = tx_count + excluded.tx_count,
-                total_gas_cost = UINT256_ADD(total_gas_cost, excluded.total_gas_cost)
-        `);
-
-        // Process interaction stats
-        let interactionUpdates = 0;
-
-        for (const [interactionKey, dayMap] of interactions) {
-            const [fromAddress, toAddress] = interactionKey.split('-');
-
-            for (const [timestamp, stats] of dayMap) {
-                insertInteractionStmt.run(
-                    fromAddress,
-                    toAddress,
-                    timestamp,
-                    stats.txCount,
-                    dbFunctions.uint256ToBlob(stats.totalGasCost)
-                );
-                interactionUpdates++;
+        // Deduplicate interactions in memory first
+        const dedupedMap = new Map<string, InteractionRecord>();
+        for (const interaction of interactions) {
+            const key = `${interaction.from}|${interaction.to}|${interaction.timestamp}`;
+            const existing = dedupedMap.get(key);
+            if (existing) {
+                existing.txCount += interaction.txCount;
+            } else {
+                dedupedMap.set(key, { ...interaction });
             }
         }
 
-        console.log(`Daily Interactions: Updated ${interactionUpdates} interaction entries`);
+        // Use simple INSERT OR REPLACE - SQLite will handle the merge
+        const upsertStmt = db.prepare(`
+            INSERT INTO daily_interactions (from_address, to_address, timestamp, tx_count)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(from_address, to_address, timestamp) 
+            DO UPDATE SET tx_count = tx_count + excluded.tx_count
+        `);
+
+        for (const interaction of dedupedMap.values()) {
+            upsertStmt.run(
+                interaction.from,
+                interaction.to,
+                interaction.timestamp,
+                interaction.txCount
+            );
+        }
+
+        console.log(`Daily Interactions: Updated ${dedupedMap.size} interaction entries`);
     }
 };
 

@@ -8,8 +8,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { getGlacierChains, listAllBlockchains } from './lib/glacier.ts'
 import { isValidated } from './lib/pApi.ts';
-import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockByNumber, fetchBlockchainIDFromPrecompile, testDebugFunctionality } from './lib/evm.ts'
-import { getIndexerStatus } from './lib/indexer.ts'
+import { fetchEVMChainId, fetchLastBlockNumber, fetchBlockchainIDFromPrecompile, testDebugFunctionality } from './lib/evm.ts'
 import { config } from 'dotenv'
 config()
 
@@ -156,21 +155,8 @@ function numberToBucket(blockNumber: string): string {
     return '1b+';
 }
 
-// Calculate estimated transaction count from indexer status
-async function getEstimatedTxCount(blockchainId: string): Promise<string | null> {
-    try {
-        const status = await getIndexerStatus(blockchainId);
-        const estimatedTxCount = Math.round(
-            status.totalTxCount / (status.lastProcessedBlock || 1) * status.latestBlockNumber
-        );
-        return numberToBucket(estimatedTxCount.toString());
-    } catch (error) {
-        return null;
-    }
-}
-
 // Fetch EVM chain details for chains with RPC
-async function fetchChainDetails(rpcUrl: string, blockchainId: string): Promise<{ evmChainId: string; rawBlocksCount: number; estimatedTxCount: string | null }> {
+async function fetchChainDetails(rpcUrl: string, blockchainId: string): Promise<{ evmChainId: string; rawBlocksCount: number; }> {
     let evmChainId = 'N/A';
     let rawBlocksCount = 0;
 
@@ -180,9 +166,7 @@ async function fetchChainDetails(rpcUrl: string, blockchainId: string): Promise<
     const blockNumber = await fetchLastBlockNumber(rpcUrl);
     rawBlocksCount = Number(blockNumber?.toString() || '0');
 
-    const estimatedTxCount = await getEstimatedTxCount(blockchainId);
-
-    return { evmChainId, rawBlocksCount, estimatedTxCount };
+    return { evmChainId, rawBlocksCount };
 }
 
 // Split chains into those with and without RPC URLs
@@ -244,8 +228,26 @@ async function generateWithRpcTable(chainsWithRpc: ChainData[], officialExplorer
 
     const chainDetails = await Promise.all(
         chainsWithRpc.map(async (chain) => {
-            const { evmChainId, rawBlocksCount, estimatedTxCount } = await fetchChainDetails(chain.rpcUrl!, chain.blockchainId);
-            return { ...chain, evmChainId, rawBlocksCount, estimatedTxCount } as ChainWithRpc & { estimatedTxCount: string | null };
+            if (!chain.rpcUrl) {
+                console.warn(`Chain ${chain.blockchainId} has no RPC URL, using fallback values`);
+                return {
+                    ...chain,
+                    evmChainId: 'N/A',
+                    rawBlocksCount: 0,
+                } as ChainWithRpc;
+            }
+
+            try {
+                const { evmChainId, rawBlocksCount } = await fetchChainDetails(chain.rpcUrl, chain.blockchainId);
+                return { ...chain, evmChainId, rawBlocksCount } as ChainWithRpc;
+            } catch (error) {
+                console.error(`Failed to fetch chain details for ${chain.blockchainId} (${chain.rpcUrl}):`, error);
+                return {
+                    ...chain,
+                    evmChainId: 'Error',
+                    rawBlocksCount: 0,
+                } as ChainWithRpc;
+            }
         })
     );
 
@@ -259,7 +261,6 @@ async function generateWithRpcTable(chainsWithRpc: ChainData[], officialExplorer
         const explorerUrl = officialExplorerUrls.get(chain.blockchainId) || '❌';
         content += `**${chain.chainName}**\n`;
         content += `- Blocks Count: ${blocksCount}\n`;
-        content += `- Estimated Tx Count: ${chain.estimatedTxCount || 'Unknown'}\n`;
         content += `- EVM Chain ID: ${chain.evmChainId}\n`;
         content += `- Blockchain ID: ${chain.blockchainId}\n`;
         content += `- RPC URL: ${chain.rpcUrl}\n`;
@@ -291,45 +292,60 @@ function generateWithoutRpcTable(chainsWithoutRpc: ChainData[]): string {
 }
 
 // Generate chains.json file
-async function generateChainsJson(chainsWithRpc: ChainData[], chainsWithoutRpc: ChainData[]): Promise<void> {
-    const chainsWithRpcDetails = await Promise.all(
-        chainsWithRpc.map(async (chain) => {
-            const { evmChainId, rawBlocksCount, estimatedTxCount } = await fetchChainDetails(chain.rpcUrl!, chain.blockchainId);
-            return {
-                chainName: chain.chainName,
-                blockchainId: chain.blockchainId,
-                subnetId: chain.subnetId,
-                rpcUrl: chain.rpcUrl,
-                evmChainId,
-                blocksCount: numberToBucket(rawBlocksCount.toString()),
-                estimatedTxCount,
-                glacierChainId: chain.glacierChainId,
-                comment: chain.comment || null,
-                debugEnabled: chain.debugEnabled
-            };
+async function generateChainsJson(allChains: ChainData[]): Promise<void> {
+    const processedChains = await Promise.all(
+        allChains.map(async (chain) => {
+            // If no RPC URL, treat as absent
+            if (!chain.rpcUrl) {
+                return {
+                    chainName: chain.chainName,
+                    blockchainId: chain.blockchainId,
+                    subnetId: chain.subnetId,
+                    rpcUrl: null,
+                    evmChainId: chain.glacierChainId || null,
+                    blocksCount: null,
+                    glacierChainId: chain.glacierChainId,
+                    comment: chain.comment || 'TODO: investigate',
+                    debugEnabled: chain.debugEnabled
+                };
+            }
+
+            // Try to fetch chain details, if it fails, treat as if URL is absent
+            try {
+                const { evmChainId, rawBlocksCount } = await fetchChainDetails(chain.rpcUrl, chain.blockchainId);
+                return {
+                    chainName: chain.chainName,
+                    blockchainId: chain.blockchainId,
+                    subnetId: chain.subnetId,
+                    rpcUrl: chain.rpcUrl,
+                    evmChainId,
+                    blocksCount: numberToBucket(rawBlocksCount.toString()),
+                    glacierChainId: chain.glacierChainId,
+                    comment: chain.comment || null,
+                    debugEnabled: chain.debugEnabled
+                };
+            } catch (error) {
+                console.error(`Failed to fetch chain details for ${chain.blockchainId} (${chain.rpcUrl}), removing URL:`, error);
+                return {
+                    chainName: chain.chainName,
+                    blockchainId: chain.blockchainId,
+                    subnetId: chain.subnetId,
+                    rpcUrl: null,  // Don't include failed URL
+                    evmChainId: chain.glacierChainId || null,
+                    blocksCount: null,
+                    glacierChainId: chain.glacierChainId,
+                    comment: chain.comment || 'RPC URL failed',
+                    debugEnabled: chain.debugEnabled
+                };
+            }
         })
     );
 
-    const chainsWithoutRpcDetails = chainsWithoutRpc.map(chain => ({
-        chainName: chain.chainName,
-        blockchainId: chain.blockchainId,
-        subnetId: chain.subnetId,
-        rpcUrl: null,
-        evmChainId: chain.glacierChainId || null,
-        blocksCount: null,
-        estimatedTxCount: null,
-        glacierChainId: chain.glacierChainId,
-        comment: chain.comment || 'TODO: investigate',
-        debugEnabled: chain.debugEnabled
-    }));
-
-    const allChains = [...chainsWithRpcDetails, ...chainsWithoutRpcDetails];
-
     // Sort by blockchainId
-    allChains.sort((a, b) => a.blockchainId.localeCompare(b.blockchainId));
+    processedChains.sort((a, b) => a.blockchainId.localeCompare(b.blockchainId));
 
     const chainsJsonPath = path.join(dirname(fileURLToPath(import.meta.url)), 'data', 'chains.json');
-    fs.writeFileSync(chainsJsonPath, JSON.stringify(allChains, null, 2));
+    fs.writeFileSync(chainsJsonPath, JSON.stringify(processedChains, null, 2));
 }
 
 
@@ -363,7 +379,7 @@ try {
 
     fs.writeFileSync(path.join(dirname(fileURLToPath(import.meta.url)), 'README.md'), readme);
 
-    await generateChainsJson(withRpc, withoutRpc);
+    await generateChainsJson([...withRpc, ...withoutRpc]);
 
     console.log('README.md updated successfully');
     console.log('chains.json generated successfully');

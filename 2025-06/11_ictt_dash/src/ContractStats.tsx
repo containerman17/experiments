@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { getApiChains } from "./client/sdk.gen"
-import { type GetApiChainsResponses } from "./client/types.gen"
+import { type GetApiChainsResponses, type GetApiByEvmChainIdContractStatsResponse } from "./client/types.gen"
 import { useQuery } from '@tanstack/react-query'
 import ExampleCard from "./components/ExampleCard"
 import ErrorComponent from "./components/ErrorComponent"
@@ -9,30 +9,7 @@ const DEMO_CHAIN = 43114
 const DEMO_CONTRACT = "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789"
 
 type Chain = GetApiChainsResponses[200][0]
-
-interface ContractStatsResponse {
-    contracts: string[];
-    timeRange: {
-        from: number;
-        to: number;
-    };
-    transactions: {
-        total: number;
-        totalGasCost: number;
-    };
-    icmMessages: {
-        count: number;
-        totalGasCost: number;
-    };
-    interactions: {
-        uniqueAddresses: number;
-        avgDailyAddresses: number;
-    };
-    concentration: {
-        top5AccountsPercentage: number;
-        top20AccountsPercentage: number;
-    };
-}
+type ContractStatsResponse = GetApiByEvmChainIdContractStatsResponse
 
 export default function ContractStats() {
     const [selectedChain, setSelectedChain] = useState<number | null>(null)
@@ -147,8 +124,8 @@ export default function ContractStats() {
                         Get detailed statistics for specified contract addresses on a given chain:
                     </p>
                     <ul className="space-y-1 mb-4">
-                        <li><span className="font-semibold">Transactions:</span> Total transaction count and gas costs</li>
-                        <li><span className="font-semibold">ICM Messages:</span> Inter-chain message count and associated gas costs</li>
+                        <li><span className="font-semibold">Transactions:</span> Total transaction count and AVAX costs</li>
+                        <li><span className="font-semibold">ICM Messages:</span> Inter-chain message count and associated AVAX costs</li>
                         <li><span className="font-semibold">User Activity:</span> Unique addresses and daily averages</li>
                         <li><span className="font-semibold">Concentration:</span> Transaction distribution among top accounts</li>
                     </ul>
@@ -280,7 +257,7 @@ export default function ContractStats() {
                                             <span className="font-mono font-medium">{statsData.transactions.total.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-sm text-gray-600">Total Gas Cost</span>
+                                            <span className="text-sm text-gray-600">Total AVAX Cost</span>
                                             <span className="font-mono font-medium">{formatGasCost(statsData.transactions.totalGasCost)}</span>
                                         </div>
                                     </div>
@@ -295,7 +272,7 @@ export default function ContractStats() {
                                             <span className="font-mono font-medium">{statsData.icmMessages.count.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-sm text-gray-600">Total Gas Cost</span>
+                                            <span className="text-sm text-gray-600">Total AVAX Cost</span>
                                             <span className="font-mono font-medium">{formatGasCost(statsData.icmMessages.totalGasCost)}</span>
                                         </div>
                                     </div>

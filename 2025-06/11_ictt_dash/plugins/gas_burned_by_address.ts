@@ -72,7 +72,7 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
             senderDayStats.totalAvaxCost += avaxCost;
 
             const avaxCostInAvax = Number(avaxCost) / 1e18;
-            console.log(`Gas Burned: ${tx.hash} ${fromAddress} - ${tx.to ? tx.to : 'no receiver'} - ${dayTimestamp} - ${avaxCostInAvax} AVAX (${gasUsed} gas × ${gasPrice} wei/gas)`);
+            // console.log(`Gas Burned: ${tx.hash} ${fromAddress} - ${tx.to ? tx.to : 'no receiver'} - ${dayTimestamp} - ${avaxCostInAvax} AVAX (${gasUsed} gas × ${gasPrice} wei/gas)`);
 
             // Track receiver stats (if receiver exists)
             const toAddress = tx.to;
@@ -156,7 +156,7 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
             }
         }
 
-        console.log(`Gas Burned: Updated ${senderUpdates} sender entries and ${receiverUpdates} receiver entries`);
+        // console.log(`Gas Burned: Updated ${senderUpdates} sender entries and ${receiverUpdates} receiver entries`);
     }
 };
 

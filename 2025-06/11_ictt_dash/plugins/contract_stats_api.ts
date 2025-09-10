@@ -53,7 +53,7 @@ interface GasBurnedResult {
 
 interface IcmEmitterResult {
     message_count: number;
-    total_gas_cost: Buffer | null;
+    total_avax_cost: Buffer | null;
 }
 
 interface InteractionResult {
@@ -211,7 +211,7 @@ const module: ApiPlugin = {
             const icmQuery = `
                 SELECT 
                     SUM(message_count) as message_count,
-                    CUSTOM_SUM_UINT256(total_gas_cost) as total_gas_cost
+                    CUSTOM_SUM_UINT256(total_avax_cost) as total_avax_cost
                 FROM icm_messages_by_contract
                 WHERE contract IN (${placeholders})
                 AND timestamp >= ? AND timestamp <= ?
@@ -220,10 +220,10 @@ const module: ApiPlugin = {
             const icmResult = icmStmt.get(...contracts, startTs, endTs) as IcmEmitterResult;
 
             const icmMessageCount = icmResult?.message_count || 0;
-            const icmGasWei = icmResult?.total_gas_cost
-                ? dbFunctions.blobToUint256(icmResult.total_gas_cost)
+            const icmAvaxWei = icmResult?.total_avax_cost
+                ? dbFunctions.blobToUint256(icmResult.total_avax_cost)
                 : 0n;
-            const icmTotalGasCost = Number(icmGasWei) / 1e18;
+            const icmTotalGasCost = Number(icmAvaxWei) / 1e18;
 
             // 3. Get unique addresses and daily average from daily_interactions
             const uniqueAddressesQuery = `

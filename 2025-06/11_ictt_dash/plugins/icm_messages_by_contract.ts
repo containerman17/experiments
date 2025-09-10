@@ -3,7 +3,7 @@ import { dbFunctions } from "frostbyte-sdk";
 
 interface ContractStats {
     messageCount: number;
-    totalGas: bigint;
+    totalAvaxCost: bigint;
 }
 
 interface IcmMessagesByContractData {
@@ -18,7 +18,7 @@ const RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC = '0x292ee90bbaf70b5d4936025e09d56ba08f3
 
 const module: IndexingPlugin<IcmMessagesByContractData> = {
     name: "icm_messages_by_contract",
-    version: 3,
+    version: 4,
     usesTraces: false,
     filterEvents: [SEND_CROSS_CHAIN_MESSAGE_TOPIC, RECEIVE_CROSS_CHAIN_MESSAGE_TOPIC],
 
@@ -30,7 +30,7 @@ const module: IndexingPlugin<IcmMessagesByContractData> = {
                 contract TEXT,
                 timestamp INTEGER,
                 message_count INTEGER NOT NULL DEFAULT 0,
-                total_gas_cost BLOB NOT NULL,
+                total_avax_cost BLOB NOT NULL,
                 PRIMARY KEY (contract, timestamp)
             )
         `);
@@ -54,6 +54,8 @@ const module: IndexingPlugin<IcmMessagesByContractData> = {
             // Round timestamp to day
             const dayTimestamp = Math.floor(blockTs / SECONDS_PER_DAY) * SECONDS_PER_DAY;
             const gasUsed = BigInt(receipt.gasUsed || '0');
+            const gasPrice = BigInt(tx.gasPrice || '0');
+            const avaxCost = gasUsed * gasPrice;
 
             // Count ICM events in this transaction
             const icmEventCount = receipt.logs?.filter(l =>
@@ -76,12 +78,12 @@ const module: IndexingPlugin<IcmMessagesByContractData> = {
             if (!contractDayMap.has(dayTimestamp)) {
                 contractDayMap.set(dayTimestamp, {
                     messageCount: 0,
-                    totalGas: 0n
+                    totalAvaxCost: 0n
                 });
             }
             const contractDayStats = contractDayMap.get(dayTimestamp)!;
             contractDayStats.messageCount += icmEventCount;
-            contractDayStats.totalGas += gasUsed;
+            contractDayStats.totalAvaxCost += avaxCost;
         }
 
         return {
@@ -101,11 +103,11 @@ const module: IndexingPlugin<IcmMessagesByContractData> = {
 
         // Prepare statement for batch insert/update
         const insertContractStmt = db.prepare(`
-            INSERT INTO icm_messages_by_contract (contract, timestamp, message_count, total_gas_cost)
+            INSERT INTO icm_messages_by_contract (contract, timestamp, message_count, total_avax_cost)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(contract, timestamp) DO UPDATE SET
                 message_count = message_count + excluded.message_count,
-                total_gas_cost = UINT256_ADD(total_gas_cost, excluded.total_gas_cost)
+                total_avax_cost = UINT256_ADD(total_avax_cost, excluded.total_avax_cost)
         `);
 
         // Process contract stats
@@ -117,7 +119,7 @@ const module: IndexingPlugin<IcmMessagesByContractData> = {
                     contract,
                     timestamp,
                     stats.messageCount,
-                    dbFunctions.uint256ToBlob(stats.totalGas)
+                    dbFunctions.uint256ToBlob(stats.totalAvaxCost)
                 );
                 contractUpdates++;
             }

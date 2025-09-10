@@ -25,7 +25,8 @@ const menuGroups: MenuGroup[] = [
             { label: 'TPS', path: '/tps' },
             { label: 'Cumulative Txs', path: '/cumulative-txs' },
             { label: 'Daily Active Addresses', path: '/daily-active-addresses' },
-            { label: 'Chain Comparison', path: '/chain-comparison' }
+            { label: 'Chain Comparison', path: '/chain-comparison' },
+            { label: 'Contract Stats', path: '/contract-stats' }
         ]
     },
     {

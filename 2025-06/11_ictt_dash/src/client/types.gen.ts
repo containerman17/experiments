@@ -87,16 +87,99 @@ export type GetApiReplicationChainsJsonResponses = {
         rpcConfig: {
             rpcUrl: string;
             requestBatchSize: number;
-            maxConcurrentRequests: number;
-            rps: number;
             rpcSupportsDebug: boolean;
-            enableBatchSizeGrowth: boolean;
+            enableBatchSizeGrowth?: boolean;
             blocksPerBatch: number;
         };
     }>;
 };
 
 export type GetApiReplicationChainsJsonResponse = GetApiReplicationChainsJsonResponses[keyof GetApiReplicationChainsJsonResponses];
+
+export type GetApiReplicationLimitsJsonData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/replication/limits.json';
+};
+
+export type GetApiReplicationLimitsJsonResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        [key: string]: {
+            rps: number;
+            concurrentRequests: number;
+        };
+    };
+};
+
+export type GetApiReplicationLimitsJsonResponse = GetApiReplicationLimitsJsonResponses[keyof GetApiReplicationLimitsJsonResponses];
+
+export type GetApiByEvmChainIdContractStatsData = {
+    body?: never;
+    path: {
+        evmChainId: string;
+    };
+    query: {
+        /**
+         * Comma-separated list of contract addresses
+         */
+        contracts: string;
+        /**
+         * Start timestamp in seconds (default: 0)
+         */
+        tsFrom?: number;
+        /**
+         * End timestamp in seconds (default: now)
+         */
+        tsTo?: number;
+    };
+    url: '/api/{evmChainId}/contract-stats';
+};
+
+export type GetApiByEvmChainIdContractStatsErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        error?: string;
+    };
+};
+
+export type GetApiByEvmChainIdContractStatsError = GetApiByEvmChainIdContractStatsErrors[keyof GetApiByEvmChainIdContractStatsErrors];
+
+export type GetApiByEvmChainIdContractStatsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        contracts: Array<string>;
+        timeRange: {
+            from: number;
+            to: number;
+        };
+        transactions: {
+            total: number;
+            totalGasCost: number;
+        };
+        icmMessages: {
+            count: number;
+            totalGasCost: number;
+        };
+        interactions: {
+            uniqueAddresses: number;
+            avgDailyAddresses: number;
+        };
+        concentration: {
+            top5AccountsPercentage: number;
+            top20AccountsPercentage: number;
+        };
+    };
+};
+
+export type GetApiByEvmChainIdContractStatsResponse = GetApiByEvmChainIdContractStatsResponses[keyof GetApiByEvmChainIdContractStatsResponses];
 
 export type GetApiByEvmChainIdStatsActiveAddressesPeriodData = {
     body?: never;

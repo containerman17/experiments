@@ -3,7 +3,7 @@ import { dbFunctions } from "frostbyte-sdk";
 
 interface AddressGasStats {
     txCount: number;
-    totalGas: bigint;
+    totalAvaxCost: bigint;
 }
 
 interface GasBurnedByAddressData {
@@ -15,7 +15,7 @@ const SECONDS_PER_DAY = 86400;
 
 const module: IndexingPlugin<GasBurnedByAddressData> = {
     name: "gas_burned_by_address",
-    version: 4,
+    version: 6,
     usesTraces: false,
 
     initialize: (db: betterSqlite3.Database) => {
@@ -25,7 +25,7 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
                 address TEXT,
                 timestamp INTEGER,
                 tx_count INTEGER NOT NULL DEFAULT 0,
-                total_gas_cost BLOB NOT NULL,
+                total_avax_cost BLOB NOT NULL,
                 PRIMARY KEY (address, timestamp)
             )
         `);
@@ -36,7 +36,7 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
                 address TEXT,
                 timestamp INTEGER,
                 tx_count INTEGER NOT NULL DEFAULT 0,
-                total_gas_cost BLOB NOT NULL,
+                total_avax_cost BLOB NOT NULL,
                 PRIMARY KEY (address, timestamp)
             )
         `);
@@ -51,6 +51,8 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
             // Round timestamp to day
             const dayTimestamp = Math.floor(blockTs / SECONDS_PER_DAY) * SECONDS_PER_DAY;
             const gasUsed = BigInt(receipt.gasUsed || '0');
+            const gasPrice = BigInt(tx.gasPrice || '0');
+            const avaxCost = gasUsed * gasPrice;
 
             // Track sender stats
             const fromAddress = tx.from;
@@ -62,12 +64,15 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
             if (!senderDayMap.has(dayTimestamp)) {
                 senderDayMap.set(dayTimestamp, {
                     txCount: 0,
-                    totalGas: 0n
+                    totalAvaxCost: 0n
                 });
             }
             const senderDayStats = senderDayMap.get(dayTimestamp)!;
             senderDayStats.txCount += 1;
-            senderDayStats.totalGas += gasUsed;
+            senderDayStats.totalAvaxCost += avaxCost;
+
+            const avaxCostInAvax = Number(avaxCost) / 1e18;
+            console.log(`Gas Burned: ${tx.hash} ${fromAddress} - ${tx.to ? tx.to : 'no receiver'} - ${dayTimestamp} - ${avaxCostInAvax} AVAX (${gasUsed} gas × ${gasPrice} wei/gas)`);
 
             // Track receiver stats (if receiver exists)
             const toAddress = tx.to;
@@ -80,12 +85,12 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
                 if (!receiverDayMap.has(dayTimestamp)) {
                     receiverDayMap.set(dayTimestamp, {
                         txCount: 0,
-                        totalGas: 0n
+                        totalAvaxCost: 0n
                     });
                 }
                 const receiverDayStats = receiverDayMap.get(dayTimestamp)!;
                 receiverDayStats.txCount += 1;
-                receiverDayStats.totalGas += gasUsed;
+                receiverDayStats.totalAvaxCost += avaxCost;
             }
         }
 
@@ -107,19 +112,19 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
 
         // Prepare statements for batch insert/update
         const insertSenderStmt = db.prepare(`
-            INSERT INTO gas_burned_by_sender (address, timestamp, tx_count, total_gas_cost)
+            INSERT INTO gas_burned_by_sender (address, timestamp, tx_count, total_avax_cost)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(address, timestamp) DO UPDATE SET
                 tx_count = tx_count + excluded.tx_count,
-                total_gas_cost = UINT256_ADD(total_gas_cost, excluded.total_gas_cost)
+                total_avax_cost = UINT256_ADD(total_avax_cost, excluded.total_avax_cost)
         `);
 
         const insertReceiverStmt = db.prepare(`
-            INSERT INTO gas_burned_by_receiver (address, timestamp, tx_count, total_gas_cost)
+            INSERT INTO gas_burned_by_receiver (address, timestamp, tx_count, total_avax_cost)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(address, timestamp) DO UPDATE SET
                 tx_count = tx_count + excluded.tx_count,
-                total_gas_cost = UINT256_ADD(total_gas_cost, excluded.total_gas_cost)
+                total_avax_cost = UINT256_ADD(total_avax_cost, excluded.total_avax_cost)
         `);
 
         // Process sender stats
@@ -131,7 +136,7 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
                     address,
                     timestamp,
                     stats.txCount,
-                    dbFunctions.uint256ToBlob(stats.totalGas)
+                    dbFunctions.uint256ToBlob(stats.totalAvaxCost)
                 );
                 senderUpdates++;
             }
@@ -145,7 +150,7 @@ const module: IndexingPlugin<GasBurnedByAddressData> = {
                     address,
                     timestamp,
                     stats.txCount,
-                    dbFunctions.uint256ToBlob(stats.totalGas)
+                    dbFunctions.uint256ToBlob(stats.totalAvaxCost)
                 );
                 receiverUpdates++;
             }

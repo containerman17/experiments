@@ -17,6 +17,7 @@ import ICTTTransfersList from './ICTTTransfersList'
 import MessagingComparison from './MessagingComparison'
 import ChainComparison from './ChainComparison'
 import DailyActiveAddresses from './DailyActiveAddresses'
+import ContractStats from './ContractStats'
 import Overview from './overview/Overview'
 import NotFound from './NotFound'
 
@@ -53,6 +54,7 @@ function App() {
               <Route path="/ictt-transfers-list" element={<ICTTTransfersList />} />
               <Route path="/chain-comparison" element={<ChainComparison />} />
               <Route path="/daily-active-addresses" element={<DailyActiveAddresses />} />
+              <Route path="/contract-stats" element={<ContractStats />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

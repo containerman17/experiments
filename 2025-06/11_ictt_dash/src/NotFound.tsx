@@ -39,6 +39,8 @@ export default function NotFound() {
                         <Link to="/leaderboard" className="text-blue-700 hover:underline text-sm">Leaderboard</Link>
                         <span className="text-gray-400">•</span>
                         <Link to="/ictt-transfers" className="text-blue-700 hover:underline text-sm">ICTT Transfers</Link>
+                        <span className="text-gray-400">•</span>
+                        <Link to="/contract-stats" className="text-blue-700 hover:underline text-sm">Contract Stats</Link>
                     </div>
                 </div>
             </div>

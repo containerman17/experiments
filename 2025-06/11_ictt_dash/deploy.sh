@@ -6,8 +6,8 @@ set -exu
 MASTER_ADDRESS="idx6"
 # MASTER_ADDRESS="" # TODO: Uncomment this when we are ready to update the master too
 # SLAVE_ADDRESSES=("ubuntu@x.x.x.x")
-SLAVE_ADDRESSES=(idx5)
-# SLAVE_ADDRESSES=()
+# SLAVE_ADDRESSES=(idx5)
+SLAVE_ADDRESSES=()
 
 # Pre-connect to all hosts to trigger YubiKey confirmations
 echo "Pre-connecting to all hosts for YubiKey authentication..."

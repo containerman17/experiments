@@ -13,7 +13,7 @@
  * 
  * Returns statistics including:
  * - Total transactions to these contracts
- * - Total gas cost burned
+ * - Total AVAX cost burned (gas × gas price)
  * - ICM messages emitted count and gas cost
  * - Unique and average daily interacting addresses
  * - Transaction concentration (top 5 and top 20 accounts)
@@ -48,7 +48,7 @@ interface ContractStatsResponse {
 
 interface GasBurnedResult {
     tx_count: number;
-    total_gas_cost: Buffer | null;
+    total_avax_cost: Buffer | null;
 }
 
 interface IcmEmitterResult {
@@ -65,7 +65,7 @@ interface InteractionResult {
 const module: ApiPlugin = {
     name: "contract_stats_api",
     requiredIndexers: ['gas_burned_by_address', 'icm_messages_by_contract', 'daily_interactions'],
-    version: 1,
+    version: 2,
 
     registerRoutes: (app, dbCtx) => {
         app.get<{
@@ -189,11 +189,11 @@ const module: ApiPlugin = {
             // Build placeholders for SQL IN clause
             const placeholders = contracts.map(() => '?').join(',');
 
-            // 1. Get total transactions and gas cost from gas_burned_by_address
+            // 1. Get total transactions and AVAX cost from gas_burned_by_address
             const gasBurnedQuery = `
                 SELECT 
                     SUM(tx_count) as tx_count,
-                    CUSTOM_SUM_UINT256(total_gas_cost) as total_gas_cost
+                    CUSTOM_SUM_UINT256(total_avax_cost) as total_avax_cost
                 FROM gas_burned_by_receiver
                 WHERE address IN (${placeholders})
                 AND timestamp >= ? AND timestamp <= ?
@@ -202,10 +202,10 @@ const module: ApiPlugin = {
             const gasBurnedResult = gasBurnedStmt.get(...contracts, startTs, endTs) as GasBurnedResult;
 
             const totalTxs = gasBurnedResult?.tx_count || 0;
-            const totalGasWei = gasBurnedResult?.total_gas_cost
-                ? dbFunctions.blobToUint256(gasBurnedResult.total_gas_cost)
+            const totalAvaxWei = gasBurnedResult?.total_avax_cost
+                ? dbFunctions.blobToUint256(gasBurnedResult.total_avax_cost)
                 : 0n;
-            const totalGasCost = Number(totalGasWei) / 1e18;
+            const totalGasCost = Number(totalAvaxWei) / 1e18;
 
             // 2. Get ICM messages stats from icm_messages_by_contract
             const icmQuery = `

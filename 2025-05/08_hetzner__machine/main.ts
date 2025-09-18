@@ -3,8 +3,9 @@ import { Table } from "console-table-printer";
 
 export { }; // Make this file a module to allow top-level await
 
-const MIN_NVME_SIZE = 3000;
-const MIN_DISK_COUNT = 6;
+const MIN_NVME_SIZE = 500;
+const MIN_DISK_COUNT = 1;
+const MIN_TOTAL_SSD_DISK_SIZE = 9000;
 const SKIP_HDD = true;
 
 const OKAY_CPUS: string[] = [
@@ -125,6 +126,11 @@ data.server.forEach(server => {
     const totalDiskSize = server.serverDiskData.nvme.reduce((sum, size) => sum + size, 0)
         + server.serverDiskData.sata.reduce((sum, size) => sum + size, 0);
 
+    // Apply MIN_TOTAL_SSD_DISK_SIZE filter
+    if (totalDiskSize < MIN_TOTAL_SSD_DISK_SIZE) {
+        return;
+    }
+
     // Helper function to format disk arrays
     const formatDisks = (disks: number[], type: string) => {
         if (disks.length === 0) return '';
@@ -150,7 +156,7 @@ data.server.forEach(server => {
     }
 
     const allDisks = [nvmeDisks, sataDisks, hddDisks].filter(Boolean).join(" + ");
-    const cpuEmoji = OKAY_CPUS.includes(server.cpu) ? "⭐" : OLD_SHIT_CPUS.includes(server.cpu) ? "💩" : "🤷";
+    const cpuEmoji = OKAY_CPUS.includes(server.cpu) ? "+++" : OLD_SHIT_CPUS.includes(server.cpu) ? "---" : "🤷";
     const displayCpu = `${cpuEmoji} ${server.cpu}`;
 
     table.addRow({

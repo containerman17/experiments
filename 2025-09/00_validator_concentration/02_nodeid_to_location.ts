@@ -1,11 +1,26 @@
 import fs from 'fs';
 
+interface ValidatorData {
+    stake: string;
+    ip: string;
+    location: {
+        country: string;
+        countryCode: string;
+        region: string;
+        city: string;
+        lat: number;
+        lon: number;
+        isp: string;
+        org: string;
+    };
+}
+
 // Read input files
 const stakeData = JSON.parse(fs.readFileSync('nodeIdToStake.json', 'utf8'));
 const ipData = JSON.parse(fs.readFileSync('nodeIdToIP.json', 'utf8'));
 
 // Load existing results if they exist
-let existingResults = {};
+let existingResults: Record<string, ValidatorData> = {};
 const resultsFile = 'nodeIdToLocation.json';
 if (fs.existsSync(resultsFile)) {
     existingResults = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
@@ -64,3 +79,23 @@ for (let i = 0; i < nodesToProcess.length; i += batchSize) {
 
 console.log('All done! Final results saved to nodeIdToLocation.json');
 console.log(`Total nodes with complete data: ${Object.keys(existingResults).length}`);
+
+// Sort all validators by stake (descending)
+console.log('\nSorting validators by stake...');
+const sortedValidators = Object.entries(existingResults)
+    .sort((a, b) => {
+        const stakeA = BigInt(a[1].stake);
+        const stakeB = BigInt(b[1].stake);
+        return stakeA > stakeB ? -1 : stakeA < stakeB ? 1 : 0;
+    });
+
+console.log('\nTop 10 validators by stake:');
+sortedValidators.slice(0, 10).forEach((entry, index) => {
+    const [nodeId, data] = entry;
+    console.log(`${index + 1}. ${nodeId}: ${data.stake} (${data.location.country})`);
+});
+
+// Save sorted results
+const sortedResults = Object.fromEntries(sortedValidators);
+fs.writeFileSync('nodeIdToLocation_sorted.json', JSON.stringify(sortedResults, null, 2));
+console.log('\nSorted results saved to nodeIdToLocation_sorted.json');

@@ -20,7 +20,7 @@ function extractDomain(rpcUrl: string): string {
     return url.hostname.startsWith("127.0.0.1") ? url.hostname : url.hostname.split('.').slice(-2).join('.')
 }
 
-const blockReceivedTimestamps: Record<number, Record<string, number>> = {}
+const blockData: Record<number, { timestamp: number; receivedTimestamps: Record<string, number> }> = {}
 
 for (let rpcUrl of RPC_URLS) {
     const client = createPublicClient({
@@ -33,11 +33,31 @@ for (let rpcUrl of RPC_URLS) {
             const blockNumber = Number(blockNumberBN)
             const domain = extractDomain(rpcUrl)
 
-            if (!blockReceivedTimestamps[blockNumber]) { blockReceivedTimestamps[blockNumber] = {} }
+            try {
+                const block = await client.getBlock({
+                    blockNumber: blockNumberBN,
+                    includeTransactions: false
+                })
 
-            blockReceivedTimestamps[blockNumber][domain] = Date.now()
-            if (Object.keys(blockReceivedTimestamps[blockNumber]).length === RPC_URLS.length) {
-                printStatsMessage(blockNumber, blockReceivedTimestamps[blockNumber])
+                if (Number(block.number) !== blockNumber) {
+                    console.warn(`${domain} reported block ${blockNumber} but returned wrong block`)
+                    return
+                }
+
+                if (!blockData[blockNumber]) {
+                    blockData[blockNumber] = {
+                        timestamp: Number(block.timestamp) * 1000, // Convert to milliseconds
+                        receivedTimestamps: {}
+                    }
+                }
+
+                blockData[blockNumber].receivedTimestamps[domain] = Date.now()
+
+                if (Object.keys(blockData[blockNumber].receivedTimestamps).length === RPC_URLS.length) {
+                    printStatsMessage(blockNumber, blockData[blockNumber])
+                }
+            } catch (error) {
+                console.warn(`${domain} failed to get block ${blockNumber}: ${error}`)
             }
         }
     });
@@ -45,24 +65,24 @@ for (let rpcUrl of RPC_URLS) {
 
 const allDomains = RPC_URLS.map(extractDomain)
 
-function printStatsMessage(blockNumber: number, timestamps: Record<string, number>) {
-    const fastestTime = Math.min(...Object.values(timestamps))
-
-    let printString = `🏆 Block ${blockNumber} |`
+function printStatsMessage(blockNumber: number, blockInfo: { timestamp: number; receivedTimestamps: Record<string, number> }) {
+    let printString = `⛏️ Block ${blockNumber} |`
 
     function getDelayEmoji(delayMs: number): string {
-        if (delayMs < 500) return '✅'
-        if (delayMs < 1200) return '🐌'
-        if (delayMs < 3000) return '⚠️'
+        if (delayMs < 1000) return '✅'
+        if (delayMs < 3000) return '🐌'
+        if (delayMs < 5000) return '⚠️'
         return '💀'
     }
 
     for (let domain of allDomains) {
-        const time = timestamps[domain]
-        const diff = time - fastestTime
-        const diffInSeconds = (diff / 1000).toFixed(3)
-        const emoji = getDelayEmoji(diff)
-        printString += ` ${domain} ${emoji} +${diffInSeconds}s |`
+        const receivedTime = blockInfo.receivedTimestamps[domain]
+        if (!receivedTime) continue
+
+        const delay = receivedTime - blockInfo.timestamp
+        const delayInSeconds = (delay / 1000).toFixed(2)
+        const emoji = getDelayEmoji(delay)
+        printString += ` ${domain} ${emoji} ${delayInSeconds}s |`
     }
 
     console.log(printString)

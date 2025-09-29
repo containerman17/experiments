@@ -6,7 +6,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 if (!ADMIN_PASSWORD) throw new Error('ADMIN_PASSWORD environment variable is not set');
 
 // Create client
-const client = new ApiClient('http://localhost:3000', ADMIN_PASSWORD);
+const client = new ApiClient('http://localhost:3454', ADMIN_PASSWORD);
 
 console.log('=== SlimNode Example Usage ===\n');
 console.log(`Subnet ID: ${SUBNET_ID}`);

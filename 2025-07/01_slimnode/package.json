@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "tunnel": "docker rm -f tunnel-3454; docker run --name tunnel-3454 -d --net=host cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://localhost:3454"
   },
   "keywords": [
     "avalanche",

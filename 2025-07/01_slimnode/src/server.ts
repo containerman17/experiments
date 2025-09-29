@@ -87,7 +87,7 @@ async function createServer() {
                     description: 'Dev preview server'
                 },
                 {
-                    url: 'http://localhost:3000',
+                    url: 'http://localhost:3454',
                     description: 'Development server'
                 },
             ],
@@ -488,13 +488,16 @@ async function createServer() {
     await server.register(fastifyWebsocket);
 
     // Create a Map to cache chainId -> nodePort mappings for performance
-    const chainIdToNodePort = new Map<string, number>();
+    const chainIdToNodePortCache = new Map<string, number>();
+    setInterval(() => {
+        chainIdToNodePortCache.clear();
+    }, 1000);
 
     // Helper to get node port for a chainId
     const getNodePortForChain = async (chainId: string): Promise<number | null> => {
         // Check cache first
-        if (chainIdToNodePort.has(chainId)) {
-            return chainIdToNodePort.get(chainId)!;
+        if (chainIdToNodePortCache.has(chainId)) {
+            return chainIdToNodePortCache.get(chainId)!;
         }
 
         const subnetId = await getSubnetIdFromChainId(chainId);
@@ -508,7 +511,7 @@ async function createServer() {
         }
 
         const nodePort = 9652 + (assignments[0].nodeIndex * 2);
-        chainIdToNodePort.set(chainId, nodePort);
+        chainIdToNodePortCache.set(chainId, nodePort);
         return nodePort;
     };
 
@@ -532,6 +535,14 @@ async function createServer() {
             return reply.code(404).send({
                 error: `Chain ${chainId} not found or not assigned to any node`
             });
+        }
+
+        if (request.method === 'GET') {
+            return reply.code(200).send(`Now try this to get chainId: \n\ncurl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' https://${request.host}/ext/bc/${chainId}/rpc`);
+        } else if (request.method === 'POST') {
+            // As expected
+        } else {
+            throw new Error(`Unsupported method: ${request.method}`);
         }
 
         console.log(`[HTTP Proxy] Routing to node port: ${nodePort}`);

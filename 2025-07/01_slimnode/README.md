@@ -87,9 +87,9 @@ All endpoints are rate limited to 100 requests per minute per IP address using
 
 Interactive OpenAPI 3.0 documentation available at:
 
-- Swagger UI: http://localhost:3000/docs
-- OpenAPI JSON: http://localhost:3000/docs/json
-- OpenAPI YAML: http://localhost:3000/docs/yaml
+- Swagger UI: http://localhost:3454/docs
+- OpenAPI JSON: http://localhost:3454/docs/json
+- OpenAPI YAML: http://localhost:3454/docs/yaml
 
 ## Database
 

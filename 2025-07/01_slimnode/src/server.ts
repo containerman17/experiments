@@ -529,6 +529,7 @@ async function createServer() {
             return reply.code(200).send();
         }
 
+        const subnetId = await getSubnetIdFromChainId(chainId);
         const nodePort = await getNodePortForChain(chainId);
         if (!nodePort) {
             console.log(`[HTTP Proxy] Chain ${chainId} not found in database`);
@@ -538,7 +539,32 @@ async function createServer() {
         }
 
         if (request.method === 'GET') {
-            return reply.code(200).send(`Now try this to get chainId: \n\ncurl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' https://${request.host}/ext/bc/${chainId}/rpc`);
+            // Make an actual eth_chainId request to verify the endpoint works
+            try {
+                const targetUrl = `http://localhost:${nodePort}${request.url}`;
+                const ethChainIdRequest = {
+                    jsonrpc: "2.0",
+                    method: "eth_chainId",
+                    params: [],
+                    id: 1
+                };
+
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(ethChainIdRequest)
+                });
+
+                const responseData = await response.json() as any;
+                const actualChainId = responseData.result;
+
+                return reply.code(200).send(`Endpoint is working!\n\nsubnetId: ${subnetId}\nblockchainId: ${chainId}\neth_chainId response: ${actualChainId}\n\nNow try this to get chainId:\n\ncurl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' https://${request.host}/ext/bc/${chainId}/rpc`);
+            } catch (error) {
+                console.error('[HTTP Proxy] Error testing eth_chainId:', error);
+                return reply.code(503).send(`Endpoint check failed\n\nsubnetId: ${subnetId}\nblockchainId: ${chainId}\nerror: ${error instanceof Error ? error.message : 'Unknown error'}\n\nThe node might still be bootstrapping. Try the curl command:\n\ncurl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' https://${request.host}/ext/bc/${chainId}/rpc`);
+            }
         } else if (request.method === 'POST') {
             // As expected
         } else {

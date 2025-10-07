@@ -1,0 +1,21 @@
+{
+  "name": "01_index_all_chains",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node fetchBlockData.js",
+    "decode": "node decodeStats.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@types/node": "^24.7.0",
+    "p-limit": "^7.1.1",
+    "viem": "^2.38.0",
+    "zstd-napi": "^0.0.12"
+  }
+}

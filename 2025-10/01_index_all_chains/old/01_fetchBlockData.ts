@@ -1,20 +1,40 @@
-import { createPublicClient, http } from 'viem';
+import { createClient, http, rpcSchema } from 'viem';
+import { getBlock, getTransactionReceipt, getBlockNumber } from 'viem/actions';
 import pLimit from 'p-limit';
 import fs from 'fs/promises';
 import path from 'path';
 import * as zstd from 'zstd-napi';
+import type { StoredBlocks, TraceResult, IngestBlockParams } from '../types.ts';
+
+// Custom RPC schema for debug methods
+type DebugRpcSchema = [
+    {
+        Method: 'debug_traceBlockByNumber';
+        Parameters: [string, { tracer: string }];
+        ReturnType: TraceResult[];
+    }
+];
 
 const RPC_URL = 'http://localhost:9650/ext/bc/C/rpc';
-const CONCURRENCY = 40; // Lower concurrency since we're fetching more data per block
+const CONCURRENCY = 20; // Lower concurrency since we're fetching more data per block
 const BLOCKS_PER_FILE = 1000;
 const DATA_DIR = './data';
 const START_BLOCK = 68000000;
 
-const client = createPublicClient({
+// Create custom client with debug trace functionality
+const client = createClient({
     transport: http(RPC_URL, {
         timeout: 300_000, // 5 minutes
     }),
-});
+    rpcSchema: rpcSchema<DebugRpcSchema>(),
+}).extend(client => ({
+    async traceBlockByNumber(blockNumber: string, tracer: string = 'callTracer') {
+        return client.request({
+            method: 'debug_traceBlockByNumber',
+            params: [blockNumber, { tracer }]
+        });
+    },
+}));
 
 const limit = pLimit(CONCURRENCY);
 
@@ -29,48 +49,44 @@ async function ensureDataDir() {
 }
 
 // Fetch complete block data including transactions and receipts
-async function fetchBlockData(blockNumber) {
-    const blockNumberHex = '0x' + blockNumber.toString(16);
+async function fetchBlockData(blockNumber: number): Promise<IngestBlockParams | null> {
+    const blockNumberHex = `0x${blockNumber.toString(16)}` as const;
 
-    // Fetch block with full transactions
-    const block = await client.request({
-        method: 'eth_getBlockByNumber',
-        params: [blockNumberHex, true], // true = include full transaction objects
-    });
+    try {
+        // Fetch block with full transactions
+        const block = await getBlock(client, {
+            blockNumber: BigInt(blockNumber),
+            includeTransactions: true,
+        });
 
-    // Fetch transaction receipts for all transactions in the block
-    const txReceipts = {};
-    if (block.transactions && block.transactions.length > 0) {
+        if (!block || !block.transactions) {
+            return null;
+        }
+
+        // Fetch transaction receipts for all transactions in the block
         const receiptPromises = block.transactions.map(tx =>
-            client.request({
-                method: 'eth_getTransactionReceipt',
-                params: [tx.hash],
-            })
+            getTransactionReceipt(client, { hash: tx.hash })
         );
 
         const receipts = await Promise.all(receiptPromises);
-        receipts.forEach((receipt, index) => {
-            if (receipt) {
-                txReceipts[block.transactions[index].hash] = receipt;
-            }
-        });
+        const validReceipts = receipts.filter(receipt => receipt !== null);
+
+        // Fetch traces for the block using custom debug method
+        const tracesResponse = await client.traceBlockByNumber(blockNumberHex);
+
+        return {
+            transactions: block.transactions,
+            traces: tracesResponse || [],
+            receipts: validReceipts
+        };
+    } catch (error) {
+        console.error(`Error fetching block ${blockNumber}:`, error);
+        return null;
     }
-
-    // Fetch traces for the block
-    const traces = await client.request({
-        method: 'debug_traceBlockByNumber',
-        params: [blockNumberHex, { tracer: 'callTracer' }],
-    });
-
-    return {
-        block,
-        txReceipts,
-        traces
-    };
 }
 
 // Process a batch of blocks
-async function processBatch(startBlock) {
+async function processBatch(startBlock: number): Promise<number> {
     // Check if file already exists
     const fileName = `${Math.floor(startBlock / 1000).toString().padStart(7, '0')}xxx.json.zstd`;
     const filePath = path.join(DATA_DIR, fileName);
@@ -83,8 +99,8 @@ async function processBatch(startBlock) {
         // File doesn't exist, proceed with processing
     }
 
-    const batchData = {};
-    const promises = [];
+    const batchData: StoredBlocks = {};
+    const promises: Promise<void>[] = [];
 
     console.log(`Processing batch: blocks ${startBlock} to ${startBlock + BLOCKS_PER_FILE - 1}`);
 
@@ -106,7 +122,9 @@ async function processBatch(startBlock) {
     await Promise.all(promises);
 
     // Save batch to file with zstd compression
-    const jsonData = JSON.stringify(batchData);
+    const jsonData = JSON.stringify(batchData, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+    );
     const compressed = await zstd.compress(Buffer.from(jsonData));
     await fs.writeFile(filePath, compressed);
     console.log(`✓ Saved ${Object.keys(batchData).length} blocks to ${filePath}`);
@@ -126,11 +144,8 @@ async function main() {
     console.log(`Data directory: ${DATA_DIR}`);
 
     // Get latest block
-    const latestBlockHex = await client.request({
-        method: 'eth_blockNumber',
-        params: [],
-    });
-    const latestBlock = parseInt(latestBlockHex, 16);
+    const latestBlockHex = await getBlockNumber(client);
+    const latestBlock = Number(latestBlockHex);
     console.log(`Latest Block: ${latestBlock}`);
     console.log(`Total blocks to process: ${latestBlock - START_BLOCK + 1}`);
 
@@ -158,9 +173,6 @@ async function main() {
         console.log(`  Batch completed in ${batchTime.toFixed(1)}s | Total: ${totalBlocksProcessed} blocks | Avg: ${avgSpeed} blocks/s | ETA: ${hoursRemaining.toFixed(1)}h\n`);
 
         currentBlock += BLOCKS_PER_FILE;
-
-        // Optional: Add a small delay between batches to avoid overwhelming the RPC
-        await new Promise(resolve => setTimeout(resolve, 100));
     }
 }
 

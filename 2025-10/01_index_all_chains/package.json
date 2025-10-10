@@ -13,8 +13,12 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@clickhouse/client": "^1.12.1",
+    "@duckdb/node-api": "^1.4.1-r.1",
     "@types/node": "^24.7.0",
+    "better-sqlite3": "^12.4.1",
     "p-limit": "^7.1.1",
+    "typescript": "^5.9.3",
     "viem": "^2.38.0",
     "zstd-napi": "^0.0.12"
   }

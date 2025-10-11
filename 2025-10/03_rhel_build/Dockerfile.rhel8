@@ -1,0 +1,48 @@
+# RHEL 8 Build Environment for AvalancheGo Testing
+FROM rockylinux:8
+
+ARG AVALANCHE_VERSION=v1.13.2
+ARG GO_VERSION=1.22.8
+
+RUN dnf -y update && \
+    dnf -y groupinstall "Development Tools" && \
+    dnf -y install wget git gcc-c++ make && \
+    dnf clean all
+
+RUN cd /tmp && \
+    wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
+    rm go${GO_VERSION}.linux-amd64.tar.gz
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV PATH="${GOPATH}/bin:${PATH}"
+
+WORKDIR /build
+
+RUN git clone --depth 1 --branch ${AVALANCHE_VERSION} https://github.com/ava-labs/avalanchego.git /build/avalanchego
+
+WORKDIR /build/avalanchego
+
+RUN echo "=== Build Environment ===" && \
+    echo "OS: $(cat /etc/redhat-release)" && \
+    echo "Go version: $(go version)" && \
+    echo "GCC version: $(gcc --version | head -n1)" && \
+    echo "LD version: $(ld --version | head -n1)" && \
+    echo "AvalancheGo version: ${AVALANCHE_VERSION}" && \
+    echo "========================="
+
+RUN ./scripts/build.sh > /build/build.log 2>&1 && \
+    echo "BUILD_SUCCESS" > /build/build.status || \
+    echo "BUILD_FAILED" > /build/build.status
+
+RUN cat /build/build.log && cat /build/build.status
+
+RUN if [ -f "/build/avalanchego/build/avalanchego" ]; then \
+        echo "Binary successfully created" && \
+        ls -la /build/avalanchego/build/avalanchego; \
+    else \
+        echo "Binary NOT created"; \
+    fi
+
+CMD ["tail", "-f", "/dev/null"]

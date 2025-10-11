@@ -7,6 +7,7 @@ mkdir -p "$RESULTS_DIR"
 declare -a TESTS=(
     "rhel8:v1.13.2:avalanche-rhel8-v1.13.2"
     "rhel8:v1.13.3:avalanche-rhel8-v1.13.3"
+    "rhel8-fixed:v1.13.3:avalanche-rhel8-v1.13.3-fixed"
     "rhel9:v1.13.2:avalanche-rhel9-v1.13.2"
     "rhel9:v1.13.3:avalanche-rhel9-v1.13.3"
 )

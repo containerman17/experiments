@@ -1,6 +1,6 @@
 # AvalancheGo RHEL 8 vs 9 Build Test
 
-Tests whether avalanchego v1.13.3 dropped RHEL 8 support by building v1.13.2 and v1.13.3 on both RHEL 8 and 9.
+Tests whether avalanchego v1.13.3 dropped RHEL 8 support and validates the fix.
 
 ## Run Tests
 
@@ -8,15 +8,21 @@ Tests whether avalanchego v1.13.3 dropped RHEL 8 support by building v1.13.2 and
 ./test_builds.sh
 ```
 
-Results saved to `test_results/`.
+## Results
 
-## Result
+| OS | Version | Result |
+|---|---|---|
+| RHEL 8 | v1.13.2 | ✓ |
+| RHEL 8 | v1.13.3 | ✗ `undefined reference to dlsym` |
+| RHEL 8 | v1.13.3 + fix | ✓ |
+| RHEL 9 | v1.13.2 | ✓ |
+| RHEL 9 | v1.13.3 | ✓ |
 
-RHEL 8 + v1.13.3 fails with linker errors:
+## Fix for RHEL 8
+
+```bash
+export CGO_LDFLAGS="-ldl"
+./scripts/build.sh
 ```
-undefined reference to `dlsym'
-```
 
-The `firewood-go-ethhash/ffi` dependency needs `-ldl` which RHEL 8's older linker doesn't add automatically. RHEL 9's newer linker handles it.
-
-See `FINDINGS.md` for details and workaround.
+See `FINDINGS.md` for details.

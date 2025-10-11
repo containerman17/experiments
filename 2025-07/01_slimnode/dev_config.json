@@ -1,0 +1,69 @@
+{
+    "api-port": 63123,
+    "info-api": {
+        "base-url": "https://api.avax-test.network"
+    },
+    "p-chain-api": {
+        "base-url": "https://api.avax-test.network"
+    },
+    "source-blockchains": [
+        {
+            "subnet-id": "11111111111111111111111111111111LpoYY",
+            "blockchain-id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
+            "vm": "evm",
+            "rpc-endpoint": {
+                "base-url": "https://api.avax-test.network/ext/bc/C/rpc"
+            },
+            "ws-endpoint": {
+                "base-url": "wss://api.avax-test.network/ext/bc/C/ws"
+            },
+            "message-contracts": {
+                "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf": {
+                    "message-format": "teleporter",
+                    "settings": {
+                        "reward-address": "0x0000000000000000000000000000000000000000"
+                    }
+                }
+            }
+        },
+        {
+            "subnet-id": "2PezFTuin9AyJmHUxzk5KX1b9hmYYpNHLe8df2P7bHAQoa97S4",
+            "blockchain-id": "2YvVJ8jtRz2oc6FUQx2HktraBA19wVgjHN1DiCfTQ2EiPEjpSu",
+            "vm": "evm",
+            "rpc-endpoint": {
+                "base-url": "https://transport-admission-negotiations-small.trycloudflare.com/ext/bc/2YvVJ8jtRz2oc6FUQx2HktraBA19wVgjHN1DiCfTQ2EiPEjpSu/rpc"
+            },
+            "ws-endpoint": {
+                "base-url": "wss://transport-admission-negotiations-small.trycloudflare.com/ext/bc/2YvVJ8jtRz2oc6FUQx2HktraBA19wVgjHN1DiCfTQ2EiPEjpSu/ws"
+            },
+            "message-contracts": {
+                "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf": {
+                    "message-format": "teleporter",
+                    "settings": {
+                        "reward-address": "0x0000000000000000000000000000000000000000"
+                    }
+                }
+            }
+        }
+    ],
+    "destination-blockchains": [
+        {
+            "subnet-id": "11111111111111111111111111111111LpoYY",
+            "blockchain-id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
+            "vm": "evm",
+            "rpc-endpoint": {
+                "base-url": "https://api.avax-test.network/ext/bc/C/rpc"
+            },
+            "account-private-key": "0xc5544a4dc49526243a389bfe96254befd736b3b2cac1c4380f0dcd0a0d7b9ecb"
+        },
+        {
+            "subnet-id": "2PezFTuin9AyJmHUxzk5KX1b9hmYYpNHLe8df2P7bHAQoa97S4",
+            "blockchain-id": "2YvVJ8jtRz2oc6FUQx2HktraBA19wVgjHN1DiCfTQ2EiPEjpSu",
+            "vm": "evm",
+            "rpc-endpoint": {
+                "base-url": "https://transport-admission-negotiations-small.trycloudflare.com/ext/bc/2YvVJ8jtRz2oc6FUQx2HktraBA19wVgjHN1DiCfTQ2EiPEjpSu/rpc"
+            },
+            "account-private-key": "0xc5544a4dc49526243a389bfe96254befd736b3b2cac1c4380f0dcd0a0d7b9ecb"
+        }
+    ]
+}

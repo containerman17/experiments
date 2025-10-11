@@ -26,26 +26,12 @@ let totalTxs = 0;
 
         // Log every 100 blocks
         if (count % 100 === 0) {
-            console.log(`Read ${count} blocks, current: ${blockNum}, txs: ${block.receipts.length}`);
+            console.log(`Read ${count} blocks, current: ${blockNum}, txs: ${totalTxs}`);
         }
         totalTxs += block.block.transactions.length;
 
-        if (block.block.transactions.length > 1) {
-            console.log(`Block ${blockNum} has ${block.block.transactions.length} transactions`);
-            console.log(block)
-            process.exit(0);
-        }
-
 
         lastBlock = blockNum;
-
-        if (blockNum === 30000) {
-            const end = Date.now();
-            const duration = end - start;
-            console.log(`Time taken: ${duration}ms`);
-            console.log(`Total txs: ${totalTxs}`);
-            process.exit(0);
-        }
     }
 
     console.log(`✓ Validation passed: ${count} blocks in perfect sequence from 1 to ${lastBlock}`);

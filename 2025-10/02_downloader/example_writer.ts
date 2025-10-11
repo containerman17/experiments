@@ -1,5 +1,5 @@
 import path from "path";
-import { Fetcher } from "./downloader.ts";
+import { Fetcher } from "./fetcher.ts";
 
 const rpcUrl = "http://localhost:9650/ext/bc/C/rpc";
 const dir = path.join(process.cwd(), "data", "C-Chain");

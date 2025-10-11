@@ -8,12 +8,18 @@ import * as readline from "readline";
 
 const execAsync = promisify(exec);
 
+// Zero-pad block numbers to xx digits for proper alphabetical sorting
+function padBlockNumber(blockNum: number): string {
+    return blockNum.toString().padStart(10, '0');
+}
+
 /*
 Writes blocks to a local folder. At first, writes them into a one jsonl file,
 when jsonl is over sizeCutoffMB, archives the file, and creates a new one.
 
 File naming: <startBlockNumber>-<endBlockNumber>.jsonl.zstd for the jsonl file, 
 and <startBlockNumber>-temp.jsonl for the unfinished file.
+Block numbers are zero-padded to 11 digits for proper alphabetical sorting.
 
 When using rsync for backups, exclude *temp* files.
 */
@@ -148,7 +154,7 @@ export class LocalBlockWriter {
             this.rotateFile().then(() => {
                 // Set start block for the new file based on current position
                 if (this.currentStartBlock === null) {
-                    this.currentStartBlock = this.lastWrittenBlock + 1;
+                    this.currentStartBlock = this.lastFlushedBlock + 1;
                 }
                 this.writeToStream(buffer);
             }).catch(error => {
@@ -165,7 +171,7 @@ export class LocalBlockWriter {
             if (this.currentStartBlock === null) {
                 throw new Error('currentStartBlock should be set before writing');
             }
-            this.currentFile = path.join(this.folder, `${this.currentStartBlock}-temp.jsonl`);
+            this.currentFile = path.join(this.folder, `${padBlockNumber(this.currentStartBlock)}-temp.jsonl`);
             this.stream = createWriteStream(this.currentFile);
             this.bytesWritten = 0;
             this.setupStreamHandlers();
@@ -216,7 +222,7 @@ export class LocalBlockWriter {
         });
 
         // Compress the file - use lastFlushedBlock for the actual end block
-        const finalName = `${this.currentStartBlock}-${this.lastFlushedBlock}.jsonl`;
+        const finalName = `${padBlockNumber(this.currentStartBlock)}-${padBlockNumber(this.lastFlushedBlock)}.jsonl`;
         const finalPath = path.join(this.folder, finalName);
         const compressedPath = `${finalPath}.zstd`;
 
@@ -339,8 +345,8 @@ export class LocalBlockReader {
         // The next archive should start at lastReadBlock + 1
         const expectedStart = this.lastReadBlock + 1;
 
-        // Look for file matching pattern: <expectedStart>-*.jsonl.zstd
-        const pattern = `${expectedStart}-`;
+        // Look for file matching pattern: <expectedStart>-*.jsonl.zstd (with zero-padding)
+        const pattern = `${padBlockNumber(expectedStart)}-`;
         const nextArchive = files.find(f =>
             f.startsWith(pattern) && f.endsWith('.jsonl.zstd')
         );

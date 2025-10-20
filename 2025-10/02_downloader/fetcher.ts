@@ -19,10 +19,6 @@ type DebugRpcSchema = [
 
 type ExtendedRpcClient = ReturnType<typeof createRpcClient>;
 
-// Known transactions that fail to trace with "incorrect number of top-level calls"
-const FAILED_TRACE_TXS = new Set([
-    '0xc5ad6d3c56b8a5245e0bebca8d8f0d588cab306799d6a901e7480aaa3648aee7',
-]);
 
 function createRpcClient(rpcUrl: string) {
     return createClient({
@@ -38,10 +34,6 @@ function createRpcClient(rpcUrl: string) {
             });
         },
         async traceTransaction(txHash: string, tracer: string = 'callTracer') {
-            // Return empty trace for known failed transactions
-            if (FAILED_TRACE_TXS.has(txHash.toLowerCase())) {
-                return {} as TraceResult;
-            }
             return client.request({
                 method: 'debug_traceTransaction',
                 params: [txHash, { tracer }]
@@ -62,6 +54,8 @@ export class Fetcher {
     private readonly blockBuffer: Map<number, ArchivedBlock> = new Map();
     private nextBlockToWrite: number = 1;
     private activeFetches: Set<number> = new Set();
+    private startTime: number = 0;
+    private startBlock: number = 0;
 
     constructor(options: {
         folder: string;
@@ -124,12 +118,19 @@ export class Fetcher {
             this.writer.writeBlock(block);
 
             if (this.nextBlockToWrite % 100 === 0) {
-                console.log(`Wrote block ${this.nextBlockToWrite} (buffer size: ${this.blockBuffer.size})`);
+                const blocksProcessed = this.nextBlockToWrite - this.startBlock;
+                const timeElapsedSec = (Date.now() - this.startTime) / 1000;
+                const blocksPerSec = blocksProcessed / timeElapsedSec;
+                const remaining = this.latestBlock - this.nextBlockToWrite;
+                const daysLeft = (remaining / blocksPerSec) / (3600 * 24);
+
+                console.log(`Block ${this.nextBlockToWrite} | Remaining: ${remaining} | Speed: ${blocksPerSec.toFixed(1)} bl/s | ETA: ${daysLeft.toFixed(1)} days`);
             }
 
             this.nextBlockToWrite++;
         }
     }
+
 
     private async initialize() {
         await this.writer.ready();
@@ -143,6 +144,8 @@ export class Fetcher {
             console.log('Starting from block 1');
         }
 
+        this.startTime = Date.now();
+        this.startBlock = this.nextBlockToWrite;
         this.latestBlock = await this.getLatestBlock();
         console.log(`Latest block: ${this.latestBlock}, prefetch window: ${this.prefetchWindow}`);
     }
@@ -187,7 +190,18 @@ export class Fetcher {
                     console.log(`Block ${blockNumber} trace failed, falling back to per-tx tracing:`, error.message);
                     blockTraces = await Promise.all(
                         block.transactions.map(tx =>
-                            this.debugLimit(() => this.viemClient.traceTransaction(tx.hash))
+                            this.debugLimit(async () => {
+                                try {
+                                    return await this.viemClient.traceTransaction(tx.hash);
+                                } catch (traceError: any) {
+                                    // If trace fails and target is the specific precompile, treat as failed trace
+                                    if (traceError.details === "incorrect number of top-level calls") {
+                                        console.log(`Trace failed for tx ${tx.hash} to precompile, treating as failed trace`);
+                                        return {} as TraceResult;
+                                    }
+                                    throw traceError;
+                                }
+                            })
                         )
                     );
                 }

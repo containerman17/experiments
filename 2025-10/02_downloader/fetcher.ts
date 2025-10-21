@@ -122,9 +122,9 @@ export class Fetcher {
                 const timeElapsedSec = (Date.now() - this.startTime) / 1000;
                 const blocksPerSec = blocksProcessed / timeElapsedSec;
                 const remaining = this.latestBlock - this.nextBlockToWrite;
-                const daysLeft = (remaining / blocksPerSec) / (3600 * 24);
+                const hoursLeft = (remaining / blocksPerSec) / 3600;
 
-                console.log(`Block ${this.nextBlockToWrite} | Remaining: ${remaining} | Speed: ${blocksPerSec.toFixed(1)} bl/s | ETA: ${daysLeft.toFixed(1)} days`);
+                console.log(`Block ${this.nextBlockToWrite} | Remaining: ${remaining} | Speed: ${blocksPerSec.toFixed(0)} bl/s | ETA: ${hoursLeft.toFixed(2)} hours`);
             }
 
             this.nextBlockToWrite++;

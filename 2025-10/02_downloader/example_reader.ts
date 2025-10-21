@@ -1,20 +1,24 @@
 import path from "path";
 import { LocalBlockReader } from "./readWriter.ts";
+import { ClickHouseBuffer } from "./clickhouse_buffer.ts";
 
-const dir = path.join(process.cwd(), "data", "2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5");
+const dir = path.join("/data", "2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5");
 
 const reader = new LocalBlockReader(dir);
+const buffer = new ClickHouseBuffer({
+    url: 'http://localhost:8123',
+    username: 'default',
+    password: 'nopassword',
+});
+
+await buffer.initialize();
 
 let count = 0;
-let lastBlock = 0;
-let expectedBlock = 1;
-
-console.log('Starting reader...');
 let totalTxs = 0;
+let totalLogs = 0;
+let totalTraces = 0;
 
-// Progress tracking
 const totalTxsTarget = 760_000_000;
-
 let lastTxCount = 0;
 const start = Date.now();
 
@@ -25,7 +29,6 @@ setInterval(() => {
     const txsPerSecond = intervalTxs;
     const avgTxsPerSecond = (totalTxs / elapsedSeconds).toFixed(2);
 
-    // Calculate time left (based on avg txs/sec)
     let timeLeft = "N/A";
     if (Number(avgTxsPerSecond) > 0) {
         const remainingTxs = totalTxsTarget - totalTxs;
@@ -43,30 +46,22 @@ setInterval(() => {
     lastTxCount = totalTxs;
 }, 1000);
 
-
 (async () => {
     for await (const block of reader.blocks()) {
-        const blockNum = Number(block.block.number);
-
-        // Validate sequential order
-        if (blockNum !== expectedBlock) {
-            throw new Error(`Block sequence error: expected ${expectedBlock}, got ${blockNum}`);
-        }
+        buffer.addBlock(block);
 
         count++;
-        expectedBlock++;
-
         totalTxs += block.block.transactions.length;
-
-
-        lastBlock = blockNum;
+        totalLogs += block.receipts.reduce((sum, r) => sum + r.logs.length, 0);
+        if (block.traces) {
+            totalTraces += block.traces.length;
+        }
     }
 
-    console.log(`✓ Validation passed: ${count} blocks in perfect sequence from 1 to ${lastBlock}`);
-})().catch(console.error);
-
-// Show stats every 5 seconds
-setInterval(() => {
-    console.log(`[Stats] Total blocks read: ${count}, last block: ${lastBlock}`);
-}, 5000);
-
+    await buffer.close();
+    console.log(`✓ Done: ${count} blocks, ${totalTxs} txs, ${totalLogs} logs, ${totalTraces} traces`);
+})().catch(async (error) => {
+    console.error(error);
+    await buffer.close();
+    process.exit(1);
+});

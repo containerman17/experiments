@@ -16,4 +16,4 @@ env | grep -E '^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION|EC2_METADATA_DISABLE
   --numworkers 128 \
   --log info \
   sync --size-only --exclude "*temp*" \
-  s3://l1-archive/2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5/000* /data/2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5/
+  s3://l1-archive/* /data/

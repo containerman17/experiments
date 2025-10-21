@@ -9,5 +9,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@types/node": "^24.9.1",
+    "viem": "^2.38.3"
+  }
 }

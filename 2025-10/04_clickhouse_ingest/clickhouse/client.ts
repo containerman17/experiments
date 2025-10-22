@@ -106,17 +106,15 @@ export class ClickHouseWriter {
         const schemaPath = path.join(process.cwd(), 'clickhouse', 'structure.sql');
         const schema = await fs.readFile(schemaPath, 'utf-8');
 
-        // Make it idempotent by adding IF NOT EXISTS
-        const idempotentSchema = schema
-            .replace(/CREATE TABLE logs/g, 'CREATE TABLE IF NOT EXISTS logs')
-            .replace(/CREATE TABLE blocks/g, 'CREATE TABLE IF NOT EXISTS blocks')
-            .replace(/CREATE TABLE transactions/g, 'CREATE TABLE IF NOT EXISTS transactions')
-            .replace(/CREATE TABLE traces/g, 'CREATE TABLE IF NOT EXISTS traces');
-
         // Split by semicolon and execute each statement separately
-        const statements = idempotentSchema
+        const statements = schema
             .split(';')
-            .map(s => s.trim())
+            .map(s => {
+                // Remove comment lines (lines starting with --)
+                const lines = s.split('\n')
+                    .filter(line => !line.trim().startsWith('--'));
+                return lines.join('\n').trim();
+            })
             .filter(s => s.length > 0);
 
         for (const statement of statements) {

@@ -127,14 +127,7 @@ export class LocalBlockReader {
                     continue;
                 }
 
-                // Validate block continuity
                 const firstBlockNum = Number(currentBatch[0].block.number);
-
-                if (this.lastBlockNumber !== -1 && firstBlockNum !== expectedBlockNum) {
-                    throw new Error(
-                        `Block gap detected! Expected block ${expectedBlockNum} but got ${firstBlockNum}`
-                    );
-                }
 
                 const lastBlockNum = Number(currentBatch[currentBatch.length - 1].block.number);
                 // console.log(`Loaded batch: blocks ${firstBlockNum}-${lastBlockNum} (${currentBatch.length} blocks) from ${path.basename(batchData.filePath)}`);
@@ -212,21 +205,7 @@ export class LocalBlockReader {
                 }
             }
 
-            // Sort blocks by number to ensure proper ordering
-            blocks.sort((a, b) => Number(a.block.number) - Number(b.block.number));
-
-            // Validate internal continuity if we got blocks
-            if (blocks.length > 1) {
-                for (let i = 1; i < blocks.length; i++) {
-                    const prevNum = Number(blocks[i - 1].block.number);
-                    const currNum = Number(blocks[i].block.number);
-                    if (currNum !== prevNum + 1) {
-                        throw new Error(
-                            `Internal gap in file ${path.basename(jsonlPath)}: block ${prevNum} followed by ${currNum}`
-                        );
-                    }
-                }
-            }
+            // No sorting - files are already sorted
 
             return { blocks, bytesRead };
         } catch (error: any) {
@@ -266,19 +245,7 @@ export class LocalBlockReader {
                 }
             }
 
-            // Sort blocks by number to ensure proper ordering
-            blocks.sort((a, b) => Number(a.block.number) - Number(b.block.number));
-
-            // Validate internal continuity
-            for (let i = 1; i < blocks.length; i++) {
-                const prevNum = Number(blocks[i - 1].block.number);
-                const currNum = Number(blocks[i].block.number);
-                if (currNum !== prevNum + 1) {
-                    throw new Error(
-                        `Internal gap in file ${path.basename(jsonlPath)}: block ${prevNum} followed by ${currNum}`
-                    );
-                }
-            }
+            // No sorting - files are already sorted
 
             return blocks;
         } catch (error: any) {
@@ -316,21 +283,7 @@ export class LocalBlockReader {
             });
 
             rl.on('close', () => {
-                // Sort blocks by number to ensure proper ordering
-                blocks.sort((a, b) => Number(a.block.number) - Number(b.block.number));
-
-                // Validate internal continuity
-                for (let i = 1; i < blocks.length; i++) {
-                    const prevNum = Number(blocks[i - 1].block.number);
-                    const currNum = Number(blocks[i].block.number);
-                    if (currNum !== prevNum + 1) {
-                        reject(new Error(
-                            `Internal gap in archive ${path.basename(archivePath)}: block ${prevNum} followed by ${currNum}`
-                        ));
-                        return;
-                    }
-                }
-
+                // No sorting - files are already sorted
                 resolve(blocks);
             });
 

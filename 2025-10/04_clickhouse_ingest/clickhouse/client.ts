@@ -38,6 +38,56 @@ export interface BlockRow {
     date: string;
 }
 
+export interface TransactionRow {
+    block_time: number;
+    block_number: number;
+    value: string;
+    gas_limit: number;
+    gas_price: number;
+    gas_used: number;
+    max_fee_per_gas: number | null;
+    max_priority_fee_per_gas: number | null;
+    priority_fee_per_gas: number | null;
+    nonce: number;
+    index: number;
+    success: number;
+    from: string;
+    to: string | null;
+    block_hash: string;
+    data: string;
+    hash: string;
+    type: number;
+    access_list: Array<[string, string[]]>;
+    block_date: string;
+}
+
+export interface TraceRow {
+    block_time: number;
+    block_number: number;
+    value: string;
+    gas: number;
+    gas_used: number;
+    net_gas_used: number;
+    block_hash: string;
+    success: number;
+    tx_index: number;
+    sub_traces: number;
+    error: string | null;
+    tx_success: number;
+    tx_hash: string;
+    from: string;
+    to: string | null;
+    trace_address: number[];
+    type: string;
+    address: string | null;
+    code: string | null;
+    call_type: string | null;
+    input: string;
+    output: string | null;
+    refund_address: string | null;
+    block_date: string;
+}
+
 export class ClickHouseWriter {
     private client: ClickHouseClient;
     private readonly database: string;
@@ -58,8 +108,10 @@ export class ClickHouseWriter {
 
         // Make it idempotent by adding IF NOT EXISTS
         const idempotentSchema = schema
-            .replace('CREATE TABLE logs', 'CREATE TABLE IF NOT EXISTS logs')
-            .replace('CREATE TABLE blocks', 'CREATE TABLE IF NOT EXISTS blocks');
+            .replace(/CREATE TABLE logs/g, 'CREATE TABLE IF NOT EXISTS logs')
+            .replace(/CREATE TABLE blocks/g, 'CREATE TABLE IF NOT EXISTS blocks')
+            .replace(/CREATE TABLE transactions/g, 'CREATE TABLE IF NOT EXISTS transactions')
+            .replace(/CREATE TABLE traces/g, 'CREATE TABLE IF NOT EXISTS traces');
 
         // Split by semicolon and execute each statement separately
         const statements = idempotentSchema
@@ -98,16 +150,46 @@ export class ClickHouseWriter {
         return Number(rows[0].max_block);
     }
 
-    async getLastBlockNumber(): Promise<{ min: number; logs: number; blocks: number }> {
-        const [logsLast, blocksLast] = await Promise.all([
+    async getLastBlockNumberFromTransactions(): Promise<number> {
+        const result = await this.client.query({
+            query: 'SELECT max(block_number) as max_block FROM transactions',
+            format: 'JSONEachRow',
+        });
+
+        const rows = await result.json<{ max_block: number | string | null }>();
+        if (rows.length === 0 || rows[0].max_block === null || rows[0].max_block === 0 || rows[0].max_block === '0') {
+            return -1;
+        }
+        return Number(rows[0].max_block);
+    }
+
+    async getLastBlockNumberFromTraces(): Promise<number> {
+        const result = await this.client.query({
+            query: 'SELECT max(block_number) as max_block FROM traces',
+            format: 'JSONEachRow',
+        });
+
+        const rows = await result.json<{ max_block: number | string | null }>();
+        if (rows.length === 0 || rows[0].max_block === null || rows[0].max_block === 0 || rows[0].max_block === '0') {
+            return -1;
+        }
+        return Number(rows[0].max_block);
+    }
+
+    async getLastBlockNumber(): Promise<{ min: number; logs: number; blocks: number; transactions: number; traces: number }> {
+        const [logsLast, blocksLast, transactionsLast, tracesLast] = await Promise.all([
             this.getLastLogBlockNumber(),
             this.getLastBlockNumberFromBlocks(),
+            this.getLastBlockNumberFromTransactions(),
+            this.getLastBlockNumberFromTraces(),
         ]);
 
         return {
-            min: Math.min(logsLast, blocksLast),
+            min: Math.min(logsLast, blocksLast, transactionsLast, tracesLast),
             logs: logsLast,
             blocks: blocksLast,
+            transactions: transactionsLast,
+            traces: tracesLast,
         };
     }
 
@@ -127,6 +209,26 @@ export class ClickHouseWriter {
         await this.client.insert({
             table: 'blocks',
             values: blocks,
+            format: 'JSONEachRow',
+        });
+    }
+
+    async insertTransactions(transactions: TransactionRow[]): Promise<void> {
+        if (transactions.length === 0) return;
+
+        await this.client.insert({
+            table: 'transactions',
+            values: transactions,
+            format: 'JSONEachRow',
+        });
+    }
+
+    async insertTraces(traces: TraceRow[]): Promise<void> {
+        if (traces.length === 0) return;
+
+        await this.client.insert({
+            table: 'traces',
+            values: traces,
             format: 'JSONEachRow',
         });
     }

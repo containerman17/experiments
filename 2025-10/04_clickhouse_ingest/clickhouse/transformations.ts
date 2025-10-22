@@ -1,5 +1,5 @@
-import type { ArchivedBlock } from "../lib/types.ts";
-import type { LogRow, BlockRow } from "./client.ts";
+import type { ArchivedBlock, CallTrace } from "../lib/types.ts";
+import type { LogRow, BlockRow, TransactionRow, TraceRow } from "./client.ts";
 
 function ensureHex(hex: string): string {
     if (!hex.startsWith('0x')) {
@@ -18,12 +18,20 @@ function padAddress(address: string | undefined | null): string {
     return ensureHex(address).toLowerCase();
 }
 
+function hexToDecimal(hex: string | undefined | null): string {
+    if (!hex || hex === '0x' || hex === '0x0') return '0';
+    // Remove 0x prefix if present
+    const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+    // Convert to BigInt then to string to handle large numbers
+    return BigInt('0x' + cleanHex).toString();
+}
+
 export function transformBlockToLogs(block: ArchivedBlock): LogRow[] {
     const logs: LogRow[] = [];
 
     const blockTime = Number(block.block.timestamp);
     const blockNumber = Number(block.block.number);
-    const blockHash = ensureHex(block.block.hash).toLowerCase();
+    const blockHash = ensureHex(block.block.hash || '0x').toLowerCase();
     const blockDate = new Date(blockTime * 1000).toISOString().split('T')[0];
 
     for (const receipt of block.receipts) {
@@ -31,9 +39,9 @@ export function transformBlockToLogs(block: ArchivedBlock): LogRow[] {
         const txIndex = Number(receipt.transactionIndex);
 
         // Find the corresponding transaction to get from/to
-        const tx = block.block.transactions.find(t => t.hash === receipt.transactionHash);
-        const txFrom = tx ? padAddress(tx.from) : '0x' + '0'.repeat(40);
-        const txTo = tx?.to ? padAddress(tx.to) : '0x' + '0'.repeat(40);
+        const tx = block.block.transactions.find(t => typeof t !== 'string' && t.hash === receipt.transactionHash);
+        const txFrom = (tx && typeof tx !== 'string') ? padAddress(tx.from) : '0x' + '0'.repeat(40);
+        const txTo = (tx && typeof tx !== 'string' && tx.to) ? padAddress(tx.to) : '0x' + '0'.repeat(40);
 
         for (const log of receipt.logs) {
             logs.push({
@@ -73,11 +81,196 @@ export function transformBlockToBlockRow(block: ArchivedBlock): BlockRow {
         total_difficulty: Number(block.block.totalDifficulty || 0),
         size: Number(block.block.size),
         base_fee_per_gas: block.block.baseFeePerGas ? Number(block.block.baseFeePerGas) : null,
-        hash: ensureHex(block.block.hash).toLowerCase(),
-        parent_hash: ensureHex(block.block.parentHash).toLowerCase(),
-        miner: padAddress(block.block.miner),
+        hash: ensureHex((block.block.hash || '0x') as string).toLowerCase(),
+        parent_hash: ensureHex((block.block.parentHash || '0x') as string).toLowerCase(),
+        miner: padAddress(block.block.miner || '0x'),
         nonce: ensureHex(block.block.nonce || '0x0000000000000000').toLowerCase(),
         date: blockDate,
     };
+}
+
+export function transformBlockToTransactions(block: ArchivedBlock): TransactionRow[] {
+    const transactions: TransactionRow[] = [];
+    const blockTime = Number(block.block.timestamp);
+    const blockNumber = Number(block.block.number);
+    const blockHash = ensureHex(block.block.hash || '0x').toLowerCase();
+    const blockDate = new Date(blockTime * 1000).toISOString().split('T')[0];
+
+    for (const tx of block.block.transactions) {
+        // Data integrity check - must have full transaction objects, not just hashes
+        if (typeof tx === 'string') {
+            throw new Error(`Block ${blockNumber}: Transaction is a hash string, not a full transaction object`);
+        }
+
+        const txHash = ensureHex(tx.hash || '0x').toLowerCase();
+
+        // Find the receipt to get success status and gas_used
+        const receipt = block.receipts.find(r => r.transactionHash === tx.hash);
+        if (!receipt) {
+            throw new Error(`Block ${blockNumber}: No receipt found for transaction ${txHash}`);
+        }
+
+        const success = receipt.status === 'success' ? 1 : 0;
+        const gasUsed = Number(receipt.gasUsed);
+
+        // Parse access list if present
+        const accessList: Array<[string, string[]]> = [];
+        if (tx.accessList && Array.isArray(tx.accessList)) {
+            for (const item of tx.accessList) {
+                const address = padAddress(item.address);
+                const storageKeys = item.storageKeys?.map(key => ensureHex(key as string).toLowerCase()) || [];
+                accessList.push([address, storageKeys]);
+            }
+        }
+
+        transactions.push({
+            block_time: blockTime,
+            block_number: blockNumber,
+            value: hexToDecimal(tx.value?.toString()),
+            gas_limit: Number(tx.gas),
+            gas_price: Number(tx.gasPrice || 0),
+            gas_used: gasUsed,
+            max_fee_per_gas: tx.maxFeePerGas ? Number(tx.maxFeePerGas) : null,
+            max_priority_fee_per_gas: tx.maxPriorityFeePerGas ? Number(tx.maxPriorityFeePerGas) : null,
+            priority_fee_per_gas: receipt?.effectiveGasPrice ? Number(receipt.effectiveGasPrice) - Number(block.block.baseFeePerGas || 0) : null,
+            nonce: Number(tx.nonce),
+            index: Number(tx.transactionIndex),
+            success: success,
+            from: padAddress(tx.from),
+            to: tx.to ? padAddress(tx.to) : null,
+            block_hash: blockHash,
+            data: ensureHex(tx.input).toLowerCase(),
+            hash: txHash,
+            type: Number(tx.type || 0),
+            access_list: accessList,
+            block_date: blockDate,
+        });
+    }
+
+    return transactions;
+}
+
+function flattenTrace(
+    trace: CallTrace,
+    blockTime: number,
+    blockNumber: number,
+    blockHash: string,
+    blockDate: string,
+    txIndex: number,
+    txHash: string,
+    txSuccess: number,
+    traceAddress: number[] = [],
+    result: TraceRow[] = []
+): TraceRow[] {
+    // trace.gasUsed is TOTAL gas including all descendants
+    // net_gas_used = total - sum of direct children's total gas
+    const thisGasUsed = Number(trace.gasUsed || 0);
+    const childrenGasUsed = trace.calls?.reduce((sum, child) => sum + Number(child.gasUsed || 0), 0) || 0;
+    let netGasUsed = thisGasUsed - childrenGasUsed;
+
+    // Handle buggy trace data where children sum > parent (shouldn't happen but does in rare cases)
+    // This is likely due to gas refund accounting bugs in the RPC trace
+    if (netGasUsed < 0) {
+        // console.warn(
+        //     `WARNING: Block ${blockNumber}, tx ${txHash}, trace [${traceAddress.join(',')}]: ` +
+        //     `children gasUsed (${childrenGasUsed}) > parent gasUsed (${thisGasUsed}). ` +
+        //     `Clamping net_gas_used to 0. This indicates buggy trace data from RPC.`
+        // );
+        netGasUsed = 0;
+    }
+
+    // Determine trace type and related fields
+    const traceType = trace.type.toLowerCase();
+    const isCall = traceType === 'call' || traceType === 'delegatecall' || traceType === 'staticcall' || traceType === 'callcode';
+    const isCreate = traceType === 'create' || traceType === 'create2';
+
+    result.push({
+        block_time: blockTime,
+        block_number: blockNumber,
+        value: hexToDecimal(trace.value),
+        gas: Number(trace.gas || 0),
+        gas_used: thisGasUsed,
+        net_gas_used: netGasUsed,
+        block_hash: blockHash,
+        success: 1, // Individual trace success (would need error field to determine)
+        tx_index: txIndex,
+        sub_traces: trace.calls?.length || 0,
+        error: null, // TODO: extract from trace if available
+        tx_success: txSuccess,
+        tx_hash: txHash,
+        from: padAddress(trace.from),
+        to: trace.to ? padAddress(trace.to) : null,
+        trace_address: traceAddress,
+        type: traceType,
+        address: isCreate ? padAddress(trace.to) : null,
+        code: null, // TODO: extract init code for creates
+        call_type: isCall ? traceType : null,
+        input: ensureHex(trace.input || '0x').toLowerCase(),
+        output: null, // TODO: extract output if available
+        refund_address: null, // Only for suicide/selfdestruct traces
+        block_date: blockDate,
+    });
+
+    // Recursively process child traces
+    if (trace.calls && trace.calls.length > 0) {
+        trace.calls.forEach((childTrace, index) => {
+            flattenTrace(
+                childTrace,
+                blockTime,
+                blockNumber,
+                blockHash,
+                blockDate,
+                txIndex,
+                txHash,
+                txSuccess,
+                [...traceAddress, index],
+                result
+            );
+        });
+    }
+
+    return result;
+}
+
+export function transformBlockToTraces(block: ArchivedBlock): TraceRow[] {
+    const traces: TraceRow[] = [];
+
+    if (!block.traces || block.traces.length === 0) {
+        return traces;
+    }
+
+    const blockTime = Number(block.block.timestamp);
+    const blockNumber = Number(block.block.number);
+    const blockHash = ensureHex((block.block.hash || '0x') as string).toLowerCase();
+    const blockDate = new Date(blockTime * 1000).toISOString().split('T')[0];
+
+    for (const traceResult of block.traces) {
+        const txHash = ensureHex(traceResult.txHash).toLowerCase();
+
+        // Find the receipt to get transaction success status
+        const receipt = block.receipts.find(r => ensureHex(r.transactionHash).toLowerCase() === txHash);
+        if (!receipt) {
+            throw new Error(`Block ${blockNumber}: No receipt found for trace transaction ${txHash}`);
+        }
+
+        const txSuccess = receipt.status === 'success' ? 1 : 0;
+        const txIndex = Number(receipt.transactionIndex);
+
+        // Flatten the trace tree
+        flattenTrace(
+            traceResult.result,
+            blockTime,
+            blockNumber,
+            blockHash,
+            blockDate,
+            txIndex,
+            txHash,
+            txSuccess,
+            [],
+            traces
+        );
+    }
+
+    return traces;
 }
 

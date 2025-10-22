@@ -103,11 +103,28 @@ export class ClickHouseWriter {
     }
 
     async initialize(): Promise<void> {
-        const schemaPath = path.join(process.cwd(), 'clickhouse', 'structure.sql');
-        const schema = await fs.readFile(schemaPath, 'utf-8');
+        // Apply base schema
+        await this.applySqlFile(path.join(process.cwd(), 'clickhouse', 'structure.sql'));
+
+        // Apply derived tables/views
+        const derivedDir = path.join(process.cwd(), 'clickhouse', 'derived');
+        try {
+            const files = await fs.readdir(derivedDir);
+            const sqlFiles = files.filter(f => f.endsWith('.sql')).sort();
+
+            for (const file of sqlFiles) {
+                await this.applySqlFile(path.join(derivedDir, file));
+            }
+        } catch (error) {
+            // Derived folder doesn't exist or is empty, that's fine
+        }
+    }
+
+    private async applySqlFile(filePath: string): Promise<void> {
+        const content = await fs.readFile(filePath, 'utf-8');
 
         // Split by semicolon and execute each statement separately
-        const statements = schema
+        const statements = content
             .split(';')
             .map(s => {
                 // Remove comment lines (lines starting with --)

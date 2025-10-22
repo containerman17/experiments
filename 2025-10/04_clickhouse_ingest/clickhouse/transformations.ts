@@ -244,31 +244,193 @@ export function transformBlockToTraces(block: ArchivedBlock): TraceRow[] {
     const blockHash = ensureHex((block.block.hash || '0x') as string).toLowerCase();
     const blockDate = new Date(blockTime * 1000).toISOString().split('T')[0];
 
-    for (const traceResult of block.traces) {
-        const txHash = ensureHex(traceResult.txHash).toLowerCase();
+    // Ensure receipts are ordered by transaction index
+    const receipts = block.receipts.slice().sort((a, b) =>
+        Number(a.transactionIndex) - Number(b.transactionIndex)
+    );
 
-        // Find the receipt to get transaction success status
-        const receipt = block.receipts.find(r => ensureHex(r.transactionHash).toLowerCase() === txHash);
-        if (!receipt) {
-            throw new Error(`Block ${blockNumber}: No receipt found for trace transaction ${txHash}`);
+    // Detect format: check if first item has txHash property
+    const firstTrace = block.traces[0] as any;
+    const isWrappedFormat = firstTrace && 'txHash' in firstTrace && 'result' in firstTrace;
+
+    if (isWrappedFormat) {
+        // Format 1: array of {txHash, result}
+        // Traces should be ordered same as transactions/receipts
+        if (block.traces.length !== block.block.transactions.length) {
+            console.error(`Block ${blockNumber}: trace count (${block.traces.length}) !== transaction count (${block.block.transactions.length})`);
+            process.exit(1);
         }
 
-        const txSuccess = receipt.status === 'success' ? 1 : 0;
-        const txIndex = Number(receipt.transactionIndex);
+        for (let i = 0; i < block.traces.length; i++) {
+            const traceResult = block.traces[i] as any;
+            const tx = block.block.transactions[i];
+            const receipt = receipts[i];
 
-        // Flatten the trace tree
-        flattenTrace(
-            traceResult.result,
-            blockTime,
-            blockNumber,
-            blockHash,
-            blockDate,
-            txIndex,
-            txHash,
-            txSuccess,
-            [],
-            traces
-        );
+            if (typeof tx === 'string') {
+                console.error(`Block ${blockNumber}: Transaction at index ${i} is a hash string, not a full object`);
+                process.exit(1);
+            }
+
+            // Skip completely empty trace objects (edge case for ~6k txs)
+            if (Object.keys(traceResult).length === 0) {
+                continue;
+            }
+
+            if (!traceResult.txHash) {
+                console.error(`Block ${blockNumber}: trace missing txHash at index ${i}: ${JSON.stringify(traceResult)}`);
+                process.exit(1);
+            }
+
+            const txHash = ensureHex(tx.hash).toLowerCase();
+            const traceHash = ensureHex(traceResult.txHash).toLowerCase();
+
+            // Verify trace txHash matches transaction hash at same index
+            if (txHash !== traceHash) {
+                console.error(
+                    `Block ${blockNumber}, index ${i}: txHash mismatch - ` +
+                    `tx.hash: ${txHash}, trace.txHash: ${traceHash}. Arrays not aligned!`
+                );
+                process.exit(1);
+            }
+
+            // Verify receipt matches
+            const receiptHash = ensureHex(receipt.transactionHash).toLowerCase();
+            if (txHash !== receiptHash) {
+                console.error(
+                    `Block ${blockNumber}, index ${i}: receipt mismatch - ` +
+                    `tx.hash: ${txHash}, receipt.hash: ${receiptHash}. Arrays not aligned!`
+                );
+                process.exit(1);
+            }
+
+            // Validate from/to addresses match between trace and transaction
+            const traceFrom = padAddress(traceResult.result.from);
+            const txFrom = padAddress(tx.from);
+
+            if (traceFrom !== txFrom) {
+                console.error(
+                    `Block ${blockNumber}, tx ${txHash} at index ${i}: from address mismatch - ` +
+                    `trace: ${traceFrom}, tx: ${txFrom}. Data corruption!`
+                );
+                console.error(`Full trace object:`, JSON.stringify(traceResult, null, 2));
+                console.error(`Transaction data:`, JSON.stringify(tx, null, 2));
+                console.error(`Receipt data:`, JSON.stringify(receipt, null, 2));
+                process.exit(1);
+            }
+
+            // Only validate 'to' for non-contract-creation transactions
+            if (traceResult.result.type.toLowerCase() === 'call' && tx.to) {
+                const traceTo = padAddress(traceResult.result.to);
+                const txTo = padAddress(tx.to);
+                if (traceTo !== txTo) {
+                    console.error(
+                        `Block ${blockNumber}, tx ${txHash} at index ${i}: to address mismatch - ` +
+                        `trace: ${traceTo}, tx: ${txTo}. Data corruption!`
+                    );
+                    process.exit(1);
+                }
+            }
+
+            const txSuccess = receipt.status === 'success' ? 1 : 0;
+            const txIndex = Number(receipt.transactionIndex);
+
+            // Flatten the trace tree
+            flattenTrace(
+                traceResult.result,
+                blockTime,
+                blockNumber,
+                blockHash,
+                blockDate,
+                txIndex,
+                txHash,
+                txSuccess,
+                [],
+                traces
+            );
+        }
+    } else {
+        // Format 2: array of CallTrace objects directly
+        // Traces MUST be in the same order as transactions
+        if (block.traces.length !== block.block.transactions.length) {
+            console.error(
+                `Block ${blockNumber}: trace count (${block.traces.length}) !== ` +
+                `transaction count (${block.block.transactions.length}) for unwrapped traces`
+            );
+            process.exit(1);
+        }
+
+        for (let i = 0; i < block.traces.length; i++) {
+            const trace = block.traces[i] as any; // It's actually a CallTrace
+            const tx = block.block.transactions[i];
+            const receipt = receipts[i];
+
+            if (typeof tx === 'string') {
+                console.error(`Block ${blockNumber}: Transaction at index ${i} is a hash string, not a full object`);
+                process.exit(1);
+            }
+
+            // Skip completely empty trace objects (edge case for ~6k txs)
+            if (Object.keys(trace).length === 0) {
+                continue;
+            }
+
+            const txHash = ensureHex(tx.hash).toLowerCase();
+
+            // Verify receipt matches
+            const receiptHash = ensureHex(receipt.transactionHash).toLowerCase();
+            if (txHash !== receiptHash) {
+                console.error(
+                    `Block ${blockNumber}, index ${i}: receipt mismatch - ` +
+                    `tx.hash: ${txHash}, receipt.hash: ${receiptHash}. Arrays not aligned!`
+                );
+                process.exit(1);
+            }
+
+            // Validate from/to addresses match between trace and transaction
+            const traceFrom = padAddress(trace.from);
+            const txFrom = padAddress(tx.from);
+
+            if (traceFrom !== txFrom) {
+                console.error(
+                    `Block ${blockNumber}, tx ${txHash} at index ${i}: from address mismatch - ` +
+                    `trace: ${traceFrom}, tx: ${txFrom}. Data corruption!`
+                );
+                console.error(`Full trace object:`, JSON.stringify(trace, null, 2));
+                console.error(`Transaction data:`, JSON.stringify(tx, null, 2));
+                console.error(`Receipt data:`, JSON.stringify(receipt, null, 2));
+                process.exit(1);
+            }
+
+            // Only validate 'to' for non-contract-creation transactions  
+            if (trace.type.toLowerCase() === 'call' && tx.to) {
+                const traceTo = padAddress(trace.to);
+                const txTo = padAddress(tx.to);
+                if (traceTo !== txTo) {
+                    console.error(
+                        `Block ${blockNumber}, tx ${txHash} at index ${i}: to address mismatch - ` +
+                        `trace: ${traceTo}, tx: ${txTo}. Data corruption!`
+                    );
+                    process.exit(1);
+                }
+            }
+
+            const txSuccess = receipt.status === 'success' ? 1 : 0;
+            const txIndex = Number(receipt.transactionIndex);
+
+            // Flatten the trace tree
+            flattenTrace(
+                trace,
+                blockTime,
+                blockNumber,
+                blockHash,
+                blockDate,
+                txIndex,
+                txHash,
+                txSuccess,
+                [],
+                traces
+            );
+        }
     }
 
     return traces;

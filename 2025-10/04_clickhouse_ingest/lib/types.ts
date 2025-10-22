@@ -24,7 +24,7 @@ export interface IngestBlockParams {
 
 export interface ArchivedBlock {
     block: Block;
-    traces: TraceResult[] | undefined;
+    traces: TraceResult[] | CallTrace[] | undefined;
     receipts: TransactionReceipt[];
 }
 

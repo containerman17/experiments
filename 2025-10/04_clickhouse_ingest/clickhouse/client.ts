@@ -21,6 +21,23 @@ export interface LogRow {
     tx_to: string;
 }
 
+export interface BlockRow {
+    time: number;
+    timestamp: number;
+    number: number;
+    gas_limit: number;
+    gas_used: number;
+    difficulty: number;
+    total_difficulty: number;
+    size: number;
+    base_fee_per_gas: number | null;
+    hash: string;
+    parent_hash: string;
+    miner: string;
+    nonce: string;
+    date: string;
+}
+
 export class ClickHouseWriter {
     private client: ClickHouseClient;
     private readonly database: string;
@@ -40,9 +57,19 @@ export class ClickHouseWriter {
         const schema = await fs.readFile(schemaPath, 'utf-8');
 
         // Make it idempotent by adding IF NOT EXISTS
-        const idempotentSchema = schema.replace('CREATE TABLE logs', 'CREATE TABLE IF NOT EXISTS logs');
+        const idempotentSchema = schema
+            .replace('CREATE TABLE logs', 'CREATE TABLE IF NOT EXISTS logs')
+            .replace('CREATE TABLE blocks', 'CREATE TABLE IF NOT EXISTS blocks');
 
-        await this.client.exec({ query: idempotentSchema });
+        // Split by semicolon and execute each statement separately
+        const statements = idempotentSchema
+            .split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+
+        for (const statement of statements) {
+            await this.client.exec({ query: statement });
+        }
     }
 
     async getLastLogBlockNumber(): Promise<number> {
@@ -58,12 +85,48 @@ export class ClickHouseWriter {
         return Number(rows[0].max_block);
     }
 
+    async getLastBlockNumberFromBlocks(): Promise<number> {
+        const result = await this.client.query({
+            query: 'SELECT max(number) as max_block FROM blocks',
+            format: 'JSONEachRow',
+        });
+
+        const rows = await result.json<{ max_block: number | string | null }>();
+        if (rows.length === 0 || rows[0].max_block === null || rows[0].max_block === 0 || rows[0].max_block === '0') {
+            return -1;
+        }
+        return Number(rows[0].max_block);
+    }
+
+    async getLastBlockNumber(): Promise<{ min: number; logs: number; blocks: number }> {
+        const [logsLast, blocksLast] = await Promise.all([
+            this.getLastLogBlockNumber(),
+            this.getLastBlockNumberFromBlocks(),
+        ]);
+
+        return {
+            min: Math.min(logsLast, blocksLast),
+            logs: logsLast,
+            blocks: blocksLast,
+        };
+    }
+
     async insertLogs(logs: LogRow[]): Promise<void> {
         if (logs.length === 0) return;
 
         await this.client.insert({
             table: 'logs',
             values: logs,
+            format: 'JSONEachRow',
+        });
+    }
+
+    async insertBlocks(blocks: BlockRow[]): Promise<void> {
+        if (blocks.length === 0) return;
+
+        await this.client.insert({
+            table: 'blocks',
+            values: blocks,
             format: 'JSONEachRow',
         });
     }

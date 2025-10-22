@@ -1,8 +1,8 @@
 import path from "path";
 import { LocalBlockReader } from "./lib/LocalBlockReader.ts";
 import { ClickHouseWriter } from "./clickhouse/client.ts";
-import { transformBlockToLogs } from "./clickhouse/transformations.ts";
-import type { LogRow } from "./clickhouse/client.ts";
+import { transformBlockToLogs, transformBlockToBlockRow } from "./clickhouse/transformations.ts";
+import type { LogRow, BlockRow } from "./clickhouse/client.ts";
 
 const dir = path.join("/data", "2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5");
 
@@ -18,25 +18,30 @@ const clickhouse = new ClickHouseWriter({
 await clickhouse.initialize();
 console.log('ClickHouse schema initialized');
 
-// Get the last ingested block from the database
-const lastDbBlock = await clickhouse.getLastLogBlockNumber();
-console.log(`Last block in database: ${lastDbBlock}`);
+// Get the last ingested block from each table
+const lastBlocks = await clickhouse.getLastBlockNumber();
+console.log(`Last blocks - logs: ${lastBlocks.logs}, blocks: ${lastBlocks.blocks}, starting from: ${lastBlocks.min}`);
 
-// Start from the block after the last one in the database
-const startFromBlock = lastDbBlock;
+// Start from the minimum to ensure no gaps
+const startFromBlock = lastBlocks.min;
+let lastLogsBlock = lastBlocks.logs;
+let lastBlocksBlock = lastBlocks.blocks;
 
-const reader = new LocalBlockReader(dir, startFromBlock); // true = fast mode, skip sorting & validation
+const reader = new LocalBlockReader(dir, startFromBlock);
 
 // Buffering and backpressure configuration
-const HIGH_WATERMARK = 1000000;  // Pause reading when buffer reaches this
-const LOW_WATERMARK = 200_000;    // Resume reading when buffer drops to this
+const HIGH_WATERMARK = 100_000;  // Pause reading when buffer reaches this
+const LOW_WATERMARK = 10_000;    // Resume reading when buffer drops to this
 
-let buffer: LogRow[] = [];
+let logsBuffer: LogRow[] = [];
+let blocksBuffer: BlockRow[] = [];
 let totalLogs = 0;
 let lastLogCount = 0;
 let totalTxs = 0;
 let lastTxCount = 0;
-let lastIngestedBlock = lastDbBlock;
+let totalBlocks = 0;
+let lastBlockCount = 0;
+let lastIngestedBlock = startFromBlock;
 let shouldStop = false;
 let isPaused = false;
 
@@ -45,21 +50,39 @@ const start = Date.now();
 // Separate commit loop (runs independently)
 async function commitLoop() {
     while (!shouldStop) {
-        while (buffer.length < LOW_WATERMARK && !shouldStop) {
+        while (logsBuffer.length < LOW_WATERMARK && blocksBuffer.length < LOW_WATERMARK && !shouldStop) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }
 
-        const batch = buffer.splice(0);
+        const logsBatch = logsBuffer.splice(0);
+        const blocksBatch = blocksBuffer.splice(0);
 
         const start = Date.now();
-        await clickhouse.insertLogs(batch);
-        const linesPerSecond = batch.length / ((Date.now() - start) / 1000);
-        console.log(`inserted ${batch.length} logs in ${Date.now() - start}ms (${(linesPerSecond / 1000).toFixed(0)}K lines/sec)`);
+
+        // Insert to both tables in parallel
+        await Promise.all([
+            logsBatch.length > 0 ? clickhouse.insertLogs(logsBatch) : Promise.resolve(),
+            blocksBatch.length > 0 ? clickhouse.insertBlocks(blocksBatch) : Promise.resolve(),
+        ]);
+
+        // Update the last successfully inserted block for each table
+        if (logsBatch.length > 0) {
+            lastLogsBlock = logsBatch[logsBatch.length - 1].block_number;
+        }
+        if (blocksBatch.length > 0) {
+            lastBlocksBlock = blocksBatch[blocksBatch.length - 1].number;
+        }
+
+        const linesPerSecond = (logsBatch.length + blocksBatch.length) / ((Date.now() - start) / 1000);
+        console.log(`inserted ${logsBatch.length} logs, ${blocksBatch.length} blocks in ${Date.now() - start}ms (${(linesPerSecond / 1000).toFixed(0)}K lines/sec)`);
     }
 
     // Final flush when stopping
-    if (buffer.length > 0) {
-        await clickhouse.insertLogs(buffer);
+    if (logsBuffer.length > 0 || blocksBuffer.length > 0) {
+        await Promise.all([
+            logsBuffer.length > 0 ? clickhouse.insertLogs(logsBuffer) : Promise.resolve(),
+            blocksBuffer.length > 0 ? clickhouse.insertBlocks(blocksBuffer) : Promise.resolve(),
+        ]);
     }
 }
 
@@ -72,29 +95,46 @@ setInterval(() => {
     const now = Date.now();
     const logsPerSecond = totalLogs - lastLogCount;
     const txsPerSecond = totalTxs - lastTxCount;
+    const blocksPerSecond = totalBlocks - lastBlockCount;
     lastLogCount = totalLogs;
     lastTxCount = totalTxs;
-    console.log(`${txsPerSecond} txs/s, ${logsPerSecond} logs/s, avg: ${(totalTxs / ((now - start) / 1000)).toFixed(0)} txs/s, buffer: ${buffer.length}, last block: ${lastIngestedBlock}, paused: ${isPaused}`);
+    lastBlockCount = totalBlocks;
+    console.log(`${txsPerSecond} txs/s, ${logsPerSecond} logs/s, ${blocksPerSecond} blocks/s, buffers: ${logsBuffer.length}/${blocksBuffer.length}, last block: ${lastIngestedBlock}, logs@${lastLogsBlock}, blocks@${lastBlocksBlock}, paused: ${isPaused}`);
 }, 1000);
 
 // Main processing loop
 for await (const { block, isLastInBatch } of reader.blocks()) {
-    const logs = transformBlockToLogs(block);
-    buffer.push(...logs);
-    totalLogs += logs.length;
-    totalTxs += block.block.transactions.length;
-    lastIngestedBlock = Number(block.block.number);
+    const blockNumber = Number(block.block.number);
 
-    // Backpressure with hysteresis
-    if (!isPaused && buffer.length >= HIGH_WATERMARK) {
+    // Only insert logs if this block is newer than what's in the logs table
+    if (blockNumber > lastLogsBlock) {
+        const logs = transformBlockToLogs(block);
+        logsBuffer.push(...logs);
+        totalLogs += logs.length;
+    }
+
+    // Only insert block if this block is newer than what's in the blocks table
+    if (blockNumber > lastBlocksBlock) {
+        const blockRow = transformBlockToBlockRow(block);
+        blocksBuffer.push(blockRow);
+        totalBlocks++;
+    }
+
+    totalTxs += block.block.transactions.length;
+    lastIngestedBlock = blockNumber;
+
+    // Backpressure with hysteresis based on total buffer size
+    const totalBufferSize = logsBuffer.length + blocksBuffer.length;
+    if (!isPaused && totalBufferSize >= HIGH_WATERMARK) {
         isPaused = true;
-        console.log(`Buffer reached ${HIGH_WATERMARK.toLocaleString()} (high watermark), pausing reads...`);
+        console.log(`Buffer reached ${totalBufferSize.toLocaleString()} (high watermark), pausing reads...`);
     }
 
     while (isPaused) {
-        if (buffer.length <= LOW_WATERMARK) {
+        const currentBufferSize = logsBuffer.length + blocksBuffer.length;
+        if (currentBufferSize <= LOW_WATERMARK) {
             isPaused = false;
-            console.log(`Buffer drained to ${buffer.length.toLocaleString()} (≤${LOW_WATERMARK.toLocaleString()} low watermark), resuming reads...`);
+            console.log(`Buffer drained to ${currentBufferSize.toLocaleString()} (≤${LOW_WATERMARK.toLocaleString()} low watermark), resuming reads...`);
             break;
         }
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -105,4 +145,4 @@ for await (const { block, isLastInBatch } of reader.blocks()) {
 shouldStop = true;
 await commitLoopPromise;
 await clickhouse.close();
-console.log(`Finished. Total logs processed: ${totalLogs}`);
+console.log(`Finished. Total: ${totalBlocks} blocks, ${totalLogs} logs, ${totalTxs} transactions`);

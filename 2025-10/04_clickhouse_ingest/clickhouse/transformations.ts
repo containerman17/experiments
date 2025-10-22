@@ -1,5 +1,5 @@
 import type { ArchivedBlock } from "../lib/types.ts";
-import type { LogRow } from "./client.ts";
+import type { LogRow, BlockRow } from "./client.ts";
 
 function ensureHex(hex: string): string {
     if (!hex.startsWith('0x')) {
@@ -57,5 +57,27 @@ export function transformBlockToLogs(block: ArchivedBlock): LogRow[] {
     }
 
     return logs;
+}
+
+export function transformBlockToBlockRow(block: ArchivedBlock): BlockRow {
+    const blockTime = Number(block.block.timestamp);
+    const blockDate = new Date(blockTime * 1000).toISOString().split('T')[0];
+
+    return {
+        time: blockTime,
+        timestamp: blockTime,
+        number: Number(block.block.number),
+        gas_limit: Number(block.block.gasLimit),
+        gas_used: Number(block.block.gasUsed),
+        difficulty: Number(block.block.difficulty || 0),
+        total_difficulty: Number(block.block.totalDifficulty || 0),
+        size: Number(block.block.size),
+        base_fee_per_gas: block.block.baseFeePerGas ? Number(block.block.baseFeePerGas) : null,
+        hash: ensureHex(block.block.hash).toLowerCase(),
+        parent_hash: ensureHex(block.block.parentHash).toLowerCase(),
+        miner: padAddress(block.block.miner),
+        nonce: ensureHex(block.block.nonce || '0x0000000000000000').toLowerCase(),
+        date: blockDate,
+    };
 }
 

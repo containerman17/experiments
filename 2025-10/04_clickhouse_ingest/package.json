@@ -1,5 +1,5 @@
 {
-  "name": "02_downloader",
+  "name": "04_clickhouse_ingest",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -12,9 +12,8 @@
   "type": "module",
   "dependencies": {
     "@clickhouse/client": "^1.12.1",
-    "@types/node": "^24.7.1",
-    "p-limit": "^7.1.1",
-    "viem": "^2.38.0",
-    "zstd-napi": "^0.0.12"
+    "@types/node": "^24.9.1",
+    "p-limit": "^7.2.0",
+    "viem": "^2.38.3"
   }
 }

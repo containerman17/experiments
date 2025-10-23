@@ -2,7 +2,7 @@ import { createClient, http, rpcSchema } from "viem";
 import type { CallTrace, ArchivedBlock, TraceResult } from "./types.ts";
 import { getBlock, getBlockNumber, getTransactionReceipt } from "viem/actions";
 import pLimit from "p-limit";
-import { LocalBlockWriter } from "./readWriter.ts";
+import { LocalBlockWriter } from "./LocalBlockWriter.ts";
 
 type DebugRpcSchema = [
     {
@@ -58,12 +58,11 @@ export class Fetcher {
     private startBlock: number = 0;
 
     constructor(options: {
-        folder: string;
+        writer: LocalBlockWriter;
         rpcUrl: string;
         includeTraces?: boolean;
         rpcConcurrency?: number;
         debugConcurrency?: number;
-        sizeCutoffMB?: number;
         prefetchWindow?: number;
     }) {
         this.includeTraces = options.includeTraces ?? false;
@@ -71,7 +70,7 @@ export class Fetcher {
         this.viemClient = createRpcClient(options.rpcUrl);
         this.rpcLimit = pLimit(options.rpcConcurrency ?? 300);
         this.debugLimit = pLimit(options.debugConcurrency ?? 40);
-        this.writer = new LocalBlockWriter(options.folder, options.sizeCutoffMB ?? 128);
+        this.writer = options.writer;
         this.prefetchWindow = options.prefetchWindow ?? 500;
     }
 

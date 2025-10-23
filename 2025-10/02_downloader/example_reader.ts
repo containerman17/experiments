@@ -1,44 +1,67 @@
 import path from "path";
 import { LocalBlockReader } from "./readWriter.ts";
+import { ClickHouseBuffer } from "./clickhouse_buffer.ts";
 
-const dir = path.join(process.cwd(), "data", "C-Chain");
+const dir = path.join("/data", "2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5");
 
 const reader = new LocalBlockReader(dir);
+const buffer = new ClickHouseBuffer({
+    url: 'http://localhost:8123',
+    username: 'default',
+    password: 'nopassword',
+});
+
+await buffer.initialize();
 
 let count = 0;
-let lastBlock = 0;
-let expectedBlock = 1;
-
-console.log('Starting reader...');
-const start = Date.now();
 let totalTxs = 0;
-(async () => {
-    for await (const block of reader.blocks()) {
-        const blockNum = Number(block.block.number);
+let totalLogs = 0;
+let totalTraces = 0;
 
-        // Validate sequential order
-        if (blockNum !== expectedBlock) {
-            throw new Error(`Block sequence error: expected ${expectedBlock}, got ${blockNum}`);
-        }
+const totalTxsTarget = 760_000_000;
+let lastTxCount = 0;
+const start = Date.now();
 
-        count++;
-        expectedBlock++;
+setInterval(() => {
+    const percentage = (totalTxs / totalTxsTarget * 100).toFixed(4);
+    const elapsedSeconds = (Date.now() - start) / 1000;
+    const intervalTxs = totalTxs - lastTxCount;
+    const txsPerSecond = intervalTxs;
+    const avgTxsPerSecond = (totalTxs / elapsedSeconds).toFixed(2);
 
-        // Log every 100 blocks
-        if (count % 100 === 0) {
-            console.log(`Read ${count} blocks, current: ${blockNum}, txs: ${totalTxs}`);
-        }
-        totalTxs += block.block.transactions.length;
-
-
-        lastBlock = blockNum;
+    let timeLeft = "N/A";
+    if (Number(avgTxsPerSecond) > 0) {
+        const remainingTxs = totalTxsTarget - totalTxs;
+        const secondsLeft = remainingTxs / Number(avgTxsPerSecond);
+        const hours = Math.floor(secondsLeft / 3600);
+        const minutes = Math.floor((secondsLeft % 3600) / 60);
+        const seconds = Math.floor(secondsLeft % 60);
+        timeLeft = `${hours}h ${minutes}m ${seconds}s`;
     }
 
-    console.log(`✓ Validation passed: ${count} blocks in perfect sequence from 1 to ${lastBlock}`);
-})().catch(console.error);
+    console.log(
+        `Progress: ${percentage}% (${totalTxs}/${totalTxsTarget}). ` +
+        `${txsPerSecond} txs/s, avg: ${avgTxsPerSecond} txs/s, time left: ${timeLeft}`
+    );
+    lastTxCount = totalTxs;
+}, 1000);
 
-// Show stats every 5 seconds
-setInterval(() => {
-    console.log(`[Stats] Total blocks read: ${count}, last block: ${lastBlock}`);
-}, 5000);
+(async () => {
+    for await (const block of reader.blocks()) {
+        buffer.addBlock(block);
 
+        count++;
+        totalTxs += block.block.transactions.length;
+        totalLogs += block.receipts.reduce((sum, r) => sum + r.logs.length, 0);
+        if (block.traces) {
+            totalTraces += block.traces.length;
+        }
+    }
+
+    await buffer.close();
+    console.log(`✓ Done: ${count} blocks, ${totalTxs} txs, ${totalLogs} logs, ${totalTraces} traces`);
+})().catch(async (error) => {
+    console.error(error);
+    await buffer.close();
+    process.exit(1);
+});

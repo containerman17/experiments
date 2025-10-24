@@ -9,8 +9,11 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "viem": "^2.38.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1"
   }
 }

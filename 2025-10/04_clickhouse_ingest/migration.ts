@@ -1,8 +1,7 @@
 import { LocalBlockReader } from "./lib/LocalBlockReader.ts";
 import type { ArchivedBlock, TraceResult, CallTrace } from "./lib/types.ts";
 import { promises as fs } from "fs";
-import { createWriteStream, WriteStream } from "fs";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
 
@@ -10,6 +9,7 @@ const execAsync = promisify(exec);
 
 const SOURCE_DIR = "/data/2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5";
 const TARGET_DIR = "/data/2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5_v2";
+const END_BLOCK = 70000000; // Set this to your target end block
 
 interface TraceResultOptional {
     txHash: string;
@@ -75,56 +75,100 @@ function normalizeTraces(
         die(`Block ${blockNumber}: Trace count (${traces.length}) doesn't match transaction count (${txHashes.length})`);
     }
 
-    // Check if all elements are TraceResult (with txHash)
-    const firstTrace = traces[0];
-    if (isTraceResult(firstTrace)) {
-        // Verify all are TraceResult format
-        if (!traces.every(t => isTraceResult(t))) {
-            die(`Block ${blockNumber}: Mixed trace formats detected!`);
+    // Process each trace individually - 2x2 matrix: wrapped/unwrapped × trace/empty
+    const normalized: TraceResultOptional[] = traces.map((trace, index) => {
+        const txHash = txHashes[index];
+
+        // Null/undefined check
+        if (trace === null || trace === undefined) {
+            die(`Block ${blockNumber}: Trace at index ${index} is null/undefined`);
         }
 
-        const normalized = (traces as TraceResult[]).map((trace, index) => {
-            // Check for empty object (failed trace from fetcher.ts line 199: return {} as TraceResult)
-            const isEmptyObject = !trace.txHash && !trace.result;
-            if (isEmptyObject || (trace.result && Object.keys(trace.result).length === 0)) {
-                // Failed trace - use transaction hash from same index, null result
+        // Must be an object
+        if (typeof trace !== 'object') {
+            die(`Block ${blockNumber}: Trace at index ${index} is not an object: ${typeof trace}`);
+        }
+
+        // Check if it's wrapped (has txHash field) or not
+        const hasWrapper = 'txHash' in trace;
+
+        if (hasWrapper) {
+            // WRAPPED format: should have exactly {txHash, result}
+            const wrapped = trace as any;
+
+            // Validate structure
+            if (!('result' in wrapped)) {
+                die(`Block ${blockNumber}: Trace at index ${index} has txHash but no result field`);
+            }
+
+            // Validate txHash type
+            if (typeof wrapped.txHash !== 'string') {
+                die(`Block ${blockNumber}: Trace at index ${index} has invalid txHash type: ${typeof wrapped.txHash}`);
+            }
+
+            // Validate result is an object
+            if (typeof wrapped.result !== 'object' || wrapped.result === null) {
+                die(`Block ${blockNumber}: Trace at index ${index} has invalid result type: ${typeof wrapped.result}`);
+            }
+
+            // Check if result is empty object
+            const isEmpty = Object.keys(wrapped.result).length === 0;
+
+            if (isEmpty) {
+                // Case: {txHash: "...", result: {}}
                 return {
-                    txHash: trace.txHash || txHashes[index],
+                    txHash: wrapped.txHash,
                     result: null
                 };
+            } else {
+                // Case: {txHash: "...", result: <CallTrace>}
+                // Validate it actually looks like a CallTrace
+                const requiredFields = ['from', 'gas', 'gasUsed', 'input', 'value', 'type'];
+                const missingFields = requiredFields.filter(field => !(field in wrapped.result));
+                if (missingFields.length > 0) {
+                    const resultKeys = Object.keys(wrapped.result);
+                    die(`Block ${blockNumber}: Trace at index ${index} has wrapped result missing fields: [${missingFields.join(', ')}]. Has: [${resultKeys.join(', ')}]`);
+                }
+
+                return {
+                    txHash: wrapped.txHash,
+                    result: wrapped.result
+                };
             }
-            return {
-                txHash: trace.txHash,
-                result: trace.result
-            };
-        });
+        } else {
+            // NOT WRAPPED - could be empty object or plain CallTrace
+            const keys = Object.keys(trace);
 
-        const failedCount = normalized.filter(t => t.result === null).length;
-        if (failedCount > 0) {
-            console.log(`Block ${blockNumber}: ${failedCount}/${normalized.length} traces have null results`);
+            if (keys.length === 0) {
+                // Case: {} (empty object)
+                return {
+                    txHash: txHash,
+                    result: null
+                };
+            } else {
+                // Case: Plain CallTrace - verify it looks like a trace
+                const requiredFields = ['from', 'gas', 'gasUsed', 'input', 'value', 'type'];
+                const missingFields = requiredFields.filter(field => !(field in trace));
+
+                if (missingFields.length > 0) {
+                    die(`Block ${blockNumber}: Trace at index ${index} is not wrapped, missing fields: [${missingFields.join(', ')}]. Has: [${keys.join(', ')}]`);
+                }
+
+                return {
+                    txHash: txHash,
+                    result: trace as CallTrace
+                };
+            }
         }
+    });
 
-        return normalized;
+    // Log statistics about the traces
+    const failedCount = normalized.filter(t => t.result === null).length;
+    if (failedCount > 0) {
+        console.log(`Block ${blockNumber}: ${failedCount}/${normalized.length} traces have null results (known failures)`);
     }
 
-    // Check if all elements are CallTrace (legacy format without txHash)
-    if (isCallTrace(firstTrace)) {
-        // Verify all are CallTrace format
-        if (!traces.every(t => isCallTrace(t))) {
-            die(`Block ${blockNumber}: Mixed trace formats detected!`);
-        }
-
-        console.log(`Block ${blockNumber}: Converting CallTrace[] to TraceResultOptional[]`);
-
-        // Pair CallTraces with transaction hashes
-        return (traces as CallTrace[]).map((trace, index) => ({
-            txHash: txHashes[index],
-            result: trace
-        }));
-    }
-
-    // Unknown format
-    die(`Block ${blockNumber}: Unrecognized trace format. First element: ${JSON.stringify(firstTrace)}`);
+    return normalized;
 }
 
 class MigrationWriter {
@@ -296,9 +340,8 @@ class MigrationWriter {
         const millionDir = path.join(this.targetDir, millions.toString().padStart(4, '0'));
         await fs.mkdir(millionDir, { recursive: true });
 
-        const filename = `${thousands.toString().padStart(3, '0')}xxx.jsonl`;
-        const jsonlPath = path.join(millionDir, filename);
-        const zstdPath = `${jsonlPath}.zstd`;
+        const filename = `${thousands.toString().padStart(3, '0')}xxx.jsonl.zstd`;
+        const zstdPath = path.join(millionDir, filename);
 
         // Check if file already exists
         try {
@@ -308,31 +351,34 @@ class MigrationWriter {
             // File doesn't exist, good
         }
 
-        // Write JSONL file
-        const stream = createWriteStream(jsonlPath);
+        // Compress directly from memory to zstd file
+        const zstdProcess = spawn('zstd', ['-q', '-o', zstdPath], {
+            stdio: ['pipe', 'inherit', 'inherit']
+        });
+
+        // Write blocks to zstd's stdin
         for (const block of this.currentBatch) {
             const line = JSON.stringify(block, (_, value) =>
                 typeof value === 'bigint' ? value.toString() : value
             ) + '\n';
 
-            if (!stream.write(line)) {
-                await new Promise<void>((resolve) => stream.once('drain', resolve));
+            if (!zstdProcess.stdin.write(line)) {
+                await new Promise<void>((resolve) => zstdProcess.stdin.once('drain', resolve));
             }
         }
 
+        // Close stdin and wait for zstd to finish
         await new Promise<void>((resolve, reject) => {
-            stream.end((err: any) => {
-                if (err) reject(err);
-                else resolve();
+            zstdProcess.stdin.end();
+            zstdProcess.on('exit', (code) => {
+                if (code !== 0) {
+                    reject(new Error(`zstd exited with code ${code}`));
+                } else {
+                    resolve();
+                }
             });
+            zstdProcess.on('error', reject);
         });
-
-        // Compress with zstd
-        try {
-            await execAsync(`zstd -q --rm "${jsonlPath}" -o "${zstdPath}"`);
-        } catch (error) {
-            die(`Failed to compress ${jsonlPath}: ${error}`);
-        }
 
         // Verify compressed file exists
         try {
@@ -394,8 +440,16 @@ async function main() {
 
         const txsSinceLastStats = totalTxs - lastStatsTxs;
         const txsPerSec = txsSinceLastStats / elapsedSec;
+        const txsPerHour = txsPerSec * 3600;
 
-        console.log(`Performance: ${blocksPerSec.toFixed(1)} blocks/sec, ${Number(blocksPerHour.toFixed(0)).toLocaleString()} blocks/hour, ${txsPerSec.toFixed(1)} txs/sec (block: ${writer.getLastWrittenBlock()}, txs: ${totalTxs.toLocaleString()})`);
+        const currentBlock = writer.getLastWrittenBlock();
+        const remainingBlocks = END_BLOCK - currentBlock;
+        const etaSeconds = blocksPerSec > 0 ? remainingBlocks / blocksPerSec : 0;
+        const etaHours = Math.floor(etaSeconds / 3600);
+        const etaMinutes = Math.floor((etaSeconds % 3600) / 60);
+        const etaStr = `${etaHours}h ${etaMinutes}m`;
+
+        console.log(`Performance: ${blocksPerSec.toFixed(1)} blocks/sec, ${Number(blocksPerHour.toFixed(0)).toLocaleString()} blocks/hour, ${txsPerSec.toFixed(1)} txs/sec, ${Number(txsPerHour.toFixed(0)).toLocaleString()} txs/hour (block: ${currentBlock.toLocaleString()}/${END_BLOCK.toLocaleString()}, txs: ${totalTxs.toLocaleString()}, ETA: ${etaStr})`);
 
         lastStatsTime = now;
         lastStatsBlock = writer.getLastWrittenBlock();

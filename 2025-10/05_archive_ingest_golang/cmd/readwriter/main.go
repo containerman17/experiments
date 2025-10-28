@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -41,16 +41,16 @@ func main() {
 	reader := archiver.NewBatchReader(blockchainDir, 1, batchSize)
 	defer reader.Close()
 
-	// If RPC URL provided, start writer for live mode
+	// If RPC URL provided, start writer
 	if rpcURL != "" {
 		fetcher := archiver.NewFetcher(archiver.FetcherOptions{
 			RpcURL:           rpcURL,
 			IncludeTraces:    includeTraces,
-			RpcConcurrency:   300,
+			RpcConcurrency:   100,
 			DebugConcurrency: 100,
 		})
 
-		writer := archiver.NewBlockWriter(blockchainDir, reader, fetcher)
+		writer := archiver.NewBlockWriter(blockchainDir, fetcher)
 
 		// Start writer in background
 		go func() {
@@ -60,13 +60,12 @@ func main() {
 		}()
 
 		fmt.Printf("Writer started with RPC: %s, traces: %v\n", rpcURL, includeTraces)
-		fmt.Printf("Batch reader started with batch size: %d files (with live mode support)\n", batchSize)
+		fmt.Printf("Batch reader started with batch size: %d files\n", batchSize)
 	} else {
-		fmt.Printf("Batch reader started with batch size: %d files (processing %d blocks at once)\n", batchSize, batchSize*1000)
+		fmt.Printf("Batch reader started with batch size: %d files (read-only mode)\n", batchSize)
 	}
 
-	// Read blocks (from archives or buffer)
-	startTime := time.Now()
+	// Read blocks from archives
 	var lastBlockNum int64 = -1
 	for {
 		block, err := reader.NextBlock()
@@ -76,10 +75,14 @@ func main() {
 
 		// Parse block number
 		var blockNum int64
-		if err := json.Unmarshal(block.Block.Number, &blockNum); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(string(block.Block.Number)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&blockNum); err != nil {
 			// Try as hex string
 			var blockNumStr string
-			if err := json.Unmarshal(block.Block.Number, &blockNumStr); err == nil {
+			decoder2 := json.NewDecoder(strings.NewReader(string(block.Block.Number)))
+			decoder2.DisallowUnknownFields()
+			if err := decoder2.Decode(&blockNumStr); err == nil {
 				if _, err := fmt.Sscanf(blockNumStr, "0x%x", &blockNum); err != nil {
 					log.Fatal("Error parsing block number:", err)
 				}
@@ -90,13 +93,6 @@ func main() {
 
 		if blockNum%200 == 0 {
 			fmt.Printf("Block: %d\n", blockNum)
-		}
-
-		// Exit after reaching 15k blocks
-		if blockNum == 30000 {
-			elapsed := time.Since(startTime)
-			fmt.Printf("\nReached block %d in %.2f seconds\n", blockNum, elapsed.Seconds())
-			// os.Exit(0)
 		}
 
 		// Check sequential order

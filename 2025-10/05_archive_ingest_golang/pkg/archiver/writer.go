@@ -1,6 +1,7 @@
 package archiver
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,25 +11,16 @@ import (
 	"time"
 )
 
-type BlockFeeder interface {
-	FeedBlock(block *NormalizedBlock)
-}
-
 type BlockWriter struct {
-	rootDir     string
-	reader      BlockFeeder
-	fetcher     *Fetcher
-	latestBlock int64
-	nextBlock   int64
-	accumulator []*NormalizedBlock
+	rootDir   string
+	fetcher   *Fetcher
+	nextBlock int64
 }
 
-func NewBlockWriter(rootDir string, reader BlockFeeder, fetcher *Fetcher) *BlockWriter {
+func NewBlockWriter(rootDir string, fetcher *Fetcher) *BlockWriter {
 	writer := &BlockWriter{
-		rootDir:     rootDir,
-		reader:      reader,
-		fetcher:     fetcher,
-		accumulator: make([]*NormalizedBlock, 0, 1000),
+		rootDir: rootDir,
+		fetcher: fetcher,
 	}
 
 	// Find the latest written block
@@ -108,9 +100,13 @@ func (w *BlockWriter) writeBlocks(blocks []*NormalizedBlock) error {
 
 	// Get block number from first block
 	var firstBlockNum int64
-	if err := json.Unmarshal(blocks[0].Block.Number, &firstBlockNum); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(blocks[0].Block.Number))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&firstBlockNum); err != nil {
 		var blockNumStr string
-		if json.Unmarshal(blocks[0].Block.Number, &blockNumStr) == nil {
+		decoder2 := json.NewDecoder(bytes.NewReader(blocks[0].Block.Number))
+		decoder2.DisallowUnknownFields()
+		if decoder2.Decode(&blockNumStr) == nil {
 			firstBlockNum, _ = parseBlockNumber(blockNumStr)
 		}
 	}
@@ -189,75 +185,49 @@ func (w *BlockWriter) writeBlocks(blocks []*NormalizedBlock) error {
 
 // Start begins the writer process
 func (w *BlockWriter) Start() error {
-	// Get latest block from chain
-	latestBlock, err := w.fetcher.GetLatestBlock()
-	if err != nil {
-		return fmt.Errorf("failed to get latest block: %w", err)
-	}
-	w.latestBlock = latestBlock
-
-	fmt.Printf("Starting writer from block %d, latest chain block: %d\n", w.nextBlock, w.latestBlock)
+	fmt.Printf("Starting writer from block %d\n", w.nextBlock)
 
 	for {
-		// Check if we need to update latest block
-		if w.nextBlock > w.latestBlock {
-			time.Sleep(500 * time.Millisecond)
-			latestBlock, err := w.fetcher.GetLatestBlock()
-			if err != nil {
-				fmt.Printf("Error getting latest block: %v\n", err)
-				continue
-			}
-			w.latestBlock = latestBlock
+		// Get latest block from chain
+		latestBlock, err := w.fetcher.GetLatestBlock()
+		if err != nil {
+			fmt.Printf("Error getting latest block: %v\n", err)
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		blocksRemaining := w.latestBlock - w.nextBlock + 1
+		blocksAvailable := latestBlock - w.nextBlock + 1
 
-		// Calculate blocks needed to complete current file
-		var blocksToFileEnd int64
+		// Determine end of current file
+		var endBlock int64
 		if w.nextBlock <= 999 {
-			blocksToFileEnd = 999 - w.nextBlock + 1
+			endBlock = 999
 		} else {
-			fileEnd := ((w.nextBlock / 1000) * 1000) + 999
-			blocksToFileEnd = fileEnd - w.nextBlock + 1
+			endBlock = ((w.nextBlock / 1000) * 1000) + 999
 		}
 
-		// Fast catch-up mode: fetch remaining blocks for current file if we have them all
-		if blocksRemaining >= blocksToFileEnd {
-			if err := w.fastCatchUp(); err != nil {
-				fmt.Printf("Fast catch-up error: %v\n", err)
-				time.Sleep(1 * time.Second)
+		blocksNeeded := endBlock - w.nextBlock + 1
+
+		if blocksAvailable >= blocksNeeded {
+			// Fetch and write complete file
+			if err := w.fetchAndWriteBatch(w.nextBlock, endBlock); err != nil {
+				fmt.Printf("Error fetching batch: %v\n", err)
+				time.Sleep(5 * time.Second)
 				continue
 			}
+			w.nextBlock = endBlock + 1
 		} else {
-			// Live following mode: fetch block by block
-			if err := w.liveFollow(); err != nil {
-				fmt.Printf("Live follow error: %v\n", err)
-				time.Sleep(1 * time.Second)
-				continue
-			}
+			// Not enough blocks, wait
+			fmt.Printf("Waiting for more blocks (need %d, have %d)\n", blocksNeeded, blocksAvailable)
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
 
-// fastCatchUp fetches blocks to complete a file (up to 1000) and writes them
-func (w *BlockWriter) fastCatchUp() error {
-	startBlock := w.nextBlock
-
-	// Determine the end of the current file
-	var endBlock int64
-	if startBlock <= 999 {
-		// First file: blocks 1-999
-		endBlock = 999
-	} else {
-		// Subsequent files: align to 1000-block boundaries
-		// e.g., blocks 1000-1999, 2000-2999, 3000-3999
-		fileEnd := ((startBlock / 1000) * 1000) + 999
-		endBlock = fileEnd
-	}
-
+// fetchAndWriteBatch fetches blocks in parallel and writes them to a file
+func (w *BlockWriter) fetchAndWriteBatch(startBlock, endBlock int64) error {
 	numBlocks := endBlock - startBlock + 1
-	fmt.Printf("Fast catch-up: fetching blocks %d-%d (%d blocks)\n", startBlock, endBlock, numBlocks)
+	fmt.Printf("Fetching blocks %d-%d (%d blocks)\n", startBlock, endBlock, numBlocks)
 
 	// Fetch all blocks in parallel
 	blocks := make([]*NormalizedBlock, numBlocks)
@@ -294,44 +264,6 @@ func (w *BlockWriter) fastCatchUp() error {
 	// Write blocks to file
 	if err := w.writeBlocks(blocks); err != nil {
 		return fmt.Errorf("failed to write blocks: %w", err)
-	}
-
-	// Feed blocks to reader buffer in order
-	for _, block := range blocks {
-		w.reader.FeedBlock(block)
-	}
-
-	w.nextBlock = endBlock + 1
-	return nil
-}
-
-// liveFollow fetches blocks one by one and accumulates them
-func (w *BlockWriter) liveFollow() error {
-	block, err := w.fetcher.FetchBlockData(w.nextBlock)
-	if err != nil {
-		return fmt.Errorf("failed to fetch block %d: %w", w.nextBlock, err)
-	}
-
-	// Add to accumulator
-	w.accumulator = append(w.accumulator, block)
-
-	// Feed to reader immediately
-	w.reader.FeedBlock(block)
-
-	// Check if we need to write (crossing 1000-block boundary)
-	if w.nextBlock%1000 == 999 || (w.nextBlock <= 999 && w.nextBlock == 999) {
-		// Write accumulated blocks
-		if err := w.writeBlocks(w.accumulator); err != nil {
-			return fmt.Errorf("failed to write blocks: %w", err)
-		}
-		w.accumulator = make([]*NormalizedBlock, 0, 1000)
-	}
-
-	w.nextBlock++
-
-	// If caught up, pause briefly
-	if w.nextBlock > w.latestBlock {
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	return nil

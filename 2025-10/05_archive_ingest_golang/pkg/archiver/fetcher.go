@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -94,13 +93,10 @@ func (f *Fetcher) rpcCall(method string, params []interface{}) (json.RawMessage,
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
 	var rpcResp jsonRpcResponse
-	if err := json.Unmarshal(body, &rpcResp); err != nil {
+	decoder := json.NewDecoder(resp.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&rpcResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
@@ -118,7 +114,9 @@ func (f *Fetcher) GetLatestBlock() (int64, error) {
 	}
 
 	var blockNumHex string
-	if err := json.Unmarshal(result, &blockNumHex); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(result))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&blockNumHex); err != nil {
 		return 0, fmt.Errorf("failed to unmarshal block number: %w", err)
 	}
 
@@ -130,29 +128,28 @@ func (f *Fetcher) GetLatestBlock() (int64, error) {
 	return blockNum, nil
 }
 
-func (f *Fetcher) getBlock(blockNum int64) (json.RawMessage, []string, error) {
+func (f *Fetcher) getBlock(blockNum int64) (*Block, []string, error) {
 	blockNumHex := fmt.Sprintf("0x%x", blockNum)
 	result, err := f.rpcCall("eth_getBlockByNumber", []interface{}{blockNumHex, true})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Extract transaction hashes
-	var blockData struct {
-		Transactions []struct {
-			Hash string `json:"hash"`
-		} `json:"transactions"`
-	}
-	if err := json.Unmarshal(result, &blockData); err != nil {
-		return nil, nil, fmt.Errorf("failed to extract tx hashes: %w", err)
+	// Parse the block structure
+	var block Block
+	decoder := json.NewDecoder(bytes.NewReader(result))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&block); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal block: %w", err)
 	}
 
-	txHashes := make([]string, len(blockData.Transactions))
-	for i, tx := range blockData.Transactions {
+	// Extract transaction hashes from fully parsed transactions
+	txHashes := make([]string, len(block.Transactions))
+	for i, tx := range block.Transactions {
 		txHashes[i] = tx.Hash
 	}
 
-	return result, txHashes, nil
+	return &block, txHashes, nil
 }
 
 func (f *Fetcher) getReceipt(txHash string) (json.RawMessage, error) {
@@ -171,7 +168,7 @@ func (f *Fetcher) traceTransaction(txHash string) (json.RawMessage, error) {
 func (f *Fetcher) FetchBlockData(blockNum int64) (*NormalizedBlock, error) {
 	// Acquire RPC semaphore for block fetch
 	f.rpcLimit <- struct{}{}
-	blockData, txHashes, err := f.getBlock(blockNum)
+	block, txHashes, err := f.getBlock(blockNum)
 	<-f.rpcLimit
 
 	if err != nil {
@@ -229,7 +226,9 @@ func (f *Fetcher) FetchBlockData(blockNum int64) (*NormalizedBlock, error) {
 		if err == nil {
 			// Successfully got block traces, parse into array
 			// This RPC returns a custom format: [{txHash, result}, ...]
-			if err := json.Unmarshal(blockTraces, &traces); err != nil {
+			decoder := json.NewDecoder(bytes.NewReader(blockTraces))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&traces); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal block traces: %w", err)
 			}
 		} else {
@@ -274,7 +273,9 @@ func (f *Fetcher) FetchBlockData(blockNum int64) (*NormalizedBlock, error) {
 					var ct *CallTrace
 					if len(traceResult) > 0 && string(traceResult) != "null" {
 						var parsedTrace CallTrace
-						if err := json.Unmarshal(traceResult, &parsedTrace); err == nil {
+						decoder := json.NewDecoder(bytes.NewReader(traceResult))
+						decoder.DisallowUnknownFields()
+						if err := decoder.Decode(&parsedTrace); err == nil {
 							ct = &parsedTrace
 						}
 					}
@@ -290,14 +291,8 @@ func (f *Fetcher) FetchBlockData(blockNum int64) (*NormalizedBlock, error) {
 		}
 	}
 
-	// Parse the block to get our Block structure
-	var block Block
-	if err := json.Unmarshal(blockData, &block); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal block: %w", err)
-	}
-
 	return &NormalizedBlock{
-		Block:    block,
+		Block:    *block,
 		Traces:   traces,
 		Receipts: json.RawMessage(receiptsJSON),
 	}, nil

@@ -1,5 +1,5 @@
 ### 1. **Updated Reader** (`reader.go`)
-- Added a 2000-block circular buffer for recent blocks
+- Added a 3000-block circular buffer for recent blocks
 - Tracks `firstBlock` and `lastBlock` for efficient range checking  
 - `FeedBlock()` method to receive blocks from writer
 - `NextBlock()` checks buffer first, then falls back to archive files

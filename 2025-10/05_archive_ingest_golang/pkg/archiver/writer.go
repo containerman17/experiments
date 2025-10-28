@@ -10,26 +10,20 @@ import (
 	"time"
 )
 
+type BlockFeeder interface {
+	FeedBlock(block *NormalizedBlock)
+}
+
 type BlockWriter struct {
 	rootDir     string
-	reader      *BlockReader
+	reader      BlockFeeder
 	fetcher     *Fetcher
 	latestBlock int64
 	nextBlock   int64
 	accumulator []*NormalizedBlock
 }
 
-func NewBlockWriter(rootDir string, reader *BlockReader, rpcURL string, includeTraces bool) *BlockWriter {
-	// Create fetcher with custom options
-	fetcher := NewFetcher(FetcherOptions{
-		RpcURL:           rpcURL,
-		IncludeTraces:    includeTraces,
-		RpcConcurrency:   300,
-		DebugConcurrency: 40,
-		PrefetchWindow:   1, // We manage our own fetching logic
-		StartBlock:       1,
-	})
-
+func NewBlockWriter(rootDir string, reader BlockFeeder, fetcher *Fetcher) *BlockWriter {
 	writer := &BlockWriter{
 		rootDir:     rootDir,
 		reader:      reader,
@@ -196,7 +190,7 @@ func (w *BlockWriter) writeBlocks(blocks []*NormalizedBlock) error {
 // Start begins the writer process
 func (w *BlockWriter) Start() error {
 	// Get latest block from chain
-	latestBlock, err := w.fetcher.getLatestBlock()
+	latestBlock, err := w.fetcher.GetLatestBlock()
 	if err != nil {
 		return fmt.Errorf("failed to get latest block: %w", err)
 	}
@@ -208,7 +202,7 @@ func (w *BlockWriter) Start() error {
 		// Check if we need to update latest block
 		if w.nextBlock > w.latestBlock {
 			time.Sleep(500 * time.Millisecond)
-			latestBlock, err := w.fetcher.getLatestBlock()
+			latestBlock, err := w.fetcher.GetLatestBlock()
 			if err != nil {
 				fmt.Printf("Error getting latest block: %v\n", err)
 				continue
@@ -219,8 +213,17 @@ func (w *BlockWriter) Start() error {
 
 		blocksRemaining := w.latestBlock - w.nextBlock + 1
 
-		// Fast catch-up mode: fetch 1000 blocks in parallel
-		if blocksRemaining >= 1000 {
+		// Calculate blocks needed to complete current file
+		var blocksToFileEnd int64
+		if w.nextBlock <= 999 {
+			blocksToFileEnd = 999 - w.nextBlock + 1
+		} else {
+			fileEnd := ((w.nextBlock / 1000) * 1000) + 999
+			blocksToFileEnd = fileEnd - w.nextBlock + 1
+		}
+
+		// Fast catch-up mode: fetch remaining blocks for current file if we have them all
+		if blocksRemaining >= blocksToFileEnd {
 			if err := w.fastCatchUp(); err != nil {
 				fmt.Printf("Fast catch-up error: %v\n", err)
 				time.Sleep(1 * time.Second)
@@ -237,26 +240,38 @@ func (w *BlockWriter) Start() error {
 	}
 }
 
-// fastCatchUp fetches 1000 blocks in parallel and writes them
+// fastCatchUp fetches blocks to complete a file (up to 1000) and writes them
 func (w *BlockWriter) fastCatchUp() error {
 	startBlock := w.nextBlock
-	endBlock := startBlock + 999
 
-	fmt.Printf("Fast catch-up: fetching blocks %d-%d\n", startBlock, endBlock)
+	// Determine the end of the current file
+	var endBlock int64
+	if startBlock <= 999 {
+		// First file: blocks 1-999
+		endBlock = 999
+	} else {
+		// Subsequent files: align to 1000-block boundaries
+		// e.g., blocks 1000-1999, 2000-2999, 3000-3999
+		fileEnd := ((startBlock / 1000) * 1000) + 999
+		endBlock = fileEnd
+	}
+
+	numBlocks := endBlock - startBlock + 1
+	fmt.Printf("Fast catch-up: fetching blocks %d-%d (%d blocks)\n", startBlock, endBlock, numBlocks)
 
 	// Fetch all blocks in parallel
-	blocks := make([]*NormalizedBlock, 1000)
+	blocks := make([]*NormalizedBlock, numBlocks)
 	var wg sync.WaitGroup
 	var fetchErr error
 	var errMu sync.Mutex
 
-	for i := int64(0); i < 1000; i++ {
+	for i := int64(0); i < numBlocks; i++ {
 		wg.Add(1)
 		go func(offset int64) {
 			defer wg.Done()
 
 			blockNum := startBlock + offset
-			block, err := w.fetcher.fetchBlockData(blockNum)
+			block, err := w.fetcher.FetchBlockData(blockNum)
 			if err != nil {
 				errMu.Lock()
 				if fetchErr == nil {
@@ -292,7 +307,7 @@ func (w *BlockWriter) fastCatchUp() error {
 
 // liveFollow fetches blocks one by one and accumulates them
 func (w *BlockWriter) liveFollow() error {
-	block, err := w.fetcher.fetchBlockData(w.nextBlock)
+	block, err := w.fetcher.FetchBlockData(w.nextBlock)
 	if err != nil {
 		return fmt.Errorf("failed to fetch block %d: %w", w.nextBlock, err)
 	}

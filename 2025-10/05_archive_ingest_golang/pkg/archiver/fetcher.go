@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,20 +16,11 @@ type FetcherOptions struct {
 	IncludeTraces    bool
 	RpcConcurrency   int
 	DebugConcurrency int
-	PrefetchWindow   int
-	StartBlock       int64
 }
 
 type Fetcher struct {
-	rpcURL           string
-	includeTraces    bool
-	prefetchWindow   int
-	blockBuffer      map[int64]*NormalizedBlock
-	nextBlockToWrite int64
-	activeFetches    map[int64]bool
-	latestBlock      int64
-	startTime        time.Time
-	startBlock       int64
+	rpcURL        string
+	includeTraces bool
 
 	// Concurrency control
 	rpcLimit   chan struct{}
@@ -36,9 +28,6 @@ type Fetcher struct {
 
 	// HTTP client
 	httpClient *http.Client
-
-	// Mutex for thread-safe map access
-	mu sync.Mutex
 }
 
 type jsonRpcRequest struct {
@@ -67,23 +56,12 @@ func NewFetcher(opts FetcherOptions) *Fetcher {
 	if opts.DebugConcurrency == 0 {
 		opts.DebugConcurrency = 40
 	}
-	if opts.PrefetchWindow == 0 {
-		opts.PrefetchWindow = 500
-	}
-	if opts.StartBlock == 0 {
-		opts.StartBlock = 1
-	}
 
 	return &Fetcher{
-		rpcURL:           opts.RpcURL,
-		includeTraces:    opts.IncludeTraces,
-		prefetchWindow:   opts.PrefetchWindow,
-		blockBuffer:      make(map[int64]*NormalizedBlock),
-		activeFetches:    make(map[int64]bool),
-		nextBlockToWrite: opts.StartBlock,
-		startBlock:       opts.StartBlock,
-		rpcLimit:         make(chan struct{}, opts.RpcConcurrency),
-		debugLimit:       make(chan struct{}, opts.DebugConcurrency),
+		rpcURL:        opts.RpcURL,
+		includeTraces: opts.IncludeTraces,
+		rpcLimit:      make(chan struct{}, opts.RpcConcurrency),
+		debugLimit:    make(chan struct{}, opts.DebugConcurrency),
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
@@ -133,7 +111,7 @@ func (f *Fetcher) rpcCall(method string, params []interface{}) (json.RawMessage,
 	return rpcResp.Result, nil
 }
 
-func (f *Fetcher) getLatestBlock() (int64, error) {
+func (f *Fetcher) GetLatestBlock() (int64, error) {
 	result, err := f.rpcCall("eth_blockNumber", []interface{}{})
 	if err != nil {
 		return 0, err
@@ -190,7 +168,7 @@ func (f *Fetcher) traceTransaction(txHash string) (json.RawMessage, error) {
 	return f.rpcCall("debug_traceTransaction", []interface{}{txHash, map[string]string{"tracer": "callTracer"}})
 }
 
-func (f *Fetcher) fetchBlockData(blockNum int64) (*NormalizedBlock, error) {
+func (f *Fetcher) FetchBlockData(blockNum int64) (*NormalizedBlock, error) {
 	// Acquire RPC semaphore for block fetch
 	f.rpcLimit <- struct{}{}
 	blockData, txHashes, err := f.getBlock(blockNum)
@@ -250,24 +228,9 @@ func (f *Fetcher) fetchBlockData(blockNum int64) (*NormalizedBlock, error) {
 
 		if err == nil {
 			// Successfully got block traces, parse into array
-			var traceResults []json.RawMessage
-			if err := json.Unmarshal(blockTraces, &traceResults); err != nil {
+			// This RPC returns a custom format: [{txHash, result}, ...]
+			if err := json.Unmarshal(blockTraces, &traces); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal block traces: %w", err)
-			}
-
-			traces = make([]TraceResultOptional, len(traceResults))
-			for i, traceResult := range traceResults {
-				var ct *CallTrace
-				if len(traceResult) > 0 && string(traceResult) != "null" {
-					var parsedTrace CallTrace
-					if err := json.Unmarshal(traceResult, &parsedTrace); err == nil {
-						ct = &parsedTrace
-					}
-				}
-				traces[i] = TraceResultOptional{
-					TxHash: txHashes[i],
-					Result: ct,
-				}
 			}
 		} else {
 			// Block trace failed, fall back to per-transaction tracing
@@ -344,113 +307,5 @@ func isPrecompileError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errMsg := err.Error()
-	return contains(errMsg, "incorrect number of top-level calls")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-func (f *Fetcher) Start() error {
-	// Get latest block
-	latestBlock, err := f.getLatestBlock()
-	if err != nil {
-		return fmt.Errorf("failed to get latest block: %w", err)
-	}
-
-	f.latestBlock = latestBlock
-	f.startTime = time.Now()
-
-	fmt.Printf("Starting from block %d\n", f.nextBlockToWrite)
-	fmt.Printf("Latest block: %d, prefetch window: %d\n", f.latestBlock, f.prefetchWindow)
-
-	for {
-		// Update latest block if we've caught up
-		if f.nextBlockToWrite > f.latestBlock {
-			time.Sleep(1 * time.Second)
-			latestBlock, err := f.getLatestBlock()
-			if err != nil {
-				fmt.Printf("Error getting latest block: %v\n", err)
-				continue
-			}
-			f.latestBlock = latestBlock
-			continue
-		}
-
-		// Start fetches for blocks within the prefetch window
-		windowEnd := f.nextBlockToWrite + int64(f.prefetchWindow) - 1
-		if windowEnd > f.latestBlock {
-			windowEnd = f.latestBlock
-		}
-
-		for blockNum := f.nextBlockToWrite; blockNum <= windowEnd; blockNum++ {
-			f.mu.Lock()
-			inBuffer := f.blockBuffer[blockNum] != nil
-			isActive := f.activeFetches[blockNum]
-			f.mu.Unlock()
-
-			if !inBuffer && !isActive {
-				f.mu.Lock()
-				f.activeFetches[blockNum] = true
-				f.mu.Unlock()
-
-				go func(bn int64) {
-					block, err := f.fetchBlockData(bn)
-					if err != nil {
-						fmt.Printf("Failed to fetch block %d: %v\n", bn, err)
-						f.mu.Lock()
-						delete(f.activeFetches, bn)
-						f.mu.Unlock()
-						// Will retry on next iteration
-						return
-					}
-
-					f.mu.Lock()
-					f.blockBuffer[bn] = block
-					delete(f.activeFetches, bn)
-					f.mu.Unlock()
-				}(blockNum)
-			}
-		}
-
-		// Check if next sequential block is ready
-		f.mu.Lock()
-		nextBlock := f.blockBuffer[f.nextBlockToWrite]
-		f.mu.Unlock()
-
-		if nextBlock == nil {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-
-		// Block is ready, remove from buffer
-		f.mu.Lock()
-		delete(f.blockBuffer, f.nextBlockToWrite)
-		f.mu.Unlock()
-
-		// Here you would write the block to storage
-		// For now, we'll just print progress
-		if f.nextBlockToWrite%100 == 0 {
-			blocksProcessed := f.nextBlockToWrite - f.startBlock
-			timeElapsedSec := time.Since(f.startTime).Seconds()
-			blocksPerSec := float64(blocksProcessed) / timeElapsedSec
-			remaining := f.latestBlock - f.nextBlockToWrite
-			hoursLeft := (float64(remaining) / blocksPerSec) / 3600
-
-			fmt.Printf("Block %d | Remaining: %d | Speed: %.0f bl/s | ETA: %.2f hours\n",
-				f.nextBlockToWrite, remaining, blocksPerSec, hoursLeft)
-		}
-
-		f.nextBlockToWrite++
-	}
+	return strings.Contains(err.Error(), "incorrect number of top-level calls")
 }

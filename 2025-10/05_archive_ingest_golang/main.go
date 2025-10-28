@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -35,13 +36,21 @@ func main() {
 	rpcURL := os.Getenv("RPC_URL")
 	includeTraces := true
 
-	// Create reader
-	reader := archiver.NewBlockReader(blockchainDir, 1)
+	// Always use BatchReader
+	batchSize := 10
+	reader := archiver.NewBatchReader(blockchainDir, 1, batchSize)
 	defer reader.Close()
 
-	// If RPC URL provided, start writer in background
+	// If RPC URL provided, start writer for live mode
 	if rpcURL != "" {
-		writer := archiver.NewBlockWriter(blockchainDir, reader, rpcURL, includeTraces)
+		fetcher := archiver.NewFetcher(archiver.FetcherOptions{
+			RpcURL:           rpcURL,
+			IncludeTraces:    includeTraces,
+			RpcConcurrency:   300,
+			DebugConcurrency: 100,
+		})
+
+		writer := archiver.NewBlockWriter(blockchainDir, reader, fetcher)
 
 		// Start writer in background
 		go func() {
@@ -51,47 +60,49 @@ func main() {
 		}()
 
 		fmt.Printf("Writer started with RPC: %s, traces: %v\n", rpcURL, includeTraces)
+		fmt.Printf("Batch reader started with batch size: %d files (with live mode support)\n", batchSize)
 	} else {
-		fmt.Println("No RPC_URL provided, reading from existing archives only")
+		fmt.Printf("Batch reader started with batch size: %d files (processing %d blocks at once)\n", batchSize, batchSize*1000)
 	}
 
 	// Read blocks (from archives or buffer)
+	startTime := time.Now()
+	var lastBlockNum int64 = -1
 	for {
 		block, err := reader.NextBlock()
 		if err != nil {
 			log.Fatal("Error reading block:", err)
 		}
 
-		// Just print block number for now
+		// Parse block number
 		var blockNum int64
 		if err := json.Unmarshal(block.Block.Number, &blockNum); err != nil {
 			// Try as hex string
 			var blockNumStr string
 			if err := json.Unmarshal(block.Block.Number, &blockNumStr); err == nil {
-				if _, err := fmt.Sscanf(blockNumStr, "0x%x", &blockNum); err == nil {
-
-					if blockNum%100 == 0 {
-						fmt.Printf("Block: %d\n", blockNum)
-					}
-
-					if blockNum == 15723 {
-						tracesJSON, err := json.MarshalIndent(block.Traces, "", "  ")
-						if err != nil {
-							fmt.Printf("Failed to marshal traces to JSON: %v\n", err)
-						} else {
-							fmt.Println(string(tracesJSON))
-						}
-					}
-				} else {
+				if _, err := fmt.Sscanf(blockNumStr, "0x%x", &blockNum); err != nil {
 					log.Fatal("Error parsing block number:", err)
 				}
 			} else {
 				log.Fatal("Error parsing block number:", err)
 			}
-		} else {
+		}
+
+		if blockNum%200 == 0 {
 			fmt.Printf("Block: %d\n", blockNum)
 		}
 
-		//TODO: check traces of block 15723
+		// Exit after reaching 15k blocks
+		if blockNum == 30000 {
+			elapsed := time.Since(startTime)
+			fmt.Printf("\nReached block %d in %.2f seconds\n", blockNum, elapsed.Seconds())
+			// os.Exit(0)
+		}
+
+		// Check sequential order
+		if lastBlockNum != -1 && blockNum != lastBlockNum+1 {
+			log.Fatalf("Block numbers out of order! Expected %d, got %d", lastBlockNum+1, blockNum)
+		}
+		lastBlockNum = blockNum
 	}
 }

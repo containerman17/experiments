@@ -452,14 +452,14 @@ func (f *Fetcher) fetchBlockRangeUncached(from, to int64) ([]*NormalizedBlock, e
 	}
 
 	// Batch fetch all receipts
-	var receiptsMap map[string]json.RawMessage
+	var receiptsMap map[string]Receipt
 	if len(allTxs) > 0 {
 		receiptsMap, err = f.fetchReceiptsBatch(allTxs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch receipts: %w", err)
 		}
 	} else {
-		receiptsMap = make(map[string]json.RawMessage)
+		receiptsMap = make(map[string]Receipt)
 	}
 
 	// Batch fetch all traces
@@ -479,7 +479,7 @@ func (f *Fetcher) fetchBlockRangeUncached(from, to int64) ([]*NormalizedBlock, e
 		blockNum := from + int64(i)
 
 		// Collect receipts for this block
-		receipts := make([]json.RawMessage, len(blocks[i].Transactions))
+		receipts := make([]Receipt, len(blocks[i].Transactions))
 		traces := make([]TraceResultOptional, len(blocks[i].Transactions))
 
 		for j, tx := range blocks[i].Transactions {
@@ -500,14 +500,9 @@ func (f *Fetcher) fetchBlockRangeUncached(from, to int64) ([]*NormalizedBlock, e
 			}
 		}
 
-		receiptsJSON, err := json.Marshal(receipts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal receipts for block %d: %w", blockNum, err)
-		}
-
 		result[i] = &NormalizedBlock{
 			Block:    blocks[i],
-			Receipts: json.RawMessage(receiptsJSON),
+			Receipts: receipts,
 			Traces:   traces,
 		}
 	}
@@ -677,8 +672,8 @@ func (f *Fetcher) fetchBlocksBatch(from, to int64) ([]Block, error) {
 	return blocks, nil
 }
 
-func (f *Fetcher) fetchReceiptsBatch(txInfos []txInfo) (map[string]json.RawMessage, error) {
-	receiptsMap := make(map[string]json.RawMessage)
+func (f *Fetcher) fetchReceiptsBatch(txInfos []txInfo) (map[string]Receipt, error) {
+	receiptsMap := make(map[string]Receipt)
 	var mu sync.Mutex
 
 	// Create all receipt requests
@@ -720,12 +715,24 @@ func (f *Fetcher) fetchReceiptsBatch(txInfos []txInfo) (map[string]json.RawMessa
 				return
 			}
 
-			// Store raw receipt responses
+			// Parse and store receipt responses
 			for _, resp := range responses {
 				txHash := txHashToIdx[resp.ID]
 
+				var receipt Receipt
+				decoder := json.NewDecoder(bytes.NewReader(resp.Result))
+				decoder.DisallowUnknownFields()
+				if err := decoder.Decode(&receipt); err != nil {
+					mu.Lock()
+					if batchErr == nil {
+						batchErr = fmt.Errorf("failed to unmarshal receipt for tx %s: %w", txHash, err)
+					}
+					mu.Unlock()
+					return
+				}
+
 				mu.Lock()
-				receiptsMap[txHash] = resp.Result
+				receiptsMap[txHash] = receipt
 				mu.Unlock()
 			}
 

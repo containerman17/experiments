@@ -14,8 +14,8 @@ func main() {
 	// Hardcoded configuration
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
 	// startBlock := int64(1 + rand.Int63n(70000000))
-	startBlock := int64(70_000_000)
-	chunkSize := int64(200) // Process 10 blocks at a time
+	startBlock := int64(1)
+	chunkSize := int64(500) // Process 10 blocks at a time
 	rpcConcurrency := 300
 	maxRetries := 100
 	retryDelay := 100 * time.Millisecond

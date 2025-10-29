@@ -105,17 +105,12 @@ func testBlockRange(t *testing.T, fetcher *Fetcher, rpcURL string, from, to int6
 		for i, fetchedBlock := range fetchedBlocks {
 			blockNum := from + int64(i)
 
-			// Fetched receipts are stored as a JSON array
-			var fetchedReceipts []map[string]interface{}
-			err := json.Unmarshal(fetchedBlock.Receipts, &fetchedReceipts)
-			require.NoError(t, err, "failed to unmarshal fetched receipts")
-
 			// Compare each transaction's receipt
 			for j, tx := range fetchedBlock.Block.Transactions {
 				rawReceipt := rawReceipts[tx.Hash]
 				require.NotNil(t, rawReceipt, "missing raw receipt for tx %s", tx.Hash)
 
-				fetchedReceiptJSON, err := json.Marshal(fetchedReceipts[j])
+				fetchedReceiptJSON, err := json.Marshal(fetchedBlock.Receipts[j])
 				require.NoError(t, err, "failed to marshal fetched receipt")
 
 				rawReceiptJSON, err := json.Marshal(rawReceipt)

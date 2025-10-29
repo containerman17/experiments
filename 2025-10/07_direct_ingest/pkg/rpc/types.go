@@ -76,10 +76,39 @@ type TraceResultOptional struct {
 	Result *CallTrace `json:"result"`
 }
 
+type Receipt struct {
+	BlockHash         string  `json:"blockHash"`
+	BlockNumber       string  `json:"blockNumber"`
+	ContractAddress   *string `json:"contractAddress"`
+	CumulativeGasUsed string  `json:"cumulativeGasUsed"`
+	EffectiveGasPrice string  `json:"effectiveGasPrice"`
+	From              string  `json:"from"`
+	GasUsed           string  `json:"gasUsed"`
+	Logs              []Log   `json:"logs"`
+	LogsBloom         string  `json:"logsBloom"`
+	Status            string  `json:"status"`
+	To                string  `json:"to"`
+	TransactionHash   string  `json:"transactionHash"`
+	TransactionIndex  string  `json:"transactionIndex"`
+	Type              string  `json:"type"`
+}
+
+type Log struct {
+	Address          string   `json:"address"`
+	Topics           []string `json:"topics"`
+	Data             string   `json:"data"`
+	BlockNumber      string   `json:"blockNumber"`
+	TransactionHash  string   `json:"transactionHash"`
+	TransactionIndex string   `json:"transactionIndex"`
+	BlockHash        string   `json:"blockHash"`
+	LogIndex         string   `json:"logIndex"`
+	Removed          bool     `json:"removed"`
+}
+
 type NormalizedBlock struct {
 	Block    Block                 `json:"block"`
 	Traces   []TraceResultOptional `json:"traces"`
-	Receipts json.RawMessage       `json:"receipts"`
+	Receipts []Receipt             `json:"receipts"`
 }
 
 type jsonRpcRequest struct {

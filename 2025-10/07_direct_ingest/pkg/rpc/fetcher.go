@@ -14,57 +14,57 @@ import (
 
 type Transaction struct {
 	Hash                 string          `json:"hash"`
-	Nonce                json.RawMessage `json:"nonce"`
+	Nonce                string          `json:"nonce"`
 	BlockHash            string          `json:"blockHash"`
-	BlockNumber          json.RawMessage `json:"blockNumber"`
-	TransactionIndex     json.RawMessage `json:"transactionIndex"`
+	BlockNumber          string          `json:"blockNumber"`
+	TransactionIndex     string          `json:"transactionIndex"`
 	From                 string          `json:"from"`
 	To                   string          `json:"to"`
-	Value                json.RawMessage `json:"value"`
-	Gas                  json.RawMessage `json:"gas"`
-	GasPrice             json.RawMessage `json:"gasPrice"`
+	Value                string          `json:"value"`
+	Gas                  string          `json:"gas"`
+	GasPrice             string          `json:"gasPrice"`
 	Input                string          `json:"input"`
-	V                    json.RawMessage `json:"v,omitempty"`
-	R                    json.RawMessage `json:"r,omitempty"`
-	S                    json.RawMessage `json:"s,omitempty"`
-	YParity              json.RawMessage `json:"yParity,omitempty"`
-	Type                 json.RawMessage `json:"type,omitempty"`
-	TypeHex              json.RawMessage `json:"typeHex,omitempty"`
-	ChainId              json.RawMessage `json:"chainId,omitempty"`
-	MaxFeePerGas         json.RawMessage `json:"maxFeePerGas,omitempty"`
-	MaxPriorityFeePerGas json.RawMessage `json:"maxPriorityFeePerGas,omitempty"`
+	V                    string          `json:"v,omitempty"`
+	R                    string          `json:"r,omitempty"`
+	S                    string          `json:"s,omitempty"`
+	YParity              string          `json:"yParity,omitempty"`
+	Type                 string          `json:"type,omitempty"`
+	TypeHex              string          `json:"typeHex,omitempty"`
+	ChainId              string          `json:"chainId,omitempty"`
+	MaxFeePerGas         string          `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas string          `json:"maxPriorityFeePerGas,omitempty"`
 	AccessList           json.RawMessage `json:"accessList,omitempty"`
 }
 
 type Block struct {
-	Number                json.RawMessage `json:"number"`
-	Hash                  string          `json:"hash"`
-	ParentHash            string          `json:"parentHash"`
-	Timestamp             json.RawMessage `json:"timestamp"`
-	Miner                 string          `json:"miner"`
-	Difficulty            json.RawMessage `json:"difficulty"`
-	TotalDifficulty       json.RawMessage `json:"totalDifficulty"`
-	Size                  json.RawMessage `json:"size"`
-	GasLimit              json.RawMessage `json:"gasLimit"`
-	GasUsed               json.RawMessage `json:"gasUsed"`
-	BaseFeePerGas         json.RawMessage `json:"baseFeePerGas,omitempty"`
-	BlockGasCost          json.RawMessage `json:"blockGasCost,omitempty"`
-	Transactions          []Transaction   `json:"transactions"`
-	StateRoot             string          `json:"stateRoot"`
-	TransactionsRoot      string          `json:"transactionsRoot"`
-	ReceiptsRoot          string          `json:"receiptsRoot"`
-	ExtraData             string          `json:"extraData,omitempty"`
-	BlockExtraData        string          `json:"blockExtraData,omitempty"`
-	ExtDataHash           string          `json:"extDataHash,omitempty"`
-	ExtDataGasUsed        json.RawMessage `json:"extDataGasUsed,omitempty"`
-	LogsBloom             string          `json:"logsBloom"`
-	MixHash               string          `json:"mixHash"`
-	Nonce                 string          `json:"nonce"`
-	Sha3Uncles            string          `json:"sha3Uncles"`
-	Uncles                json.RawMessage `json:"uncles,omitempty"`
-	BlobGasUsed           json.RawMessage `json:"blobGasUsed,omitempty"`
-	ExcessBlobGas         json.RawMessage `json:"excessBlobGas,omitempty"`
-	ParentBeaconBlockRoot string          `json:"parentBeaconBlockRoot,omitempty"`
+	Number                string        `json:"number"`
+	Hash                  string        `json:"hash"`
+	ParentHash            string        `json:"parentHash"`
+	Timestamp             string        `json:"timestamp"`
+	Miner                 string        `json:"miner"`
+	Difficulty            string        `json:"difficulty"`
+	TotalDifficulty       string        `json:"totalDifficulty"`
+	Size                  string        `json:"size"`
+	GasLimit              string        `json:"gasLimit"`
+	GasUsed               string        `json:"gasUsed"`
+	BaseFeePerGas         string        `json:"baseFeePerGas,omitempty"`
+	BlockGasCost          string        `json:"blockGasCost,omitempty"`
+	Transactions          []Transaction `json:"transactions"`
+	StateRoot             string        `json:"stateRoot"`
+	TransactionsRoot      string        `json:"transactionsRoot"`
+	ReceiptsRoot          string        `json:"receiptsRoot"`
+	ExtraData             string        `json:"extraData,omitempty"`
+	BlockExtraData        string        `json:"blockExtraData,omitempty"`
+	ExtDataHash           string        `json:"extDataHash,omitempty"`
+	ExtDataGasUsed        string        `json:"extDataGasUsed,omitempty"`
+	LogsBloom             string        `json:"logsBloom"`
+	MixHash               string        `json:"mixHash"`
+	Nonce                 string        `json:"nonce"`
+	Sha3Uncles            string        `json:"sha3Uncles"`
+	Uncles                []string      `json:"uncles"`
+	BlobGasUsed           string        `json:"blobGasUsed,omitempty"`
+	ExcessBlobGas         string        `json:"excessBlobGas,omitempty"`
+	ParentBeaconBlockRoot string        `json:"parentBeaconBlockRoot,omitempty"`
 }
 
 type CallTrace struct {

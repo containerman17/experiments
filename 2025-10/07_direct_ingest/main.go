@@ -11,8 +11,8 @@ import (
 func main() {
 	// Hardcoded configuration
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
-	startBlock := int64(67000000) // Start from block 1 (genesis block 0 is not traceable)
-	chunkSize := int64(300)       // Process 100 blocks at a time
+	startBlock := int64(69000002) // Start from block 1 (genesis block 0 is not traceable)
+	chunkSize := int64(100)       // Process 100 blocks at a time
 	batchSize := 10
 	debugBatchSize := 1
 	rpcConcurrency := 500
@@ -80,6 +80,23 @@ func main() {
 		blocks, err := fetcher.FetchBlockRange(from, to)
 		if err != nil {
 			log.Fatalf("Failed to fetch blocks %d-%d: %v", from, to, err)
+		}
+
+		//Print fist block
+		// if blocks[0].Block.Number == fmt.Sprintf("0x%x", startBlock) {
+		// 	blockJson, err := json.MarshalIndent(blocks[0], "", "  ")
+		// 	if err != nil {
+		// 		log.Fatalf("Error marshaling first block to JSON: %v\n", err)
+		// 	}
+
+		// 	err = os.WriteFile(fmt.Sprintf("./example_block_%d.json", startBlock), blockJson, 0644)
+		// 	if err != nil {
+		// 		log.Fatalf("Error writing first block to file: %v\n", err)
+		// 	}
+		// }
+
+		for _, block := range blocks {
+			fmt.Printf("Uncles: %+v\n", block.Block.Uncles)
 		}
 
 		// Count transactions in chunk

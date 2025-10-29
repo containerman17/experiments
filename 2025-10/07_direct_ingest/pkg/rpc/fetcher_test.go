@@ -26,6 +26,7 @@ func TestFetchBlockRangeVsRaw(t *testing.T) {
 		DebugConcurrency: 2,
 		BatchSize:        10,
 		DebugBatchSize:   5,
+		ProgressCallback: nil, // No progress reporting in tests
 	})
 
 	// Get latest block number

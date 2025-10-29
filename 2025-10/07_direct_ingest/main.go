@@ -1,121 +1,116 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
 	"fmt"
 	"ingest/pkg/rpc"
 	"log"
-	"os"
+	"sync"
 	"time"
 )
 
 func main() {
-	// Parse command line arguments
-	rpcURL := flag.String("rpc", "", "RPC endpoint URL (required)")
-	from := flag.Int64("from", 0, "Starting block number")
-	to := flag.Int64("to", 0, "Ending block number")
-	batchSize := flag.Int("batch", 100, "Batch size for regular RPC calls")
-	debugBatchSize := flag.Int("debug-batch", 10, "Batch size for debug RPC calls")
-	rpcConcurrency := flag.Int("rpc-concurrency", 10, "Number of concurrent RPC batches")
-	debugConcurrency := flag.Int("debug-concurrency", 2, "Number of concurrent debug batches")
-	outputFile := flag.String("output", "", "Output JSON file (optional)")
+	// Hardcoded configuration
+	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
+	startBlock := int64(67000000) // Start from block 1 (genesis block 0 is not traceable)
+	chunkSize := int64(300)       // Process 100 blocks at a time
+	batchSize := 10
+	debugBatchSize := 1
+	rpcConcurrency := 500
+	debugConcurrency := 500
+	maxRetries := 100
+	retryDelay := 100 * time.Millisecond
 
-	flag.Parse()
+	// Progress tracking
+	var (
+		mu                 sync.Mutex
+		lastPrintTime      = time.Now()
+		startTime          = time.Now()
+		totalBlocksFetched int64
+		totalTxsFetched    int64
+	)
 
-	if *rpcURL == "" {
-		fmt.Fprintf(os.Stderr, "Error: -rpc flag is required\n")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	// Create fetcher with configuration
+	// Create fetcher with progress callback
 	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
-		RpcURL:           *rpcURL,
-		RpcConcurrency:   *rpcConcurrency,
-		DebugConcurrency: *debugConcurrency,
-		BatchSize:        *batchSize,
-		DebugBatchSize:   *debugBatchSize,
+		RpcURL:           rpcURL,
+		RpcConcurrency:   rpcConcurrency,
+		DebugConcurrency: debugConcurrency,
+		BatchSize:        batchSize,
+		DebugBatchSize:   debugBatchSize,
+		MaxRetries:       maxRetries,
+		RetryDelay:       retryDelay,
+		ProgressCallback: func(phase string, current, total int64, txCount int) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			totalTxsFetched += int64(txCount)
+
+			// Print stats every 2 seconds
+			now := time.Now()
+			if now.Sub(lastPrintTime) >= 2*time.Second {
+				totalElapsed := now.Sub(startTime).Seconds()
+
+				fmt.Printf("[%v] Blocks: %d | Blocks/sec: %.1f | Txs/sec: %.1f\n",
+					time.Since(startTime).Round(time.Second),
+					totalBlocksFetched,
+					float64(totalBlocksFetched)/totalElapsed,
+					float64(totalTxsFetched)/totalElapsed)
+
+				lastPrintTime = now
+			}
+		},
 	})
 
-	// If no range specified, get the latest block
-	if *from == 0 && *to == 0 {
-		latest, err := fetcher.GetLatestBlock()
-		if err != nil {
-			log.Fatalf("Failed to get latest block: %v", err)
-		}
-		*from = latest - 10 // Default to last 10 blocks
-		*to = latest
-		fmt.Printf("No range specified, using blocks %d to %d\n", *from, *to)
-	} else if *to == 0 {
-		*to = *from // Single block if only from is specified
-	}
-
-	fmt.Printf("Fetching blocks %d to %d with batch size %d\n", *from, *to, *batchSize)
-	fmt.Printf("RPC concurrency: %d, Debug concurrency: %d\n", *rpcConcurrency, *debugConcurrency)
-
-	// Start timing
-	startTime := time.Now()
-
-	// Fetch the block range
-	blocks, err := fetcher.FetchBlockRange(*from, *to)
+	// Get latest block
+	latestBlock, err := fetcher.GetLatestBlock()
 	if err != nil {
-		log.Fatalf("Failed to fetch block range: %v", err)
+		log.Fatalf("Failed to get latest block: %v", err)
 	}
 
-	// Calculate statistics
-	elapsed := time.Since(startTime)
-	numBlocks := len(blocks)
-	var totalTxs int
-	var totalTraces int
+	fmt.Printf("Processing blocks %d to %d in chunks of %d\n", startBlock, latestBlock, chunkSize)
+	fmt.Printf("Batch: %d, Concurrency: %d\n\n", batchSize, rpcConcurrency)
 
-	for _, block := range blocks {
-		totalTxs += len(block.Block.Transactions)
-		for _, trace := range block.Traces {
-			if trace.Result != nil {
-				totalTraces++
+	// Process blocks in chunks
+	for from := startBlock; from <= latestBlock; from += chunkSize {
+		to := from + chunkSize - 1
+		if to > latestBlock {
+			to = latestBlock
+		}
+
+		// Fetch chunk
+		blocks, err := fetcher.FetchBlockRange(from, to)
+		if err != nil {
+			log.Fatalf("Failed to fetch blocks %d-%d: %v", from, to, err)
+		}
+
+		// Count transactions in chunk
+		chunkTxs := 0
+		chunkTraces := 0
+		for _, block := range blocks {
+			chunkTxs += len(block.Block.Transactions)
+			for _, trace := range block.Traces {
+				if trace.Result != nil {
+					chunkTraces++
+				}
 			}
 		}
+
+		// Update total progress
+		mu.Lock()
+		totalBlocksFetched += int64(len(blocks))
+		mu.Unlock()
+
+		// TODO: Process/save blocks here (e.g., write to database or file)
+		// For now, just discard them to free memory
+		blocks = nil
 	}
 
-	fmt.Printf("\n=== Fetch Complete ===\n")
-	fmt.Printf("Time elapsed: %v\n", elapsed)
-	fmt.Printf("Blocks fetched: %d\n", numBlocks)
-	fmt.Printf("Total transactions: %d\n", totalTxs)
-	fmt.Printf("Total traces: %d\n", totalTraces)
-	fmt.Printf("Average time per block: %v\n", elapsed/time.Duration(numBlocks))
+	// Calculate final statistics
+	elapsed := time.Since(startTime)
 
-	if numBlocks > 0 {
-		fmt.Printf("Blocks/second: %.2f\n", float64(numBlocks)/elapsed.Seconds())
-		if totalTxs > 0 {
-			fmt.Printf("Transactions/second: %.2f\n", float64(totalTxs)/elapsed.Seconds())
-		}
-	}
-
-	// Output to file if requested
-	if *outputFile != "" {
-		file, err := os.Create(*outputFile)
-		if err != nil {
-			log.Fatalf("Failed to create output file: %v", err)
-		}
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(blocks); err != nil {
-			log.Fatalf("Failed to write JSON output: %v", err)
-		}
-		fmt.Printf("\nOutput written to %s\n", *outputFile)
-	}
-
-	// Print sample of first block
-	if len(blocks) > 0 && len(blocks[0].Block.Transactions) > 0 {
-		fmt.Printf("\n=== Sample: First Block ===\n")
-		fmt.Printf("Block Hash: %s\n", blocks[0].Block.Hash)
-		fmt.Printf("Block Number: %s\n", blocks[0].Block.Number)
-		fmt.Printf("Transaction Count: %d\n", len(blocks[0].Block.Transactions))
-		if len(blocks[0].Block.Transactions) > 0 {
-			fmt.Printf("First Tx Hash: %s\n", blocks[0].Block.Transactions[0].Hash)
-		}
-	}
+	fmt.Printf("\n=== Complete ===\n")
+	fmt.Printf("Time: %v | Blocks: %d | Txs: %d\n",
+		elapsed.Round(time.Second), totalBlocksFetched, totalTxsFetched)
+	fmt.Printf("Overall: %.1f blocks/sec | %.1f txs/sec\n",
+		float64(totalBlocksFetched)/elapsed.Seconds(),
+		float64(totalTxsFetched)/elapsed.Seconds())
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -91,18 +92,26 @@ type TraceResultOptional struct {
 	Result *CallTrace `json:"result"`
 }
 
+type ProgressCallback func(phase string, current, total int64, txCount int)
+
 type FetcherOptions struct {
 	RpcURL           string
-	RpcConcurrency   int // Number of concurrent batch requests
-	DebugConcurrency int // Number of concurrent debug batch requests
-	BatchSize        int // Number of requests per batch
-	DebugBatchSize   int // Number of debug requests per batch
+	RpcConcurrency   int              // Number of concurrent batch requests
+	DebugConcurrency int              // Number of concurrent debug batch requests
+	BatchSize        int              // Number of requests per batch
+	DebugBatchSize   int              // Number of debug requests per batch
+	MaxRetries       int              // Maximum number of retries per request
+	RetryDelay       time.Duration    // Initial retry delay
+	ProgressCallback ProgressCallback // Optional progress callback
 }
 
 type Fetcher struct {
 	rpcURL         string
 	batchSize      int
 	debugBatchSize int
+	maxRetries     int
+	retryDelay     time.Duration
+	progressCb     ProgressCallback
 
 	// Concurrency control
 	rpcLimit   chan struct{}
@@ -152,20 +161,43 @@ func NewFetcher(opts FetcherOptions) *Fetcher {
 	if opts.DebugBatchSize == 0 {
 		opts.DebugBatchSize = 10
 	}
+	if opts.MaxRetries == 0 {
+		opts.MaxRetries = 3
+	}
+	if opts.RetryDelay == 0 {
+		opts.RetryDelay = 500 * time.Millisecond
+	}
+
+	// Create HTTP client with proper connection pooling
+	// Node.js reuses connections aggressively, so we do the same
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100, // Default is only 2!
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	}
 
 	return &Fetcher{
 		rpcURL:         opts.RpcURL,
 		batchSize:      opts.BatchSize,
 		debugBatchSize: opts.DebugBatchSize,
+		maxRetries:     opts.MaxRetries,
+		retryDelay:     opts.RetryDelay,
+		progressCb:     opts.ProgressCallback,
 		rpcLimit:       make(chan struct{}, opts.RpcConcurrency),
 		debugLimit:     make(chan struct{}, opts.DebugConcurrency),
 		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
+			Timeout:   5 * time.Minute,
+			Transport: transport,
 		},
 	}
 }
 
-// batchRpcCall sends a batch of JSON-RPC requests
+// batchRpcCall sends a batch of JSON-RPC requests with retry logic
 func (f *Fetcher) batchRpcCall(requests []jsonRpcRequest) ([]jsonRpcResponse, error) {
 	if len(requests) == 0 {
 		return []jsonRpcResponse{}, nil
@@ -176,50 +208,77 @@ func (f *Fetcher) batchRpcCall(requests []jsonRpcRequest) ([]jsonRpcResponse, er
 		return nil, fmt.Errorf("failed to marshal batch request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", f.rpcURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := f.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make batch request: %w", err)
-	}
-	defer resp.Body.Close()
-
 	var responses []jsonRpcResponse
-	decoder := json.NewDecoder(resp.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&responses); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal batch response: %w", err)
+	var lastErr error
+
+	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			fmt.Printf("WARNING: Batch request failed: %v. Retrying (attempt %d/%d) after %v\n", lastErr, attempt, f.maxRetries, delay)
+			time.Sleep(delay)
+		}
+
+		req, err := http.NewRequest("POST", f.rpcURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := f.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to make batch request: %w", err)
+			continue
+		}
+
+		decoder := json.NewDecoder(resp.Body)
+		decoder.DisallowUnknownFields()
+		err = decoder.Decode(&responses)
+		resp.Body.Close()
+
+		if err != nil {
+			lastErr = fmt.Errorf("failed to unmarshal batch response: %w", err)
+			continue
+		}
+
+		// Validate responses
+		if len(responses) != len(requests) {
+			lastErr = fmt.Errorf("batch response count mismatch: sent %d, got %d", len(requests), len(responses))
+			continue
+		}
+
+		// Sort responses by ID to match request order
+		sort.Slice(responses, func(i, j int) bool {
+			return responses[i].ID < responses[j].ID
+		})
+
+		// Validate all responses and check for errors
+		validationErr := false
+		for i, resp := range responses {
+			if resp.ID != requests[i].ID {
+				lastErr = fmt.Errorf("batch response ID mismatch at index %d: expected %d, got %d", i, requests[i].ID, resp.ID)
+				validationErr = true
+				break
+			}
+			if resp.Error != nil {
+				return nil, fmt.Errorf("RPC error in batch at index %d (ID %d): %s", i, resp.ID, resp.Error.Message)
+			}
+			if len(resp.Result) == 0 {
+				return nil, fmt.Errorf("empty result in batch response at index %d (ID %d)", i, resp.ID)
+			}
+		}
+
+		if validationErr {
+			continue
+		}
+
+		return responses, nil
 	}
 
-	// Validate responses
-	if len(responses) != len(requests) {
-		return nil, fmt.Errorf("batch response count mismatch: sent %d, got %d", len(requests), len(responses))
-	}
-
-	// Sort responses by ID to match request order
-	sort.Slice(responses, func(i, j int) bool {
-		return responses[i].ID < responses[j].ID
-	})
-
-	// Validate all responses and check for errors
-	for i, resp := range responses {
-		if resp.ID != requests[i].ID {
-			return nil, fmt.Errorf("batch response ID mismatch at index %d: expected %d, got %d", i, requests[i].ID, resp.ID)
-		}
-		if resp.Error != nil {
-			return nil, fmt.Errorf("RPC error in batch at index %d (ID %d): %s", i, resp.ID, resp.Error.Message)
-		}
-		if len(resp.Result) == 0 {
-			return nil, fmt.Errorf("empty result in batch response at index %d (ID %d)", i, resp.ID)
-		}
-	}
-
-	return responses, nil
+	return nil, fmt.Errorf("batch request failed after %d retries: %w", f.maxRetries, lastErr)
 }
 
 // batchRpcCallDebug is like batchRpcCall but uses debug concurrency limit
@@ -233,43 +292,70 @@ func (f *Fetcher) batchRpcCallDebug(requests []jsonRpcRequest) ([]jsonRpcRespons
 		return nil, fmt.Errorf("failed to marshal debug batch request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", f.rpcURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create debug request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := f.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make debug batch request: %w", err)
-	}
-	defer resp.Body.Close()
-
 	var responses []jsonRpcResponse
-	decoder := json.NewDecoder(resp.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&responses); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal debug batch response: %w", err)
-	}
+	var lastErr error
 
-	// Sort responses by ID to match request order
-	sort.Slice(responses, func(i, j int) bool {
-		return responses[i].ID < responses[j].ID
-	})
-
-	// For debug calls, we allow some errors (like precompile errors) but still validate structure
-	if len(responses) != len(requests) {
-		return nil, fmt.Errorf("debug batch response count mismatch: sent %d, got %d", len(requests), len(responses))
-	}
-
-	for i, resp := range responses {
-		if resp.ID != requests[i].ID {
-			return nil, fmt.Errorf("debug batch response ID mismatch at index %d: expected %d, got %d", i, requests[i].ID, resp.ID)
+	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			fmt.Printf("WARNING: Debug batch request failed: %v. Retrying (attempt %d/%d) after %v\n", lastErr, attempt, f.maxRetries, delay)
+			time.Sleep(delay)
 		}
+
+		req, err := http.NewRequest("POST", f.rpcURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create debug request: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := f.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to make debug batch request: %w", err)
+			continue
+		}
+
+		decoder := json.NewDecoder(resp.Body)
+		decoder.DisallowUnknownFields()
+		err = decoder.Decode(&responses)
+		resp.Body.Close()
+
+		if err != nil {
+			lastErr = fmt.Errorf("failed to unmarshal debug batch response: %w", err)
+			continue
+		}
+
+		// Sort responses by ID to match request order
+		sort.Slice(responses, func(i, j int) bool {
+			return responses[i].ID < responses[j].ID
+		})
+
+		// For debug calls, we allow some errors (like precompile errors) but still validate structure
+		if len(responses) != len(requests) {
+			lastErr = fmt.Errorf("debug batch response count mismatch: sent %d, got %d", len(requests), len(responses))
+			continue
+		}
+
+		validationErr := false
+		for i, resp := range responses {
+			if resp.ID != requests[i].ID {
+				lastErr = fmt.Errorf("debug batch response ID mismatch at index %d: expected %d, got %d", i, requests[i].ID, resp.ID)
+				validationErr = true
+				break
+			}
+		}
+
+		if validationErr {
+			continue
+		}
+
+		return responses, nil
 	}
 
-	return responses, nil
+	return nil, fmt.Errorf("debug batch request failed after %d retries: %w", f.maxRetries, lastErr)
 }
 
 func (f *Fetcher) GetLatestBlock() (int64, error) {
@@ -328,11 +414,7 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		return nil, fmt.Errorf("invalid range: from %d > to %d", from, to)
 	}
 
-	numBlocks := int(to - from + 1)
-	fmt.Printf("Fetching %d blocks from %d to %d\n", numBlocks, from, to)
-
-	// Phase 1: Batch fetch all blocks
-	fmt.Printf("Phase 1: Fetching blocks in batches of %d...\n", f.batchSize)
+	// Batch fetch all blocks
 	blocks, err := f.fetchBlocksBatch(from, to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch blocks: %w", err)
@@ -353,12 +435,9 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		}
 	}
 
-	fmt.Printf("Found %d total transactions across all blocks\n", len(allTxs))
-
-	// Phase 2: Batch fetch all receipts
+	// Batch fetch all receipts
 	var receiptsMap map[string]json.RawMessage
 	if len(allTxs) > 0 {
-		fmt.Printf("Phase 2: Fetching %d receipts in batches of %d...\n", len(allTxs), f.batchSize)
 		receiptsMap, err = f.fetchReceiptsBatch(allTxs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch receipts: %w", err)
@@ -367,10 +446,9 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		receiptsMap = make(map[string]json.RawMessage)
 	}
 
-	// Phase 3: Batch fetch all traces
+	// Batch fetch all traces
 	var tracesMap map[string]*TraceResultOptional
 	if len(allTxs) > 0 {
-		fmt.Printf("Phase 3: Fetching traces in batches of %d...\n", f.debugBatchSize)
 		tracesMap, err = f.fetchTracesBatch(from, to, allTxs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch traces: %w", err)
@@ -380,7 +458,7 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 	}
 
 	// Assemble normalized blocks
-	result := make([]*NormalizedBlock, numBlocks)
+	result := make([]*NormalizedBlock, len(blocks))
 	for i := range blocks {
 		blockNum := from + int64(i)
 
@@ -418,7 +496,6 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		}
 	}
 
-	fmt.Printf("Successfully fetched %d blocks with all receipts and traces\n", numBlocks)
 	return result, nil
 }
 
@@ -443,6 +520,7 @@ func (f *Fetcher) fetchBlocksBatch(from, to int64) ([]Block, error) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var batchErr error
+	var completedBlocks int64
 
 	for batchIdx, batch := range batches {
 		wg.Add(1)
@@ -463,6 +541,7 @@ func (f *Fetcher) fetchBlocksBatch(from, to int64) ([]Block, error) {
 			}
 
 			// Parse block responses
+			batchTxCount := 0
 			for _, resp := range responses {
 				var block Block
 				decoder := json.NewDecoder(bytes.NewReader(resp.Result))
@@ -476,10 +555,19 @@ func (f *Fetcher) fetchBlocksBatch(from, to int64) ([]Block, error) {
 					return
 				}
 
+				batchTxCount += len(block.Transactions)
 				mu.Lock()
 				blocks[resp.ID] = block
 				mu.Unlock()
 			}
+
+			// Report progress
+			mu.Lock()
+			completedBlocks += int64(len(responses))
+			if f.progressCb != nil {
+				f.progressCb("blocks", completedBlocks, int64(numBlocks), batchTxCount)
+			}
+			mu.Unlock()
 		}(batchIdx, batch)
 	}
 
@@ -514,6 +602,8 @@ func (f *Fetcher) fetchReceiptsBatch(txInfos []txInfo) (map[string]json.RawMessa
 	batches := chunksOf(allRequests, f.batchSize)
 	var wg sync.WaitGroup
 	var batchErr error
+	var completedReceipts int64
+	totalReceipts := int64(len(txInfos))
 
 	for batchIdx, batch := range batches {
 		wg.Add(1)
@@ -541,6 +631,14 @@ func (f *Fetcher) fetchReceiptsBatch(txInfos []txInfo) (map[string]json.RawMessa
 				receiptsMap[txHash] = resp.Result
 				mu.Unlock()
 			}
+
+			// Report progress
+			mu.Lock()
+			completedReceipts += int64(len(responses))
+			if f.progressCb != nil {
+				f.progressCb("receipts", completedReceipts, totalReceipts, len(responses))
+			}
+			mu.Unlock()
 		}(batchIdx, batch)
 	}
 
@@ -558,7 +656,6 @@ func (f *Fetcher) fetchTracesBatch(from, to int64, txInfos []txInfo) (map[string
 	var mu sync.Mutex
 
 	// First try block-level tracing
-	fmt.Printf("Attempting block-level tracing for blocks %d to %d\n", from, to)
 
 	numBlocks := int(to - from + 1)
 	var blockRequests []jsonRpcRequest
@@ -636,12 +733,10 @@ func (f *Fetcher) fetchTracesBatch(from, to int64, txInfos []txInfo) (map[string
 				tracesMap[txInfo.hash] = &traces[txInfo.txIdx]
 			}
 		}
-		fmt.Printf("Successfully used block-level tracing\n")
 		return tracesMap, nil
 	}
 
 	// Fall back to per-transaction tracing
-	fmt.Printf("Block-level tracing failed, falling back to per-transaction tracing\n")
 
 	var txRequests []jsonRpcRequest
 	txHashToIdx := make(map[int]string)

@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"ingest/pkg/cacher/pebble"
+	"ingest/pkg/cacher/placeholder"
 	"ingest/pkg/rpc"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -11,14 +14,30 @@ import (
 func main() {
 	// Hardcoded configuration
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
-	startBlock := int64(69000002) // Start from block 1 (genesis block 0 is not traceable)
-	chunkSize := int64(100)       // Process 100 blocks at a time
-	batchSize := 10
-	debugBatchSize := 1
-	rpcConcurrency := 500
-	debugConcurrency := 500
+	startBlock := int64(1 + rand.Int63n(70000000))
+	chunkSize := int64(200) // Process 10 blocks at a time
+	rpcConcurrency := 300
 	maxRetries := 100
 	retryDelay := 100 * time.Millisecond
+	debugConcurrency := 200
+	batchSize := 1
+	debugBatchSize := 1
+
+	// Create cache
+	cache, err := pebble.New("./data")
+	if err != nil {
+		log.Fatalf("Failed to create cache: %v", err)
+	}
+	defer cache.Close()
+
+	placeholderCache, err := placeholder.New()
+	if err != nil {
+		log.Fatalf("Failed to create placeholder cache: %v", err)
+	}
+	defer placeholderCache.Close()
+
+	_ = placeholderCache
+	_ = cache
 
 	// Progress tracking
 	var (
@@ -31,33 +50,29 @@ func main() {
 
 	// Create fetcher with progress callback
 	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
-		RpcURL:           rpcURL,
-		RpcConcurrency:   rpcConcurrency,
-		DebugConcurrency: debugConcurrency,
-		BatchSize:        batchSize,
-		DebugBatchSize:   debugBatchSize,
-		MaxRetries:       maxRetries,
-		RetryDelay:       retryDelay,
+		RpcURL:         rpcURL,
+		RpcConcurrency: rpcConcurrency,
+		MaxRetries:     maxRetries,
+		RetryDelay:     retryDelay,
 		ProgressCallback: func(phase string, current, total int64, txCount int) {
 			mu.Lock()
 			defer mu.Unlock()
-
 			totalTxsFetched += int64(txCount)
-
 			// Print stats every 2 seconds
 			now := time.Now()
 			if now.Sub(lastPrintTime) >= 2*time.Second {
 				totalElapsed := now.Sub(startTime).Seconds()
-
 				fmt.Printf("[%v] Blocks: %d | Blocks/sec: %.1f | Txs/sec: %.1f\n",
 					time.Since(startTime).Round(time.Second),
 					totalBlocksFetched,
 					float64(totalBlocksFetched)/totalElapsed,
 					float64(totalTxsFetched)/totalElapsed)
-
 				lastPrintTime = now
 			}
 		},
+		DebugConcurrency: debugConcurrency,
+		BatchSize:        batchSize,
+		DebugBatchSize:   debugBatchSize,
 	})
 
 	// Get latest block
@@ -67,7 +82,7 @@ func main() {
 	}
 
 	fmt.Printf("Processing blocks %d to %d in chunks of %d\n", startBlock, latestBlock, chunkSize)
-	fmt.Printf("Batch: %d, Concurrency: %d\n\n", batchSize, rpcConcurrency)
+	fmt.Printf("RPC Concurrency: %d\n\n", rpcConcurrency)
 
 	// Process blocks in chunks
 	for from := startBlock; from <= latestBlock; from += chunkSize {
@@ -95,9 +110,9 @@ func main() {
 		// 	}
 		// }
 
-		for _, block := range blocks {
-			fmt.Printf("Uncles: %+v\n", block.Block.Uncles)
-		}
+		// for _, block := range blocks {
+		// 	fmt.Printf("Uncles: %+v\n", block.Block.Uncles)
+		// }
 
 		// Count transactions in chunk
 		chunkTxs := 0

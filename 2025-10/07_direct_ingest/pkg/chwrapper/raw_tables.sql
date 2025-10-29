@@ -1,5 +1,6 @@
 -- Blocks table - main block headers
 CREATE TABLE IF NOT EXISTS blocks (
+    chain_id LowCardinality(UInt32),  -- Multiple chains in same tables
     block_number UInt32,
     hash FixedString(32),  -- 32 bytes
     parent_hash FixedString(32),
@@ -19,7 +20,6 @@ CREATE TABLE IF NOT EXISTS blocks (
     block_extra_data String,
     ext_data_hash FixedString(32),
     ext_data_gas_used UInt32,
-    logs_bloom FixedString(256),  -- 256 bytes bloom filter
     mix_hash FixedString(32),
     nonce LowCardinality(FixedString(8)),  -- 8 bytes, always 0x00...00 on PoS
     sha3_uncles FixedString(32),
@@ -28,38 +28,44 @@ CREATE TABLE IF NOT EXISTS blocks (
     excess_blob_gas LowCardinality(UInt64),  -- Always 0 if no blob txs
     parent_beacon_block_root LowCardinality(FixedString(32))  -- Often all zeros
 ) ENGINE = MergeTree()
-ORDER BY block_number
-PARTITION BY toYYYYMM(block_time);
+ORDER BY (chain_id, block_number)
+PARTITION BY (chain_id, toYYYYMM(block_time));
 
--- Transactions table
+-- Transactions table - merged with receipts for analytics performance
 CREATE TABLE IF NOT EXISTS transactions (
+    chain_id LowCardinality(UInt32),  -- Multiple chains in same tables
     hash FixedString(32),
     block_number UInt32,
     block_hash FixedString(32),
     block_time DateTime64(3),
+    block_date Date MATERIALIZED toDate(block_time),  -- For partition pruning
     transaction_index UInt16,
     nonce UInt64,
     from FixedString(20),
     to Nullable(FixedString(20)),  -- NULL for contract creation
     value UInt256,
-    gas UInt32,
+    gas_limit UInt32,  -- Renamed from 'gas' for clarity
     gas_price UInt64,
+    gas_used UInt32,  -- From receipt
+    success Bool,  -- From receipt status
     input String,  -- Calldata
-    v UInt8,
-    r FixedString(32),
-    s FixedString(32),
-    y_parity Nullable(UInt8),  -- Only for EIP-1559 txs
     type LowCardinality(UInt8),  -- 0,1,2,3 (legacy, EIP-2930, EIP-1559, EIP-4844)
-    chain_id UInt32,
     max_fee_per_gas Nullable(UInt64),  -- Only for EIP-1559
     max_priority_fee_per_gas Nullable(UInt64),  -- Only for EIP-1559
-    access_list String  -- JSON array, usually small
+    priority_fee_per_gas Nullable(UInt64),  -- Computed: min(gas_price - base_fee, max_priority_fee)
+    base_fee_per_gas UInt64,  -- Denormalized from blocks for easier queries
+    contract_address Nullable(FixedString(20)),  -- From receipt if contract creation
+    access_list Array(Tuple(
+        address FixedString(20),
+        storage_keys Array(FixedString(32))
+    ))  -- Properly structured, not JSON
 ) ENGINE = MergeTree()
-ORDER BY (block_number, transaction_index)
-PARTITION BY toYYYYMM(block_time);
+ORDER BY (chain_id, block_number, transaction_index)
+PARTITION BY (chain_id, toYYYYMM(block_time));
 
 -- Traces table - flattened trace calls
 CREATE TABLE IF NOT EXISTS traces (
+    chain_id LowCardinality(UInt32),  -- Multiple chains in same tables
     tx_hash FixedString(32),
     block_number UInt32,
     block_time DateTime64(3),
@@ -74,39 +80,22 @@ CREATE TABLE IF NOT EXISTS traces (
     output String,
     call_type LowCardinality(String)  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
 ) ENGINE = MergeTree()
-ORDER BY (block_number, transaction_index, trace_address)
-PARTITION BY toYYYYMM(block_time);
-
--- Receipts table - transaction execution results
-CREATE TABLE IF NOT EXISTS receipts (
-    transaction_hash FixedString(32),
-    block_number UInt32,
-    block_hash FixedString(32),
-    block_time DateTime64(3),
-    transaction_index UInt16,
-    contract_address Nullable(FixedString(20)),  -- NULL if not contract creation
-    cumulative_gas_used UInt32,
-    effective_gas_price UInt64,
-    from FixedString(20),
-    gas_used UInt32,
-    logs_bloom FixedString(256),
-    status LowCardinality(UInt8),  -- 0 = failure, 1 = success
-    to Nullable(FixedString(20)),
-    type LowCardinality(UInt8)
-) ENGINE = MergeTree()
-ORDER BY (block_number, transaction_index)
-PARTITION BY toYYYYMM(block_time);
+ORDER BY (chain_id, block_number, transaction_index, trace_address)
+PARTITION BY (chain_id, toYYYYMM(block_time));
 
 -- Logs table - event logs emitted by smart contracts
 CREATE TABLE IF NOT EXISTS logs (
+    chain_id LowCardinality(UInt32),  -- Multiple chains in same tables
     address FixedString(20),
     block_number UInt32,
-    -- Even though the original RPC does provide a block hash, I dont see any use for it
-    -- block_hash FixedString(32),
+    block_hash FixedString(32),  -- Needed for reorg detection and data integrity
     block_time DateTime64(3),
+    block_date Date MATERIALIZED toDate(block_time),  -- For partition pruning
     transaction_hash FixedString(32),
     transaction_index UInt16,
     log_index UInt32,
+    tx_from FixedString(20),  -- Denormalized from transactions for faster queries
+    tx_to Nullable(FixedString(20)),  -- Denormalized from transactions
     topic0 Nullable(FixedString(32)),  -- Indexed event signature
     topic1 Nullable(FixedString(32)),
     topic2 Nullable(FixedString(32)),
@@ -114,13 +103,13 @@ CREATE TABLE IF NOT EXISTS logs (
     data String,  -- Non-indexed event data
     removed Bool  -- true if removed due to chain reorg
 ) ENGINE = MergeTree()
-ORDER BY (block_time, address, topic0)
-PARTITION BY toYYYYMM(block_time);
+ORDER BY (chain_id, block_time, address, topic0)
+PARTITION BY (chain_id, toYYYYMM(block_time));
 
--- Watermark table - tracks guaranteed sync progress
+-- Watermark table - tracks guaranteed sync progress per chain
 CREATE TABLE IF NOT EXISTS watermark (
-    id UInt8,
+    chain_id UInt32,
     block_number UInt32
 ) ENGINE = EmbeddedRocksDB
-PRIMARY KEY id;
+PRIMARY KEY chain_id;
 

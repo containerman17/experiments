@@ -6,7 +6,6 @@ import (
 	"ingest/pkg/cacher/placeholder"
 	"ingest/pkg/rpc"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -14,7 +13,8 @@ import (
 func main() {
 	// Hardcoded configuration
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
-	startBlock := int64(1 + rand.Int63n(70000000))
+	// startBlock := int64(1 + rand.Int63n(70000000))
+	startBlock := int64(70_000_000)
 	chunkSize := int64(200) // Process 10 blocks at a time
 	rpcConcurrency := 300
 	maxRetries := 100
@@ -50,10 +50,14 @@ func main() {
 
 	// Create fetcher with progress callback
 	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
-		RpcURL:         rpcURL,
-		RpcConcurrency: rpcConcurrency,
-		MaxRetries:     maxRetries,
-		RetryDelay:     retryDelay,
+		RpcURL:           rpcURL,
+		RpcConcurrency:   rpcConcurrency,
+		MaxRetries:       maxRetries,
+		RetryDelay:       retryDelay,
+		DebugConcurrency: debugConcurrency,
+		BatchSize:        batchSize,
+		DebugBatchSize:   debugBatchSize,
+		Cache:            cache,
 		ProgressCallback: func(phase string, current, total int64, txCount int) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -70,9 +74,6 @@ func main() {
 				lastPrintTime = now
 			}
 		},
-		DebugConcurrency: debugConcurrency,
-		BatchSize:        batchSize,
-		DebugBatchSize:   debugBatchSize,
 	})
 
 	// Get latest block

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"ingest/pkg/cacher"
 	"net"
 	"net/http"
 	"sort"
@@ -21,6 +22,7 @@ type FetcherOptions struct {
 	MaxRetries       int              // Maximum number of retries per request
 	RetryDelay       time.Duration    // Initial retry delay
 	ProgressCallback ProgressCallback // Optional progress callback
+	Cache            cacher.Cache     // Optional cache for complete blocks
 }
 
 type Fetcher struct {
@@ -30,13 +32,22 @@ type Fetcher struct {
 	maxRetries     int
 	retryDelay     time.Duration
 	progressCb     ProgressCallback
+	cache          cacher.Cache
 
 	// Concurrency control
 	rpcLimit   chan struct{}
 	debugLimit chan struct{}
 
+	// Cache writer
+	cacheWriteCh chan cacheWrite
+
 	// HTTP client
 	httpClient *http.Client
+}
+
+type cacheWrite struct {
+	blockNum int64
+	block    *NormalizedBlock
 }
 
 // txInfo holds information about a transaction and its location
@@ -80,19 +91,44 @@ func NewFetcher(opts FetcherOptions) *Fetcher {
 		}).DialContext,
 	}
 
-	return &Fetcher{
+	f := &Fetcher{
 		rpcURL:         opts.RpcURL,
 		batchSize:      opts.BatchSize,
 		debugBatchSize: opts.DebugBatchSize,
 		maxRetries:     opts.MaxRetries,
 		retryDelay:     opts.RetryDelay,
 		progressCb:     opts.ProgressCallback,
+		cache:          opts.Cache,
 		rpcLimit:       make(chan struct{}, opts.RpcConcurrency),
 		debugLimit:     make(chan struct{}, opts.DebugConcurrency),
+		cacheWriteCh:   make(chan cacheWrite, 1000), // Buffered channel
 		httpClient: &http.Client{
 			Timeout:   5 * time.Minute,
 			Transport: transport,
 		},
+	}
+
+	// Start cache writer workers if cache is enabled
+	if f.cache != nil {
+		numWriters := 4 // Dedicated cache write workers
+		for i := 0; i < numWriters; i++ {
+			go f.cacheWriter()
+		}
+	}
+
+	return f
+}
+
+// cacheWriter runs in background goroutines to write blocks to cache
+func (f *Fetcher) cacheWriter() {
+	for cw := range f.cacheWriteCh {
+		data, err := json.Marshal(cw.block)
+		if err != nil {
+			continue // Silent fail for cache writes
+		}
+		_, _ = f.cache.GetCompleteBlock(cw.blockNum, func() ([]byte, error) {
+			return data, nil
+		})
 	}
 }
 
@@ -313,6 +349,87 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		return nil, fmt.Errorf("invalid range: from %d > to %d", from, to)
 	}
 
+	numBlocks := int(to - from + 1)
+	result := make([]*NormalizedBlock, numBlocks)
+
+	// If no cache, fetch everything as before
+	if f.cache == nil {
+		return f.fetchBlockRangeUncached(from, to)
+	}
+
+	// Step 1: Check cache for all blocks
+	var missingBlocks []int64
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i := int64(0); i < int64(numBlocks); i++ {
+		blockNum := from + i
+		wg.Add(1)
+		go func(bn int64, idx int) {
+			defer wg.Done()
+
+			data, err := f.cache.GetCompleteBlock(bn, func() ([]byte, error) {
+				// This will only be called if cache miss
+				// Mark as missing for batch fetch
+				mu.Lock()
+				missingBlocks = append(missingBlocks, bn)
+				mu.Unlock()
+				return nil, fmt.Errorf("cache miss") // Signal cache miss
+			})
+
+			if err == nil {
+				// Cache hit - deserialize
+				var block NormalizedBlock
+				if err := json.Unmarshal(data, &block); err != nil {
+					fmt.Printf("Warning: failed to deserialize cached block %d: %v\n", bn, err)
+					mu.Lock()
+					missingBlocks = append(missingBlocks, bn)
+					mu.Unlock()
+					return
+				}
+				mu.Lock()
+				result[idx] = &block
+				mu.Unlock()
+			}
+		}(blockNum, int(i))
+	}
+
+	wg.Wait()
+
+	// Step 2: If all cached, return
+	if len(missingBlocks) == 0 {
+		fmt.Printf("All %d blocks found in cache\n", numBlocks)
+		return result, nil
+	}
+
+	fmt.Printf("Cache: %d hits, %d misses\n", numBlocks-len(missingBlocks), len(missingBlocks))
+
+	// Step 3: Fetch missing blocks
+	sort.Slice(missingBlocks, func(i, j int) bool {
+		return missingBlocks[i] < missingBlocks[j]
+	})
+
+	// Fetch each missing block range
+	fetchedBlocks, err := f.fetchAndCacheMissingBlocks(missingBlocks)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 4: Fill in missing blocks in result
+	for _, blockNum := range missingBlocks {
+		idx := int(blockNum - from)
+		if block, ok := fetchedBlocks[blockNum]; ok {
+			result[idx] = block
+		} else {
+			return nil, fmt.Errorf("missing block %d after fetch", blockNum)
+		}
+	}
+
+	return result, nil
+}
+
+// fetchBlockRangeUncached is the original implementation without caching
+func (f *Fetcher) fetchBlockRangeUncached(from, to int64) ([]*NormalizedBlock, error) {
 	// Batch fetch all blocks
 	blocks, err := f.fetchBlocksBatch(from, to)
 	if err != nil {
@@ -337,11 +454,7 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 	// Batch fetch all receipts
 	var receiptsMap map[string]json.RawMessage
 	if len(allTxs) > 0 {
-		receiptStart := time.Now()
 		receiptsMap, err = f.fetchReceiptsBatch(allTxs)
-		receiptDuration := time.Since(receiptStart)
-		fmt.Printf("Fetched %d receipts in %v (%.2f receipts/sec)\n",
-			len(allTxs), receiptDuration, float64(len(allTxs))/receiptDuration.Seconds())
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch receipts: %w", err)
 		}
@@ -400,6 +513,87 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 	}
 
 	return result, nil
+}
+
+// fetchAndCacheMissingBlocks fetches missing blocks in batch and caches them
+func (f *Fetcher) fetchAndCacheMissingBlocks(missingBlocks []int64) (map[int64]*NormalizedBlock, error) {
+	if len(missingBlocks) == 0 {
+		return make(map[int64]*NormalizedBlock), nil
+	}
+
+	// Find contiguous ranges for efficient batch fetching
+	ranges := f.findContiguousRanges(missingBlocks)
+
+	result := make(map[int64]*NormalizedBlock)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var fetchErr error
+
+	for _, r := range ranges {
+		wg.Add(1)
+		go func(from, to int64) {
+			defer wg.Done()
+
+			blocks, err := f.fetchBlockRangeUncached(from, to)
+			if err != nil {
+				mu.Lock()
+				if fetchErr == nil {
+					fetchErr = err
+				}
+				mu.Unlock()
+				return
+			}
+
+			// Cache each block
+			for i, block := range blocks {
+				blockNum := from + int64(i)
+
+				mu.Lock()
+				result[blockNum] = block
+				mu.Unlock()
+
+				// Fire-and-forget cache write via channel
+				select {
+				case f.cacheWriteCh <- cacheWrite{blockNum: blockNum, block: block}:
+					// Sent to cache writer
+				default:
+					// Channel full, skip caching this block (non-blocking)
+				}
+			}
+		}(r[0], r[1])
+	}
+
+	wg.Wait()
+
+	if fetchErr != nil {
+		return nil, fetchErr
+	}
+
+	return result, nil
+}
+
+// findContiguousRanges finds contiguous block ranges from a sorted list
+func (f *Fetcher) findContiguousRanges(blocks []int64) [][2]int64 {
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	var ranges [][2]int64
+	start := blocks[0]
+	end := blocks[0]
+
+	for i := 1; i < len(blocks); i++ {
+		if blocks[i] == end+1 {
+			end = blocks[i]
+		} else {
+			ranges = append(ranges, [2]int64{start, end})
+			start = blocks[i]
+			end = blocks[i]
+		}
+	}
+	ranges = append(ranges, [2]int64{start, end})
+
+	return ranges
 }
 
 func (f *Fetcher) fetchBlocksBatch(from, to int64) ([]Block, error) {
@@ -657,19 +851,58 @@ func (f *Fetcher) fetchTracesBatch(from, to int64, txInfos []txInfo) (map[string
 	// Execute transaction traces in batches
 	txBatches := chunksOf(txRequests, f.debugBatchSize)
 	wg = sync.WaitGroup{}
+	var txBatchErr error
 
 	for batchIdx, batch := range txBatches {
 		wg.Add(1)
 		go func(idx int, requests []jsonRpcRequest) {
 			defer wg.Done()
 
-			f.debugLimit <- struct{}{}
-			responses, err := f.batchRpcCallDebug(requests)
-			<-f.debugLimit
+			var responses []jsonRpcResponse
+			var err error
+
+			// Retry logic for this batch
+			for attempt := 0; attempt <= f.maxRetries; attempt++ {
+				if attempt > 0 {
+					delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+					if delay > 10*time.Second {
+						delay = 10 * time.Second
+					}
+					fmt.Printf("Retrying trace batch %d (attempt %d/%d) after %v\n", idx, attempt, f.maxRetries, delay)
+					time.Sleep(delay)
+				}
+
+				f.debugLimit <- struct{}{}
+				responses, err = f.batchRpcCallDebug(requests)
+				<-f.debugLimit
+
+				if err != nil {
+					continue // Network/batch error, retry
+				}
+
+				// Check if any non-precompile errors exist
+				hasRetryableError := false
+				for _, resp := range responses {
+					if resp.Error != nil {
+						if !isPrecompileError(fmt.Errorf("%s", resp.Error.Message)) {
+							hasRetryableError = true
+							break
+						}
+					}
+				}
+
+				if !hasRetryableError {
+					break // Success or only precompile errors
+				}
+			}
 
 			if err != nil {
-				// For transaction traces, we continue even on errors
-				fmt.Printf("Transaction trace batch %d failed: %v\n", idx, err)
+				// Batch failed after retries
+				mu.Lock()
+				if txBatchErr == nil {
+					txBatchErr = fmt.Errorf("trace batch %d failed after retries: %w", idx, err)
+				}
+				mu.Unlock()
 				return
 			}
 
@@ -678,34 +911,37 @@ func (f *Fetcher) fetchTracesBatch(from, to int64, txInfos []txInfo) (map[string
 				txHash := txHashToIdx[resp.ID]
 
 				if resp.Error != nil {
-					// Check for precompile error
+					// ONLY precompile errors are acceptable as nil traces
 					if isPrecompileError(fmt.Errorf("%s", resp.Error.Message)) {
 						fmt.Printf("Trace failed for tx %s (precompile), treating as nil trace\n", txHash)
+						mu.Lock()
+						tracesMap[txHash] = &TraceResultOptional{
+							TxHash: txHash,
+							Result: nil,
+						}
+						mu.Unlock()
+						continue
 					} else {
-						fmt.Printf("Trace failed for tx %s: %v\n", txHash, resp.Error.Message)
+						// Non-precompile error after retries - fail the batch
+						mu.Lock()
+						if txBatchErr == nil {
+							txBatchErr = fmt.Errorf("trace for tx %s failed after retries: %s", txHash, resp.Error.Message)
+						}
+						mu.Unlock()
+						return
 					}
-
-					mu.Lock()
-					tracesMap[txHash] = &TraceResultOptional{
-						TxHash: txHash,
-						Result: nil,
-					}
-					mu.Unlock()
-					continue
 				}
 
 				var trace CallTrace
 				decoder := json.NewDecoder(bytes.NewReader(resp.Result))
 				decoder.DisallowUnknownFields()
 				if err := decoder.Decode(&trace); err != nil {
-					fmt.Printf("Failed to parse trace for tx %s: %v\n", txHash, err)
 					mu.Lock()
-					tracesMap[txHash] = &TraceResultOptional{
-						TxHash: txHash,
-						Result: nil,
+					if txBatchErr == nil {
+						txBatchErr = fmt.Errorf("failed to parse trace for tx %s: %w", txHash, err)
 					}
 					mu.Unlock()
-					continue
+					return
 				}
 
 				mu.Lock()
@@ -719,6 +955,10 @@ func (f *Fetcher) fetchTracesBatch(from, to int64, txInfos []txInfo) (map[string
 	}
 
 	wg.Wait()
+
+	if txBatchErr != nil {
+		return nil, txBatchErr
+	}
 
 	return tracesMap, nil
 }

@@ -6,6 +6,7 @@ High-performance Ethereum block data fetcher using JSON-RPC batch API for maximu
 
 - **Batch API**: Groups multiple RPC calls into single HTTP requests, reducing network overhead
 - **3-Phase Fetching**: Blocks → Receipts → Traces, all batched and concurrent
+- **Persistent Caching**: Optional PebbleDB cache for complete blocks (block + receipts + traces)
 - **Configurable Batching**: Separate batch sizes for regular RPC and debug calls
 - **Concurrent Execution**: Multiple batches executed in parallel with configurable limits
 - **Strict Validation**: Dies on any inconsistency - no silent failures
@@ -35,6 +36,38 @@ Phase 3: Fetch all traces (batched, if enabled)
   - Execute batches concurrently (limited by debugConcurrency)
 ```
 
+### Caching Architecture
+
+When a cache is enabled, the flow changes to:
+
+```
+FetchBlockRange(from, to) with Cache
+  ↓
+Check cache for all blocks (concurrent)
+  - Cache hits: deserialize and return immediately
+  - Cache misses: collect block numbers
+  ↓
+If all cached → return results
+If misses exist:
+  ↓
+  Batch fetch missing blocks
+    - Group contiguous ranges
+    - Fetch each range using normal 3-phase flow
+    - Fire-and-forget cache writes (4 background workers)
+  ↓
+  Combine cached + fetched results
+```
+
+**Cache writes are non-blocking:**
+- Buffered channel (1000 capacity) queues blocks for caching
+- 4 dedicated worker goroutines write to cache in background
+- If channel is full, block is skipped (no slowdown to fetch)
+- Zero performance impact on RPC fetching
+
+**Cache implementations:**
+- `pebble.Cache`: Persistent PebbleDB storage with zstd compression
+- `placeholder.Cache`: No-op cache for testing/disabling caching
+
 ### Performance Parameters
 
 - **BatchSize**: Number of requests per batch (default: 100)
@@ -53,13 +86,27 @@ Phase 3: Fetch all traces (batched, if enabled)
 
 ## Error Handling
 
-The fetcher uses strict error handling:
-- **All RPC errors are fatal** - no silent failures
+The fetcher uses strict error handling with automatic retries:
+
+**Error Policy: Fail the Batch**
+- Any error in a batch fails the entire batch (no partial results)
+- Ensures all-or-nothing data integrity
+- No silent failures or missing data
+
+**Retry behavior:**
+- **Network/connection errors**: Retried with exponential backoff (up to `maxRetries`)
+- **Trace execution timeouts**: Retried with exponential backoff
+- **Precompile trace errors**: ONLY exception - accepted as nil trace (expected behavior)
+- **All other RPC errors**: Fatal after retries, batch fails
+
+**Validation:**
 - **Validates batch response IDs** - ensures responses match requests
 - **Checks for null/missing data** - catches incomplete responses
 - **Verifies response counts** - batch responses must match request count
 
-This ensures data integrity at the cost of failing fast on any issue.
+**Retry timing:** 500ms → 1s → 2s → 4s → 8s → 10s (capped)
+
+This ensures data integrity and resilience to transient errors while failing fast on real issues.
 
 ## Data Structures
 

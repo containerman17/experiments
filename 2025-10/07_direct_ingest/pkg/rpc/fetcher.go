@@ -81,8 +81,8 @@ func NewFetcher(opts FetcherOptions) *Fetcher {
 	// Create HTTP client with proper connection pooling
 	// Node.js reuses connections aggressively, so we do the same
 	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100, // Default is only 2!
+		MaxIdleConns:        10000,
+		MaxIdleConnsPerHost: 10000, // Default is only 2!
 		IdleConnTimeout:     90 * time.Second,
 		DisableKeepAlives:   false,
 		DialContext: (&net.Dialer{

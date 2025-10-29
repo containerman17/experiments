@@ -6,6 +6,7 @@ import (
 	"ingest/pkg/cacher/placeholder"
 	"ingest/pkg/rpc"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -13,9 +14,9 @@ import (
 func main() {
 	// Hardcoded configuration
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
-	// startBlock := int64(1 + rand.Int63n(70000000))
-	startBlock := int64(1)
-	chunkSize := int64(500) // Process 10 blocks at a time
+	startBlock := int64(1 + rand.Int63n(70000000))
+	// startBlock := int64(1)
+	chunkSize := int64(100) // Process  blocks at a time
 	rpcConcurrency := 300
 	maxRetries := 100
 	retryDelay := 100 * time.Millisecond

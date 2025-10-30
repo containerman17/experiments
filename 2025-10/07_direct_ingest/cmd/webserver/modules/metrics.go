@@ -29,7 +29,7 @@ func NewMetricsModule() (*MetricsModule, error) {
 	}
 	return &MetricsModule{
 		conn:        conn,
-		pathPattern: regexp.MustCompile(`^/v2/chains/(\d+)/metrics/([a-zA-Z]+)$`),
+		pathPattern: regexp.MustCompile(`^/v2/chains/([\w]+)/metrics/([a-zA-Z]+)$`),
 	}, nil
 }
 
@@ -108,14 +108,30 @@ func (m *MetricsModule) Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse chain ID
-	chainIDInt, err := strconv.ParseUint(chainID, 10, 32)
-	if err != nil {
-		http.Error(w, "Invalid chainId", http.StatusBadRequest)
-		return
+	var chainIDInt *uint32
+	switch chainID {
+	case "total":
+		// No filter, pass nil
+		chainIDInt = nil
+	case "mainnet":
+		val := uint32(43114)
+		chainIDInt = &val
+	case "testnet":
+		val := uint32(43113)
+		chainIDInt = &val
+	default:
+		// Try parsing as numeric
+		parsed, err := strconv.ParseUint(chainID, 10, 32)
+		if err != nil {
+			http.Error(w, "chainId must be either a numeric string, 'total', 'mainnet', or 'testnet'", http.StatusBadRequest)
+			return
+		}
+		val := uint32(parsed)
+		chainIDInt = &val
 	}
 
 	// Query ClickHouse for the metric data
-	results, nextTimestamp, err := m.queryMetric(context.Background(), uint32(chainIDInt), metricName, timeInterval, paginationStart, endTimestamp, pageSize)
+	results, nextTimestamp, err := m.queryMetric(context.Background(), chainIDInt, metricName, timeInterval, paginationStart, endTimestamp, pageSize)
 	if err != nil {
 		log.Printf("Error querying metric: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -157,7 +173,7 @@ type MetricResult struct {
 }
 
 // queryMetric queries ClickHouse for metric data
-func (m *MetricsModule) queryMetric(ctx context.Context, chainID uint32, metricName, timeInterval string, startTimestamp, endTimestamp int64, pageSize int) ([]MetricResult, int64, error) {
+func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metricName, timeInterval string, startTimestamp, endTimestamp int64, pageSize int) ([]MetricResult, int64, error) {
 	startTime := time.Unix(startTimestamp, 0)
 	endTime := time.Unix(endTimestamp, 0)
 
@@ -176,7 +192,20 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID uint32, metricN
 		return nil, 0, fmt.Errorf("unsupported timeInterval: %s", timeInterval)
 	}
 
-	// Build query - currently only supports activeAddresses
+	// Build WHERE clause based on chainID
+	var whereClause string
+	var queryArgs []interface{}
+	if chainID == nil {
+		// No chain filter for "total"
+		whereClause = "WHERE hour_bucket >= toDateTime(?) AND hour_bucket < toDateTime(?)"
+		queryArgs = []interface{}{startTime, endTime, pageSize + 1}
+	} else {
+		// Filter by specific chain
+		whereClause = "WHERE chain_id = ? AND hour_bucket >= toDateTime(?) AND hour_bucket < toDateTime(?)"
+		queryArgs = []interface{}{*chainID, startTime, endTime, pageSize + 1}
+	}
+
+	// Build query - currently only supports activeAddresses and activeSenders
 	// Other metrics can be added by querying the appropriate table/MV
 	var query string
 	if metricName == "activeAddresses" {
@@ -185,18 +214,27 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID uint32, metricN
 				toUnixTimestamp(%s(hour_bucket)) as timestamp,
 				COUNT(DISTINCT address) as value
 			FROM metrics_activeAddresses
-			WHERE chain_id = ? 
-				AND hour_bucket >= toDateTime(?) 
-				AND hour_bucket < toDateTime(?)
+			%s
 			GROUP BY %s(hour_bucket)
 			ORDER BY timestamp ASC
 			LIMIT ?
-		`, timeBucketFunc, timeBucketFunc)
+		`, timeBucketFunc, whereClause, timeBucketFunc)
+	} else if metricName == "activeSenders" {
+		query = fmt.Sprintf(`
+			SELECT 
+				toUnixTimestamp(%s(hour_bucket)) as timestamp,
+				COUNT(DISTINCT address) as value
+			FROM metrics_activeSenders
+			%s
+			GROUP BY %s(hour_bucket)
+			ORDER BY timestamp ASC
+			LIMIT ?
+		`, timeBucketFunc, whereClause, timeBucketFunc)
 	} else {
 		return nil, 0, fmt.Errorf("unsupported metric: %s", metricName)
 	}
 
-	rows, err := m.conn.Query(ctx, query, chainID, startTime, endTime, pageSize+1)
+	rows, err := m.conn.Query(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query failed: %w", err)
 	}
@@ -206,21 +244,22 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID uint32, metricN
 	var lastTimestamp int64
 
 	for rows.Next() {
-		var timestamp int64
+		var timestamp uint32
 		var value uint64
 
 		if err := rows.Scan(&timestamp, &value); err != nil {
 			return nil, 0, fmt.Errorf("scan failed: %w", err)
 		}
 
+		timestampInt64 := int64(timestamp)
 		// Only add if we haven't exceeded pageSize
 		if len(results) < pageSize {
 			results = append(results, MetricResult{
 				Value:     int(value),
-				Timestamp: timestamp,
+				Timestamp: timestampInt64,
 			})
 		}
-		lastTimestamp = timestamp
+		lastTimestamp = timestampInt64
 	}
 
 	if err := rows.Err(); err != nil {

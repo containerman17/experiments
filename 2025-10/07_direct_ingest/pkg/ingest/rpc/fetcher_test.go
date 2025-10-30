@@ -22,7 +22,7 @@ func TestFetchBlockRangeVsRaw(t *testing.T) {
 	// Create fetcher
 	fetcher := NewFetcher(FetcherOptions{
 		RpcURL:           rpcURL,
-		RpcConcurrency:   5,
+		MaxConcurrency:   5,
 		ProgressCallback: nil, // No progress reporting in tests
 	})
 

@@ -14,17 +14,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const (
+	// BufferSize is the maximum number of batches that can be buffered in the channel
+	BufferSize = 200_000
+	// FlushInterval is how often to flush blocks to ClickHouse
+	FlushInterval = 1 * time.Second
+)
+
 // Config holds configuration for ChainSyncer
 type Config struct {
-	ChainID          uint32
-	RpcURL           string
-	RpcConcurrency   int           // Optional, default 300
-	DebugConcurrency int           // Optional, default 200
-	FetchBatchSize   int           // Blocks per fetch, default 100
-	BufferSize       int           // Max batches in channel, default 10
-	FlushInterval    time.Duration // Default 1 second
-	CHConn           driver.Conn   // ClickHouse connection
-	Cache            *cache.Cache  // Cache for RPC calls
+	ChainID        uint32
+	RpcURL         string
+	MaxConcurrency int          // Maximum concurrent RPC and debug requests, default 20
+	FetchBatchSize int          // Blocks per fetch, default 100
+	CHConn         driver.Conn  // ClickHouse connection
+	Cache          *cache.Cache // Cache for RPC calls
 }
 
 // ChainSyncer manages blockchain sync for a single chain
@@ -58,31 +62,21 @@ type ChainSyncer struct {
 // NewChainSyncer creates a new chain syncer
 func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	if cfg.FetchBatchSize == 0 {
-		cfg.FetchBatchSize = 100
+		cfg.FetchBatchSize = 500
 	}
-	if cfg.BufferSize == 0 {
-		cfg.BufferSize = 20000
-	}
-	if cfg.FlushInterval == 0 {
-		cfg.FlushInterval = 1000 * time.Millisecond
-	}
-	if cfg.RpcConcurrency == 0 {
-		cfg.RpcConcurrency = 20
-	}
-	if cfg.DebugConcurrency == 0 {
-		cfg.DebugConcurrency = 20
+	if cfg.MaxConcurrency == 0 {
+		cfg.MaxConcurrency = 20
 	}
 
 	// Create fetcher
 	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
-		RpcURL:           cfg.RpcURL,
-		RpcConcurrency:   cfg.RpcConcurrency,
-		MaxRetries:       100,
-		RetryDelay:       100 * time.Millisecond,
-		DebugConcurrency: 200,
-		BatchSize:        1,
-		DebugBatchSize:   1,
-		Cache:            cfg.Cache,
+		RpcURL:         cfg.RpcURL,
+		MaxConcurrency: cfg.MaxConcurrency,
+		MaxRetries:     100,
+		RetryDelay:     100 * time.Millisecond,
+		BatchSize:      1,
+		DebugBatchSize: 1,
+		Cache:          cfg.Cache,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -91,9 +85,9 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		chainId:        cfg.ChainID,
 		fetcher:        fetcher,
 		conn:           cfg.CHConn,
-		blockChan:      make(chan []*rpc.NormalizedBlock, cfg.BufferSize),
+		blockChan:      make(chan []*rpc.NormalizedBlock, BufferSize),
 		fetchBatchSize: cfg.FetchBatchSize,
-		flushInterval:  cfg.FlushInterval,
+		flushInterval:  FlushInterval,
 		ctx:            ctx,
 		cancel:         cancel,
 		lastPrintTime:  time.Now(),

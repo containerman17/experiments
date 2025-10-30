@@ -1,0 +1,6 @@
+[
+    {
+        "chainID": 43114,
+        "rpcURL": "http://localhost:9650/ext/bc/C/rpc"
+    }
+]

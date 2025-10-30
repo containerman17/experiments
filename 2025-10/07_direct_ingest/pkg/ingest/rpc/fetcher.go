@@ -15,8 +15,7 @@ import (
 
 type FetcherOptions struct {
 	RpcURL           string
-	RpcConcurrency   int              // Number of concurrent batch requests
-	DebugConcurrency int              // Number of concurrent debug batch requests
+	MaxConcurrency   int              // Maximum concurrent RPC and debug requests
 	BatchSize        int              // Number of requests per batch
 	DebugBatchSize   int              // Number of debug requests per batch
 	MaxRetries       int              // Maximum number of retries per request
@@ -59,11 +58,8 @@ type txInfo struct {
 }
 
 func NewFetcher(opts FetcherOptions) *Fetcher {
-	if opts.RpcConcurrency == 0 {
-		opts.RpcConcurrency = 10 // Conservative default for concurrent batches
-	}
-	if opts.DebugConcurrency == 0 {
-		opts.DebugConcurrency = 2 // Very conservative for debug batches
+	if opts.MaxConcurrency == 0 {
+		opts.MaxConcurrency = 100
 	}
 	if opts.BatchSize == 0 {
 		opts.BatchSize = 100
@@ -99,8 +95,8 @@ func NewFetcher(opts FetcherOptions) *Fetcher {
 		retryDelay:     opts.RetryDelay,
 		progressCb:     opts.ProgressCallback,
 		cache:          opts.Cache,
-		rpcLimit:       make(chan struct{}, opts.RpcConcurrency),
-		debugLimit:     make(chan struct{}, opts.DebugConcurrency),
+		rpcLimit:       make(chan struct{}, opts.MaxConcurrency),
+		debugLimit:     make(chan struct{}, opts.MaxConcurrency),
 		cacheWriteCh:   make(chan cacheWrite, 1000), // Buffered channel
 		httpClient: &http.Client{
 			Timeout:   5 * time.Minute,

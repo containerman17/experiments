@@ -205,8 +205,6 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 		queryArgs = []interface{}{*chainID, startTime, endTime, pageSize + 1}
 	}
 
-	// Build query - currently only supports activeAddresses and activeSenders
-	// Other metrics can be added by querying the appropriate table/MV
 	var query string
 	if metricName == "activeAddresses" {
 		query = fmt.Sprintf(`
@@ -214,17 +212,6 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 				toUnixTimestamp(%s(hour_bucket, 'UTC')) as timestamp,
 				COUNT(DISTINCT address) as value
 			FROM metrics_activeAddresses
-			%s
-			GROUP BY %s(hour_bucket, 'UTC')
-			ORDER BY timestamp ASC
-			LIMIT ?
-		`, timeBucketFunc, whereClause, timeBucketFunc)
-	} else if metricName == "activeSenders" {
-		query = fmt.Sprintf(`
-			SELECT 
-				toUnixTimestamp(%s(hour_bucket, 'UTC')) as timestamp,
-				COUNT(DISTINCT address) as value
-			FROM metrics_activeSenders
 			%s
 			GROUP BY %s(hour_bucket, 'UTC')
 			ORDER BY timestamp ASC
@@ -242,71 +229,6 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 			ORDER BY timestamp ASC
 			LIMIT ?
 		`, timeBucketFunc, whereClause, timeBucketFunc)
-	} else if metricName == "cumulativeTxCount" {
-		// Cumulative transaction count from genesis to (timestamp + 24h)
-		// For each timestamp, counts ALL transactions from the beginning up to that point + 24h
-		if chainID == nil {
-			// For 'total', sum across all chains
-			query = fmt.Sprintf(`
-				WITH time_points AS (
-					SELECT DISTINCT %s(hour_bucket, 'UTC') as time_bucket
-					FROM mv_metrics_txCount_hourly
-					WHERE hour_bucket >= toDateTime(?, 'UTC') 
-						AND hour_bucket < toDateTime(?, 'UTC')
-						AND %s(hour_bucket, 'UTC') >= toDateTime(?, 'UTC')
-						AND %s(hour_bucket, 'UTC') < toDateTime(?, 'UTC')
-					ORDER BY time_bucket
-				)
-				SELECT 
-					toUnixTimestamp(t.time_bucket) as timestamp,
-					toUInt64(SUM(m.tx_count)) as value
-				FROM time_points t
-				CROSS JOIN mv_metrics_txCount_hourly m
-				WHERE m.hour_bucket < t.time_bucket + INTERVAL 1 DAY
-				GROUP BY t.time_bucket
-				ORDER BY timestamp ASC
-				LIMIT ?
-			`, timeBucketFunc, timeBucketFunc, timeBucketFunc)
-			// Need to duplicate timestamps for the additional WHERE conditions
-			if len(queryArgs) >= 3 {
-				newArgs := []interface{}{queryArgs[0], queryArgs[1], queryArgs[0], queryArgs[1]}
-				newArgs = append(newArgs, queryArgs[2:]...)
-				queryArgs = newArgs
-			}
-		} else {
-			// For specific chain - count all transactions from genesis to each point + 24h
-			query = fmt.Sprintf(`
-				WITH time_points AS (
-					SELECT DISTINCT %s(hour_bucket, 'UTC') as time_bucket
-					FROM mv_metrics_txCount_hourly
-					WHERE chain_id = ?
-						AND hour_bucket >= toDateTime(?, 'UTC') 
-						AND hour_bucket < toDateTime(?, 'UTC')
-						AND %s(hour_bucket, 'UTC') >= toDateTime(?, 'UTC')
-						AND %s(hour_bucket, 'UTC') < toDateTime(?, 'UTC')
-					ORDER BY time_bucket
-				)
-				SELECT 
-					toUnixTimestamp(t.time_bucket) as timestamp,
-					toUInt64(SUM(m.tx_count)) as value
-				FROM time_points t
-				CROSS JOIN mv_metrics_txCount_hourly m
-				WHERE m.chain_id = ?
-					AND m.hour_bucket < t.time_bucket + INTERVAL 1 DAY
-				GROUP BY t.time_bucket
-				ORDER BY timestamp ASC
-				LIMIT ?
-			`, timeBucketFunc, timeBucketFunc, timeBucketFunc)
-			// Need to duplicate timestamps and chain_id for the additional WHERE conditions
-			if len(queryArgs) >= 4 {
-				// Original: chain_id, startTime, endTime, pageSize+1
-				// New: chain_id, startTime, endTime, startTime, endTime, chain_id, pageSize+1
-				newArgs := make([]interface{}, 0, len(queryArgs)+3)
-				newArgs = append(newArgs, queryArgs[0], queryArgs[1], queryArgs[2], queryArgs[1], queryArgs[2], queryArgs[0])
-				newArgs = append(newArgs, queryArgs[3:]...)
-				queryArgs = newArgs
-			}
-		}
 	} else {
 		return nil, 0, fmt.Errorf("unsupported metric: %s", metricName)
 	}
@@ -364,6 +286,152 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 	}
 
 	return results, nextTimestamp, nil
+}
+
+// MaxTPSResponse represents the response for maxTPS metric
+type MaxTPSResponse struct {
+	Result MaxTPSResult `json:"result"`
+}
+
+// MaxTPSResult contains max TPS values for different time windows
+type MaxTPSResult struct {
+	LastHour   int `json:"lastHour"`
+	LastDay    int `json:"lastDay"`
+	LastWeek   int `json:"lastWeek"`
+	LastMonth  int `json:"lastMonth"`
+	Last90Days int `json:"last90Days"`
+	LastYear   int `json:"lastYear"`
+	AllTime    int `json:"allTime"`
+}
+
+// handleMaxTPS handles the maxTPS metric request
+func (m *MetricsModule) handleMaxTPS(w http.ResponseWriter, r *http.Request, chainID string) {
+	// Parse chain ID
+	var chainIDInt *uint32
+	switch chainID {
+	case "total":
+		// No filter, pass nil
+		chainIDInt = nil
+	case "mainnet":
+		val := uint32(43114)
+		chainIDInt = &val
+	case "testnet":
+		val := uint32(43113)
+		chainIDInt = &val
+	default:
+		// Try parsing as numeric
+		parsed, err := strconv.ParseUint(chainID, 10, 32)
+		if err != nil {
+			http.Error(w, "chainId must be either a numeric string, 'total', 'mainnet', or 'testnet'", http.StatusBadRequest)
+			return
+		}
+		val := uint32(parsed)
+		chainIDInt = &val
+	}
+
+	ctx := context.Background()
+	result := MaxTPSResult{}
+
+	// Define time windows
+	timeWindows := []struct {
+		field    *int
+		interval string
+	}{
+		{&result.LastHour, "1 HOUR"},
+		{&result.LastDay, "1 DAY"},
+		{&result.LastWeek, "7 DAY"},
+		{&result.LastMonth, "30 DAY"},
+		{&result.Last90Days, "90 DAY"},
+		{&result.LastYear, "365 DAY"},
+	}
+
+	// Query each time window
+	for _, window := range timeWindows {
+		value, err := m.queryMaxTPS(ctx, chainIDInt, window.interval)
+		if err != nil {
+			log.Printf("Error querying maxTPS for interval %s: %v", window.interval, err)
+			// Continue with other windows even if one fails
+			*window.field = 0
+		} else {
+			*window.field = value
+		}
+	}
+
+	// Query all-time max
+	allTimeValue, err := m.queryMaxTPSAllTime(ctx, chainIDInt)
+	if err != nil {
+		log.Printf("Error querying all-time maxTPS: %v", err)
+		result.AllTime = 0
+	} else {
+		result.AllTime = allTimeValue
+	}
+
+	// Log the request
+	log.Printf("MaxTPS request: chain=%s", chainID)
+
+	// Send response
+	response := MaxTPSResponse{Result: result}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding maxTPS response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// queryMaxTPS queries the maximum TPS for a specific time window
+func (m *MetricsModule) queryMaxTPS(ctx context.Context, chainID *uint32, interval string) (int, error) {
+	var query string
+	var args []interface{}
+
+	if chainID == nil {
+		// No chain filter for "total"
+		query = fmt.Sprintf(`
+			SELECT MAX(tx_count) as max_tps
+			FROM mv_metrics_tps_second
+			WHERE second_bucket >= now() - INTERVAL %s
+		`, interval)
+		args = []interface{}{}
+	} else {
+		// Filter by specific chain
+		query = fmt.Sprintf(`
+			SELECT MAX(tx_count) as max_tps
+			FROM mv_metrics_tps_second
+			WHERE chain_id = ? AND second_bucket >= now() - INTERVAL %s
+		`, interval)
+		args = []interface{}{*chainID}
+	}
+
+	row := m.conn.QueryRow(ctx, query, args...)
+	var maxTPS uint32
+	if err := row.Scan(&maxTPS); err != nil {
+		return 0, fmt.Errorf("failed to scan maxTPS: %w", err)
+	}
+
+	return int(maxTPS), nil
+}
+
+// queryMaxTPSAllTime queries the all-time maximum TPS
+func (m *MetricsModule) queryMaxTPSAllTime(ctx context.Context, chainID *uint32) (int, error) {
+	var query string
+	var args []interface{}
+
+	if chainID == nil {
+		// No chain filter for "total"
+		query = `SELECT MAX(tx_count) as max_tps FROM mv_metrics_tps_second`
+		args = []interface{}{}
+	} else {
+		// Filter by specific chain
+		query = `SELECT MAX(tx_count) as max_tps FROM mv_metrics_tps_second WHERE chain_id = ?`
+		args = []interface{}{*chainID}
+	}
+
+	row := m.conn.QueryRow(ctx, query, args...)
+	var maxTPS uint32
+	if err := row.Scan(&maxTPS); err != nil {
+		return 0, fmt.Errorf("failed to scan all-time maxTPS: %w", err)
+	}
+
+	return int(maxTPS), nil
 }
 
 // Close closes the ClickHouse connection

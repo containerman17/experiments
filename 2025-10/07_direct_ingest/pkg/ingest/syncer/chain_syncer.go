@@ -1,11 +1,11 @@
 package syncer
 
 import (
+	"clickhouse-metrics-poc/pkg/ingest/cache"
+	"clickhouse-metrics-poc/pkg/ingest/chwrapper"
+	"clickhouse-metrics-poc/pkg/ingest/rpc"
 	"context"
 	"fmt"
-	"ingest/pkg/cache"
-	"ingest/pkg/chwrapper"
-	"ingest/pkg/rpc"
 	"log"
 	"sync"
 	"time"
@@ -23,9 +23,8 @@ type Config struct {
 	FetchBatchSize   int           // Blocks per fetch, default 100
 	BufferSize       int           // Max batches in channel, default 10
 	FlushInterval    time.Duration // Default 1 second
-	FlushBatchSize   int           // Max blocks per DB write, default 1000
 	CHConn           driver.Conn   // ClickHouse connection
-	Cache            cache.Cache   // Cache for RPC calls
+	Cache            *cache.Cache  // Cache for RPC calls
 }
 
 // ChainSyncer manages blockchain sync for a single chain
@@ -37,7 +36,6 @@ type ChainSyncer struct {
 	watermark      uint32                      // Current sync position
 	fetchBatchSize int
 	flushInterval  time.Duration
-	flushBatchSize int
 
 	// Max block numbers in each table (queried once at startup)
 	maxBlockBlocks       uint32
@@ -59,10 +57,6 @@ type ChainSyncer struct {
 
 // NewChainSyncer creates a new chain syncer
 func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
-	// Apply defaults
-	if cfg.RpcConcurrency == 0 {
-		cfg.RpcConcurrency = 300
-	}
 	if cfg.FetchBatchSize == 0 {
 		cfg.FetchBatchSize = 100
 	}
@@ -70,16 +64,13 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		cfg.BufferSize = 20000
 	}
 	if cfg.FlushInterval == 0 {
-		cfg.FlushInterval = 1 * time.Second
-	}
-	if cfg.FlushBatchSize == 0 {
-		cfg.FlushBatchSize = 1000
+		cfg.FlushInterval = 1000 * time.Millisecond
 	}
 	if cfg.RpcConcurrency == 0 {
-		cfg.RpcConcurrency = 200
+		cfg.RpcConcurrency = 20
 	}
 	if cfg.DebugConcurrency == 0 {
-		cfg.DebugConcurrency = 200
+		cfg.DebugConcurrency = 20
 	}
 
 	// Create fetcher
@@ -103,7 +94,6 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		blockChan:      make(chan []*rpc.NormalizedBlock, cfg.BufferSize),
 		fetchBatchSize: cfg.FetchBatchSize,
 		flushInterval:  cfg.FlushInterval,
-		flushBatchSize: cfg.FlushBatchSize,
 		ctx:            ctx,
 		cancel:         cancel,
 		lastPrintTime:  time.Now(),
@@ -320,6 +310,7 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 
 	ctx := context.Background()
 	g, ctx := errgroup.WithContext(ctx)
+	start := time.Now()
 
 	// Insert to blocks table
 	g.Go(func() error {
@@ -345,6 +336,9 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("failed to insert blocks: %w", err)
 	}
+
+	elapsed := time.Since(start)
+	log.Printf("[Chain %d] Inserted %d blocks in %v", cs.chainId, len(blocks), elapsed)
 
 	// Update watermark to the highest block number in this batch
 	maxBlock := uint32(0)

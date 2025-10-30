@@ -1,4 +1,4 @@
-module ingest
+module clickhouse-metrics-poc
 
 go 1.24.0
 

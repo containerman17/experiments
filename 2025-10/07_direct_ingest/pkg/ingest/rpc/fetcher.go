@@ -2,9 +2,9 @@ package rpc
 
 import (
 	"bytes"
+	"clickhouse-metrics-poc/pkg/ingest/cache"
 	"encoding/json"
 	"fmt"
-	"ingest/pkg/cache"
 	"net"
 	"net/http"
 	"sort"
@@ -22,7 +22,7 @@ type FetcherOptions struct {
 	MaxRetries       int              // Maximum number of retries per request
 	RetryDelay       time.Duration    // Initial retry delay
 	ProgressCallback ProgressCallback // Optional progress callback
-	Cache            cache.Cache      // Optional cache for complete blocks
+	Cache            *cache.Cache     // Optional cache for complete blocks
 }
 
 type Fetcher struct {
@@ -32,7 +32,7 @@ type Fetcher struct {
 	maxRetries     int
 	retryDelay     time.Duration
 	progressCb     ProgressCallback
-	cache          cache.Cache
+	cache          *cache.Cache
 
 	// Concurrency control
 	rpcLimit   chan struct{}
@@ -357,51 +357,37 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		return f.fetchBlockRangeUncached(from, to)
 	}
 
-	// Step 1: Check cache for all blocks
-	var missingBlocks []int64
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for i := int64(0); i < int64(numBlocks); i++ {
-		blockNum := from + i
-		wg.Add(1)
-		go func(bn int64, idx int) {
-			defer wg.Done()
-
-			data, err := f.cache.GetCompleteBlock(bn, func() ([]byte, error) {
-				// This will only be called if cache miss
-				// Mark as missing for batch fetch
-				mu.Lock()
-				missingBlocks = append(missingBlocks, bn)
-				mu.Unlock()
-				return nil, fmt.Errorf("cache miss") // Signal cache miss
-			})
-
-			if err == nil {
-				// Cache hit - deserialize
-				var block NormalizedBlock
-				if err := json.Unmarshal(data, &block); err != nil {
-					fmt.Printf("Warning: failed to deserialize cached block %d: %v\n", bn, err)
-					mu.Lock()
-					missingBlocks = append(missingBlocks, bn)
-					mu.Unlock()
-					return
-				}
-				mu.Lock()
-				result[idx] = &block
-				mu.Unlock()
-			}
-		}(blockNum, int(i))
+	// Step 1: Check cache for all blocks using efficient range query
+	cachedData, err := f.cache.GetBlockRange(from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query cache range: %w", err)
 	}
 
-	wg.Wait()
+	// Step 2: Process cache hits and identify misses
+	var missingBlocks []int64
+	for i := int64(0); i < int64(numBlocks); i++ {
+		blockNum := from + i
+		if data, ok := cachedData[blockNum]; ok && data != nil {
+			// Cache hit - deserialize
+			var block NormalizedBlock
+			if err := json.Unmarshal(data, &block); err != nil {
+				fmt.Printf("Warning: failed to deserialize cached block %d: %v\n", blockNum, err)
+				missingBlocks = append(missingBlocks, blockNum)
+			} else {
+				result[int(i)] = &block
+			}
+		} else {
+			// Cache miss
+			missingBlocks = append(missingBlocks, blockNum)
+		}
+	}
 
-	// Step 2: If all cached, return
+	// Step 3: If all cached, return
 	if len(missingBlocks) == 0 {
 		return result, nil
 	}
 
-	// Step 3: Fetch missing blocks
+	// Step 4: Fetch missing blocks
 	sort.Slice(missingBlocks, func(i, j int) bool {
 		return missingBlocks[i] < missingBlocks[j]
 	})
@@ -412,7 +398,7 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 		return nil, err
 	}
 
-	// Step 4: Fill in missing blocks in result
+	// Step 5: Fill in missing blocks in result
 	for _, blockNum := range missingBlocks {
 		idx := int(blockNum - from)
 		if block, ok := fetchedBlocks[blockNum]; ok {

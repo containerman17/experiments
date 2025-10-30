@@ -1,10 +1,10 @@
 package syncer
 
 import (
+	"clickhouse-metrics-poc/pkg/ingest/rpc"
 	"context"
 	"encoding/json"
 	"fmt"
-	"ingest/pkg/rpc"
 	"math/big"
 	"strconv"
 	"strings"

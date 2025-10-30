@@ -1,14 +1,13 @@
 package main
 
 import (
-	"ingest/pkg/cache/pebble"
-	"ingest/pkg/chwrapper"
-	"ingest/pkg/syncer"
+	"clickhouse-metrics-poc/pkg/ingest/cache"
+	"clickhouse-metrics-poc/pkg/ingest/chwrapper"
+	"clickhouse-metrics-poc/pkg/ingest/syncer"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 )
 
 func main() {
@@ -17,7 +16,7 @@ func main() {
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
 
 	// Create cache
-	cache, err := pebble.New("./data")
+	cache, err := cache.New("./data", chainID)
 	if err != nil {
 		log.Fatalf("Failed to create cache: %v", err)
 	}
@@ -37,15 +36,13 @@ func main() {
 
 	// Create and configure syncer
 	chainSyncer, err := syncer.NewChainSyncer(syncer.Config{
-		ChainID:        chainID,
-		RpcURL:         rpcURL,
-		RpcConcurrency: 300,
-		FetchBatchSize: 100,             // Fetch 100 blocks at a time
-		BufferSize:     10,              // Buffer up to 10 batches
-		FlushInterval:  1 * time.Second, // Flush to DB every second
-		FlushBatchSize: 1000,            // Or when we have 1000 blocks
-		CHConn:         conn,
-		Cache:          cache,
+		ChainID:          chainID,
+		RpcURL:           rpcURL,
+		RpcConcurrency:   300,
+		DebugConcurrency: 100,
+		CHConn:           conn,
+		Cache:            cache,
+		FetchBatchSize:   500,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create syncer: %v", err)

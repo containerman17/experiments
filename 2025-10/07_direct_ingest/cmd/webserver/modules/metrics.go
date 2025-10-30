@@ -177,7 +177,7 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 	startTime := time.Unix(startTimestamp, 0)
 	endTime := time.Unix(endTimestamp, 0)
 
-	// Determine time bucket function based on interval
+	// Determine time bucket function based on interval (use UTC timezone)
 	var timeBucketFunc string
 	switch timeInterval {
 	case "hour":
@@ -197,11 +197,11 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 	var queryArgs []interface{}
 	if chainID == nil {
 		// No chain filter for "total"
-		whereClause = "WHERE hour_bucket >= toDateTime(?) AND hour_bucket < toDateTime(?)"
+		whereClause = "WHERE hour_bucket >= toDateTime(?, 'UTC') AND hour_bucket < toDateTime(?, 'UTC')"
 		queryArgs = []interface{}{startTime, endTime, pageSize + 1}
 	} else {
 		// Filter by specific chain
-		whereClause = "WHERE chain_id = ? AND hour_bucket >= toDateTime(?) AND hour_bucket < toDateTime(?)"
+		whereClause = "WHERE chain_id = ? AND hour_bucket >= toDateTime(?, 'UTC') AND hour_bucket < toDateTime(?, 'UTC')"
 		queryArgs = []interface{}{*chainID, startTime, endTime, pageSize + 1}
 	}
 
@@ -211,25 +211,102 @@ func (m *MetricsModule) queryMetric(ctx context.Context, chainID *uint32, metric
 	if metricName == "activeAddresses" {
 		query = fmt.Sprintf(`
 			SELECT 
-				toUnixTimestamp(%s(hour_bucket)) as timestamp,
+				toUnixTimestamp(%s(hour_bucket, 'UTC')) as timestamp,
 				COUNT(DISTINCT address) as value
 			FROM metrics_activeAddresses
 			%s
-			GROUP BY %s(hour_bucket)
+			GROUP BY %s(hour_bucket, 'UTC')
 			ORDER BY timestamp ASC
 			LIMIT ?
 		`, timeBucketFunc, whereClause, timeBucketFunc)
 	} else if metricName == "activeSenders" {
 		query = fmt.Sprintf(`
 			SELECT 
-				toUnixTimestamp(%s(hour_bucket)) as timestamp,
+				toUnixTimestamp(%s(hour_bucket, 'UTC')) as timestamp,
 				COUNT(DISTINCT address) as value
 			FROM metrics_activeSenders
 			%s
-			GROUP BY %s(hour_bucket)
+			GROUP BY %s(hour_bucket, 'UTC')
 			ORDER BY timestamp ASC
 			LIMIT ?
 		`, timeBucketFunc, whereClause, timeBucketFunc)
+	} else if metricName == "txCount" {
+		// Regular transaction count per time interval
+		query = fmt.Sprintf(`
+			SELECT 
+				toUnixTimestamp(%s(hour_bucket, 'UTC')) as timestamp,
+				toUInt64(SUM(tx_count)) as value
+			FROM mv_metrics_txCount_hourly
+			%s
+			GROUP BY %s(hour_bucket, 'UTC')
+			ORDER BY timestamp ASC
+			LIMIT ?
+		`, timeBucketFunc, whereClause, timeBucketFunc)
+	} else if metricName == "cumulativeTxCount" {
+		// Cumulative transaction count from genesis to (timestamp + 24h)
+		// For each timestamp, counts ALL transactions from the beginning up to that point + 24h
+		if chainID == nil {
+			// For 'total', sum across all chains
+			query = fmt.Sprintf(`
+				WITH time_points AS (
+					SELECT DISTINCT %s(hour_bucket, 'UTC') as time_bucket
+					FROM mv_metrics_txCount_hourly
+					WHERE hour_bucket >= toDateTime(?, 'UTC') 
+						AND hour_bucket < toDateTime(?, 'UTC')
+						AND %s(hour_bucket, 'UTC') >= toDateTime(?, 'UTC')
+						AND %s(hour_bucket, 'UTC') < toDateTime(?, 'UTC')
+					ORDER BY time_bucket
+				)
+				SELECT 
+					toUnixTimestamp(t.time_bucket) as timestamp,
+					toUInt64(SUM(m.tx_count)) as value
+				FROM time_points t
+				CROSS JOIN mv_metrics_txCount_hourly m
+				WHERE m.hour_bucket < t.time_bucket + INTERVAL 1 DAY
+				GROUP BY t.time_bucket
+				ORDER BY timestamp ASC
+				LIMIT ?
+			`, timeBucketFunc, timeBucketFunc, timeBucketFunc)
+			// Need to duplicate timestamps for the additional WHERE conditions
+			if len(queryArgs) >= 3 {
+				newArgs := []interface{}{queryArgs[0], queryArgs[1], queryArgs[0], queryArgs[1]}
+				newArgs = append(newArgs, queryArgs[2:]...)
+				queryArgs = newArgs
+			}
+		} else {
+			// For specific chain - count all transactions from genesis to each point + 24h
+			query = fmt.Sprintf(`
+				WITH time_points AS (
+					SELECT DISTINCT %s(hour_bucket, 'UTC') as time_bucket
+					FROM mv_metrics_txCount_hourly
+					WHERE chain_id = ?
+						AND hour_bucket >= toDateTime(?, 'UTC') 
+						AND hour_bucket < toDateTime(?, 'UTC')
+						AND %s(hour_bucket, 'UTC') >= toDateTime(?, 'UTC')
+						AND %s(hour_bucket, 'UTC') < toDateTime(?, 'UTC')
+					ORDER BY time_bucket
+				)
+				SELECT 
+					toUnixTimestamp(t.time_bucket) as timestamp,
+					toUInt64(SUM(m.tx_count)) as value
+				FROM time_points t
+				CROSS JOIN mv_metrics_txCount_hourly m
+				WHERE m.chain_id = ?
+					AND m.hour_bucket < t.time_bucket + INTERVAL 1 DAY
+				GROUP BY t.time_bucket
+				ORDER BY timestamp ASC
+				LIMIT ?
+			`, timeBucketFunc, timeBucketFunc, timeBucketFunc)
+			// Need to duplicate timestamps and chain_id for the additional WHERE conditions
+			if len(queryArgs) >= 4 {
+				// Original: chain_id, startTime, endTime, pageSize+1
+				// New: chain_id, startTime, endTime, startTime, endTime, chain_id, pageSize+1
+				newArgs := make([]interface{}, 0, len(queryArgs)+3)
+				newArgs = append(newArgs, queryArgs[0], queryArgs[1], queryArgs[2], queryArgs[1], queryArgs[2], queryArgs[0])
+				newArgs = append(newArgs, queryArgs[3:]...)
+				queryArgs = newArgs
+			}
+		}
 	} else {
 		return nil, 0, fmt.Errorf("unsupported metric: %s", metricName)
 	}

@@ -21,94 +21,83 @@ ORDER BY (chain_id);
 -- This computes per-chain maxTPS values every 5 minutes
 -- For "total" across all chains, we compute MAX at query time in the application
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_rollingWindowMetrics_maxTps_precomputed
-REFRESH EVERY 5 MINUTE
+REFRESH EVERY 1 MINUTE
 TO rollingWindowMetrics_maxTps_precomputed
 AS
-WITH max_block_time AS (
-    -- Get the latest block time across all chains
-    SELECT MAX(block_time) as latest_time
-    FROM raw_blocks
-)
 SELECT
     chain_id,
     now() AS computed_at,  -- When this computation was done
-    -- lastHour: query seconds directly relative to latest data time
+    -- lastHour: query seconds TABLE directly relative to latest data time
     COALESCE(
         (SELECT MAX(tx_count) 
-         FROM mv_rollingWindowMetrics_tps_second s
-         CROSS JOIN max_block_time
+         FROM rollingWindowMetrics_tps_second s
          WHERE s.chain_id = chains.chain_id 
-           AND s.second_bucket >= latest_time - INTERVAL 1 HOUR
-           AND s.second_bucket <= latest_time), 
+           AND s.second_bucket >= (SELECT MAX(block_time) FROM raw_blocks) - INTERVAL 1 HOUR
+           AND s.second_bucket <= (SELECT MAX(block_time) FROM raw_blocks)), 
         0
     ) AS last_hour,
     
-    -- lastDay: query hourly aggregates relative to latest data time
+    -- lastDay: query hourly aggregates TABLE relative to latest data time
     COALESCE(
         (SELECT maxMerge(max_tps) 
-         FROM mv_rollingWindowMetrics_maxTps_hourly h
-         CROSS JOIN max_block_time
+         FROM rollingWindowMetrics_maxTps_hourly h
          WHERE h.chain_id = chains.chain_id 
-           AND h.hour_bucket >= latest_time - INTERVAL 1 DAY
-           AND h.hour_bucket <= latest_time), 
+           AND h.hour_bucket >= (SELECT MAX(block_time) FROM raw_blocks) - INTERVAL 1 DAY
+           AND h.hour_bucket <= (SELECT MAX(block_time) FROM raw_blocks)), 
         0
     ) AS last_day,
     
-    -- lastWeek: query hourly aggregates relative to latest data time
+    -- lastWeek: query hourly aggregates TABLE relative to latest data time
     COALESCE(
         (SELECT maxMerge(max_tps) 
-         FROM mv_rollingWindowMetrics_maxTps_hourly h
-         CROSS JOIN max_block_time
+         FROM rollingWindowMetrics_maxTps_hourly h
          WHERE h.chain_id = chains.chain_id 
-           AND h.hour_bucket >= latest_time - INTERVAL 7 DAY
-           AND h.hour_bucket <= latest_time), 
+           AND h.hour_bucket >= (SELECT MAX(block_time) FROM raw_blocks) - INTERVAL 7 DAY
+           AND h.hour_bucket <= (SELECT MAX(block_time) FROM raw_blocks)), 
         0
     ) AS last_week,
     
-    -- lastMonth: query daily aggregates relative to latest data time
+    -- lastMonth: query daily aggregates TABLE relative to latest data time
     COALESCE(
         (SELECT maxMerge(max_tps) 
-         FROM mv_rollingWindowMetrics_maxTps_daily d
-         CROSS JOIN max_block_time
+         FROM rollingWindowMetrics_maxTps_daily d
          WHERE d.chain_id = chains.chain_id 
-           AND d.day_bucket >= latest_time - INTERVAL 30 DAY
-           AND d.day_bucket <= latest_time), 
+           AND d.day_bucket >= (SELECT MAX(block_time) FROM raw_blocks) - INTERVAL 30 DAY
+           AND d.day_bucket <= (SELECT MAX(block_time) FROM raw_blocks)), 
         0
     ) AS last_month,
     
-    -- last90Days: query daily aggregates relative to latest data time
+    -- last90Days: query daily aggregates TABLE relative to latest data time
     COALESCE(
         (SELECT maxMerge(max_tps) 
-         FROM mv_rollingWindowMetrics_maxTps_daily d
-         CROSS JOIN max_block_time
+         FROM rollingWindowMetrics_maxTps_daily d
          WHERE d.chain_id = chains.chain_id 
-           AND d.day_bucket >= latest_time - INTERVAL 90 DAY
-           AND d.day_bucket <= latest_time), 
+           AND d.day_bucket >= (SELECT MAX(block_time) FROM raw_blocks) - INTERVAL 90 DAY
+           AND d.day_bucket <= (SELECT MAX(block_time) FROM raw_blocks)), 
         0
     ) AS last_90_days,
     
-    -- lastYear: query daily aggregates relative to latest data time
+    -- lastYear: query daily aggregates TABLE relative to latest data time
     COALESCE(
         (SELECT maxMerge(max_tps) 
-         FROM mv_rollingWindowMetrics_maxTps_daily d
-         CROSS JOIN max_block_time
+         FROM rollingWindowMetrics_maxTps_daily d
          WHERE d.chain_id = chains.chain_id 
-           AND d.day_bucket >= latest_time - INTERVAL 365 DAY
-           AND d.day_bucket <= latest_time), 
+           AND d.day_bucket >= (SELECT MAX(block_time) FROM raw_blocks) - INTERVAL 365 DAY
+           AND d.day_bucket <= (SELECT MAX(block_time) FROM raw_blocks)), 
         0
     ) AS last_year,
     
-    -- allTime: query daily aggregates (all available data)
+    -- allTime: query daily aggregates TABLE (all available data)
     COALESCE(
         (SELECT maxMerge(max_tps) 
-         FROM mv_rollingWindowMetrics_maxTps_daily d
+         FROM rollingWindowMetrics_maxTps_daily d
          WHERE d.chain_id = chains.chain_id), 
         0
     ) AS all_time
 FROM (
     -- Get list of all chains that have data
     SELECT DISTINCT chain_id 
-    FROM mv_rollingWindowMetrics_tps_second
+    FROM rollingWindowMetrics_tps_second
     WHERE chain_id != 0  -- Exclude any test/placeholder entries
 ) AS chains;
 

@@ -14,8 +14,22 @@ func main() {
 		log.Fatalf("Failed to create metrics module: %v", err)
 	}
 
-	// Register routes
-	http.HandleFunc("/v2/chains/", metricsModule.Handler)
+	// Create rolling window metrics module
+	rollingWindowModule, err := modules.NewRollingWindowMetricsModule()
+	if err != nil {
+		log.Fatalf("Failed to create rolling window metrics module: %v", err)
+	}
+
+	// Combined handler that routes to appropriate module
+	http.HandleFunc("/v2/chains/", func(w http.ResponseWriter, r *http.Request) {
+		// Try rolling window metrics first (more specific path)
+		if rollingWindowModule.PathMatches(r.URL.Path) {
+			rollingWindowModule.Handler(w, r)
+			return
+		}
+		// Fall back to regular metrics
+		metricsModule.Handler(w, r)
+	})
 
 	// Start server
 	port := ":8080"

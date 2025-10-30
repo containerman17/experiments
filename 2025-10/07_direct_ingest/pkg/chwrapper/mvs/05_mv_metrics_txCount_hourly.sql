@@ -4,6 +4,7 @@
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_metrics_txCount_hourly
 ENGINE = SummingMergeTree()
 ORDER BY (chain_id, hour_bucket)
+POPULATE
 AS
 SELECT 
     chain_id,

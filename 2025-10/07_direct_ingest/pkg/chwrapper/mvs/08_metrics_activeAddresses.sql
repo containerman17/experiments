@@ -1,6 +1,6 @@
 -- Merge table for querying all active addresses
 -- Combines data from both transaction and log MVs at query time
--- Named with 'zz_' prefix to ensure it executes AFTER the MVs are created
+-- Executes AFTER the MVs (06 and 07) are created due to numeric prefix
 CREATE TABLE IF NOT EXISTS metrics_activeAddresses AS mv_metrics_activeAddresses_transactions
 ENGINE = Merge(currentDatabase(), '^mv_metrics_activeAddresses_.*');
 

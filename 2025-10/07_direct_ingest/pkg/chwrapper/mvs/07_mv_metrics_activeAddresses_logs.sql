@@ -3,6 +3,7 @@
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_metrics_activeAddresses_logs
 ENGINE = ReplacingMergeTree()
 ORDER BY (chain_id, hour_bucket, address)
+POPULATE
 AS
 WITH 
     -- ERC20/721 Transfer signature

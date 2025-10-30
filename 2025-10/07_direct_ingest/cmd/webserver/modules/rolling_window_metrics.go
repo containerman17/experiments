@@ -35,14 +35,19 @@ func NewRollingWindowMetricsModule() (*RollingWindowMetricsModule, error) {
 // RollingWindowResponse represents the response format
 type RollingWindowResponse struct {
 	Result struct {
-		LastHour   int `json:"lastHour"`
-		LastDay    int `json:"lastDay"`
-		LastWeek   int `json:"lastWeek"`
-		LastMonth  int `json:"lastMonth"`
-		Last90Days int `json:"last90Days"`
-		LastYear   int `json:"lastYear"`
-		AllTime    int `json:"allTime"`
+		LastHour   uint32 `json:"lastHour"`
+		LastDay    uint32 `json:"lastDay"`
+		LastWeek   uint32 `json:"lastWeek"`
+		LastMonth  uint32 `json:"lastMonth"`
+		Last90Days uint32 `json:"last90Days"`
+		LastYear   uint32 `json:"lastYear"`
+		AllTime    uint32 `json:"allTime"`
 	} `json:"result"`
+}
+
+// PathMatches checks if the path matches the rolling window metrics pattern
+func (m *RollingWindowMetricsModule) PathMatches(path string) bool {
+	return m.pathPattern.MatchString(path)
 }
 
 // Handler handles rolling window metrics API requests

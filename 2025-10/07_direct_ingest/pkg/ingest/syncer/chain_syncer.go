@@ -332,7 +332,11 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 	}
 
 	elapsed := time.Since(start)
-	log.Printf("[Chain %d] Inserted %d blocks in %v", cs.chainId, len(blocks), elapsed)
+	txCount := 0
+	for _, b := range blocks {
+		txCount += len(b.Block.Transactions)
+	}
+	log.Printf("[Chain %d] Inserted %d blocks and %d txs in %v", cs.chainId, len(blocks), txCount, elapsed)
 
 	// Update watermark to the highest block number in this batch
 	maxBlock := uint32(0)

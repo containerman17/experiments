@@ -3,6 +3,7 @@
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_metrics_activeAddresses_transactions
 ENGINE = ReplacingMergeTree()
 ORDER BY (chain_id, hour_bucket, address)
+POPULATE
 AS
 SELECT DISTINCT
     chain_id,

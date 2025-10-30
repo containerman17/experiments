@@ -4,21 +4,7 @@
 
 **Source:** [`pkg/chwrapper/raw_tables.sql`](pkg/chwrapper/raw_tables.sql)
 
-```mermaid
-graph TB
-    A[Blockchain] -->|Headers| B[raw_blocks]
-    A -->|Transactions + Receipts| C[raw_transactions]
-    A -->|Internal calls| D[raw_traces]
-    A -->|Event logs| E[raw_logs]
-    A -->|Sync progress| F[sync_watermark]
-    
-    B -.->|Denormalized<br/>block_time, base_fee| C
-    C -.->|Denormalized<br/>tx_from, tx_to| E
-    
-    style F fill:#ffe6e6
-```
-
-We store blockchain data in ClickHouse across 5 main tables:
+We store blockchain data in ClickHouse across 5 tables:
 
 ### `raw_blocks`
 Block headers with all the standard fields - number, hash, timestamp, gas metrics, state roots, etc. Partitioned by chain_id and month for efficient queries. Nothing fancy here, just denormalized block data.
@@ -124,7 +110,9 @@ This is a cascading aggregation pipeline - each level feeds the next, reducing d
 Instead of scanning millions of transactions for "what's the max TPS this month?", we:
 1. Aggregate once at insertion time (seconds)
 2. Cascade aggregations to coarser granularities (hours, days)
-3. Pre-compute common queries every minute
-4. Result: sub-millisecond query times regardless of data volume
+3. Pre-compute all 7 time windows every minute in a single refreshable MV
+4. API just does a single row lookup: `SELECT * FROM precomputed WHERE chain_id = ? ORDER BY computed_at DESC LIMIT 1`
+5. For "total" across chains: `SELECT MAX(last_hour), MAX(last_day)... FROM (latest row per chain)`
+6. Result: single row fetch = instant response regardless of data volume
 
 The key insight: blockchain data is append-only. Historical maxTPS values never change, so aggressive pre-aggregation works perfectly. The only thing that changes is the current/recent data, which the refreshable view handles.

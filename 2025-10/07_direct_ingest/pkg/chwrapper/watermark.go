@@ -7,13 +7,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-// GetWatermark returns the current watermark block number, or 0 if not set
-func GetWatermark(conn driver.Conn) (uint32, error) {
+// GetWatermark returns the current watermark block number for a given chain, or 0 if not set
+func GetWatermark(conn driver.Conn, chainId uint32) (uint32, error) {
 	ctx := context.Background()
 
-	query := "SELECT block_number FROM watermark WHERE id = 1"
+	query := "SELECT block_number FROM sync_watermark WHERE chain_id = ?"
 
-	row := conn.QueryRow(ctx, query)
+	row := conn.QueryRow(ctx, query, chainId)
 	var blockNumber uint32
 	if err := row.Scan(&blockNumber); err != nil {
 		// No watermark exists yet
@@ -23,13 +23,13 @@ func GetWatermark(conn driver.Conn) (uint32, error) {
 	return blockNumber, nil
 }
 
-// SetWatermark updates the watermark to the given block number
-func SetWatermark(conn driver.Conn, blockNumber uint32) error {
+// SetWatermark updates the watermark to the given block number for a specific chain
+func SetWatermark(conn driver.Conn, chainId uint32, blockNumber uint32) error {
 	ctx := context.Background()
 
-	query := "INSERT INTO watermark (id, block_number) VALUES (1, ?)"
+	query := "INSERT INTO sync_watermark (chain_id, block_number) VALUES (?, ?)"
 
-	if err := conn.Exec(ctx, query, blockNumber); err != nil {
+	if err := conn.Exec(ctx, query, chainId, blockNumber); err != nil {
 		return fmt.Errorf("failed to set watermark: %w", err)
 	}
 

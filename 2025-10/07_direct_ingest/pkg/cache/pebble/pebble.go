@@ -2,7 +2,7 @@ package pebble
 
 import (
 	"fmt"
-	"ingest/pkg/cacher"
+	"ingest/pkg/cache"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/sstable/block"
@@ -70,4 +70,4 @@ func (c *PebbleCache) Close() error {
 }
 
 // Ensure PebbleCache implements Cache interface
-var _ cacher.Cache = (*PebbleCache)(nil)
+var _ cache.Cache = (*PebbleCache)(nil)

@@ -1,28 +1,20 @@
 package main
 
 import (
-	"fmt"
-	"ingest/pkg/cacher/pebble"
-	"ingest/pkg/cacher/placeholder"
-	"ingest/pkg/rpc"
+	"ingest/pkg/cache/pebble"
+	"ingest/pkg/chwrapper"
+	"ingest/pkg/syncer"
 	"log"
-	"math/rand"
-	"sync"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
 func main() {
-	// Hardcoded configuration
+	// Configuration
+	chainID := uint32(43114) // Avalanche C-Chain
 	rpcURL := "http://localhost:9650/ext/bc/C/rpc"
-	startBlock := int64(1 + rand.Int63n(70000000))
-	// startBlock := int64(1)
-	chunkSize := int64(100) // Process  blocks at a time
-	rpcConcurrency := 300
-	maxRetries := 100
-	retryDelay := 100 * time.Millisecond
-	debugConcurrency := 200
-	batchSize := 1
-	debugBatchSize := 1
 
 	// Create cache
 	cache, err := pebble.New("./data")
@@ -31,120 +23,51 @@ func main() {
 	}
 	defer cache.Close()
 
-	placeholderCache, err := placeholder.New()
+	// Connect to ClickHouse
+	conn, err := chwrapper.Connect()
 	if err != nil {
-		log.Fatalf("Failed to create placeholder cache: %v", err)
+		log.Fatalf("Failed to connect to ClickHouse: %v", err)
 	}
-	defer placeholderCache.Close()
+	defer conn.Close()
 
-	_ = placeholderCache
-	_ = cache
+	err = chwrapper.CreateTables(conn)
+	if err != nil {
+		log.Fatalf("Failed to create tables: %v", err)
+	}
 
-	// Progress tracking
-	var (
-		mu                 sync.Mutex
-		lastPrintTime      = time.Now()
-		startTime          = time.Now()
-		totalBlocksFetched int64
-		totalTxsFetched    int64
-	)
-
-	// Create fetcher with progress callback
-	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
-		RpcURL:           rpcURL,
-		RpcConcurrency:   rpcConcurrency,
-		MaxRetries:       maxRetries,
-		RetryDelay:       retryDelay,
-		DebugConcurrency: debugConcurrency,
-		BatchSize:        batchSize,
-		DebugBatchSize:   debugBatchSize,
-		Cache:            cache,
-		ProgressCallback: func(phase string, current, total int64, txCount int) {
-			mu.Lock()
-			defer mu.Unlock()
-			totalTxsFetched += int64(txCount)
-			// Print stats every 2 seconds
-			now := time.Now()
-			if now.Sub(lastPrintTime) >= 2*time.Second {
-				totalElapsed := now.Sub(startTime).Seconds()
-				fmt.Printf("[%v] Blocks: %d | Blocks/sec: %.1f | Txs/sec: %.1f\n",
-					time.Since(startTime).Round(time.Second),
-					totalBlocksFetched,
-					float64(totalBlocksFetched)/totalElapsed,
-					float64(totalTxsFetched)/totalElapsed)
-				lastPrintTime = now
-			}
-		},
+	// Create and configure syncer
+	chainSyncer, err := syncer.NewChainSyncer(syncer.Config{
+		ChainID:        chainID,
+		RpcURL:         rpcURL,
+		RpcConcurrency: 300,
+		FetchBatchSize: 100,             // Fetch 100 blocks at a time
+		BufferSize:     10,              // Buffer up to 10 batches
+		FlushInterval:  1 * time.Second, // Flush to DB every second
+		FlushBatchSize: 1000,            // Or when we have 1000 blocks
+		CHConn:         conn,
+		Cache:          cache,
 	})
-
-	// Get latest block
-	latestBlock, err := fetcher.GetLatestBlock()
 	if err != nil {
-		log.Fatalf("Failed to get latest block: %v", err)
+		log.Fatalf("Failed to create syncer: %v", err)
 	}
 
-	fmt.Printf("Processing blocks %d to %d in chunks of %d\n", startBlock, latestBlock, chunkSize)
-	fmt.Printf("RPC Concurrency: %d\n\n", rpcConcurrency)
-
-	// Process blocks in chunks
-	for from := startBlock; from <= latestBlock; from += chunkSize {
-		to := from + chunkSize - 1
-		if to > latestBlock {
-			to = latestBlock
-		}
-
-		// Fetch chunk
-		blocks, err := fetcher.FetchBlockRange(from, to)
-		if err != nil {
-			log.Fatalf("Failed to fetch blocks %d-%d: %v", from, to, err)
-		}
-
-		//Print fist block
-		// if blocks[0].Block.Number == fmt.Sprintf("0x%x", startBlock) {
-		// 	blockJson, err := json.MarshalIndent(blocks[0], "", "  ")
-		// 	if err != nil {
-		// 		log.Fatalf("Error marshaling first block to JSON: %v\n", err)
-		// 	}
-
-		// 	err = os.WriteFile(fmt.Sprintf("./example_block_%d.json", startBlock), blockJson, 0644)
-		// 	if err != nil {
-		// 		log.Fatalf("Error writing first block to file: %v\n", err)
-		// 	}
-		// }
-
-		// for _, block := range blocks {
-		// 	fmt.Printf("Uncles: %+v\n", block.Block.Uncles)
-		// }
-
-		// Count transactions in chunk
-		chunkTxs := 0
-		chunkTraces := 0
-		for _, block := range blocks {
-			chunkTxs += len(block.Block.Transactions)
-			for _, trace := range block.Traces {
-				if trace.Result != nil {
-					chunkTraces++
-				}
-			}
-		}
-
-		// Update total progress
-		mu.Lock()
-		totalBlocksFetched += int64(len(blocks))
-		mu.Unlock()
-
-		// TODO: Process/save blocks here (e.g., write to database or file)
-		// For now, just discard them to free memory
-		blocks = nil
+	// Start syncing
+	if err := chainSyncer.Start(); err != nil {
+		log.Fatalf("Failed to start syncer: %v", err)
 	}
 
-	// Calculate final statistics
-	elapsed := time.Since(startTime)
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Printf("\n=== Complete ===\n")
-	fmt.Printf("Time: %v | Blocks: %d | Txs: %d\n",
-		elapsed.Round(time.Second), totalBlocksFetched, totalTxsFetched)
-	fmt.Printf("Overall: %.1f blocks/sec | %.1f txs/sec\n",
-		float64(totalBlocksFetched)/elapsed.Seconds(),
-		float64(totalTxsFetched)/elapsed.Seconds())
+	go func() {
+		<-sigChan
+		log.Println("Received shutdown signal, stopping gracefully...")
+		chainSyncer.Stop()
+	}()
+
+	// Wait for syncer to complete or be stopped
+	chainSyncer.Wait()
+
+	log.Println("Sync completed")
 }

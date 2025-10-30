@@ -1,7 +1,7 @@
 package placeholder
 
 import (
-	"ingest/pkg/cacher"
+	"ingest/pkg/cache"
 )
 
 // PlaceholderCache implements the Cache interface but does no caching
@@ -23,4 +23,4 @@ func (c *PlaceholderCache) Close() error {
 }
 
 // Ensure PlaceholderCache implements Cache interface
-var _ cacher.Cache = (*PlaceholderCache)(nil)
+var _ cache.Cache = (*PlaceholderCache)(nil)

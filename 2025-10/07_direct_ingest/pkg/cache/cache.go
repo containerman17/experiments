@@ -1,4 +1,4 @@
-package cacher
+package cache
 
 // Cache is an interface for caching complete blockchain blocks.
 // Each block is cached as a complete unit (block + receipts + traces) as JSON bytes.

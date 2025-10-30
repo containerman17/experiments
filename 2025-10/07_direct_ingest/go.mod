@@ -8,6 +8,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.3
 	github.com/cockroachdb/pebble/v2 v2.1.1
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/sync v0.17.0
 )
 
 require (

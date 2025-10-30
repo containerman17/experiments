@@ -1,4 +1,4 @@
-package ingest
+package syncer
 
 import (
 	"context"
@@ -142,12 +142,28 @@ func computePriorityFee(gasPrice, baseFee, maxPriority uint64) uint64 {
 }
 
 // InsertBlocks inserts block data into the blocks table
-func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock) error {
+func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
-	batch, err := conn.PrepareBatch(ctx, `INSERT INTO blocks (
+	// Filter out blocks already in the table
+	var filteredBlocks []*rpc.NormalizedBlock
+	for _, b := range blocks {
+		blockNum, err := hexToUint32(b.Block.Number)
+		if err != nil {
+			continue
+		}
+		if blockNum > maxBlock {
+			filteredBlocks = append(filteredBlocks, b)
+		}
+	}
+
+	if len(filteredBlocks) == 0 {
+		return nil
+	}
+
+	batch, err := conn.PrepareBatch(ctx, `INSERT INTO raw_blocks (
 		chain_id, block_number, hash, parent_hash, block_time, miner,
 		difficulty, total_difficulty, size, gas_limit, gas_used, base_fee_per_gas,
 		block_gas_cost, state_root, transactions_root, receipts_root, extra_data,
@@ -158,7 +174,7 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
 
-	for _, normalizedBlock := range blocks {
+	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
 
 		// Convert block number
@@ -259,10 +275,11 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 			return fmt.Errorf("failed to parse mix hash: %w", err)
 		}
 
-		nonce, err := hexToFixedBytes(block.Nonce, 8)
+		nonceBytes, err := hexToFixedBytes(block.Nonce, 8)
 		if err != nil {
 			return fmt.Errorf("failed to parse nonce: %w", err)
 		}
+		nonce := string(nonceBytes) // LowCardinality requires string
 
 		// Uncles
 		sha3Uncles, err := hexToFixedBytes(block.Sha3Uncles, 32)
@@ -284,10 +301,11 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 		excessBlobGas, _ := hexToUint64(block.ExcessBlobGas)
 
 		// Parent beacon block root
-		parentBeaconRoot, _ := hexToFixedBytes(block.ParentBeaconBlockRoot, 32)
-		if len(parentBeaconRoot) == 0 {
-			parentBeaconRoot = make([]byte, 32) // Zero hash if empty
+		parentBeaconRootBytes, _ := hexToFixedBytes(block.ParentBeaconBlockRoot, 32)
+		if len(parentBeaconRootBytes) == 0 {
+			parentBeaconRootBytes = make([]byte, 32) // Zero hash if empty
 		}
+		parentBeaconRoot := string(parentBeaconRootBytes) // LowCardinality requires string
 
 		// Append to batch
 		err = batch.Append(
@@ -328,12 +346,28 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 }
 
 // InsertTransactions inserts transaction data merged with receipts into the transactions table
-func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock) error {
+func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
-	batch, err := conn.PrepareBatch(ctx, `INSERT INTO transactions (
+	// Filter out blocks already in the table
+	var filteredBlocks []*rpc.NormalizedBlock
+	for _, b := range blocks {
+		blockNum, err := hexToUint32(b.Block.Number)
+		if err != nil {
+			continue
+		}
+		if blockNum > maxBlock {
+			filteredBlocks = append(filteredBlocks, b)
+		}
+	}
+
+	if len(filteredBlocks) == 0 {
+		return nil
+	}
+
+	batch, err := conn.PrepareBatch(ctx, `INSERT INTO raw_transactions (
 		chain_id, hash, block_number, block_hash, block_time,
 		transaction_index, nonce, from, to, value, gas_limit, gas_price,
 		gas_used, success, input, type, max_fee_per_gas, max_priority_fee_per_gas,
@@ -343,7 +377,7 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
 
-	for _, normalizedBlock := range blocks {
+	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
 		receipts := normalizedBlock.Receipts
 
@@ -401,14 +435,13 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 			}
 
 			// To address (nullable for contract creation)
-			var to []byte
-			var toPtr *[]byte
+			var to any = nil
 			if tx.To != "" && tx.To != "0x" {
-				to, err = hexToFixedBytes(tx.To, 20)
+				toBytes, err := hexToFixedBytes(tx.To, 20)
 				if err != nil {
 					return fmt.Errorf("failed to parse to address: %w", err)
 				}
-				toPtr = &to
+				to = toBytes
 			}
 
 			// Value
@@ -477,12 +510,11 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 			}
 
 			// Contract address (from receipt, for contract creation)
-			var contractAddr []byte
-			var contractAddrPtr *[]byte
+			var contractAddr any = nil
 			if receipt.ContractAddress != nil && *receipt.ContractAddress != "" && *receipt.ContractAddress != "0x" {
-				contractAddr, err = hexToFixedBytes(*receipt.ContractAddress, 20)
+				contractAddrBytes, err := hexToFixedBytes(*receipt.ContractAddress, 20)
 				if err == nil {
-					contractAddrPtr = &contractAddr
+					contractAddr = contractAddrBytes
 				}
 			}
 
@@ -525,7 +557,7 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 				txIndex,
 				nonce,
 				from,
-				toPtr,
+				to,
 				value,
 				gasLimit,
 				gasPrice,
@@ -537,7 +569,7 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 				maxPriorityFeePerGas,
 				priorityFeePerGas,
 				baseFeePerGas,
-				contractAddrPtr,
+				contractAddr,
 				accessList,
 			)
 			if err != nil {
@@ -654,12 +686,28 @@ func flattenTrace(trace *rpc.CallTrace, txHash string, blockNum uint32, blockTim
 }
 
 // InsertTraces inserts trace data into the traces table
-func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock) error {
+func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
-	batch, err := conn.PrepareBatch(ctx, `INSERT INTO traces (
+	// Filter out blocks already in the table
+	var filteredBlocks []*rpc.NormalizedBlock
+	for _, b := range blocks {
+		blockNum, err := hexToUint32(b.Block.Number)
+		if err != nil {
+			continue
+		}
+		if blockNum > maxBlock {
+			filteredBlocks = append(filteredBlocks, b)
+		}
+	}
+
+	if len(filteredBlocks) == 0 {
+		return nil
+	}
+
+	batch, err := conn.PrepareBatch(ctx, `INSERT INTO raw_traces (
 		chain_id, tx_hash, block_number, block_time, transaction_index,
 		trace_address, from, to, gas, gas_used, value, input, output, call_type
 	)`)
@@ -667,7 +715,7 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
 
-	for _, normalizedBlock := range blocks {
+	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
 
 		// Parse block data
@@ -710,9 +758,9 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 					return fmt.Errorf("failed to parse tx hash: %w", err)
 				}
 
-				var toPtr *[]byte
+				var to any = nil
 				if len(trace.To) > 0 {
-					toPtr = &trace.To
+					to = trace.To
 				}
 
 				err = batch.Append(
@@ -723,7 +771,7 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 					trace.TransactionIndex,
 					trace.TraceAddress,
 					trace.From,
-					toPtr,
+					to,
 					trace.Gas,
 					trace.GasUsed,
 					trace.Value,
@@ -742,12 +790,28 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 }
 
 // InsertLogs inserts log data into the logs table
-func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock) error {
+func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
-	batch, err := conn.PrepareBatch(ctx, `INSERT INTO logs (
+	// Filter out blocks already in the table
+	var filteredBlocks []*rpc.NormalizedBlock
+	for _, b := range blocks {
+		blockNum, err := hexToUint32(b.Block.Number)
+		if err != nil {
+			continue
+		}
+		if blockNum > maxBlock {
+			filteredBlocks = append(filteredBlocks, b)
+		}
+	}
+
+	if len(filteredBlocks) == 0 {
+		return nil
+	}
+
+	batch, err := conn.PrepareBatch(ctx, `INSERT INTO raw_logs (
 		chain_id, address, block_number, block_hash, block_time,
 		transaction_hash, transaction_index, log_index, tx_from, tx_to,
 		topic0, topic1, topic2, topic3, data, removed
@@ -756,7 +820,7 @@ func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, block
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
 
-	for _, normalizedBlock := range blocks {
+	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
 		receipts := normalizedBlock.Receipts
 
@@ -791,12 +855,11 @@ func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, block
 				return fmt.Errorf("failed to parse tx from: %w", err)
 			}
 
-			var txTo []byte
-			var txToPtr *[]byte
+			var txTo any = nil
 			if tx.To != "" && tx.To != "0x" {
-				txTo, err = hexToFixedBytes(tx.To, 20)
+				txToBytes, err := hexToFixedBytes(tx.To, 20)
 				if err == nil {
-					txToPtr = &txTo
+					txTo = txToBytes
 				}
 			}
 
@@ -826,35 +889,37 @@ func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, block
 					return fmt.Errorf("failed to parse log index: %w", err)
 				}
 
-				// Topics (up to 4, all nullable)
-				var topic0, topic1, topic2, topic3 []byte
-				var topic0Ptr, topic1Ptr, topic2Ptr, topic3Ptr *[]byte
+				// Topics: topic0 is non-nullable (empty for anonymous events), others nullable
+				var topic0 []byte
+				var topic1, topic2, topic3 any = nil, nil, nil
 
 				if len(log.Topics) > 0 && log.Topics[0] != "" {
 					topic0, err = hexToFixedBytes(log.Topics[0], 32)
-					if err == nil {
-						topic0Ptr = &topic0
+					if err != nil {
+						return fmt.Errorf("failed to parse topic0: %w", err)
 					}
+				} else {
+					topic0 = make([]byte, 32) // Empty for anonymous events
 				}
 
 				if len(log.Topics) > 1 && log.Topics[1] != "" {
-					topic1, err = hexToFixedBytes(log.Topics[1], 32)
+					topic1Bytes, err := hexToFixedBytes(log.Topics[1], 32)
 					if err == nil {
-						topic1Ptr = &topic1
+						topic1 = topic1Bytes
 					}
 				}
 
 				if len(log.Topics) > 2 && log.Topics[2] != "" {
-					topic2, err = hexToFixedBytes(log.Topics[2], 32)
+					topic2Bytes, err := hexToFixedBytes(log.Topics[2], 32)
 					if err == nil {
-						topic2Ptr = &topic2
+						topic2 = topic2Bytes
 					}
 				}
 
 				if len(log.Topics) > 3 && log.Topics[3] != "" {
-					topic3, err = hexToFixedBytes(log.Topics[3], 32)
+					topic3Bytes, err := hexToFixedBytes(log.Topics[3], 32)
 					if err == nil {
-						topic3Ptr = &topic3
+						topic3 = topic3Bytes
 					}
 				}
 
@@ -875,11 +940,11 @@ func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, block
 					txIndex,
 					logIndex,
 					txFrom,
-					txToPtr,
-					topic0Ptr,
-					topic1Ptr,
-					topic2Ptr,
-					topic3Ptr,
+					txTo,
+					topic0,
+					topic1,
+					topic2,
+					topic3,
 					string(data),
 					log.Removed,
 				)

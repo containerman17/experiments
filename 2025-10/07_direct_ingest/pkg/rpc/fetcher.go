@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"ingest/pkg/cacher"
+	"ingest/pkg/cache"
 	"net"
 	"net/http"
 	"sort"
@@ -22,7 +22,7 @@ type FetcherOptions struct {
 	MaxRetries       int              // Maximum number of retries per request
 	RetryDelay       time.Duration    // Initial retry delay
 	ProgressCallback ProgressCallback // Optional progress callback
-	Cache            cacher.Cache     // Optional cache for complete blocks
+	Cache            cache.Cache      // Optional cache for complete blocks
 }
 
 type Fetcher struct {
@@ -32,7 +32,7 @@ type Fetcher struct {
 	maxRetries     int
 	retryDelay     time.Duration
 	progressCb     ProgressCallback
-	cache          cacher.Cache
+	cache          cache.Cache
 
 	// Concurrency control
 	rpcLimit   chan struct{}
@@ -398,11 +398,8 @@ func (f *Fetcher) FetchBlockRange(from, to int64) ([]*NormalizedBlock, error) {
 
 	// Step 2: If all cached, return
 	if len(missingBlocks) == 0 {
-		fmt.Printf("All %d blocks found in cache\n", numBlocks)
 		return result, nil
 	}
-
-	fmt.Printf("Cache: %d hits, %d misses\n", numBlocks-len(missingBlocks), len(missingBlocks))
 
 	// Step 3: Fetch missing blocks
 	sort.Slice(missingBlocks, func(i, j int) bool {

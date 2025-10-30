@@ -1,8 +1,8 @@
 package main
 
 import (
+	"clickhouse-metrics-poc/pkg/chwrapper"
 	"clickhouse-metrics-poc/pkg/ingest/cache"
-	"clickhouse-metrics-poc/pkg/ingest/chwrapper"
 	"clickhouse-metrics-poc/pkg/ingest/syncer"
 	"encoding/json"
 	"log"

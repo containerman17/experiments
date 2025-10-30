@@ -1,8 +1,8 @@
 package syncer
 
 import (
+	"clickhouse-metrics-poc/pkg/chwrapper"
 	"clickhouse-metrics-poc/pkg/ingest/cache"
-	"clickhouse-metrics-poc/pkg/ingest/chwrapper"
 	"clickhouse-metrics-poc/pkg/ingest/rpc"
 	"context"
 	"fmt"

@@ -25,6 +25,7 @@ const (
 type Config struct {
 	ChainID        uint32
 	RpcURL         string
+	StartBlock     int64        // Starting block number when no watermark exists, default 68000000
 	MaxConcurrency int          // Maximum concurrent RPC and debug requests, default 20
 	FetchBatchSize int          // Blocks per fetch, default 100
 	CHConn         driver.Conn  // ClickHouse connection
@@ -38,6 +39,7 @@ type ChainSyncer struct {
 	conn           driver.Conn
 	blockChan      chan []*rpc.NormalizedBlock // Bounded channel for backpressure
 	watermark      uint32                      // Current sync position
+	startBlock     int64                       // Starting block when no watermark
 	fetchBatchSize int
 	flushInterval  time.Duration
 
@@ -67,6 +69,9 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	if cfg.MaxConcurrency == 0 {
 		cfg.MaxConcurrency = 20
 	}
+	if cfg.StartBlock == 0 {
+		cfg.StartBlock = 1
+	}
 
 	// Create fetcher
 	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
@@ -86,6 +91,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		fetcher:        fetcher,
 		conn:           cfg.CHConn,
 		blockChan:      make(chan []*rpc.NormalizedBlock, BufferSize),
+		startBlock:     cfg.StartBlock,
 		fetchBatchSize: cfg.FetchBatchSize,
 		flushInterval:  FlushInterval,
 		ctx:            ctx,
@@ -174,9 +180,9 @@ func (cs *ChainSyncer) getStartingBlock() (int64, error) {
 	}
 	cs.watermark = watermark
 
-	// If no watermark, start from block 1
+	// If no watermark, start from configured start block
 	if watermark == 0 {
-		return 1, nil
+		return cs.startBlock, nil
 	}
 
 	// Start from watermark+1

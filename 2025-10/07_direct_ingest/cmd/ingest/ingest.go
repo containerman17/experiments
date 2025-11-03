@@ -15,11 +15,13 @@ import (
 type ChainConfig struct {
 	ChainID        uint32 `json:"chainID"`
 	RpcURL         string `json:"rpcURL"`
+	StartBlock     int64  `json:"startBlock,omitempty"`
 	MaxConcurrency int    `json:"maxConcurrency,omitempty"`
 	FetchBatchSize int    `json:"fetchBatchSize,omitempty"`
 }
 
 func main() {
+	log.Println("Starting ingest...")
 	// Load configuration
 	configData, err := os.ReadFile("config.json")
 	if err != nil {
@@ -67,6 +69,7 @@ func main() {
 		chainSyncer, err := syncer.NewChainSyncer(syncer.Config{
 			ChainID:        cfg.ChainID,
 			RpcURL:         cfg.RpcURL,
+			StartBlock:     cfg.StartBlock,
 			MaxConcurrency: cfg.MaxConcurrency,
 			CHConn:         conn,
 			Cache:          cache,

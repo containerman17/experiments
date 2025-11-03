@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS raw_blocks (
     uncles Array(FixedString(32)),
     blob_gas_used UInt32,  -- Always 0 if no blob txs
     excess_blob_gas UInt64,  -- Always 0 if no blob txs
-    parent_beacon_block_root LowCardinality(FixedString(32))  -- Often all zeros
+    parent_beacon_block_root LowCardinality(FixedString(32)),  -- Often all zeros
+    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number)
 PARTITION BY (chain_id, toYYYYMM(block_time));
@@ -58,7 +59,8 @@ CREATE TABLE IF NOT EXISTS raw_transactions (
     access_list Array(Tuple(
         address FixedString(20),
         storage_keys Array(FixedString(32))
-    ))  -- Properly structured, not JSON
+    )),  -- Properly structured, not JSON
+    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number, transaction_index)
 PARTITION BY (chain_id, toYYYYMM(block_time));
@@ -78,7 +80,8 @@ CREATE TABLE IF NOT EXISTS raw_traces (
     value UInt256,
     input String,
     output String,
-    call_type LowCardinality(String)  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
+    call_type LowCardinality(String),  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
+    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number, transaction_index)
 PARTITION BY (chain_id, toYYYYMM(block_time));
@@ -101,7 +104,8 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     topic2 Nullable(FixedString(32)),
     topic3 Nullable(FixedString(32)),
     data String,  -- Non-indexed event data
-    removed Bool  -- true if removed due to chain reorg
+    removed Bool,  -- TODO: check if ever happen to be true
+    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_time, address, topic0)
 PARTITION BY (chain_id, toYYYYMM(block_time));

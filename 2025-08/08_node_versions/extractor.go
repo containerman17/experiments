@@ -45,7 +45,8 @@ func ExtractPeersFromPeer(
 	tlsCert *tls.Certificate,
 	network *discoveryNetwork,
 	trackedSubnets set.Set[ids.ID],
-	waitSeconds time.Duration,
+	waitDuration time.Duration,
+	networkID uint32,
 ) (*ExtractedPeerInfo, error) {
 	// Parse IP
 	addr, err := netip.ParseAddrPort(peerIP)
@@ -67,10 +68,10 @@ func ExtractPeersFromPeer(
 	})
 
 	// Overall timeout for entire operation - generous for busy nodes
-	ctx, cancel := context.WithTimeout(context.Background(), waitSeconds)
+	ctx, cancel := context.WithTimeout(context.Background(), waitDuration)
 	defer cancel()
 
-	p, err := connectToPeer(ctx, addr, tlsCert, network, msgHandler, trackedSubnets)
+	p, err := connectToPeer(ctx, addr, tlsCert, network, msgHandler, trackedSubnets, networkID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +125,7 @@ func connectToPeer(
 	network peer.Network,
 	msgHandler router.InboundHandler,
 	trackedSubnets set.Set[ids.ID],
+	networkID uint32,
 ) (peer.Peer, error) {
 	// Connect to remote peer using context timeout
 	conn, err := (&net.Dialer{}).DialContext(ctx, constants.NetworkType, remoteIP.String())
@@ -204,6 +206,12 @@ func connectToPeer(
 	fakeValidators := validators.NewManager()
 	fakeValidators.AddStaker(constants.PrimaryNetworkID, myNodeID, nil, ids.Empty, 1)
 
+	// Get network-specific upgrade config to determine version compatibility
+	upgradeConfig := upgrade.GetConfig(networkID)
+
+	// Use EtnaTime for compatibility (latest activated upgrade on Fuji)
+	compatibilityTime := upgradeConfig.EtnaTime
+
 	// Create peer configuration
 	config := &peer.Config{
 		Metrics:              metrics,
@@ -212,12 +220,12 @@ func connectToPeer(
 		InboundMsgThrottler:  throttling.NewNoInboundThrottler(),
 		Network:              network,
 		Router:               msgHandler,
-		VersionCompatibility: version.GetCompatibility(upgrade.InitiallyActiveTime),
+		VersionCompatibility: version.GetCompatibility(compatibilityTime),
 		MyNodeID:             myNodeID,
 		MySubnets:            trackedSubnets,
 		Beacons:              validators.NewManager(),
 		Validators:           fakeValidators, // Pretend we're a validator
-		NetworkID:            constants.MainnetID,
+		NetworkID:            networkID,
 		PingFrequency:        constants.DefaultPingFrequency,
 		PongTimeout:          constants.DefaultPingPongTimeout,
 		MaxClockDifference:   10 * time.Second,

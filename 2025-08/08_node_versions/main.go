@@ -16,18 +16,50 @@ import (
 )
 
 func main() {
+	// First check for AVA_NETWORK environment variable
+	networkArg := os.Getenv("AVA_NETWORK")
+	argIndex := 1
+
+	// If no env var, parse network argument (fuji or mainnet)
+	if networkArg == "" {
+		if len(os.Args) < 2 {
+			fmt.Println("❌ Usage: go run . <network> [initialize_only]")
+			fmt.Println("   network must be: fuji or mainnet")
+			fmt.Println("   Or set AVA_NETWORK environment variable")
+			os.Exit(1)
+		}
+		networkArg = os.Args[1]
+		argIndex = 2 // initialize_only will be at index 2 if network is from args
+	}
+
+	var networkID uint32
+	var networkName string
+
+	switch networkArg {
+	case "fuji":
+		networkID = constants.FujiID
+		networkName = "fuji"
+	case "mainnet":
+		networkID = constants.MainnetID
+		networkName = "mainnet"
+	default:
+		fmt.Printf("❌ Invalid network: %s\n", networkArg)
+		fmt.Println("   network must be: fuji or mainnet")
+		os.Exit(1)
+	}
+
 	initializeOnly := false
-	if len(os.Args) > 1 && os.Args[1] == "initialize_only" {
+	if len(os.Args) > argIndex && os.Args[argIndex] == "initialize_only" {
 		initializeOnly = true
 		fmt.Println("🚀 Initializing peer store...")
 		fmt.Println("================================================")
 	}
 
-	fmt.Println("🚀 Starting one-by-one peer discovery...")
+	fmt.Printf("🚀 Starting one-by-one peer discovery for %s...\n", networkName)
 	fmt.Println("================================================")
 
-	// Load or create TLS certificate
-	tlsCert, err := loadOrCreateCertificate()
+	// Load or create TLS certificate (network-specific)
+	tlsCert, err := loadOrCreateCertificate(networkName)
 	if err != nil {
 		fmt.Printf("❌ Failed to setup certificate: %v\n", err)
 		return
@@ -42,19 +74,12 @@ func main() {
 	myNodeID := ids.NodeIDFromCert(parsedCert)
 	fmt.Printf("🔑 Our NodeID: %s\n", myNodeID)
 
-	// Setup tracked subnets
-	subnet1, _ := ids.FromString("23dqTMHK186m4Rzcn1ukJdmHy13nqido4LjTp5Kh9W6qBKaFib")
-	// subnet2, _ := ids.FromString("nQCwF6V9y8VFjvMuPeQVWWYn6ba75518Dpf6ZMWZNb3NyTA94")
-	// subnet3, _ := ids.FromString("jmLmezoViv3F72XLzpdmSNk3qLEGb72g5EYkp3ij4wHXPF2KN")
-	// subnet4, _ := ids.FromString("2qJPnDkDH6hn3PVzxzkUdTqDD1HeAnTT8FL4t2BJagc2iuq8j7")
 	trackedSubnets := set.Set[ids.ID]{}
-	trackedSubnets.Add(subnet1)
-	// trackedSubnets.Add(subnet2)
-	// trackedSubnets.Add(subnet3)
-	// trackedSubnets.Add(subnet4)
+	// subnet1, _ := ids.FromString("23dqTMHK186m4Rzcn1ukJdmHy13nqido4LjTp5Kh9W6qBKaFib")
+	// trackedSubnets.Add(subnet1)
 
-	// Initialize peer store
-	peerStore, err := NewPeerStore()
+	// Initialize peer store with network-specific file
+	peerStore, err := NewPeerStore(networkName)
 	if err != nil {
 		fmt.Printf("❌ Failed to create peer store: %v\n", err)
 		return
@@ -63,7 +88,7 @@ func main() {
 	// If no peers exist, add bootstrap nodes
 	if peerStore.PeerCount() == 0 {
 		fmt.Println("📡 Loading bootstrap nodes...")
-		bootstrappers := genesis.SampleBootstrappers(constants.MainnetID, 20)
+		bootstrappers := genesis.SampleBootstrappers(networkID, 30)
 		for _, b := range bootstrappers {
 			peerStore.AddPeer(b.ID, b.IP, "", nil)
 			fmt.Printf("  📍 Added bootstrap: %s\n", b.ID)
@@ -109,7 +134,7 @@ func main() {
 			time.Now().Format("15:04:05"), len(peers))
 
 		// Process peers in parallel
-		processPeerBatch(peers, peerStore, tlsCert, network, trackedSubnets, initializeOnly)
+		processPeerBatch(peers, peerStore, tlsCert, network, trackedSubnets, initializeOnly, networkID)
 
 		// Save updated peer list
 		if err := peerStore.Save(); err != nil {
@@ -125,6 +150,7 @@ func processPeerBatch(
 	network *discoveryNetwork,
 	trackedSubnets set.Set[ids.ID],
 	initializeOnly bool,
+	networkID uint32,
 ) {
 	var wg sync.WaitGroup
 	wg.Add(len(peers))
@@ -147,11 +173,11 @@ func processPeerBatch(
 
 			// Try to extract peers
 
-			waitSeconds := 20 * time.Second
+			waitDuration := 20 * time.Second
 			if initializeOnly {
-				waitSeconds = 3 * time.Second
+				waitDuration = 3 * time.Second
 			}
-			peerInfo, err := ExtractPeersFromPeer(p.IP, tlsCert, peerNetwork, trackedSubnets, waitSeconds)
+			peerInfo, err := ExtractPeersFromPeer(p.IP, tlsCert, peerNetwork, trackedSubnets, waitDuration, networkID)
 			if err != nil {
 				mu.Lock()
 				failCount++
@@ -176,13 +202,13 @@ func processPeerBatch(
 		successCount+failCount, len(peers), successCount, failCount, totalNewPeers, peerStore.PeerCount())
 }
 
-func loadOrCreateCertificate() (*tls.Certificate, error) {
-	certPath := filepath.Join("/tmp", "avalanche_cert.pem")
-	keyPath := filepath.Join("/tmp", "avalanche_key.pem")
+func loadOrCreateCertificate(networkName string) (*tls.Certificate, error) {
+	certPath := filepath.Join("/tmp", fmt.Sprintf("avalanche_cert_%s.pem", networkName))
+	keyPath := filepath.Join("/tmp", fmt.Sprintf("avalanche_key_%s.pem", networkName))
 
 	// Try to load existing certificate
 	if _, err := os.Stat(certPath); err == nil {
-		fmt.Println("📂 Loading existing certificate from /tmp/...")
+		fmt.Printf("📂 Loading existing certificate for %s from /tmp/...\n", networkName)
 		stakingCert, err := os.ReadFile(certPath)
 		if err != nil {
 			return nil, err
@@ -202,7 +228,7 @@ func loadOrCreateCertificate() (*tls.Certificate, error) {
 	}
 
 	// Create new certificate
-	fmt.Println("🔐 Creating new certificate...")
+	fmt.Printf("🔐 Creating new certificate for %s...\n", networkName)
 	stakingKey, stakingCert, err := staking.NewCertAndKeyBytes()
 	if err != nil {
 		return nil, err
@@ -217,20 +243,4 @@ func loadOrCreateCertificate() (*tls.Certificate, error) {
 	}
 
 	return staking.LoadTLSCertFromBytes(stakingCert, stakingKey)
-}
-
-func formatTimestamp(t time.Time) string {
-	if t.IsZero() {
-		return "Never"
-	}
-
-	duration := time.Since(t)
-	if duration < time.Minute {
-		return fmt.Sprintf("%.0f seconds ago", duration.Seconds())
-	} else if duration < time.Hour {
-		return fmt.Sprintf("%.0f minutes ago", duration.Minutes())
-	} else if duration < 24*time.Hour {
-		return fmt.Sprintf("%.1f hours ago", duration.Hours())
-	}
-	return fmt.Sprintf("%.1f days ago", duration.Hours()/24)
 }

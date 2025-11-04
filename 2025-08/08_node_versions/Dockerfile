@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.9-alpine AS builder
 
 # Install build dependencies for CGO
 RUN apk add --no-cache git gcc musl-dev
@@ -20,7 +20,7 @@ COPY *.go ./
 RUN go build -o main .
 
 # Initialize peer store to generate peerlist.json
-RUN ./main initialize_only
+# RUN ./main initialize_only
 
 # Runtime stage
 FROM alpine:latest
@@ -35,7 +35,7 @@ RUN mkdir -p /tmp
 COPY --from=builder /app/main /main
 
 # Copy the generated peerlist.json from builder
-COPY --from=builder /app/peerlist.json /peerlist.json
+# COPY --from=builder /app/peerlist.json /peerlist.json
 
 # Expose port (assuming the API runs on 8080 based on common patterns)
 EXPOSE 8080

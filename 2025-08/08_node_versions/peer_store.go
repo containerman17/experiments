@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	peerListPath = "./peerlist.json"
-	bloomSalt    = "discovery"
+	bloomSalt = "discovery"
 )
 
 type PeerInfo struct {
@@ -27,14 +26,16 @@ type PeerInfo struct {
 }
 
 type PeerStore struct {
-	mu          sync.RWMutex
-	peers       map[string]*PeerInfo // key is NodeID string
-	bloomFilter *bloom.Filter
+	mu           sync.RWMutex
+	peers        map[string]*PeerInfo // key is NodeID string
+	bloomFilter  *bloom.Filter
+	peerListPath string
 }
 
-func NewPeerStore() (*PeerStore, error) {
+func NewPeerStore(networkName string) (*PeerStore, error) {
 	store := &PeerStore{
-		peers: make(map[string]*PeerInfo),
+		peers:        make(map[string]*PeerInfo),
+		peerListPath: fmt.Sprintf("./peerlist_%s.json", networkName),
 	}
 
 	// Create bloom filter
@@ -54,7 +55,7 @@ func NewPeerStore() (*PeerStore, error) {
 }
 
 func (ps *PeerStore) Load() error {
-	data, err := os.ReadFile(peerListPath)
+	data, err := os.ReadFile(ps.peerListPath)
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,7 @@ func (ps *PeerStore) Save() error {
 		return fmt.Errorf("failed to marshal peers: %w", err)
 	}
 
-	if err := os.WriteFile(peerListPath, data, 0644); err != nil {
+	if err := os.WriteFile(ps.peerListPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write peer list: %w", err)
 	}
 

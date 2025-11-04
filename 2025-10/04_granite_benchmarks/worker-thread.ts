@@ -3,7 +3,11 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { defineChain } from 'viem';
 import { parentPort, workerData } from 'worker_threads';
 
-const wsUrl = "ws://localhost:9650/ext/bc/24zjPnjqpcyCUPqWe7d1kttyJZ5V9edLUGUJVBoGucQeiqAJws/ws";
+const wsUrls = [
+    "ws://3.113.2.23:9650/ext/bc/24zjPnjqpcyCUPqWe7d1kttyJZ5V9edLUGUJVBoGucQeiqAJws/ws",
+    "ws://18.176.53.107:9650/ext/bc/24zjPnjqpcyCUPqWe7d1kttyJZ5V9edLUGUJVBoGucQeiqAJws/ws",
+    "ws://13.159.18.104:9650/ext/bc/24zjPnjqpcyCUPqWe7d1kttyJZ5V9edLUGUJVBoGucQeiqAJws/ws"
+];
 
 const customChain = defineChain({
     id: 112233,
@@ -14,28 +18,24 @@ const customChain = defineChain({
     },
 });
 
-const { privateKey1, privateKey2, workerId } = workerData as {
-    privateKey1: `0x${string}`,
-    privateKey2: `0x${string}`,
+const { privateKeys, workerId } = workerData as {
+    privateKeys: `0x${string}`[],
     workerId: number
 };
 
-const account1 = privateKeyToAccount(privateKey1);
-const account2 = privateKeyToAccount(privateKey2);
+if (parentPort) {
+    parentPort.setMaxListeners(privateKeys.length + 10);
+}
 
-const client1 = createWalletClient({
-    account: account1,
+
+const accounts = privateKeys.map(pk => privateKeyToAccount(pk));
+const clients = accounts.map((account, i) => createWalletClient({
+    account,
     chain: customChain,
-    transport: webSocket(wsUrl),
-});
+    transport: webSocket(wsUrls[i % wsUrls.length]),
+}));
 
-const client2 = createWalletClient({
-    account: account2,
-    chain: customChain,
-    transport: webSocket(wsUrl),
-});
-
-console.log(`Worker ${workerId} started: ${account1.address} <-> ${account2.address}`);
+console.log(`Worker ${workerId} started with ${accounts.length} addresses`);
 
 let txCount = 0;
 
@@ -60,30 +60,22 @@ async function waitForConfirmation(hash: string, timeout: number): Promise<boole
 
 (async () => {
     while (true) {
-        const randomAmount = BigInt(Math.floor(Math.random() * 1000000) + 1);
+        const txPromises = clients.map((client, i) => {
+            const nextIndex = (i + 1) % clients.length;
+            const randomAmount = BigInt(Math.floor(Math.random() * 1000000) + 1);
 
-        const hash1 = await client1.sendTransaction({
-            to: account2.address,
-            value: randomAmount,
+            return client.sendTransaction({
+                to: accounts[nextIndex].address,
+                value: randomAmount,
+            });
         });
 
-        await waitForConfirmation(hash1, 30000);
+        const hashes = await Promise.all(txPromises);
 
-        txCount++;
+        await Promise.all(hashes.map(hash => waitForConfirmation(hash, 30000)));
 
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
+        txCount += hashes.length;
 
-        const randomAmount2 = BigInt(Math.floor(Math.random() * 1000000) + 1);
-
-        const hash2 = await client2.sendTransaction({
-            to: account1.address,
-            value: randomAmount2,
-        });
-
-        await waitForConfirmation(hash2, 30000);
-
-        txCount++;
-
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
+        await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 200));
     }
 })();

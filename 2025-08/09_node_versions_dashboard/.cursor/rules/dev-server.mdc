@@ -1,0 +1,10 @@
+---
+description: Development server management
+alwaysApply: true
+---
+
+# Development Server Rule
+
+Never run `npm run dev` or start the development server - the user runs it in the background themselves.
+
+When the user mentions needing to test or view the application, do not automatically start the dev server. The user manages the development server independently.

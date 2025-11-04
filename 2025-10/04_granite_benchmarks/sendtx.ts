@@ -4,9 +4,11 @@ import { getBalance } from 'viem/actions';
 import { defineChain } from 'viem';
 import { Worker } from 'worker_threads';
 
-const rpcUrl = "http://localhost:9650/ext/bc/24zjPnjqpcyCUPqWe7d1kttyJZ5V9edLUGUJVBoGucQeiqAJws/rpc";
+const rpcUrl = "http://3.113.2.23:9650/ext/bc/24zjPnjqpcyCUPqWe7d1kttyJZ5V9edLUGUJVBoGucQeiqAJws/rpc";
 const wsUrl = rpcUrl.replace('http', 'ws').replace('/rpc', '/ws');
 const SEND_AMOUNT = parseEther("1");
+const WALLETS_PER_WORKER = 200;
+const TOTAL_WALLETS = 14000;
 
 function getDeterministicPrivateKey(index: number): `0x${string}` {
     return keccak256(toHex(`benchmark_secret_${index}`));
@@ -34,22 +36,42 @@ const client = createWalletClient({
 });
 
 const privateKeys: `0x${string}`[] = [];
+const accounts: { privateKey: `0x${string}`; address: `0x${string}`; index: number }[] = [];
 
-for (let i = 0; i < 10; i++) {
+// Generate all accounts
+for (let i = 0; i < TOTAL_WALLETS; i++) {
     const targetPrivateKey = getDeterministicPrivateKey(i);
     const targetAccount = privateKeyToAccount(targetPrivateKey);
     privateKeys.push(targetPrivateKey);
+    accounts.push({ privateKey: targetPrivateKey, address: targetAccount.address, index: i });
+}
 
-    const balance = await getBalance(client, { address: targetAccount.address });
+console.log(`Checking balances for ${TOTAL_WALLETS} wallets in parallel...`);
 
+// Check all balances in parallel
+const balanceChecks = await Promise.all(
+    accounts.map(async (acc) => {
+        const balance = await getBalance(client, { address: acc.address });
+        return { ...acc, balance };
+    })
+);
+
+console.log(`Balance checks complete. Sending transactions...`);
+
+// Send transactions sequentially for wallets that need funding
+for (const { address, balance, index } of balanceChecks) {
     if (balance < SEND_AMOUNT / 2n) {
         const hash = await client.sendTransaction({
-            to: targetAccount.address,
+            to: address,
             value: SEND_AMOUNT,
         });
-        console.log(`Sent 1 AVAX to wallet ${i} (${targetAccount.address}): ${hash}`);
+        if (index % 100 === 0) {
+            console.log(`Sent 1 AVAX to wallet ${index} (${address}): ${hash}`);
+        }
     } else {
-        console.log(`Skipped wallet ${i} (${targetAccount.address}): balance ${balance} >= ${SEND_AMOUNT / 2n}`);
+        if (index % 100 === 0) {
+            console.log(`Skipped wallet ${index} (${address}): balance ${balance} >= ${SEND_AMOUNT / 2n}`);
+        }
     }
 }
 
@@ -57,12 +79,13 @@ console.log("\nFunding complete. Starting workers...\n");
 
 const workers: Worker[] = [];
 
-for (let i = 0; i < privateKeys.length; i += 2) {
-    const workerId = i / 2;
+for (let i = 0; i < privateKeys.length; i += WALLETS_PER_WORKER) {
+    const workerId = i / WALLETS_PER_WORKER;
+    const workerKeys = privateKeys.slice(i, i + WALLETS_PER_WORKER);
+
     const worker = new Worker('./worker-thread.ts', {
         workerData: {
-            privateKey1: privateKeys[i],
-            privateKey2: privateKeys[i + 1],
+            privateKeys: workerKeys,
             workerId
         }
     });
@@ -77,13 +100,16 @@ const publicClient = createPublicClient({
 
 console.log("Watching for new blocks...\n");
 
-let lastBlockTime = Date.now();
+let lastBlockTime: number | null = null;
+
+const blockTimes: number[] = [];
+const blockTxCounts: number[] = [];
 
 publicClient.watchBlocks({
     onBlock: async (block) => {
-        const now = Date.now();
-        const timeSinceLastBlock = now - lastBlockTime;
-        lastBlockTime = now;
+        const timestampMs = parseInt(block.timestampMilliseconds as string, 16);
+        const timeSinceLastBlock = lastBlockTime !== null ? timestampMs - lastBlockTime : 0;
+        lastBlockTime = timestampMs;
 
         const transactions = Array.isArray(block.transactions) ? block.transactions : [];
         let minedHashes: string[];
@@ -95,14 +121,25 @@ publicClient.watchBlocks({
         }
 
         const txCount = minedHashes.length;
+        blockTimes.push(timestampMs);
+        blockTxCounts.push(txCount);
 
-        console.log(`Block #${block.number}: ${txCount} txs (${timeSinceLastBlock}ms since last block)`);
+        const cutoff = timestampMs - 10000;
+        while (blockTimes.length > 0 && blockTimes[0] < cutoff) {
+            blockTimes.shift();
+            blockTxCounts.shift();
+        }
+
+        const totalTxs = blockTxCounts.reduce((sum, count) => sum + count, 0);
+        const tps = totalTxs / 10;
+
+        console.log(`Block #${block.number}: ${txCount} txs (${timeSinceLastBlock}ms since last block) | ${blockTimes.length} blocks in last 10s | ${tps.toFixed(1)} TPS`);
 
         workers.forEach(worker => {
             worker.postMessage({ type: 'mined', hashes: minedHashes });
         });
     },
-    includeTransactions: true,
+    includeTransactions: false,
 });
 
 process.on('SIGINT', () => {

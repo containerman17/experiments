@@ -3,9 +3,9 @@ import { Table } from "console-table-printer";
 
 export { }; // Make this file a module to allow top-level await
 
-const MIN_NVME_SIZE = 3500;
-const MIN_DISK_COUNT = 4;
-const MIN_TOTAL_SSD_DISK_SIZE = 1;
+const MIN_NVME_SIZE = 1;
+const MIN_DISK_COUNT = 1;
+const MIN_TOTAL_SSD_DISK_SIZE = 20000;
 const SKIP_HDD = true;
 
 const OKAY_CPUS: string[] = [

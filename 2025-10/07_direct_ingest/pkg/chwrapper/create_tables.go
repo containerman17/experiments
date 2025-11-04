@@ -13,7 +13,7 @@ import (
 //go:embed raw_tables.sql
 var rawTablesSQL string
 
-//go:embed mvs/*.sql
+//go:embed tables/*.sql
 var mvsFS embed.FS
 
 func CreateTables(conn driver.Conn) error {
@@ -22,7 +22,7 @@ func CreateTables(conn driver.Conn) error {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
-	mvsFiles, err := fs.Glob(mvsFS, "mvs/*.sql")
+	mvsFiles, err := fs.Glob(mvsFS, "tables/*.sql")
 	if err != nil {
 		return fmt.Errorf("failed to list mvs files: %w", err)
 	}

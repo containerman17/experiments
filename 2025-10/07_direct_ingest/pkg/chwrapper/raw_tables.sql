@@ -29,8 +29,7 @@ CREATE TABLE IF NOT EXISTS raw_blocks (
     parent_beacon_block_root LowCardinality(FixedString(32)),  -- Often all zeros
     inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
-ORDER BY (chain_id, block_number)
-PARTITION BY (chain_id, toYYYYMM(block_time));
+ORDER BY (chain_id, block_number);
 
 -- Transactions table - merged with receipts for analytics performance
 CREATE TABLE IF NOT EXISTS raw_transactions (
@@ -62,8 +61,7 @@ CREATE TABLE IF NOT EXISTS raw_transactions (
     )),  -- Properly structured, not JSON
     inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
-ORDER BY (chain_id, block_number, transaction_index)
-PARTITION BY (chain_id, toYYYYMM(block_time));
+ORDER BY (chain_id, block_number);
 
 -- Traces table - flattened trace calls
 CREATE TABLE IF NOT EXISTS raw_traces (
@@ -83,8 +81,7 @@ CREATE TABLE IF NOT EXISTS raw_traces (
     call_type LowCardinality(String),  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
     inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
-ORDER BY (chain_id, block_number, transaction_index)
-PARTITION BY (chain_id, toYYYYMM(block_time));
+ORDER BY (chain_id, block_number);
 
 -- Logs table - event logs emitted by smart contracts
 CREATE TABLE IF NOT EXISTS raw_logs (
@@ -107,8 +104,7 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     removed Bool,  -- TODO: check if ever happen to be true
     inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
-ORDER BY (chain_id, block_time, address, topic0)
-PARTITION BY (chain_id, toYYYYMM(block_time));
+ORDER BY (chain_id, block_time, address, topic0);
 
 -- Watermark table - tracks guaranteed sync progress per chain
 CREATE TABLE IF NOT EXISTS sync_watermark (

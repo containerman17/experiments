@@ -26,7 +26,7 @@ type dirSize struct {
 	sizeGB float64
 }
 
-func main() {
+func runSizes() {
 	fmt.Println("=== ClickHouse Table Sizes ===")
 	fmt.Println()
 
@@ -41,10 +41,10 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Println("=== Disk Usage: ./data/ ===")
+	fmt.Println("=== Disk Usage: ./rpc_cache/ ===")
 	fmt.Println()
-	if err := showDataSizes("./data"); err != nil {
-		log.Fatalf("Failed to show data sizes: %v", err)
+	if err := showRpcCacheSizes("./rpc_cache"); err != nil {
+		log.Fatalf("Failed to show rpc_cache sizes: %v", err)
 	}
 }
 
@@ -89,7 +89,7 @@ func showTableSizes(conn driver.Conn) error {
 	const maxNameLen = 50
 	fmt.Printf("%-*s %15s %15s\n", maxNameLen, "Table", "Rows (M)", "Size (GB)")
 	fmt.Println(strings.Repeat("-", maxNameLen+32))
-	
+
 	var totalRows, totalSize float64
 	for _, t := range tables {
 		name := t.name
@@ -100,14 +100,14 @@ func showTableSizes(conn driver.Conn) error {
 		totalRows += t.rowsMillions
 		totalSize += t.sizeGB
 	}
-	
+
 	fmt.Println(strings.Repeat("-", maxNameLen+32))
 	fmt.Printf("%-*s %15.2f %15.2f\n", maxNameLen, "TOTAL", totalRows, totalSize)
 
 	return nil
 }
 
-func showDataSizes(rootPath string) error {
+func showRpcCacheSizes(rootPath string) error {
 	info, err := os.Stat(rootPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -121,37 +121,29 @@ func showDataSizes(rootPath string) error {
 		return fmt.Errorf("%s is not a directory", rootPath)
 	}
 
+	// Read only top-level entries
+	entries, err := os.ReadDir(rootPath)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
 	var dirs []dirSize
 
-	err = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
 		}
 
-		if !info.IsDir() {
-			return nil
-		}
-
-		size, err := calculateDirSize(path)
+		fullPath := filepath.Join(rootPath, entry.Name())
+		size, err := calculateDirSize(fullPath)
 		if err != nil {
-			return fmt.Errorf("failed to calculate size for %s: %w", path, err)
-		}
-
-		relPath, err := filepath.Rel(rootPath, path)
-		if err != nil {
-			relPath = path
+			return fmt.Errorf("failed to calculate size for %s: %w", fullPath, err)
 		}
 
 		dirs = append(dirs, dirSize{
-			path:   relPath,
+			path:   entry.Name(),
 			sizeGB: float64(size) / (1024.0 * 1024.0 * 1024.0),
 		})
-
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to walk directory: %w", err)
 	}
 
 	sort.Slice(dirs, func(i, j int) bool {
@@ -160,15 +152,15 @@ func showDataSizes(rootPath string) error {
 
 	fmt.Printf("%-50s %15s\n", "Directory", "Size (GB)")
 	fmt.Println("------------------------------------------------------------------------")
-	
+
 	var totalSize float64
 	for _, d := range dirs {
-		if d.sizeGB > 0 || d.path == "." {
+		if d.sizeGB > 0 {
 			fmt.Printf("%-50s %15.2f\n", d.path, d.sizeGB)
 			totalSize += d.sizeGB
 		}
 	}
-	
+
 	fmt.Println("------------------------------------------------------------------------")
 	fmt.Printf("%-50s %15.2f\n", "TOTAL", totalSize)
 

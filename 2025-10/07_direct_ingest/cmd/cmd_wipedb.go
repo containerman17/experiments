@@ -10,7 +10,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-func main() {
+func runWipedb() {
 	conn, err := chwrapper.Connect()
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)

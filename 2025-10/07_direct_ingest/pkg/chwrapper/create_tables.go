@@ -2,9 +2,10 @@ package chwrapper
 
 import (
 	"context"
-	"embed"
+	_ "embed"
 	"fmt"
-	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -13,22 +14,25 @@ import (
 //go:embed raw_tables.sql
 var rawTablesSQL string
 
-//go:embed tables/*.sql
-var mvsFS embed.FS
-
 func CreateTables(conn driver.Conn) error {
 	err := ExecuteSql(conn, rawTablesSQL)
 	if err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
-	mvsFiles, err := fs.Glob(mvsFS, "tables/*.sql")
+	dir := "material_views/tables"
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("failed to list mvs files: %w", err)
 	}
 
-	for _, filePath := range mvsFiles {
-		sql, err := mvsFS.ReadFile(filePath)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+
+		filePath := filepath.Join(dir, entry.Name())
+		sql, err := os.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", filePath, err)
 		}

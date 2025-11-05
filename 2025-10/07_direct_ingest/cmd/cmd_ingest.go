@@ -20,7 +20,7 @@ type ChainConfig struct {
 	FetchBatchSize int    `json:"fetchBatchSize,omitempty"`
 }
 
-func main() {
+func runIngest() {
 	log.Println("Starting ingest...")
 	// Load configuration
 	configData, err := os.ReadFile("config.json")
@@ -59,7 +59,7 @@ func main() {
 	// Start a syncer for each chain
 	for _, cfg := range configs {
 		// Create cache
-		cacheInstance, err := cache.New("./data", cfg.ChainID)
+		cacheInstance, err := cache.New("./rpc_cache", cfg.ChainID)
 		if err != nil {
 			log.Fatalf("Failed to create cache for chain %d: %v", cfg.ChainID, err)
 		}

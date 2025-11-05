@@ -80,22 +80,28 @@ func getSecondsInPeriod(granularity string) int64 {
 // getUnprocessedPeriods returns all complete but unprocessed periods
 func getUnprocessedPeriods(lastProcessed, latestBlockTime time.Time, granularity string) []time.Time {
 	periods := []time.Time{}
-	
+
 	var current time.Time
 	if lastProcessed.IsZero() {
 		// Never processed - start from 2020-01-01 (beginning of blockchain time)
 		startTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 		current = toStartOfPeriod(startTime, granularity)
+
+		// For Week granularity, toStartOfPeriod might go back to previous Sunday (2019-12-29)
+		// Ensure we never go before 2020-01-01
+		if current.Before(startTime) {
+			current = nextPeriod(current, granularity)
+		}
 	} else {
 		// Start from the next period after last processed
 		current = nextPeriod(lastProcessed, granularity)
 	}
-	
+
 	// Add all complete periods
 	for isPeriodComplete(current, granularity, latestBlockTime) {
 		periods = append(periods, current)
 		current = nextPeriod(current, granularity)
 	}
-	
+
 	return periods
 }

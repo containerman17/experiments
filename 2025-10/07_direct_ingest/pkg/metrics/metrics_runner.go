@@ -149,12 +149,12 @@ func (r *MetricsRunner) executeMetric(chainId uint32, metric MetricDefinition, g
 	// Replace any remaining {granularity} placeholders (shouldn't be any, but just in case)
 	sql = strings.ReplaceAll(sql, "{granularity}", strings.ToLower(granularity))
 
-	// Replace period placeholders
-	sql = strings.ReplaceAll(sql, "{first_period:DateTime}", fmt.Sprintf("'%s'", formatPeriodForSQL(firstPeriod, granularity)))
-	sql = strings.ReplaceAll(sql, "{last_period:DateTime}", fmt.Sprintf("'%s'", formatPeriodForSQL(lastPeriod, granularity)))
-	// For Date columns (used in some cumulative metrics)
-	sql = strings.ReplaceAll(sql, "{first_period:Date}", fmt.Sprintf("'%s'", firstPeriod.Format("2006-01-02")))
-	sql = strings.ReplaceAll(sql, "{last_period:Date}", fmt.Sprintf("'%s'", lastPeriod.Format("2006-01-02")))
+	// Replace period placeholders - wrap in toDateTime() for proper type conversion
+	sql = strings.ReplaceAll(sql, "{first_period:DateTime}", fmt.Sprintf("toDateTime('%s')", formatPeriodForSQL(firstPeriod, granularity)))
+
+	// For last_period, we need the next period after lastPeriod
+	lastPeriodNext := nextPeriod(lastPeriod, granularity)
+	sql = strings.ReplaceAll(sql, "{last_period:DateTime}", fmt.Sprintf("toDateTime('%s')", formatPeriodForSQL(lastPeriodNext, granularity)))
 
 	// Replace period_seconds placeholder for metrics that need it
 	sql = strings.ReplaceAll(sql, "{period_seconds:UInt64}", fmt.Sprintf("%d", getSecondsInPeriod(granularity)))
@@ -207,12 +207,20 @@ func (r *MetricsRunner) bootstrapChainState(chainId uint32) {
 				continue
 			}
 
-			// Query max period for this chain
-			query := fmt.Sprintf("SELECT max(period) FROM %s WHERE chain_id = ?", tableName)
+			// Query max period for this chain - also check if table has any data
+			query := fmt.Sprintf("SELECT count(*), max(period) FROM %s WHERE chain_id = ?", tableName)
 			row := r.conn.QueryRow(ctx, query, chainId)
 
+			var count uint64
 			var maxPeriod time.Time
-			if err := row.Scan(&maxPeriod); err == nil && !maxPeriod.IsZero() {
+			err := row.Scan(&count, &maxPeriod)
+			if err != nil {
+				// Error scanning - leave LastProcessed as zero
+			} else if count == 0 {
+				// Leave LastProcessed as zero - will start from 2020-01-01
+			} else if maxPeriod.IsZero() || maxPeriod.Year() < 2020 {
+				// Leave LastProcessed as zero - will start from 2020-01-01
+			} else {
 				state.SetLastProcessed(metric.Name, granularity, maxPeriod)
 			}
 		}

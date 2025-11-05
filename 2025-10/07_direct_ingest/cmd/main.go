@@ -17,8 +17,6 @@ func main() {
 	switch command {
 	case "ingest":
 		runIngest()
-	case "backfill":
-		runBackfill()
 	case "sizes":
 		runSizes()
 	case "wipedb":
@@ -37,7 +35,6 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  ingest      Start the continuous ingestion process")
-	fmt.Println("  backfill    Drop materialized views and rebuild from raw data")
 	fmt.Println("  sizes       Show ClickHouse table sizes and disk usage")
 	fmt.Println("  wipedb      Drop all tables and materialized views")
 	fmt.Println("  help        Show this help message")

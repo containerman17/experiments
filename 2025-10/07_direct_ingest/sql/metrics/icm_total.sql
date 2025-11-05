@@ -1,7 +1,7 @@
--- ICM (Interchain Messaging) total metrics (regular and cumulative)
+-- ICM (Interchain Messaging) total metrics
 -- Parameters: chain_id, first_period, last_period, granularity
 
--- Regular ICM total table
+-- ICM total table
 CREATE TABLE IF NOT EXISTS icm_total_{granularity} (
     chain_id UInt32,
     period DateTime64(3, 'UTC'),  -- Period start time
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS icm_total_{granularity} (
 ) ENGINE = ReplacingMergeTree(computed_at)
 ORDER BY (chain_id, period);
 
--- Insert regular ICM total counts
+-- Insert ICM total counts
 -- Counts all ICM messages (both sent and received) by looking for either topic0 in logs
 INSERT INTO icm_total_{granularity} (chain_id, period, value)
 SELECT
@@ -26,43 +26,5 @@ WHERE chain_id = {chain_id:UInt32}
     unhex('292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34')  -- RECEIVE
   )
 GROUP BY period
-ORDER BY period;
-
--- Cumulative ICM total table
-CREATE TABLE IF NOT EXISTS cumulative_icm_total_{granularity} (
-    chain_id UInt32,
-    period DateTime64(3, 'UTC'),  -- Period start time
-    value UInt64,
-    computed_at DateTime64(3, 'UTC') DEFAULT now64(3)
-) ENGINE = ReplacingMergeTree(computed_at)
-ORDER BY (chain_id, period);
-
--- Insert cumulative ICM total counts (uses the regular counts we just calculated)
-INSERT INTO cumulative_icm_total_{granularity} (chain_id, period, value)
-WITH 
--- Get the last cumulative value before our range
-previous_cumulative AS (
-    SELECT max(value) as prev_value
-    FROM cumulative_icm_total_{granularity} FINAL
-    WHERE chain_id = {chain_id:UInt32}
-      AND period < {first_period:DateTime}
-),
--- Get counts from regular table for our period range (use FINAL to get deduplicated values)
-period_counts AS (
-    SELECT 
-        period,
-        value as period_count
-    FROM icm_total_{granularity} FINAL
-    WHERE chain_id = {chain_id:UInt32}
-      AND period >= {first_period:DateTime}
-      AND period < {last_period:DateTime}
-)
-SELECT
-    {chain_id:UInt32} as chain_id,
-    period,
-    -- Add previous cumulative value to our running sum
-    ifNull((SELECT prev_value FROM previous_cumulative), 0) + 
-    sum(period_count) OVER (ORDER BY period) as value
-FROM period_counts
 ORDER BY period;
 

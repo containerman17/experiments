@@ -47,8 +47,6 @@ func (r *MetricsRunner) OnBlock(blockTime time.Time, chainId uint32) error {
 	r.chainId = chainId
 	r.latestBlock = blockTime
 
-	fmt.Printf("[Metrics] OnBlock called - chain: %d, blockTime: %s\n", chainId, blockTime.Format(time.RFC3339))
-
 	// Process all metrics
 	return r.ProcessAllMetrics()
 }
@@ -60,22 +58,18 @@ func (r *MetricsRunner) ProcessAllMetrics() error {
 		return fmt.Errorf("failed to read metrics directory: %w", err)
 	}
 
-	fmt.Printf("[Metrics] Found %d files in %s\n", len(files), r.sqlDir)
-
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name(), ".sql") {
-			fmt.Printf("[Metrics] Skipping non-SQL file: %s\n", file.Name())
 			continue
 		}
 
 		metricName := strings.TrimSuffix(file.Name(), ".sql")
-		fmt.Printf("[Metrics] Processing metric: %s\n", metricName)
 
 		// Process for all granularities
-		for _, granularity := range []string{"minute", "hour", "day", "week", "month"} {
+		for _, granularity := range []string{"hour", "day", "week", "month"} {
 			if err := r.ProcessMetric(metricName, granularity); err != nil {
 				// Log error but continue with other metrics
-				fmt.Printf("Error processing %s_%s: %v\n", metricName, granularity, err)
+				fmt.Printf("[Metrics] Error processing %s_%s: %v\n", metricName, granularity, err)
 			}
 		}
 	}
@@ -90,10 +84,10 @@ func (r *MetricsRunner) ProcessMetric(metricName, granularity string) error {
 	lastProcessed := r.getWatermark(watermarkKey)
 
 	// If never processed, get the earliest block time
-	if lastProcessed.IsZero() {
+	isFirstRun := lastProcessed.IsZero()
+	if isFirstRun {
 		earliestBlock := r.getEarliestBlockTime()
 		if earliestBlock.IsZero() {
-			fmt.Printf("[Metrics] %s - No data in database yet\n", watermarkKey)
 			return nil
 		}
 		// Set watermark to one period before the first data to ensure we capture it
@@ -104,16 +98,18 @@ func (r *MetricsRunner) ProcessMetric(metricName, granularity string) error {
 		fmt.Printf("[Metrics] %s - Starting from earliest data: %s\n", watermarkKey, earliestBlock.Format(time.RFC3339))
 	}
 
-	fmt.Printf("[Metrics] %s - lastProcessed: %s, latestBlock: %s\n", watermarkKey, lastProcessed.Format(time.RFC3339), r.latestBlock.Format(time.RFC3339))
-
 	// Calculate periods to process
 	periods := getPeriodsToProcess(lastProcessed, r.latestBlock, granularity)
 	if len(periods) == 0 {
-		fmt.Printf("[Metrics] %s - No periods to process\n", watermarkKey)
+		// Save watermark on first run even if no complete periods yet
+		// This prevents re-checking from scratch every block
+		if isFirstRun {
+			r.setWatermark(watermarkKey, lastProcessed)
+		}
 		return nil // Nothing to process
 	}
 
-	fmt.Printf("[Metrics] %s - Processing %d periods\n", watermarkKey, len(periods))
+	// fmt.Printf("[Metrics] %s - Processing %d periods\n", watermarkKey, len(periods))
 
 	// Read SQL file
 	sqlPath := filepath.Join(r.sqlDir, metricName+".sql")
@@ -152,13 +148,10 @@ func (r *MetricsRunner) ProcessMetric(metricName, granularity string) error {
 			fmt.Sprintf("toDateTime64('%s', 3)", lastPeriod.Format("2006-01-02 15:04:05.000")))
 
 		// Execute statement
-
 		if err := r.conn.Exec(context.Background(), sql); err != nil {
 			// Check if it's a CREATE TABLE that already exists (not an error)
 			if !strings.Contains(err.Error(), "already exists") {
 				return fmt.Errorf("failed to execute SQL: %w", err)
-			} else {
-				fmt.Printf("[Metrics] Table already exists, continuing\n")
 			}
 		}
 	}

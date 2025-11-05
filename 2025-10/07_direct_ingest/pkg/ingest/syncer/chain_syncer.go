@@ -267,51 +267,69 @@ func (cs *ChainSyncer) fetcherLoop(startBlock, latestBlock int64) {
 func (cs *ChainSyncer) writerLoop() {
 	defer cs.wg.Done()
 
-	ticker := time.NewTicker(cs.flushInterval)
-	defer ticker.Stop()
-
 	var buffer []*rpc.NormalizedBlock
+	var lastFlushTime time.Time
+	flushTimer := time.NewTimer(cs.flushInterval)
+	defer flushTimer.Stop()
 
-	flush := func() {
+	// flush writes buffered blocks and ensures minimum interval between writes
+	flush := func() time.Duration {
 		if len(buffer) == 0 {
-			return
+			return cs.flushInterval
 		}
 
+		start := time.Now()
 		if err := cs.writeBlocks(buffer); err != nil {
 			log.Printf("[Chain %d] Error writing blocks: %v", cs.chainId, err)
 			// TODO: Implement retry logic
-			return
+			return cs.flushInterval
 		}
 
-		// Update written counter
+		elapsed := time.Since(start)
+		if elapsed > 5*time.Second {
+			log.Printf("[Chain %d] WARNING: Write took %v, exceeds 5 second threshold",
+				cs.chainId, elapsed, cs.flushInterval)
+		}
+
+		// Update counters and clear buffer
 		cs.mu.Lock()
 		cs.blocksWritten += int64(len(buffer))
 		cs.mu.Unlock()
-
-		// Clear buffer
 		buffer = nil
+
+		// Calculate next flush time to maintain minimum interval
+		lastFlushTime = start
+		nextFlush := cs.flushInterval - elapsed
+		if nextFlush < 0 {
+			nextFlush = 0
+		}
+		return nextFlush
 	}
 
 	for {
 		select {
 		case <-cs.ctx.Done():
-			// Final flush before exit
 			flush()
 			return
 
 		case blocks, ok := <-cs.blockChan:
 			if !ok {
-				// Channel closed, final flush
 				flush()
 				return
 			}
 
-			// Add to buffer
 			buffer = append(buffer, blocks...)
 
-		case <-ticker.C:
-			// Time-based flush
-			flush()
+			// Flush immediately if interval has passed
+			if !lastFlushTime.IsZero() && time.Since(lastFlushTime) >= cs.flushInterval {
+				flushTimer.Stop()
+				nextInterval := flush()
+				flushTimer.Reset(nextInterval)
+			}
+
+		case <-flushTimer.C:
+			nextInterval := flush()
+			flushTimer.Reset(nextInterval)
 		}
 	}
 }

@@ -1,15 +1,16 @@
 -- Maximum Transactions Per Second metric
 -- Parameters: chain_id, first_period, last_period, granularity
--- Calculates max TPS per period - count transactions per second and take max
 
 CREATE TABLE IF NOT EXISTS max_tps_{granularity} (
     chain_id UInt32,
-    period DateTime,
+    period DateTime64(3, 'UTC'),  -- Period start time
     value UInt64,
-    computed_at DateTime DEFAULT now()
+    computed_at DateTime64(3, 'UTC') DEFAULT now64(3)
 ) ENGINE = ReplacingMergeTree(computed_at)
 ORDER BY (chain_id, period);
 
+-- Insert max TPS values
+-- Calculates max TPS per period - count transactions per second and take max
 INSERT INTO max_tps_{granularity} (chain_id, period, value)
 WITH txs_per_second AS (
     SELECT 
@@ -29,3 +30,4 @@ SELECT
 FROM txs_per_second
 GROUP BY period
 ORDER BY period;
+

@@ -9,8 +9,6 @@ import (
 func toStartOfPeriod(t time.Time, granularity string) time.Time {
 	t = t.UTC()
 	switch granularity {
-	case "minute":
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, time.UTC)
 	case "hour":
 		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, time.UTC)
 	case "day":
@@ -31,8 +29,6 @@ func toStartOfPeriod(t time.Time, granularity string) time.Time {
 // getPeriodDuration returns the duration of one period
 func getPeriodDuration(granularity string) time.Duration {
 	switch granularity {
-	case "minute":
-		return time.Minute
 	case "hour":
 		return time.Hour
 	case "day":
@@ -53,8 +49,6 @@ func nextPeriod(t time.Time, granularity string) time.Time {
 
 	// Then add one period
 	switch granularity {
-	case "minute":
-		return currentPeriod.Add(time.Minute)
 	case "hour":
 		return currentPeriod.Add(time.Hour)
 	case "day":
@@ -71,11 +65,6 @@ func nextPeriod(t time.Time, granularity string) time.Time {
 // isPeriodComplete checks if a period is complete (we have data from next period)
 func isPeriodComplete(periodStart, latestBlockTime time.Time, granularity string) bool {
 	periodEnd := nextPeriod(periodStart, granularity)
-	// For minute granularity, be less strict - accept if we're within 5 seconds of period end
-	// This helps with live data ingestion where we might not have the next period yet
-	if granularity == "minute" && latestBlockTime.Add(5*time.Second).After(periodEnd) {
-		return true
-	}
 	return latestBlockTime.After(periodEnd) || latestBlockTime.Equal(periodEnd)
 }
 

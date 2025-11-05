@@ -4,10 +4,13 @@ import (
 	"clickhouse-metrics-poc/cmd"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	root := &cobra.Command{Use: "clickhouse-ingest"}
 
 	wipeCmd := &cobra.Command{

@@ -105,7 +105,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	}
 
 	// Initialize metrics runner - REQUIRED
-	metricsRunner, err := metrics.New(cfg.CHConn, "sql/metrics")
+	metricsRunner, err := metrics.NewMetricsRunner(cfg.CHConn, "sql/metrics")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics runner: %w", err)
 	}
@@ -401,7 +401,8 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 			}
 
 			// Call OnBlock with the latest block's timestamp
-			if err := cs.metricsRunner.OnBlock(timestamp, cs.chainId); err != nil {
+			blockTime := time.Unix(int64(timestamp), 0).UTC()
+			if err := cs.metricsRunner.OnBlock(blockTime, cs.chainId); err != nil {
 				return fmt.Errorf("failed to update metrics: %w", err)
 			}
 		}

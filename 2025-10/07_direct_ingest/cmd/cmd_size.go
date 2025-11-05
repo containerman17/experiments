@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -47,7 +47,7 @@ func formatNumber(num float64) string {
 	return result.String()
 }
 
-func runSize() {
+func RunSize() {
 	fmt.Println("=== ClickHouse Table Size ===")
 	fmt.Println()
 

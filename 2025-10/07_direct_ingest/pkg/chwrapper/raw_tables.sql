@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS raw_blocks (
     block_number UInt32,
     hash FixedString(32),  -- 32 bytes
     parent_hash FixedString(32),
-    block_time DateTime64(3),  -- Millisecond precision for Granite update
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
     miner FixedString(20),  -- 20 bytes address
     difficulty UInt8,  -- Always 1 on PoS chains
     total_difficulty UInt64,  -- On PoS chains, equals block number, but store for compatibility
@@ -26,8 +26,7 @@ CREATE TABLE IF NOT EXISTS raw_blocks (
     uncles Array(FixedString(32)),
     blob_gas_used UInt32,  -- Always 0 if no blob txs
     excess_blob_gas UInt64,  -- Always 0 if no blob txs
-    parent_beacon_block_root LowCardinality(FixedString(32)),  -- Often all zeros
-    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
+    parent_beacon_block_root LowCardinality(FixedString(32))  -- Often all zeros
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number);
 
@@ -37,8 +36,7 @@ CREATE TABLE IF NOT EXISTS raw_transactions (
     hash FixedString(32),
     block_number UInt32,
     block_hash FixedString(32),
-    block_time DateTime64(3),
-    block_date Date MATERIALIZED toDate(block_time),  -- For partition pruning
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
     transaction_index UInt16,
     nonce UInt64,
     from FixedString(20),
@@ -58,8 +56,7 @@ CREATE TABLE IF NOT EXISTS raw_transactions (
     access_list Array(Tuple(
         address FixedString(20),
         storage_keys Array(FixedString(32))
-    )),  -- Properly structured, not JSON
-    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
+    ))  -- Properly structured, not JSON
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number);
 
@@ -68,7 +65,7 @@ CREATE TABLE IF NOT EXISTS raw_traces (
     chain_id UInt32,  -- Multiple chains in same tables
     tx_hash FixedString(32),
     block_number UInt32,
-    block_time DateTime64(3),
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
     transaction_index UInt16,
     trace_address Array(UInt16),  -- Path in call tree, e.g. [0,2,1] = first call -> third subcall -> second subcall
     from FixedString(20),
@@ -79,8 +76,7 @@ CREATE TABLE IF NOT EXISTS raw_traces (
     input String,
     output String,
     call_type LowCardinality(String),  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
-    tx_success Bool,  -- Transaction success status (denormalized from raw_transactions)
-    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
+    tx_success Bool  -- Transaction success status (denormalized from raw_transactions)
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number);
 
@@ -90,8 +86,7 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     address FixedString(20),
     block_number UInt32,
     block_hash FixedString(32),  -- Needed for reorg detection and data integrity
-    block_time DateTime64(3),
-    block_date Date MATERIALIZED toDate(block_time),  -- For partition pruning
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
     transaction_hash FixedString(32),
     transaction_index UInt16,
     log_index UInt32,
@@ -102,8 +97,7 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     topic2 Nullable(FixedString(32)),
     topic3 Nullable(FixedString(32)),
     data String,  -- Non-indexed event data
-    removed Bool,  -- TODO: check if ever happen to be true
-    inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
+    removed Bool  -- TODO: check if ever happen to be true
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_time, address, topic0);
 

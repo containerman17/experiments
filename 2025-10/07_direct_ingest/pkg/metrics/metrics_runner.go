@@ -3,191 +3,79 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-// MetricsRunner processes blockchain metrics based on completed time periods.
-// It ensures metrics are only calculated for periods where we have seen at least
-// one block from the subsequent period, guaranteeing data completeness.
+// MetricsRunner is an ultra-simple metric processor using watermarks
 type MetricsRunner struct {
-	conn             driver.Conn
-	chainStates      map[uint32]*ChainState
-	metrics          []MetricDefinition
-	processorRunning sync.Once
-	mu               sync.RWMutex
-	sqlDir           string
+	conn        driver.Conn
+	sqlDir      string
+	chainId     uint32
+	latestBlock time.Time
 }
 
-// New creates a new MetricsRunner instance
-func New(conn driver.Conn, sqlDir string) (*MetricsRunner, error) {
-	return NewMetricsRunner(conn, sqlDir)
-}
-
-// NewMetricsRunner creates a new metrics runner
+// NewMetricsRunner creates a simple metrics runner
 func NewMetricsRunner(conn driver.Conn, sqlDir string) (*MetricsRunner, error) {
-	metrics, err := loadMetrics(sqlDir)
+	// Create watermark table if not exists
+	watermarkSQL := `
+	CREATE TABLE IF NOT EXISTS metric_watermarks (
+		chain_id UInt32,
+		metric_name String,
+		last_period DateTime64(3, 'UTC'),
+		updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
+	) ENGINE = ReplacingMergeTree(updated_at)
+	ORDER BY (chain_id, metric_name)`
+
+	if err := conn.Exec(context.Background(), watermarkSQL); err != nil {
+		return nil, fmt.Errorf("failed to create watermark table: %w", err)
+	}
+
+	return &MetricsRunner{
+		conn:    conn,
+		sqlDir:  sqlDir,
+		chainId: 1, // default chain
+	}, nil
+}
+
+// OnBlock updates latest block time and processes metrics
+func (r *MetricsRunner) OnBlock(blockTime time.Time, chainId uint32) error {
+	r.chainId = chainId
+	r.latestBlock = blockTime
+
+	fmt.Printf("[Metrics] OnBlock called - chain: %d, blockTime: %s\n", chainId, blockTime.Format(time.RFC3339))
+
+	// Process all metrics
+	return r.ProcessAllMetrics()
+}
+
+// ProcessAllMetrics runs all metric files in the sql/metrics directory
+func (r *MetricsRunner) ProcessAllMetrics() error {
+	files, err := os.ReadDir(r.sqlDir)
 	if err != nil {
-		panic(fmt.Sprintf("Fatal: failed to load metrics: %v", err))
+		return fmt.Errorf("failed to read metrics directory: %w", err)
 	}
 
-	runner := &MetricsRunner{
-		conn:        conn,
-		chainStates: make(map[uint32]*ChainState),
-		metrics:     metrics,
-		sqlDir:      sqlDir,
-	}
+	fmt.Printf("[Metrics] Found %d files in %s\n", len(files), r.sqlDir)
 
-	// Initialize tables
-	if err := runner.initializeTables(); err != nil {
-		panic(fmt.Sprintf("Fatal: failed to initialize tables: %v", err))
-	}
-
-	return runner, nil
-}
-
-// OnBlock updates the latest block information and ensures the processor is running
-func (r *MetricsRunner) OnBlock(blockTimestamp uint64, chainId uint32) error {
-	blockTime := time.Unix(int64(blockTimestamp), 0).UTC()
-
-	// Update chain state
-	r.mu.Lock()
-	if r.chainStates[chainId] == nil {
-		r.chainStates[chainId] = NewChainState()
-		// Bootstrap last processed periods from database
-		r.bootstrapChainState(chainId)
-	}
-	r.chainStates[chainId].UpdateLatestBlock(blockTime, 0) // block number not used in metrics
-	r.mu.Unlock()
-
-	// Ensure processor is running (happens once)
-	r.processorRunning.Do(func() {
-		go r.processLoop()
-	})
-
-	return nil
-}
-
-// processLoop continuously checks for completed periods and processes metrics
-func (r *MetricsRunner) processLoop() {
-	for {
-		r.processAllCompletedPeriods()
-		time.Sleep(1 * time.Second)
-	}
-}
-
-// processAllCompletedPeriods checks all chains and metrics for completed periods
-func (r *MetricsRunner) processAllCompletedPeriods() {
-	r.mu.RLock()
-	chains := make([]uint32, 0, len(r.chainStates))
-	for chainId := range r.chainStates {
-		chains = append(chains, chainId)
-	}
-	r.mu.RUnlock()
-
-	for _, chainId := range chains {
-		for _, metric := range r.metrics {
-			for _, granularity := range metric.Granularities {
-				r.processMetricForChain(chainId, metric, granularity)
-			}
-		}
-	}
-}
-
-// processMetricForChain processes a specific metric/granularity for a chain
-func (r *MetricsRunner) processMetricForChain(chainId uint32, metric MetricDefinition, granularity string) {
-	r.mu.RLock()
-	state := r.chainStates[chainId]
-	r.mu.RUnlock()
-
-	if state == nil {
-		return
-	}
-
-	lastProcessed := state.GetLastProcessed(metric.Name, granularity)
-	latestBlockTime := state.GetLatestBlockTime()
-
-	if latestBlockTime.IsZero() {
-		return // No blocks yet
-	}
-
-	// Get all unprocessed complete periods
-	unprocessedPeriods := getUnprocessedPeriods(lastProcessed, latestBlockTime, granularity)
-	if len(unprocessedPeriods) == 0 {
-		return // Nothing to process
-	}
-
-	// Execute metric in batch for all unprocessed periods
-	firstPeriod := unprocessedPeriods[0]
-	lastPeriod := unprocessedPeriods[len(unprocessedPeriods)-1]
-
-	if err := r.executeMetric(chainId, metric, granularity, firstPeriod, lastPeriod); err != nil {
-		panic(fmt.Sprintf("Fatal: failed to execute metric %s for chain %d: %v", metric.Name, chainId, err))
-	}
-
-	// Update last processed
-	state.SetLastProcessed(metric.Name, granularity, lastPeriod)
-}
-
-// executeMetric runs a metric query with the given parameters
-func (r *MetricsRunner) executeMetric(chainId uint32, metric MetricDefinition, granularity string, firstPeriod, lastPeriod time.Time) error {
-	ctx := context.Background()
-
-	// Prepare SQL by replacing placeholders
-	sql := metric.SQLTemplate
-	sql = strings.ReplaceAll(sql, "{chain_id:UInt32}", fmt.Sprintf("%d", chainId))
-
-	// Replace table names (use lowercase for table suffixes)
-	sql = strings.ReplaceAll(sql, "_{granularity}", fmt.Sprintf("_%s", strings.ToLower(granularity)))
-
-	// Replace function names (keep capitalized for ClickHouse functions)
-	sql = strings.ReplaceAll(sql, "toStartOf{granularity}", fmt.Sprintf("toStartOf%s", granularity))
-
-	// Replace any remaining {granularity} placeholders (shouldn't be any, but just in case)
-	sql = strings.ReplaceAll(sql, "{granularity}", strings.ToLower(granularity))
-
-	// Replace period placeholders - wrap in toDateTime() for proper type conversion
-	sql = strings.ReplaceAll(sql, "{first_period:DateTime}", fmt.Sprintf("toDateTime('%s')", formatPeriodForSQL(firstPeriod, granularity)))
-
-	// For last_period, we need the next period after lastPeriod
-	lastPeriodNext := nextPeriod(lastPeriod, granularity)
-	sql = strings.ReplaceAll(sql, "{last_period:DateTime}", fmt.Sprintf("toDateTime('%s')", formatPeriodForSQL(lastPeriodNext, granularity)))
-
-	// Replace period_seconds placeholder for metrics that need it
-	sql = strings.ReplaceAll(sql, "{period_seconds:UInt64}", fmt.Sprintf("%d", getSecondsInPeriod(granularity)))
-
-	// Execute the query
-	if err := r.conn.Exec(ctx, sql); err != nil {
-		return fmt.Errorf("query execution failed: %w", err)
-	}
-
-	return nil
-}
-
-// initializeTables creates metric tables if they don't exist
-func (r *MetricsRunner) initializeTables() error {
-	ctx := context.Background()
-
-	for _, metric := range r.metrics {
-		if metric.TableCreation == "" {
-			continue // Some metrics use existing tables
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".sql") {
+			fmt.Printf("[Metrics] Skipping non-SQL file: %s\n", file.Name())
+			continue
 		}
 
-		// For metrics with multiple granularities, create table for each
-		if len(metric.Granularities) > 0 && strings.Contains(metric.TableCreation, "{granularity}") {
-			for _, granularity := range metric.Granularities {
-				sql := strings.ReplaceAll(metric.TableCreation, "{granularity}", strings.ToLower(granularity))
-				if err := r.conn.Exec(ctx, sql); err != nil {
-					return fmt.Errorf("failed to create table for %s_%s: %w", metric.Name, granularity, err)
-				}
-			}
-		} else {
-			// Single table without granularity placeholder
-			if err := r.conn.Exec(ctx, metric.TableCreation); err != nil {
-				return fmt.Errorf("failed to create table for %s: %w", metric.Name, err)
+		metricName := strings.TrimSuffix(file.Name(), ".sql")
+		fmt.Printf("[Metrics] Processing metric: %s\n", metricName)
+
+		// Process for all granularities
+		for _, granularity := range []string{"minute", "hour", "day", "week", "month"} {
+			if err := r.ProcessMetric(metricName, granularity); err != nil {
+				// Log error but continue with other metrics
+				fmt.Printf("Error processing %s_%s: %v\n", metricName, granularity, err)
 			}
 		}
 	}
@@ -195,34 +83,183 @@ func (r *MetricsRunner) initializeTables() error {
 	return nil
 }
 
-// bootstrapChainState loads the last processed periods from database
-func (r *MetricsRunner) bootstrapChainState(chainId uint32) {
-	ctx := context.Background()
-	state := r.chainStates[chainId]
+// ProcessMetric processes a single metric for a given granularity
+func (r *MetricsRunner) ProcessMetric(metricName, granularity string) error {
+	// Get watermark
+	watermarkKey := fmt.Sprintf("%s_%s", metricName, granularity)
+	lastProcessed := r.getWatermark(watermarkKey)
 
-	for _, metric := range r.metrics {
-		for _, granularity := range metric.Granularities {
-			tableName := metric.getTableName(granularity)
-			if tableName == "" {
-				continue
-			}
+	// If never processed, get the earliest block time
+	if lastProcessed.IsZero() {
+		earliestBlock := r.getEarliestBlockTime()
+		if earliestBlock.IsZero() {
+			fmt.Printf("[Metrics] %s - No data in database yet\n", watermarkKey)
+			return nil
+		}
+		// Set watermark to one period before the first data to ensure we capture it
+		// This ensures clean period boundaries (e.g., 13:42:00 not 13:42:59)
+		firstDataPeriod := toStartOfPeriod(earliestBlock, granularity)
+		// Go back one period - nextPeriod(lastProcessed) will then give us firstDataPeriod
+		lastProcessed = firstDataPeriod.Add(-getPeriodDuration(granularity))
+		fmt.Printf("[Metrics] %s - Starting from earliest data: %s\n", watermarkKey, earliestBlock.Format(time.RFC3339))
+	}
 
-			// Query max period for this chain - also check if table has any data
-			query := fmt.Sprintf("SELECT count(*), max(period) FROM %s WHERE chain_id = ?", tableName)
-			row := r.conn.QueryRow(ctx, query, chainId)
+	fmt.Printf("[Metrics] %s - lastProcessed: %s, latestBlock: %s\n", watermarkKey, lastProcessed.Format(time.RFC3339), r.latestBlock.Format(time.RFC3339))
 
-			var count uint64
-			var maxPeriod time.Time
-			err := row.Scan(&count, &maxPeriod)
-			if err != nil {
-				// Error scanning - leave LastProcessed as zero
-			} else if count == 0 {
-				// Leave LastProcessed as zero - will start from 2020-01-01
-			} else if maxPeriod.IsZero() || maxPeriod.Year() < 2020 {
-				// Leave LastProcessed as zero - will start from 2020-01-01
+	// Calculate periods to process
+	periods := getPeriodsToProcess(lastProcessed, r.latestBlock, granularity)
+	if len(periods) == 0 {
+		fmt.Printf("[Metrics] %s - No periods to process\n", watermarkKey)
+		return nil // Nothing to process
+	}
+
+	fmt.Printf("[Metrics] %s - Processing %d periods\n", watermarkKey, len(periods))
+
+	// Read SQL file
+	sqlPath := filepath.Join(r.sqlDir, metricName+".sql")
+	sqlBytes, err := os.ReadFile(sqlPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SQL file: %w", err)
+	}
+
+	// Split by semicolon and execute each statement
+	statements := splitSQL(string(sqlBytes))
+
+	for _, stmt := range statements {
+		// Skip empty statements
+		if strings.TrimSpace(stmt) == "" {
+			continue
+		}
+
+		// Replace placeholders
+		sql := stmt
+		sql = strings.ReplaceAll(sql, "{chain_id:UInt32}", fmt.Sprintf("%d", r.chainId))
+
+		// Replace specific patterns BEFORE generic {granularity} replacement
+		sql = strings.ReplaceAll(sql, "toStartOf{granularity}", fmt.Sprintf("toStartOf%s", capitalize(granularity)))
+		sql = strings.ReplaceAll(sql, "_{granularity}", fmt.Sprintf("_%s", granularity))
+
+		// Replace any remaining {granularity} placeholders
+		sql = strings.ReplaceAll(sql, "{granularity}", granularity)
+
+		// Replace period placeholders
+		firstPeriod := periods[0]
+		lastPeriod := nextPeriod(periods[len(periods)-1], granularity) // exclusive end
+
+		sql = strings.ReplaceAll(sql, "{first_period:DateTime}",
+			fmt.Sprintf("toDateTime64('%s', 3)", firstPeriod.Format("2006-01-02 15:04:05.000")))
+		sql = strings.ReplaceAll(sql, "{last_period:DateTime}",
+			fmt.Sprintf("toDateTime64('%s', 3)", lastPeriod.Format("2006-01-02 15:04:05.000")))
+
+		// Execute statement
+
+		if err := r.conn.Exec(context.Background(), sql); err != nil {
+			// Check if it's a CREATE TABLE that already exists (not an error)
+			if !strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("failed to execute SQL: %w", err)
 			} else {
-				state.SetLastProcessed(metric.Name, granularity, maxPeriod)
+				fmt.Printf("[Metrics] Table already exists, continuing\n")
 			}
 		}
 	}
+
+	// Update watermark after successful execution
+	return r.setWatermark(watermarkKey, periods[len(periods)-1])
+}
+
+// getWatermark retrieves the last processed period for a metric
+func (r *MetricsRunner) getWatermark(metricName string) time.Time {
+	ctx := context.Background()
+	var lastPeriod time.Time
+
+	query := `
+	SELECT last_period 
+	FROM metric_watermarks FINAL
+	WHERE chain_id = ? AND metric_name = ?`
+
+	row := r.conn.QueryRow(ctx, query, r.chainId, metricName)
+	if err := row.Scan(&lastPeriod); err != nil {
+		// No watermark found, return zero time
+		return time.Time{}
+	}
+
+	return lastPeriod
+}
+
+// setWatermark updates the last processed period for a metric
+func (r *MetricsRunner) setWatermark(metricName string, lastPeriod time.Time) error {
+	ctx := context.Background()
+
+	query := `
+	INSERT INTO metric_watermarks (chain_id, metric_name, last_period)
+	VALUES (?, ?, ?)`
+
+	return r.conn.Exec(ctx, query, r.chainId, metricName, lastPeriod)
+}
+
+// getEarliestBlockTime returns the earliest block time in the database
+func (r *MetricsRunner) getEarliestBlockTime() time.Time {
+	ctx := context.Background()
+	var earliestTime time.Time
+
+	query := `
+	SELECT min(block_time) 
+	FROM raw_transactions 
+	WHERE chain_id = ?`
+
+	row := r.conn.QueryRow(ctx, query, r.chainId)
+	if err := row.Scan(&earliestTime); err != nil {
+		// No data yet
+		return time.Time{}
+	}
+
+	return earliestTime
+}
+
+// splitSQL splits SQL content by semicolons, removing comments
+func splitSQL(content string) []string {
+	lines := strings.Split(content, "\n")
+	var cleanLines []string
+
+	for _, line := range lines {
+		// Remove comments
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			line = line[:idx]
+		}
+		cleanLines = append(cleanLines, line)
+	}
+
+	// Join and split by semicolon
+	cleaned := strings.Join(cleanLines, "\n")
+	statements := strings.Split(cleaned, ";")
+
+	// Filter empty statements
+	var result []string
+	for _, stmt := range statements {
+		if strings.TrimSpace(stmt) != "" {
+			result = append(result, stmt)
+		}
+	}
+
+	return result
+}
+
+// capitalize returns string with first letter capitalized
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// Simple process loop for continuous processing
+func (r *MetricsRunner) Start() {
+	go func() {
+		for {
+			if !r.latestBlock.IsZero() {
+				r.ProcessAllMetrics()
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
 }

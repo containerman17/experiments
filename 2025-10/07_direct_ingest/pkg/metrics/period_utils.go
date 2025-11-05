@@ -5,24 +5,42 @@ import (
 	"time"
 )
 
-// toStartOfPeriod returns the start of the period for given granularity (always UTC)
+// toStartOfPeriod returns the start of the period for given granularity
 func toStartOfPeriod(t time.Time, granularity string) time.Time {
 	t = t.UTC()
 	switch granularity {
-	case "Minute":
+	case "minute":
 		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, time.UTC)
-	case "Hour":
+	case "hour":
 		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, time.UTC)
-	case "Day":
+	case "day":
 		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-	case "Week":
-		// Start of week (Sunday, matching ClickHouse toStartOfWeek)
+	case "week":
+		// Start of week (Sunday)
 		for t.Weekday() != time.Sunday {
 			t = t.AddDate(0, 0, -1)
 		}
 		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-	case "Month":
+	case "month":
 		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+	default:
+		panic(fmt.Sprintf("unknown granularity: %s", granularity))
+	}
+}
+
+// getPeriodDuration returns the duration of one period
+func getPeriodDuration(granularity string) time.Duration {
+	switch granularity {
+	case "minute":
+		return time.Minute
+	case "hour":
+		return time.Hour
+	case "day":
+		return 24 * time.Hour
+	case "week":
+		return 7 * 24 * time.Hour
+	case "month":
+		return 30 * 24 * time.Hour // approximation
 	default:
 		panic(fmt.Sprintf("unknown granularity: %s", granularity))
 	}
@@ -30,77 +48,61 @@ func toStartOfPeriod(t time.Time, granularity string) time.Time {
 
 // nextPeriod returns the start of the next period
 func nextPeriod(t time.Time, granularity string) time.Time {
+	// First, round down to start of current period
+	currentPeriod := toStartOfPeriod(t, granularity)
+
+	// Then add one period
 	switch granularity {
-	case "Minute":
-		return t.Add(time.Minute)
-	case "Hour":
-		return t.Add(time.Hour)
-	case "Day":
-		return t.AddDate(0, 0, 1)
-	case "Week":
-		return t.AddDate(0, 0, 7)
-	case "Month":
-		return t.AddDate(0, 1, 0)
+	case "minute":
+		return currentPeriod.Add(time.Minute)
+	case "hour":
+		return currentPeriod.Add(time.Hour)
+	case "day":
+		return currentPeriod.AddDate(0, 0, 1)
+	case "week":
+		return currentPeriod.AddDate(0, 0, 7)
+	case "month":
+		return currentPeriod.AddDate(0, 1, 0)
 	default:
 		panic(fmt.Sprintf("unknown granularity: %s", granularity))
 	}
 }
 
 // isPeriodComplete checks if a period is complete (we have data from next period)
-func isPeriodComplete(periodStart time.Time, granularity string, latestBlockTime time.Time) bool {
+func isPeriodComplete(periodStart, latestBlockTime time.Time, granularity string) bool {
 	periodEnd := nextPeriod(periodStart, granularity)
+	// For minute granularity, be less strict - accept if we're within 5 seconds of period end
+	// This helps with live data ingestion where we might not have the next period yet
+	if granularity == "minute" && latestBlockTime.Add(5*time.Second).After(periodEnd) {
+		return true
+	}
 	return latestBlockTime.After(periodEnd) || latestBlockTime.Equal(periodEnd)
 }
 
-// formatPeriodForSQL formats time for ClickHouse based on granularity
-func formatPeriodForSQL(t time.Time, granularity string) string {
-	// Always use DateTime format now that all metrics use DateTime columns
-	// (except cumulative metrics which are handled separately)
-	return t.Format("2006-01-02 15:04:05")
-}
+// getPeriodsToProcess returns all complete periods to process
+func getPeriodsToProcess(lastProcessed, latestBlockTime time.Time, granularity string) []time.Time {
+	var periods []time.Time
 
-// getSecondsInPeriod returns the number of seconds in a period
-func getSecondsInPeriod(granularity string) int64 {
-	switch granularity {
-	case "Minute":
-		return 60
-	case "Hour":
-		return 3600
-	case "Day":
-		return 86400
-	case "Week":
-		return 604800
-	case "Month":
-		return 2592000 // 30 days approximation
-	default:
-		panic(fmt.Sprintf("unknown granularity: %s", granularity))
-	}
-}
-
-// getUnprocessedPeriods returns all complete but unprocessed periods
-func getUnprocessedPeriods(lastProcessed, latestBlockTime time.Time, granularity string) []time.Time {
-	periods := []time.Time{}
-
-	var current time.Time
+	// Start point
+	var currentPeriod time.Time
 	if lastProcessed.IsZero() {
-		// Never processed - start from 2020-01-01 (beginning of blockchain time)
-		startTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-		current = toStartOfPeriod(startTime, granularity)
-
-		// For Week granularity, toStartOfPeriod might go back to previous Sunday (2019-12-29)
-		// Ensure we never go before 2020-01-01
-		if current.Before(startTime) {
-			current = nextPeriod(current, granularity)
-		}
+		// Never processed - this shouldn't happen as caller provides earliest block
+		return periods
 	} else {
-		// Start from the next period after last processed
-		current = nextPeriod(lastProcessed, granularity)
+		// Start from next period after last processed
+		currentPeriod = nextPeriod(lastProcessed, granularity)
 	}
 
-	// Add all complete periods
-	for isPeriodComplete(current, granularity, latestBlockTime) {
-		periods = append(periods, current)
-		current = nextPeriod(current, granularity)
+	// Collect all complete periods
+	for isPeriodComplete(currentPeriod, latestBlockTime, granularity) {
+		periods = append(periods, currentPeriod)
+		currentPeriod = nextPeriod(currentPeriod, granularity)
+
+		// Safety limit to prevent infinite loops
+		if len(periods) > 100000 {
+			fmt.Printf("[Periods] Limiting to 100000 periods for %s\n", granularity)
+			break
+		}
 	}
 
 	return periods

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"clickhouse-metrics-poc/pkg/chwrapper"
@@ -20,7 +20,7 @@ type ChainConfig struct {
 	FetchBatchSize int    `json:"fetchBatchSize,omitempty"`
 }
 
-func runIngest() {
+func RunIngest() {
 	log.Println("Starting ingest...")
 	// Load configuration
 	configData, err := os.ReadFile("config.json")

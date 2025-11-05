@@ -183,12 +183,12 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 			return fmt.Errorf("failed to parse block number: %w", err)
 		}
 
-		// Convert timestamp to DateTime64
+		// Convert timestamp to time.Time
 		timestamp, err := hexToUint64(block.Timestamp)
 		if err != nil {
 			return fmt.Errorf("failed to parse timestamp: %w", err)
 		}
-		blockTime := time.Unix(int64(timestamp), 0)
+		blockTime := time.Unix(int64(timestamp), 0).UTC()
 
 		// Convert hashes
 		hash, err := hexToFixedBytes(block.Hash, 32)
@@ -402,7 +402,7 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 		if err != nil {
 			return fmt.Errorf("failed to parse timestamp: %w", err)
 		}
-		blockTime := time.Unix(int64(timestamp), 0)
+		blockTime := time.Unix(int64(timestamp), 0).UTC()
 
 		baseFeePerGas, _ := hexToUint64(block.BaseFeePerGas)
 
@@ -730,7 +730,7 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 		if err != nil {
 			return fmt.Errorf("failed to parse timestamp: %w", err)
 		}
-		blockTime := time.Unix(int64(timestamp), 0)
+		blockTime := time.Unix(int64(timestamp), 0).UTC()
 
 		// Process traces for each transaction
 		for i, tx := range block.Transactions {
@@ -848,7 +848,7 @@ func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, block
 		if err != nil {
 			return fmt.Errorf("failed to parse timestamp: %w", err)
 		}
-		blockTime := time.Unix(int64(timestamp), 0)
+		blockTime := time.Unix(int64(timestamp), 0).UTC()
 
 		// Process logs from each transaction
 		for i, receipt := range receipts {

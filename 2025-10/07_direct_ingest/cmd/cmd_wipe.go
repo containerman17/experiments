@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -10,21 +10,25 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-func runWipe() {
+func RunWipe(all bool) {
 	conn, err := chwrapper.Connect()
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
 	defer conn.Close()
 
-	if err := wipeCalculatedTables(conn); err != nil {
+	if err := wipeCalculatedTables(conn, all); err != nil {
 		log.Fatalf("Failed to wipe tables: %v", err)
 	}
 
-	fmt.Println("Calculated tables dropped successfully")
+	if all {
+		fmt.Println("All tables dropped successfully")
+	} else {
+		fmt.Println("Calculated tables dropped successfully")
+	}
 }
 
-func wipeCalculatedTables(conn driver.Conn) error {
+func wipeCalculatedTables(conn driver.Conn, all bool) error {
 	ctx := context.Background()
 
 	query := `
@@ -41,12 +45,14 @@ func wipeCalculatedTables(conn driver.Conn) error {
 	}
 	defer rows.Close()
 
-	keepTables := map[string]bool{
-		"raw_blocks":       true,
-		"raw_transactions": true,
-		"raw_traces":       true,
-		"raw_logs":         true,
-		"sync_watermark":   true,
+	keepTables := map[string]bool{}
+
+	if !all {
+		keepTables["raw_blocks"] = true
+		keepTables["raw_transactions"] = true
+		keepTables["raw_traces"] = true
+		keepTables["raw_logs"] = true
+		keepTables["sync_watermark"] = true
 	}
 
 	var tables []struct {

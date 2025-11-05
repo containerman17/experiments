@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
+	//FIXME: Cobra one day?
 	if len(os.Args) < 2 {
 		printHelp()
 		os.Exit(1)

@@ -1,41 +1,33 @@
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 func main() {
-	//FIXME: Cobra one day?
-	if len(os.Args) < 2 {
-		printHelp()
+	root := &cobra.Command{Use: "clickhouse-ingest"}
+
+	root.AddCommand(
+		&cobra.Command{
+			Use:   "ingest",
+			Short: "Start the continuous ingestion process",
+			Run:   func(cmd *cobra.Command, args []string) { runIngest() },
+		},
+		&cobra.Command{
+			Use:   "size",
+			Short: "Show ClickHouse table sizes and disk usage",
+			Run:   func(cmd *cobra.Command, args []string) { runSize() },
+		},
+		&cobra.Command{
+			Use:   "wipe",
+			Short: "Drop calculated tables (keeps raw_* and sync_watermark)",
+			Run:   func(cmd *cobra.Command, args []string) { runWipe() },
+		},
+	)
+
+	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
-
-	command := os.Args[1]
-
-	switch command {
-	case "ingest":
-		runIngest()
-	case "sizes":
-		runSizes()
-	case "wipedb":
-		runWipedb()
-	case "--help", "-h", "help":
-		printHelp()
-	default:
-		fmt.Printf("Unknown command: %s\n\n", command)
-		printHelp()
-		os.Exit(1)
-	}
-}
-
-func printHelp() {
-	fmt.Println("Usage: clickhouse-ingest [command]")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  ingest      Start the continuous ingestion process")
-	fmt.Println("  sizes       Show ClickHouse table sizes and disk usage")
-	fmt.Println("  wipedb      Drop all tables and materialized views")
-	fmt.Println("  help        Show this help message")
 }

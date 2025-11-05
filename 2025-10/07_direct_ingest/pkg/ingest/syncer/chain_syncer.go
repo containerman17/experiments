@@ -4,6 +4,7 @@ import (
 	"clickhouse-metrics-poc/pkg/chwrapper"
 	"clickhouse-metrics-poc/pkg/ingest/cache"
 	"clickhouse-metrics-poc/pkg/ingest/rpc"
+	"clickhouse-metrics-poc/pkg/metrics"
 	"context"
 	"fmt"
 	"log"
@@ -59,6 +60,9 @@ type ChainSyncer struct {
 	blocksWritten int64
 	lastPrintTime time.Time
 	startTime     time.Time
+
+	// Metrics runner (optional)
+	metricsRunner *metrics.MetricsRunner
 }
 
 // NewChainSyncer creates a new chain syncer
@@ -86,7 +90,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &ChainSyncer{
+	cs := &ChainSyncer{
 		chainId:        cfg.ChainID,
 		fetcher:        fetcher,
 		conn:           cfg.CHConn,
@@ -98,7 +102,17 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		cancel:         cancel,
 		lastPrintTime:  time.Now(),
 		startTime:      time.Now(),
-	}, nil
+	}
+
+	// Initialize metrics runner - REQUIRED
+	metricsRunner, err := metrics.New(cfg.CHConn, "sql/metrics")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metrics runner: %w", err)
+	}
+	cs.metricsRunner = metricsRunner
+	log.Printf("[Chain %d] Metrics runner initialized", cfg.ChainID)
+
+	return cs, nil
 }
 
 // Start begins syncing
@@ -361,6 +375,36 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 			return fmt.Errorf("failed to update watermark: %w", err)
 		}
 		cs.watermark = maxBlock
+	}
+
+	// Update metrics runner with latest block timestamp (only once per batch)
+	if len(blocks) > 0 {
+		// Find the latest block by number
+		var latestBlock *rpc.NormalizedBlock
+		latestBlockNum := uint32(0)
+		for _, b := range blocks {
+			blockNum, err := hexToUint32(b.Block.Number)
+			if err != nil {
+				continue
+			}
+			if blockNum > latestBlockNum {
+				latestBlockNum = blockNum
+				latestBlock = b
+			}
+		}
+
+		if latestBlock != nil {
+			// Convert hex timestamp to uint64
+			timestamp, err := hexToUint64(latestBlock.Block.Timestamp)
+			if err != nil {
+				return fmt.Errorf("failed to parse block timestamp: %w", err)
+			}
+
+			// Call OnBlock with the latest block's timestamp
+			if err := cs.metricsRunner.OnBlock(timestamp, cs.chainId); err != nil {
+				return fmt.Errorf("failed to update metrics: %w", err)
+			}
+		}
 	}
 
 	return nil

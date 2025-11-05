@@ -5,16 +5,16 @@
 CREATE TABLE IF NOT EXISTS active_addresses_{granularity} (
     chain_id UInt32,
     period DateTime,
-    unique_addresses UInt64,
+    value UInt64,
     computed_at DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(computed_at)
 ORDER BY (chain_id, period);
 
-INSERT INTO active_addresses_{granularity} (chain_id, period, unique_addresses)
+INSERT INTO active_addresses_{granularity} (chain_id, period, value)
 SELECT
     {chain_id:UInt32} as chain_id,
     toStartOf{granularity}(block_time) as period,
-    uniq(address) as unique_addresses
+    uniq(address) as value
 FROM (
     SELECT from as address, block_time
     FROM raw_traces

@@ -4,8 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -19,30 +17,6 @@ func CreateTables(conn driver.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
-
-	dir := "material_views/tables"
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("failed to list mvs files: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
-			continue
-		}
-
-		filePath := filepath.Join(dir, entry.Name())
-		sql, err := os.ReadFile(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", filePath, err)
-		}
-
-		err = ExecuteSql(conn, string(sql))
-		if err != nil {
-			return fmt.Errorf("failed to execute %s: %w", filePath, err)
-		}
-	}
-
 	return nil
 }
 

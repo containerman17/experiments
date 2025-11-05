@@ -5,16 +5,16 @@
 CREATE TABLE IF NOT EXISTS tx_count_{granularity} (
     chain_id UInt32,
     period DateTime,
-    tx_count UInt64,
+    value UInt64,
     computed_at DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(computed_at)
 ORDER BY (chain_id, period);
 
-INSERT INTO tx_count_{granularity} (chain_id, period, tx_count)
+INSERT INTO tx_count_{granularity} (chain_id, period, value)
 SELECT
     {chain_id:UInt32} as chain_id,
     toStartOf{granularity}(block_time) as period,
-    count(*) as tx_count
+    count(*) as value
 FROM raw_transactions
 WHERE chain_id = {chain_id:UInt32}
   AND block_time >= {first_period:DateTime}

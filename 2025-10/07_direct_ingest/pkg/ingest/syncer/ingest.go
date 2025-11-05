@@ -596,11 +596,12 @@ type FlattenedTrace struct {
 	Input            []byte
 	Output           []byte
 	CallType         string
+	TxSuccess        bool
 }
 
 // flattenTrace recursively flattens a CallTrace into multiple FlattenedTrace entries
 func flattenTrace(trace *rpc.CallTrace, txHash string, blockNum uint32, blockTime time.Time,
-	txIndex uint16, address []uint16) ([]FlattenedTrace, error) {
+	txIndex uint16, address []uint16, txSuccess bool) ([]FlattenedTrace, error) {
 
 	if trace == nil {
 		return nil, nil
@@ -669,13 +670,14 @@ func flattenTrace(trace *rpc.CallTrace, txHash string, blockNum uint32, blockTim
 			Input:            input,
 			Output:           output,
 			CallType:         callType,
+			TxSuccess:        txSuccess,
 		},
 	}
 
 	// Recursively process child calls
 	for i, call := range trace.Calls {
 		childAddress := append(append([]uint16{}, address...), uint16(i))
-		childTraces, err := flattenTrace(&call, txHash, blockNum, blockTime, txIndex, childAddress)
+		childTraces, err := flattenTrace(&call, txHash, blockNum, blockTime, txIndex, childAddress, txSuccess)
 		if err != nil {
 			return nil, fmt.Errorf("failed to flatten child trace: %w", err)
 		}
@@ -709,7 +711,7 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 
 	batch, err := conn.PrepareBatch(ctx, `INSERT INTO raw_traces (
 		chain_id, tx_hash, block_number, block_time, transaction_index,
-		trace_address, from, to, gas, gas_used, value, input, output, call_type
+		trace_address, from, to, gas, gas_used, value, input, output, call_type, tx_success
 	)`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
@@ -744,9 +746,15 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 				continue // Nil trace (e.g., precompile)
 			}
 
+			// Get transaction success status from receipt
+			txSuccess := false
+			if i < len(normalizedBlock.Receipts) {
+				txSuccess = normalizedBlock.Receipts[i].Status == "0x1"
+			}
+
 			// Flatten the trace
 			flattenedTraces, err := flattenTrace(traceResult.Result, tx.Hash, blockNumber,
-				blockTime, txIndex, []uint16{})
+				blockTime, txIndex, []uint16{}, txSuccess)
 			if err != nil {
 				return fmt.Errorf("failed to flatten trace for tx %s: %w", tx.Hash, err)
 			}
@@ -778,6 +786,7 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 					string(trace.Input),
 					string(trace.Output),
 					trace.CallType,
+					trace.TxSuccess,
 				)
 				if err != nil {
 					return fmt.Errorf("failed to append trace: %w", err)

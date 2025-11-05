@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS raw_traces (
     input String,
     output String,
     call_type LowCardinality(String),  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
+    tx_success Bool,  -- Transaction success status (denormalized from raw_transactions)
     inserted_at DateTime64(3) DEFAULT now64(3)  -- Actual insertion timestamp for rollup coordination
 ) ENGINE = MergeTree()
 ORDER BY (chain_id, block_number);

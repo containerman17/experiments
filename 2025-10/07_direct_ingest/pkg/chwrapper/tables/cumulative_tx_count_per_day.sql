@@ -1,11 +1,11 @@
 -- ================================================
--- CUMULATIVE TX COUNT
+-- CUMULATIVE TX COUNT PER DAY
 -- ================================================
 -- Computes total cumulative transaction count up to each day
 -- Uses direct COUNT(*) which is extremely fast in ClickHouse
 
 -- Stats table with cumulative counts
-CREATE TABLE IF NOT EXISTS cumulative_tx_count (
+CREATE TABLE IF NOT EXISTS cumulative_tx_count_per_day (
     chain_id UInt32,
     day Date,
     cumulative_tx_count UInt64,
@@ -16,9 +16,9 @@ ORDER BY (chain_id, day);
 -- Refreshable MV that recalculates daily
 -- Only processes COMPLETE days (excludes the latest blockchain day)
 -- Recomputes cumulative for recently modified days
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_cumulative_tx_count
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_cumulative_tx_count_per_day
 REFRESH EVERY 1 DAY
-TO cumulative_tx_count
+TO cumulative_tx_count_per_day
 AS
 WITH 
     latest_insert AS (
@@ -70,7 +70,7 @@ GROUP BY ad.chain_id, ad.day;
 -- ================================================
 -- Get cumulative count for specific day:
 -- SELECT cumulative_tx_count 
--- FROM cumulative_tx_count 
+-- FROM cumulative_tx_count_per_day 
 -- WHERE chain_id = 1 AND day = '2024-01-01';
 
 -- Get growth trend:
@@ -78,13 +78,13 @@ GROUP BY ad.chain_id, ad.day;
 --     day, 
 --     cumulative_tx_count,
 --     cumulative_tx_count - lag(cumulative_tx_count) OVER (ORDER BY day) as daily_increase
--- FROM cumulative_tx_count
+-- FROM cumulative_tx_count_per_day
 -- WHERE chain_id = 1 AND day >= now() - INTERVAL 30 DAY
 -- ORDER BY day;
 
 -- Total transactions as of latest day:
 -- SELECT max(cumulative_tx_count) as total_transactions
--- FROM cumulative_tx_count
+-- FROM cumulative_tx_count_per_day
 -- WHERE chain_id = 1;
 
 -- ================================================
@@ -92,4 +92,4 @@ GROUP BY ad.chain_id, ad.day;
 -- ================================================
 -- The MV will automatically recalculate on next refresh
 -- To force immediate recalculation:
--- SYSTEM REFRESH VIEW mv_cumulative_tx_count;
+-- SYSTEM REFRESH VIEW mv_cumulative_tx_count_per_day;

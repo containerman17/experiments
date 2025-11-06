@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -29,8 +30,31 @@ func New(dbPath string, chainID uint32) (*Cache, error) {
 
 	// Use zstd compression level 1 for all levels
 	opts.ApplyCompressionSettings(func() pebble.DBCompressionSettings {
-		return pebble.UniformDBCompressionSettings(block.FastCompression)
+		return pebble.UniformDBCompressionSettings(block.BalancedCompression)
 	})
+
+	// Configure much larger target file sizes for better performance
+	// Start at 32MB for L0 and double each level
+	opts.TargetFileSizes[0] = 32 << 20  // L0: 32MB
+	opts.TargetFileSizes[1] = 64 << 20  // L1: 64MB
+	opts.TargetFileSizes[2] = 128 << 20 // L2: 128MB
+	opts.TargetFileSizes[3] = 256 << 20 // L3: 256MB
+	opts.TargetFileSizes[4] = 512 << 20 // L4: 512MB
+	opts.TargetFileSizes[5] = 1 << 30   // L5: 1GB
+	opts.TargetFileSizes[6] = 2 << 30   // L6: 2GB
+
+	// Increase L0 compaction thresholds for better write throughput
+	opts.L0CompactionThreshold = 8  // Default is 4
+	opts.L0StopWritesThreshold = 24 // Default is 12
+
+	// Increase base level size for less write amplification
+	opts.LBaseMaxBytes = 512 << 20 // 512MB (default is 64MB)
+
+	// Increase memtable size for larger writes
+	opts.MemTableSize = 64 << 20 // 64MB (default is 4MB)
+
+	// Allow more concurrent compactions
+	opts.CompactionConcurrencyRange = func() (int, int) { return 4, 8 }
 
 	db, err := pebble.Open(chainPath, opts)
 	if err != nil {
@@ -89,7 +113,7 @@ func (c *Cache) GetCompleteBlock(blockNum int64, fetch func() ([]byte, error)) (
 	}
 
 	// Store in cache
-	if err := c.db.Set(key, data, pebble.Sync); err != nil {
+	if err := c.db.Set(key, data, pebble.NoSync); err != nil {
 		// Log error but don't fail the request
 		fmt.Printf("Warning: failed to cache block %d: %v\n", blockNum, err)
 	}
@@ -130,6 +154,20 @@ func (c *Cache) GetBlockRange(from, to int64) (map[int64][]byte, error) {
 	}
 
 	return result, nil
+}
+
+// Compact triggers a manual compaction of the entire database
+func (c *Cache) Compact() error {
+	// Compact the entire key range
+	// Using nil for start means beginning of keyspace
+	// Using a high value for end means end of keyspace
+	ctx := context.Background()
+	return c.db.Compact(ctx, nil, []byte("\xff\xff\xff\xff\xff"), false)
+}
+
+// GetMetrics returns database metrics for monitoring
+func (c *Cache) GetMetrics() string {
+	return c.db.Metrics().String()
 }
 
 // Close closes the PebbleDB database

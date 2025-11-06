@@ -4,6 +4,7 @@ import (
 	"clickhouse-metrics-poc/pkg/chwrapper"
 	"clickhouse-metrics-poc/pkg/ingest/cache"
 	"clickhouse-metrics-poc/pkg/ingest/rpc"
+	"clickhouse-metrics-poc/pkg/metrics"
 	"context"
 	"fmt"
 	"log"
@@ -25,6 +26,7 @@ const (
 type Config struct {
 	ChainID        uint32
 	RpcURL         string
+	StartBlock     int64        // Starting block number when no watermark exists, default 68000000
 	MaxConcurrency int          // Maximum concurrent RPC and debug requests, default 20
 	FetchBatchSize int          // Blocks per fetch, default 100
 	CHConn         driver.Conn  // ClickHouse connection
@@ -38,6 +40,7 @@ type ChainSyncer struct {
 	conn           driver.Conn
 	blockChan      chan []*rpc.NormalizedBlock // Bounded channel for backpressure
 	watermark      uint32                      // Current sync position
+	startBlock     int64                       // Starting block when no watermark
 	fetchBatchSize int
 	flushInterval  time.Duration
 
@@ -57,6 +60,9 @@ type ChainSyncer struct {
 	blocksWritten int64
 	lastPrintTime time.Time
 	startTime     time.Time
+
+	// Metrics runner (optional)
+	metricsRunner *metrics.MetricsRunner
 }
 
 // NewChainSyncer creates a new chain syncer
@@ -66,6 +72,9 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	}
 	if cfg.MaxConcurrency == 0 {
 		cfg.MaxConcurrency = 20
+	}
+	if cfg.StartBlock == 0 {
+		cfg.StartBlock = 1
 	}
 
 	// Create fetcher
@@ -81,18 +90,29 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &ChainSyncer{
+	cs := &ChainSyncer{
 		chainId:        cfg.ChainID,
 		fetcher:        fetcher,
 		conn:           cfg.CHConn,
 		blockChan:      make(chan []*rpc.NormalizedBlock, BufferSize),
+		startBlock:     cfg.StartBlock,
 		fetchBatchSize: cfg.FetchBatchSize,
 		flushInterval:  FlushInterval,
 		ctx:            ctx,
 		cancel:         cancel,
 		lastPrintTime:  time.Now(),
 		startTime:      time.Now(),
-	}, nil
+	}
+
+	// Initialize metrics runner - REQUIRED
+	metricsRunner, err := metrics.NewMetricsRunner(cfg.CHConn, "sql/metrics")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metrics runner: %w", err)
+	}
+	cs.metricsRunner = metricsRunner
+	log.Printf("[Chain %d] Metrics runner initialized", cfg.ChainID)
+
+	return cs, nil
 }
 
 // Start begins syncing
@@ -174,9 +194,9 @@ func (cs *ChainSyncer) getStartingBlock() (int64, error) {
 	}
 	cs.watermark = watermark
 
-	// If no watermark, start from block 1
+	// If no watermark, start from configured start block
 	if watermark == 0 {
-		return 1, nil
+		return cs.startBlock, nil
 	}
 
 	// Start from watermark+1
@@ -247,51 +267,69 @@ func (cs *ChainSyncer) fetcherLoop(startBlock, latestBlock int64) {
 func (cs *ChainSyncer) writerLoop() {
 	defer cs.wg.Done()
 
-	ticker := time.NewTicker(cs.flushInterval)
-	defer ticker.Stop()
-
 	var buffer []*rpc.NormalizedBlock
+	var lastFlushTime time.Time
+	flushTimer := time.NewTimer(cs.flushInterval)
+	defer flushTimer.Stop()
 
-	flush := func() {
+	// flush writes buffered blocks and ensures minimum interval between writes
+	flush := func() time.Duration {
 		if len(buffer) == 0 {
-			return
+			return cs.flushInterval
 		}
 
+		start := time.Now()
 		if err := cs.writeBlocks(buffer); err != nil {
 			log.Printf("[Chain %d] Error writing blocks: %v", cs.chainId, err)
 			// TODO: Implement retry logic
-			return
+			return cs.flushInterval
 		}
 
-		// Update written counter
+		elapsed := time.Since(start)
+		if elapsed > 5*time.Second {
+			log.Printf("[Chain %d] WARNING: Write took %v, exceeds 5 second threshold",
+				cs.chainId, elapsed, cs.flushInterval)
+		}
+
+		// Update counters and clear buffer
 		cs.mu.Lock()
 		cs.blocksWritten += int64(len(buffer))
 		cs.mu.Unlock()
-
-		// Clear buffer
 		buffer = nil
+
+		// Calculate next flush time to maintain minimum interval
+		lastFlushTime = start
+		nextFlush := cs.flushInterval - elapsed
+		if nextFlush < 0 {
+			nextFlush = 0
+		}
+		return nextFlush
 	}
 
 	for {
 		select {
 		case <-cs.ctx.Done():
-			// Final flush before exit
 			flush()
 			return
 
 		case blocks, ok := <-cs.blockChan:
 			if !ok {
-				// Channel closed, final flush
 				flush()
 				return
 			}
 
-			// Add to buffer
 			buffer = append(buffer, blocks...)
 
-		case <-ticker.C:
-			// Time-based flush
-			flush()
+			// Flush immediately if interval has passed
+			if !lastFlushTime.IsZero() && time.Since(lastFlushTime) >= cs.flushInterval {
+				flushTimer.Stop()
+				nextInterval := flush()
+				flushTimer.Reset(nextInterval)
+			}
+
+		case <-flushTimer.C:
+			nextInterval := flush()
+			flushTimer.Reset(nextInterval)
 		}
 	}
 }
@@ -355,6 +393,37 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 			return fmt.Errorf("failed to update watermark: %w", err)
 		}
 		cs.watermark = maxBlock
+	}
+
+	// Update metrics runner with latest block timestamp (only once per batch)
+	if len(blocks) > 0 {
+		// Find the latest block by number
+		var latestBlock *rpc.NormalizedBlock
+		latestBlockNum := uint32(0)
+		for _, b := range blocks {
+			blockNum, err := hexToUint32(b.Block.Number)
+			if err != nil {
+				continue
+			}
+			if blockNum > latestBlockNum {
+				latestBlockNum = blockNum
+				latestBlock = b
+			}
+		}
+
+		if latestBlock != nil {
+			// Convert hex timestamp to uint64
+			timestamp, err := hexToUint64(latestBlock.Block.Timestamp)
+			if err != nil {
+				return fmt.Errorf("failed to parse block timestamp: %w", err)
+			}
+
+			// Call OnBlock with the latest block's timestamp
+			blockTime := time.Unix(int64(timestamp), 0).UTC()
+			if err := cs.metricsRunner.OnBlock(blockTime, cs.chainId); err != nil {
+				return fmt.Errorf("failed to update metrics: %w", err)
+			}
+		}
 	}
 
 	return nil

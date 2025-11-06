@@ -1,118 +1,182 @@
-# Blockchain Data Pipeline
+# Metrics API on ClickHouse
 
-## Raw Data Storage
+## Prerequisites
 
-**Source:** [`pkg/chwrapper/raw_tables.sql`](pkg/chwrapper/raw_tables.sql)
+### ClickHouse Installation
 
-We store blockchain data in ClickHouse across 5 tables:
+Install ClickHouse natively or with Docker. ClickHouse Cloud is untested and might work, but not recommended.
 
-### `raw_blocks`
-Block headers with all the standard fields - number, hash, timestamp, gas metrics, state roots, etc. Partitioned by chain_id and month for efficient queries. Nothing fancy here, just denormalized block data.
+**Installation guide:** https://clickhouse.com/docs/install
 
-### `raw_transactions`
-Transaction data merged with receipt data in a single table. This is a key design decision - instead of separate transactions and receipts tables, we combine them for better query performance. Each row has:
-- Transaction fields (from, to, value, input data)
-- Receipt fields (gas_used, success status, contract_address if created)
-- Denormalized block data (block_time, base_fee) to avoid joins
+### **IMPORTANT: Set Timezone to UTC**
 
-### `raw_traces`
-Internal transaction calls (trace data). Uses an array to represent the call tree path - `[0,2,1]` means first top-level call → third subcall → second sub-subcall. Flattened structure, one row per trace.
+ClickHouse must be configured to use UTC timezone.
 
-### `raw_logs`
-Smart contract event logs. Denormalizes some transaction data (tx_from, tx_to) to avoid joins when analyzing events. Topics are stored as separate columns (topic0-3) for efficient filtering.
+**For Docker installations:**
+- Modify `/etc/clickhouse-server/config.xml` inside the container and add:
+  ```xml
+  <timezone>UTC</timezone>
+  ```
+- Or set environment variable when running container:
+  ```bash
+  docker run -e TZ=UTC clickhouse/clickhouse-server
+  ```
 
-### `sync_watermark`
-Tiny RocksDB table tracking the last fully synced block per chain. This is the guarantee point - everything before this block is complete.
+**For native installations:**
+- Edit `/etc/clickhouse-server/config.xml` and add `<timezone>UTC</timezone>` under the `<clickhouse>` section
 
-## Active Addresses Calculation
+### Authentication Setup
 
-**Sources:**
-- [`pkg/chwrapper/mvs/06_mv_metrics_activeAddresses_transactions.sql`](pkg/chwrapper/mvs/06_mv_metrics_activeAddresses_transactions.sql)
-- [`pkg/chwrapper/mvs/07_mv_metrics_activeAddresses_logs.sql`](pkg/chwrapper/mvs/07_mv_metrics_activeAddresses_logs.sql)
+For local development, running ClickHouse without a password is recommended.
 
-```mermaid
-graph LR
-    A[raw_transactions] -->|from/to addresses| B[mv_metrics_activeAddresses_transactions]
-    C[raw_logs] -->|ERC20/721/1155<br/>Transfer events| D[mv_metrics_activeAddresses_logs]
-    B -->|hour buckets| E[Query: UNION for<br/>total active addresses]
-    D -->|hour buckets| E
+If you need password authentication (for user `default` and database `default`):
+```bash
+export CLICKHOUSE_PASSWORD=your_password
 ```
 
-We track active addresses from two sources, stored in separate materialized views that trigger on data insertion:
+The application will pick up this environment variable automatically.
 
-### From Transactions (`mv_metrics_activeAddresses_transactions`)
-Captures addresses that directly sent or received ETH:
-- `from` addresses (senders)
-- `to` addresses (receivers, excluding contract creation)
-- Aggregated by hour buckets
-- Zero address excluded (it's not a real user)
-
-### From Token Transfers (`mv_metrics_activeAddresses_logs`)
-Captures addresses involved in token transfers by parsing event logs:
-- ERC20/721 Transfer events (topic1 = from, topic2 = to)
-- ERC1155 TransferSingle events (topic2 = from, topic3 = to)  
-- ERC1155 TransferBatch events (same pattern)
-- Addresses extracted from topics (bytes 13-32 of the 32-byte topic)
-- Also aggregated by hour buckets
-
-The principle: An address is "active" if it either sent/received ETH or tokens in that time period. We use two separate materialized views because ClickHouse only allows one source table per MV - you can't trigger a single MV from both `raw_transactions` and `raw_logs`. At query time, UNION both views to get total unique active addresses.
-
-## Max TPS Pipeline
-
-**Sources:**
-- [`pkg/chwrapper/mvs/01_mv_rollingWindowMetrics_tps_second.sql`](pkg/chwrapper/mvs/01_mv_rollingWindowMetrics_tps_second.sql)
-- [`pkg/chwrapper/mvs/02_mv_rollingWindowMetrics_maxTps_hourly.sql`](pkg/chwrapper/mvs/02_mv_rollingWindowMetrics_maxTps_hourly.sql)
-- [`pkg/chwrapper/mvs/03_mv_rollingWindowMetrics_maxTps_daily.sql`](pkg/chwrapper/mvs/03_mv_rollingWindowMetrics_maxTps_daily.sql)
-- [`pkg/chwrapper/mvs/04_mv_rollingWindowMetrics_maxTps_precomputed.sql`](pkg/chwrapper/mvs/04_mv_rollingWindowMetrics_maxTps_precomputed.sql)
-
-```mermaid
-graph TD
-    A[raw_transactions] -->|INSERT trigger| B[Level 1: tps_second<br/>SummingMergeTree<br/>tx_count per second]
-    B -->|INSERT trigger| C[Level 2: maxTps_hourly<br/>AggregatingMergeTree<br/>MAX per hour]
-    C -->|INSERT trigger| D[Level 3: maxTps_daily<br/>AggregatingMergeTree<br/>MAX per day]
-    B -.->|queries seconds<br/>for last hour| E[Level 4: maxTps_precomputed<br/>Refreshes every 1 min]
-    C -.->|queries hours<br/>for day/week| E
-    D -.->|queries days<br/>for month/year/all-time| E
-    E -->|Single row lookup| F[API Response<br/>Sub-millisecond]
-    
-    style A fill:#e1f5ff
-    style E fill:#d4edda
-    style F fill:#fff3cd
+**Quick connection test:**
+```bash
+clickhouse-client "select 1"
 ```
 
-This is a cascading aggregation pipeline - each level feeds the next, reducing data volume at each step:
+This should execute without any additional arguments or password prompts.
 
-### Level 1: Second-level TPS (`rollingWindowMetrics_tps_second`)
-- Counts transactions per second from `raw_transactions`
-- SummingMergeTree automatically sums duplicate entries
-- Base data for all TPS calculations
+## Configuration
 
-### Level 2: Hourly Max TPS (`rollingWindowMetrics_maxTps_hourly`)  
-- Takes max TPS from each hour using the seconds table
-- Uses AggregatingMergeTree with `maxState` to store the aggregation state
-- Triggers on inserts to the seconds **table** (not the materialized view)
+Edit `config.json` to configure your blockchain ingestion:
 
-### Level 3: Daily Max TPS (`rollingWindowMetrics_maxTps_daily`)
-- Takes max TPS from each day using the hourly table  
-- Same AggregatingMergeTree pattern, cascading from hourly data
-- Enables efficient queries for longer time ranges
+```json
+[
+    {
+        "chainID": 43114,
+        "rpcURL": "http://localhost:9650/ext/bc/C/rpc",
+        "startBlock": 69600000,
+        "fetchBatchSize": 400,
+        "maxConcurrency": 100
+    }
+]
+```
 
-### Level 4: Pre-computed Values (`rollingWindowMetrics_maxTps_precomputed`)
-- Refreshes every minute
-- Pre-calculates all common time windows (last hour, day, week, month, 90 days, year, all-time)
-- Uses the appropriate aggregation level for each window:
-  - Last hour: queries seconds directly (max 3,600 rows)
-  - Last day/week: queries hourly aggregates (max 24-168 rows)
-  - Longer periods: queries daily aggregates (max 365 rows for a year)
-- Single row lookup for instant results
+### Configuration Parameters
 
-### The Design Principle
-Instead of scanning millions of transactions for "what's the max TPS this month?", we:
-1. Aggregate once at insertion time (seconds)
-2. Cascade aggregations to coarser granularities (hours, days)
-3. Pre-compute all 7 time windows every minute in a single refreshable MV
-4. API just does a single row lookup: `SELECT * FROM precomputed WHERE chain_id = ? ORDER BY computed_at DESC LIMIT 1`
-5. For "total" across chains: `SELECT MAX(last_hour), MAX(last_day)... FROM (latest row per chain)`
-6. Result: single row fetch = instant response regardless of data volume
+- **`chainID`** (required): Chain identifier (e.g., 43114 for Avalanche C-Chain)
+- **`rpcURL`** (required): **Replace this with your actual RPC endpoint URL**
+- **`startBlock`** (optional): Block number to start ingestion from on first run. If omitted, starts from block 1. On subsequent runs, always resumes from the last synced block (watermark)
+- **`fetchBatchSize`** (optional): Number of blocks to fetch in each batch. Default: 400
+- **`maxConcurrency`** (optional): Maximum concurrent RPC requests. Default: 100
 
-The key insight: blockchain data is append-only. Historical maxTPS values never change, so aggressive pre-aggregation works perfectly. The only thing that changes is the current/recent data, which the refreshable view handles.
+You can configure multiple chains by adding more objects to the array.
+
+## Running the Application
+
+### Commands
+
+#### `ingest` - Start Ingestion (Main Command)
+
+This is the primary command you'll use. It starts the continuous ingestion process that syncs blockchain data into ClickHouse:
+
+```bash
+go run . ingest
+```
+
+The ingester will:
+- Create all necessary tables automatically
+- Resume from the last synced block
+- Continuously fetch and process new blocks
+- Calculate metrics on schedule when enough data is ingested
+
+#### `size` - Show Table Sizes
+
+Display ClickHouse table sizes and disk usage statistics:
+
+```bash
+go run . size
+```
+
+This shows:
+- All tables with row counts and sizes in MB
+- RPC cache directory sizes
+
+#### `wipe` - Drop Tables
+
+Drop calculated/derived tables (keeps raw data and watermark):
+
+```bash
+go run . wipe
+```
+
+To drop ALL tables including raw data:
+
+```bash
+go run . wipe --all
+```
+
+## Querying Data
+
+### Using clickhouse-client
+
+Query your ingested data directly from the command line:
+
+```bash
+# Query hourly ICM sent messages
+clickhouse-client "SELECT period, value FROM icm_sent_hour LIMIT 10"
+
+# Query raw blocks
+clickhouse-client "SELECT block_number, block_time, hex(hash) as hash, hex(parent_hash) as parent_hash, gas_used, gas_limit FROM raw_blocks ORDER BY block_number DESC LIMIT 5"
+
+# Query raw transactions
+clickhouse-client "SELECT block_number, transaction_index, hex(hash) as hash, hex(\`from\`) as from, hex(to) as to, value, gas_used FROM raw_transactions LIMIT 10"
+
+# Count total transactions
+clickhouse-client "SELECT count() FROM raw_transactions"
+
+# Check sync status
+clickhouse-client "SELECT * FROM sync_watermark"
+```
+
+### Using DBeaver
+
+For a GUI interface, connect to ClickHouse using DBeaver:
+
+1. Install DBeaver and add a ClickHouse connection
+2. Connection settings:
+   - **Protocol**: HTTP
+   - **Host**: `localhost`
+   - **Port**: `8123` (default HTTP port)
+   - **Database**: `default`
+   - **User**: `default`
+   - **Password**: (leave empty if no password set)
+
+DBeaver provides a rich interface for exploring tables, writing queries, and visualizing results.
+
+## Metrics & Analytics
+
+For detailed information about available metrics, aggregated tables, and analytical queries, see:
+
+**[sql/metrics/README.md](sql/metrics/README.md)**
+
+
+## Architecture
+
+- **Raw Tables**: Store blockchain data as-is (`raw_blocks`, `raw_transactions`, `raw_traces`, `raw_logs`)
+- **Calculated Tables**: Derived metrics and aggregations built from raw data
+- **RPC Cache**: Local disk cache to speed up resync (will be removed in production)
+
+## Troubleshooting
+
+**Connection issues:**
+- Verify ClickHouse is running and available without password: `clickhouse-client "SELECT 1"`
+- Check timezone configuration with: `clickhouse-client "SELECT timezone()"` (has to be UTC)
+- Ensure port 9000 (native) or 8123 (HTTP) is accessible
+
+**RPC Performance:**
+- Adjust `maxConcurrency` if your RPC endpoint has rate limits
+- Reduce `fetchBatchSize` if you see no visual progress
+
+**Data issues:**
+- Use `wipe` to reset calculated tables while keeping raw data
+- Check `sync_watermark` table to see ingestion progress
+- Review logs for any RPC errors or connection issues
+

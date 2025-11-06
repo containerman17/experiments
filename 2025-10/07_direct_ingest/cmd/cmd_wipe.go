@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -10,21 +10,25 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-func main() {
+func RunWipe(all bool) {
 	conn, err := chwrapper.Connect()
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
 	defer conn.Close()
 
-	if err := wipeAllTables(conn); err != nil {
+	if err := wipeCalculatedTables(conn, all); err != nil {
 		log.Fatalf("Failed to wipe tables: %v", err)
 	}
 
-	fmt.Println("All tables and materialized views dropped successfully")
+	if all {
+		fmt.Println("All tables dropped successfully")
+	} else {
+		fmt.Println("Calculated tables dropped successfully")
+	}
 }
 
-func wipeAllTables(conn driver.Conn) error {
+func wipeCalculatedTables(conn driver.Conn, all bool) error {
 	ctx := context.Background()
 
 	query := `
@@ -41,6 +45,16 @@ func wipeAllTables(conn driver.Conn) error {
 	}
 	defer rows.Close()
 
+	keepTables := map[string]bool{}
+
+	if !all {
+		keepTables["raw_blocks"] = true
+		keepTables["raw_transactions"] = true
+		keepTables["raw_traces"] = true
+		keepTables["raw_logs"] = true
+		keepTables["sync_watermark"] = true
+	}
+
 	var tables []struct {
 		name     string
 		database string
@@ -51,10 +65,12 @@ func wipeAllTables(conn driver.Conn) error {
 		if err := rows.Scan(&name, &database); err != nil {
 			return fmt.Errorf("failed to scan row: %w", err)
 		}
-		tables = append(tables, struct {
-			name     string
-			database string
-		}{name: name, database: database})
+		if !keepTables[name] {
+			tables = append(tables, struct {
+				name     string
+				database string
+			}{name: name, database: database})
+		}
 	}
 
 	if err := rows.Err(); err != nil {
@@ -62,11 +78,11 @@ func wipeAllTables(conn driver.Conn) error {
 	}
 
 	if len(tables) == 0 {
-		fmt.Println("No tables found to drop")
+		fmt.Println("No calculated tables found to drop")
 		return nil
 	}
 
-	fmt.Printf("Found %d tables/materialized views to drop\n", len(tables))
+	fmt.Printf("Found %d calculated tables to drop\n", len(tables))
 
 	for _, table := range tables {
 		dropQuery := fmt.Sprintf("DROP TABLE IF EXISTS `%s`.`%s`", table.database, table.name)

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"clickhouse-metrics-poc/pkg/chwrapper"
@@ -15,11 +15,13 @@ import (
 type ChainConfig struct {
 	ChainID        uint32 `json:"chainID"`
 	RpcURL         string `json:"rpcURL"`
+	StartBlock     int64  `json:"startBlock,omitempty"`
 	MaxConcurrency int    `json:"maxConcurrency,omitempty"`
 	FetchBatchSize int    `json:"fetchBatchSize,omitempty"`
 }
 
-func main() {
+func RunIngest() {
+	log.Println("Starting ingest...")
 	// Load configuration
 	configData, err := os.ReadFile("config.json")
 	if err != nil {
@@ -57,19 +59,30 @@ func main() {
 	// Start a syncer for each chain
 	for _, cfg := range configs {
 		// Create cache
-		cache, err := cache.New("./data", cfg.ChainID)
+		cacheInstance, err := cache.New("./rpc_cache", cfg.ChainID)
 		if err != nil {
 			log.Fatalf("Failed to create cache for chain %d: %v", cfg.ChainID, err)
 		}
-		defer cache.Close()
+		defer cacheInstance.Close()
+
+		// TODO: delete this after testing
+		// go func(c *cache.Cache, chainID uint32) {
+		// 	log.Printf("Starting background compaction for chain %d...", chainID)
+		// 	if err := c.Compact(); err != nil {
+		// 		log.Printf("Background compaction failed for chain %d: %v", chainID, err)
+		// 	} else {
+		// 		log.Printf("Background compaction completed for chain %d", chainID)
+		// 	}
+		// }(cacheInstance, cfg.ChainID)
 
 		// Create syncer
 		chainSyncer, err := syncer.NewChainSyncer(syncer.Config{
 			ChainID:        cfg.ChainID,
 			RpcURL:         cfg.RpcURL,
+			StartBlock:     cfg.StartBlock,
 			MaxConcurrency: cfg.MaxConcurrency,
 			CHConn:         conn,
-			Cache:          cache,
+			Cache:          cacheInstance,
 			FetchBatchSize: cfg.FetchBatchSize,
 		})
 		if err != nil {

@@ -34,9 +34,6 @@ RUN mkdir -p /tmp
 # Copy the binary from builder
 COPY --from=builder /app/main /main
 
-# Copy the generated peerlist.json from builder
-# COPY --from=builder /app/peerlist.json /peerlist.json
-
 # Expose port (assuming the API runs on 8080 based on common patterns)
 EXPOSE 8080
 

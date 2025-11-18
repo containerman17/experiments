@@ -46,17 +46,39 @@ func StartAPI(peerStore *PeerStore) {
 	// Start idle shutdown monitor
 	go monitorIdleShutdown()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Create a handler with CORS middleware
+	handler := corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Update last request time
 		lastRequestMu.Lock()
 		lastRequestTime = time.Now()
 		lastRequestMu.Unlock()
 
 		handleValidators(w, r, peerStore)
-	})
+	}))
 
-	fmt.Printf("🌐 API server starting on :8080 (auto-shutdown after %v idle)\n", idleTimeout)
+	http.Handle("/", handler)
+
+	fmt.Printf("🌐 API server starting on :8080 with CORS enabled (auto-shutdown after %v idle)\n", idleTimeout)
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+// corsMiddleware adds CORS headers to allow all origins, methods and headers
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers - WARNING: This allows EVERYTHING
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
+		
+		// Handle preflight OPTIONS request
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handleValidators(w http.ResponseWriter, r *http.Request, peerStore *PeerStore) {

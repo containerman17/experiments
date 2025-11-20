@@ -48,7 +48,7 @@ console.log('Creating chain configs')
 const configBaseDir = join(homedir(), '.avalanchego', 'configs', 'chains')
 const chainConfig = {
     "pruning-enabled": false,
-    "log-level": "debug",
+    "log-level": "info",
     "warp-api-enabled": true,
     "eth-apis": [
         "eth",

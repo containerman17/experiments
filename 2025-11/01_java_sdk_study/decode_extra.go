@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/coreth/plugin/evm/atomic"
@@ -41,34 +42,37 @@ func decodeExtData(hexStr string, c codec.Manager) {
 	fmt.Printf("\nFound %d atomic transaction(s):\n", len(txs))
 	for i, tx := range txs {
 		fmt.Printf("\n=== Transaction %d ===\n", i)
-		fmt.Printf("ID: %s\n", tx.ID())
+		txID := tx.ID()
+		fmt.Printf("ID: 0x%x\n", txID[:])
 
 		switch utx := tx.UnsignedAtomicTx.(type) {
 		case *atomic.UnsignedImportTx:
 			fmt.Printf("Type: ImportTx\n")
 			fmt.Printf("NetworkID: %d\n", utx.NetworkID)
-			fmt.Printf("BlockchainID: %s\n", utx.BlockchainID)
-			fmt.Printf("SourceChain: %s\n", utx.SourceChain)
+			fmt.Printf("BlockchainID: 0x%x\n", utx.BlockchainID[:])
+			fmt.Printf("SourceChain: 0x%x\n", utx.SourceChain[:])
 			fmt.Printf("ImportedInputs: %d\n", len(utx.ImportedInputs))
 			for j, input := range utx.ImportedInputs {
-				fmt.Printf("  Input %d: UTXOID=%s, AssetID=%s\n", j, input.UTXOID, input.AssetID)
+				assetID := input.AssetID()
+				fmt.Printf("  Input %d: UTXOID=0x%x:%d, AssetID=0x%x\n", j, input.UTXOID.TxID[:], input.UTXOID.OutputIndex, assetID[:])
 			}
 			fmt.Printf("Outputs: %d\n", len(utx.Outs))
 			for j, out := range utx.Outs {
-				fmt.Printf("  Output %d: Address=%s, Amount=%d, AssetID=%s\n", j, out.Address, out.Amount, out.AssetID)
+				fmt.Printf("  Output %d: Address=%s, Amount=%d, AssetID=0x%x\n", j, out.Address, out.Amount, out.AssetID[:])
 			}
 		case *atomic.UnsignedExportTx:
 			fmt.Printf("Type: ExportTx\n")
 			fmt.Printf("NetworkID: %d\n", utx.NetworkID)
-			fmt.Printf("BlockchainID: %s\n", utx.BlockchainID)
-			fmt.Printf("DestinationChain: %s\n", utx.DestinationChain)
+			fmt.Printf("BlockchainID: 0x%x\n", utx.BlockchainID[:])
+			fmt.Printf("DestinationChain: 0x%x\n", utx.DestinationChain[:])
 			fmt.Printf("Inputs: %d\n", len(utx.Ins))
 			for j, input := range utx.Ins {
-				fmt.Printf("  Input %d: Address=%s, Amount=%d, AssetID=%s, Nonce=%d\n", j, input.Address, input.Amount, input.AssetID, input.Nonce)
+				fmt.Printf("  Input %d: Address=%s, Amount=%d, AssetID=0x%x, Nonce=%d\n", j, input.Address, input.Amount, input.AssetID[:], input.Nonce)
 			}
 			fmt.Printf("ExportedOutputs: %d\n", len(utx.ExportedOutputs))
 			for j, out := range utx.ExportedOutputs {
-				fmt.Printf("  Output %d: AssetID=%s\n", j, out.AssetID)
+				assetID := out.AssetID()
+				fmt.Printf("  Output %d: AssetID=0x%x\n", j, assetID[:])
 			}
 		}
 		fmt.Printf("Credentials: %d\n", len(tx.Creds))
@@ -76,11 +80,15 @@ func decodeExtData(hexStr string, c codec.Manager) {
 }
 
 func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run decode_extra.go <hex_string>")
+		return
+	}
+	hexStr := os.Args[1]
+	// Clean up potential 0x prefix
+	if len(hexStr) > 2 && hexStr[:2] == "0x" {
+		hexStr = hexStr[2:]
+	}
 
-	example2 := "00000000000100000001000000010427D4B22A2A78BCDDD456742CAF91B56BADBFF985EE19AEF14573E7343FD652000000000000000000000000000000000000000000000000000000000000000000000001565F0FE9715E3CB0DF579F186C299D6707887E830000000DC7D44F6F21E67317CBC4BE2AEB00677AD6462778A8F52274B9D605DF2591B23027A87DFF0000000000025FCD0000000121E67317CBC4BE2AEB00677AD6462778A8F52274B9D605DF2591B23027A87DFF000000070000000DC7D42391000000000000000000000001000000015CF998275803A7277926912DEFDF177B2E97B0B4000000010000000900000001C1B39952DF371D6AC3CB7615630DC279DEC7A471C1C355738C0FA087B41FD5C317AC85D312B4DC01C9B37513BCAC98465CF7A834F8A291536AAB1C6403D29D1B01"
-
-	fmt.Println("\n\n==========================================")
-	fmt.Println("EXAMPLE 2 (real example)")
-	fmt.Println("==========================================")
-	decodeExtData(example2, atomic.Codec)
+	decodeExtData(hexStr, atomic.Codec)
 }

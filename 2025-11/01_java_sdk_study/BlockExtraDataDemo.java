@@ -3,6 +3,7 @@ package com.avax.demo;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
@@ -35,17 +36,19 @@ public class BlockExtraDataDemo {
             hexData = "00000000000100000001000000010427D4B22A2A78BCDDD456742CAF91B56BADBFF985EE19AEF14573E7343FD652000000000000000000000000000000000000000000000000000000000000000000000001565F0FE9715E3CB0DF579F186C299D6707887E830000000DC7D44F6F21E67317CBC4BE2AEB00677AD6462778A8F52274B9D605DF2591B23027A87DFF0000000000025FCD0000000121E67317CBC4BE2AEB00677AD6462778A8F52274B9D605DF2591B23027A87DFF000000070000000DC7D42391000000000000000000000001000000015CF998275803A7277926912DEFDF177B2E97B0B4000000010000000900000001C1B39952DF371D6AC3CB7615630DC279DEC7A471C1C355738C0FA087B41FD5C317AC85D312B4DC01C9B37513BCAC98465CF7A834F8A291536AAB1C6403D29D1B01";
         }
 
-        System.out.println("Decoding BlockExtraData...");
-        System.out.println("Input Hex: " + (hexData.length() > 60 ? hexData.substring(0, 60) + "..." : hexData));
-        System.out.println("Length: " + hexData.length() / 2 + " bytes");
-
         try {
             byte[] data = HexFormat.of().parseHex(hexData);
+            
+            System.out.println("ExtData length: " + data.length + " bytes");
+            System.out.println();
+            System.out.println("Decoded as batch atomic transactions (post-AP5)");
+            
             List<Tx> txs = decode(data);
             
-            System.out.println("\nDecoded " + txs.size() + " atomic transaction(s):");
+            System.out.println("\nFound " + txs.size() + " atomic transaction(s):");
             for (int i = 0; i < txs.size(); i++) {
-                System.out.println("\n=== Transaction " + i + " ===");
+                System.out.println();
+                System.out.println("=== Transaction " + i + " ===");
                 System.out.println(txs.get(i));
             }
             
@@ -139,6 +142,7 @@ public class BlockExtraDataDemo {
     static class Tx {
         UnsignedAtomicTx unsignedTx;
         List<Credential> credentials;
+        String transactionID;
 
         static Tx decode(LinearDecoder d) {
             Tx tx = new Tx();
@@ -146,10 +150,10 @@ public class BlockExtraDataDemo {
             int typeId = d.readInt();
             switch (typeId) {
                 case TYPE_ID_IMPORT_TX:
-                    tx.unsignedTx = UnsignedImportTx.decode(d);
+                    tx.unsignedTx = UnsignedImportTx.decode(d, typeId);
                     break;
                 case TYPE_ID_EXPORT_TX:
-                    tx.unsignedTx = UnsignedExportTx.decode(d);
+                    tx.unsignedTx = UnsignedExportTx.decode(d, typeId);
                     break;
                 default:
                     throw new IllegalArgumentException("Unknown Tx Type ID: " + typeId);
@@ -166,12 +170,47 @@ public class BlockExtraDataDemo {
                     throw new IllegalArgumentException("Unknown Credential Type ID: " + credTypeId);
                 }
             }
+            
+            // Compute transaction ID from the full marshaled transaction
+            try {
+                byte[] signedTxBytes = tx.serialize();
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] hash = digest.digest(signedTxBytes);
+                tx.transactionID = "0x" + HexFormat.of().formatHex(hash);
+            } catch (Exception e) {
+                tx.transactionID = "0x" + "0".repeat(64);
+            }
+            
             return tx;
+        }
+        
+        byte[] serialize() throws Exception {
+            ByteBuffer buf = ByteBuffer.allocate(4096);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            
+            // Add codec version (2 bytes) - required for correct transaction ID
+            buf.putShort((short) 0);
+            
+            // Serialize unsigned transaction (including type ID)
+            buf.put(unsignedTx.serialize());
+            
+            // Serialize credentials
+            buf.putInt(credentials.size());
+            for (Credential cred : credentials) {
+                buf.putInt(TYPE_ID_SECP256K1_CREDENTIAL);
+                buf.put(cred.serialize());
+            }
+            
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
         }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
+            sb.append("ID: ").append(transactionID).append("\n");
             sb.append("Type: ").append(unsignedTx.getTypeName()).append("\n");
             sb.append(unsignedTx.toString());
             sb.append("Credentials: ").append(credentials.size());
@@ -181,17 +220,20 @@ public class BlockExtraDataDemo {
 
     interface UnsignedAtomicTx {
         String getTypeName();
+        byte[] serialize();
     }
 
     static class UnsignedImportTx implements UnsignedAtomicTx {
+        int typeID;
         int networkID;
         String blockchainID;
         String sourceChain;
         List<TransferableInput> importedInputs;
         List<EVMOutput> outs;
 
-        static UnsignedImportTx decode(LinearDecoder d) {
+        static UnsignedImportTx decode(LinearDecoder d, int typeID) {
             UnsignedImportTx tx = new UnsignedImportTx();
+            tx.typeID = typeID;
             tx.networkID = d.readInt();
             tx.blockchainID = d.readID();
             tx.sourceChain = d.readID();
@@ -216,24 +258,66 @@ public class BlockExtraDataDemo {
         public String getTypeName() { return "ImportTx"; }
 
         @Override
+        public byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(4096);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            
+            buf.putInt(typeID);
+            buf.putInt(networkID);
+            buf.put(HexFormat.of().parseHex(blockchainID));
+            buf.put(HexFormat.of().parseHex(sourceChain));
+            
+            buf.putInt(importedInputs.size());
+            for (TransferableInput input : importedInputs) {
+                buf.put(input.serialize());
+            }
+            
+            buf.putInt(outs.size());
+            for (EVMOutput out : outs) {
+                buf.put(out.serialize());
+            }
+            
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
+
+        @Override
         public String toString() {
-            return "NetworkID: " + networkID + "\n" +
-                   "BlockchainID: " + blockchainID + "\n" +
-                   "SourceChain: " + sourceChain + "\n" +
-                   "ImportedInputs: " + importedInputs.size() + "\n" +
-                   "Outputs: " + outs.size() + "\n";
+            StringBuilder sb = new StringBuilder();
+            sb.append("NetworkID: ").append(networkID).append("\n");
+            sb.append("BlockchainID: 0x").append(blockchainID).append("\n");
+            sb.append("SourceChain: 0x").append(sourceChain).append("\n");
+            sb.append("ImportedInputs: ").append(importedInputs.size()).append("\n");
+            for (int i = 0; i < importedInputs.size(); i++) {
+                TransferableInput input = importedInputs.get(i);
+                sb.append("  Input ").append(i).append(": UTXOID=0x").append(input.txID)
+                  .append(":").append(input.outputIndex).append(", AssetID=0x")
+                  .append(input.assetID).append("\n");
+            }
+            sb.append("Outputs: ").append(outs.size()).append("\n");
+            for (int i = 0; i < outs.size(); i++) {
+                EVMOutput out = outs.get(i);
+                sb.append("  Output ").append(i).append(": Address=").append(out.address)
+                  .append(", Amount=").append(out.amount).append(", AssetID=0x")
+                  .append(out.assetID).append("\n");
+            }
+            return sb.toString();
         }
     }
 
     static class UnsignedExportTx implements UnsignedAtomicTx {
+        int typeID;
         int networkID;
         String blockchainID;
         String destinationChain;
         List<EVMInput> ins;
         List<TransferableOutput> exportedOutputs;
 
-        static UnsignedExportTx decode(LinearDecoder d) {
+        static UnsignedExportTx decode(LinearDecoder d, int typeID) {
             UnsignedExportTx tx = new UnsignedExportTx();
+            tx.typeID = typeID;
             tx.networkID = d.readInt();
             tx.blockchainID = d.readID();
             tx.destinationChain = d.readID();
@@ -258,11 +342,37 @@ public class BlockExtraDataDemo {
         public String getTypeName() { return "ExportTx"; }
 
         @Override
+        public byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(4096);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            
+            buf.putInt(typeID);
+            buf.putInt(networkID);
+            buf.put(HexFormat.of().parseHex(blockchainID));
+            buf.put(HexFormat.of().parseHex(destinationChain));
+            
+            buf.putInt(ins.size());
+            for (EVMInput input : ins) {
+                buf.put(input.serialize());
+            }
+            
+            buf.putInt(exportedOutputs.size());
+            for (TransferableOutput out : exportedOutputs) {
+                buf.put(out.serialize());
+            }
+            
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
+
+        @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
             sb.append("NetworkID: ").append(networkID).append("\n");
-            sb.append("BlockchainID: ").append(blockchainID).append("\n");
-            sb.append("DestinationChain: ").append(destinationChain).append("\n");
+            sb.append("BlockchainID: 0x").append(blockchainID).append("\n");
+            sb.append("DestinationChain: 0x").append(destinationChain).append("\n");
             sb.append("Inputs: ").append(ins.size()).append("\n");
             for (int i = 0; i < ins.size(); i++) {
                 sb.append("  Input ").append(i).append(": ").append(ins.get(i)).append("\n");
@@ -290,10 +400,23 @@ public class BlockExtraDataDemo {
             return in;
         }
 
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(100);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            buf.put(HexFormat.of().parseHex(address.substring(2)));
+            buf.putLong(amount);
+            buf.put(HexFormat.of().parseHex(assetID));
+            buf.putLong(nonce);
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
+
         @Override
         public String toString() {
-            return String.format("Address=%s, Amount=%d, AssetID=...%s, Nonce=%d", 
-                address, amount, assetID.substring(58), nonce);
+            return String.format("Address=%s, Amount=%d, AssetID=0x%s, Nonce=%d", 
+                address, amount, assetID, nonce);
         }
     }
 
@@ -309,14 +432,25 @@ public class BlockExtraDataDemo {
             out.assetID = d.readID();
             return out;
         }
+
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(100);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            buf.put(HexFormat.of().parseHex(address.substring(2)));
+            buf.putLong(amount);
+            buf.put(HexFormat.of().parseHex(assetID));
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
     }
 
     static class TransferableInput {
         String txID;
         int outputIndex;
         String assetID;
-        // In field is an Interface
-        Object input; // Likely SECP256K1TransferInput
+        SECP256K1TransferInput input;
 
         static TransferableInput decode(LinearDecoder d) {
             TransferableInput ti = new TransferableInput();
@@ -331,6 +465,20 @@ public class BlockExtraDataDemo {
                 throw new RuntimeException("Unsupported TransferInput Type: " + typeId);
             }
             return ti;
+        }
+
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(500);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            buf.put(HexFormat.of().parseHex(txID));
+            buf.putInt(outputIndex);
+            buf.put(HexFormat.of().parseHex(assetID));
+            buf.putInt(TYPE_ID_SECP256K1_TRANSFER_INPUT);
+            buf.put(input.serialize());
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
         }
     }
 
@@ -349,12 +497,25 @@ public class BlockExtraDataDemo {
             }
             return in;
         }
+
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(500);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            buf.putLong(amount);
+            buf.putInt(sigIndices.size());
+            for (Integer idx : sigIndices) {
+                buf.putInt(idx);
+            }
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
     }
 
     static class TransferableOutput {
         String assetID;
-        // Out field is an Interface
-        Object output; // Likely SECP256K1TransferOutput
+        SECP256K1TransferOutput output;
 
         static TransferableOutput decode(LinearDecoder d) {
             TransferableOutput to = new TransferableOutput();
@@ -369,9 +530,21 @@ public class BlockExtraDataDemo {
             return to;
         }
 
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(500);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            buf.put(HexFormat.of().parseHex(assetID));
+            buf.putInt(TYPE_ID_SECP256K1_TRANSFER_OUTPUT);
+            buf.put(output.serialize());
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
+
         @Override
         public String toString() {
-            return "AssetID=..." + assetID.substring(58);
+            return "AssetID=0x" + assetID;
         }
     }
 
@@ -395,6 +568,22 @@ public class BlockExtraDataDemo {
             }
             return out;
         }
+
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(500);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            buf.putLong(amount);
+            buf.putLong(locktime);
+            buf.putInt(threshold);
+            buf.putInt(addresses.size());
+            for (String addr : addresses) {
+                buf.put(HexFormat.of().parseHex(addr.substring(2)));
+            }
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
+        }
     }
 
     static class Credential {
@@ -411,6 +600,21 @@ public class BlockExtraDataDemo {
                 c.signatures.add(HexFormat.of().formatHex(sig));
             }
             return c;
+        }
+        
+        byte[] serialize() {
+            ByteBuffer buf = ByteBuffer.allocate(500);
+            buf.order(ByteOrder.BIG_ENDIAN);
+            
+            buf.putInt(signatures.size());
+            for (String sigHex : signatures) {
+                buf.put(HexFormat.of().parseHex(sigHex));
+            }
+            
+            byte[] result = new byte[buf.position()];
+            buf.flip();
+            buf.get(result);
+            return result;
         }
     }
 }

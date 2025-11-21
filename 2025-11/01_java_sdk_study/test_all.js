@@ -35,29 +35,14 @@ for (let i = 0; i < lines.length; i++) {
             cwd: __dirname
         });
 
-        // Extract transaction IDs for comparison
-        const goIdMatch = goOutput.match(/ID: (0x[0-9a-f]{64})/);
-        const javaIdMatch = javaOutput.match(/ID: (0x[0-9a-f]{64})/);
-
-        if (!goIdMatch || !javaIdMatch) {
-            console.log(`❌ Line ${i + 1} (Block ${blockNum}): Failed to parse transaction IDs`);
-            failCount++;
-            failures.push({ line: i + 1, blockNum, reason: 'Failed to parse IDs' });
-            continue;
-        }
-
-        const goId = goIdMatch[1];
-        const javaId = javaIdMatch[1];
-
-        if (goId === javaId) {
-            console.log(`✓ Line ${i + 1} (Block ${blockNum}): PASS - ID ${goId.substring(0, 16)}...`);
+        // Compare full outputs
+        if (goOutput.trim() === javaOutput.trim()) {
+            console.log(`✓ Line ${i + 1} (Block ${blockNum}): PASS`);
             passCount++;
         } else {
-            console.log(`❌ Line ${i + 1} (Block ${blockNum}): FAIL`);
-            console.log(`   Go:   ${goId}`);
-            console.log(`   Java: ${javaId}`);
+            console.log(`❌ Line ${i + 1} (Block ${blockNum}): FAIL - Outputs differ`);
             failCount++;
-            failures.push({ line: i + 1, blockNum, goId, javaId });
+            failures.push({ line: i + 1, blockNum, goOutput, javaOutput });
         }
     } catch (error) {
         console.log(`❌ Line ${i + 1} (Block ${blockNum}): ERROR - ${error.message.split('\n')[0]}`);
@@ -71,9 +56,17 @@ console.log(`RESULTS: ${passCount} passed, ${failCount} failed out of ${lines.le
 console.log(`Success rate: ${((passCount / lines.length) * 100).toFixed(2)}%`);
 
 if (failures.length > 0) {
-    console.log(`\nFailed tests:`);
-    failures.forEach(f => {
-        console.log(`  Line ${f.line} (Block ${f.blockNum}): ${f.reason || 'ID mismatch'}`);
+    console.log(`\nFirst 5 failed tests (showing diff):`);
+    failures.slice(0, 5).forEach(f => {
+        console.log(`\n--- Line ${f.line} (Block ${f.blockNum}) ---`);
+        if (f.goOutput && f.javaOutput) {
+            console.log('Go output:');
+            console.log(f.goOutput.split('\n').slice(0, 15).join('\n'));
+            console.log('\nJava output:');
+            console.log(f.javaOutput.split('\n').slice(0, 15).join('\n'));
+        } else {
+            console.log(`  ${f.reason || 'Unknown error'}`);
+        }
     });
 }
 

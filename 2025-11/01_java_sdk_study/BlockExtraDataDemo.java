@@ -1,5 +1,8 @@
 package com.avax.demo;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +17,9 @@ import java.util.stream.Collectors;
  * Usage: java BlockExtraDataDemo.java
  */
 public class BlockExtraDataDemo {
+
+    // Codec Version
+    private static final short CODEC_VERSION = 0;
 
     // Codec Type IDs based on coreth/plugin/evm/atomic/codec.go
     private static final int TYPE_ID_IMPORT_TX = 0;
@@ -185,26 +191,23 @@ public class BlockExtraDataDemo {
         }
         
         byte[] serialize() throws Exception {
-            ByteBuffer buf = ByteBuffer.allocate(4096);
-            buf.order(ByteOrder.BIG_ENDIAN);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            DataOutputStream dos = new DataOutputStream(baos);
             
             // Add codec version (2 bytes) - required for correct transaction ID
-            buf.putShort((short) 0);
+            dos.writeShort(CODEC_VERSION);
             
             // Serialize unsigned transaction (including type ID)
-            buf.put(unsignedTx.serialize());
+            dos.write(unsignedTx.serialize());
             
             // Serialize credentials
-            buf.putInt(credentials.size());
+            dos.writeInt(credentials.size());
             for (Credential cred : credentials) {
-                buf.putInt(TYPE_ID_SECP256K1_CREDENTIAL);
-                buf.put(cred.serialize());
+                dos.writeInt(TYPE_ID_SECP256K1_CREDENTIAL);
+                dos.write(cred.serialize());
             }
             
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
+            return baos.toByteArray();
         }
 
         @Override
@@ -259,34 +262,34 @@ public class BlockExtraDataDemo {
 
         @Override
         public byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(4096);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            
-            buf.putInt(typeID);
-            buf.putInt(networkID);
-            buf.put(HexFormat.of().parseHex(blockchainID));
-            buf.put(HexFormat.of().parseHex(sourceChain));
-            
-            buf.putInt(importedInputs.size());
-            for (TransferableInput input : importedInputs) {
-                buf.put(input.serialize());
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                
+                dos.writeInt(typeID);
+                dos.writeInt(networkID);
+                dos.write(HexFormat.of().parseHex(blockchainID));
+                dos.write(HexFormat.of().parseHex(sourceChain));
+                
+                dos.writeInt(importedInputs.size());
+                for (TransferableInput input : importedInputs) {
+                    dos.write(input.serialize());
+                }
+                
+                dos.writeInt(outs.size());
+                for (EVMOutput out : outs) {
+                    dos.write(out.serialize());
+                }
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-            
-            buf.putInt(outs.size());
-            for (EVMOutput out : outs) {
-                buf.put(out.serialize());
-            }
-            
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
         }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
-            sb.append("NetworkID: ").append(networkID).append("\n");
+            sb.append("NetworkID: ").append(Integer.toUnsignedString(networkID)).append("\n");
             sb.append("BlockchainID: 0x").append(blockchainID).append("\n");
             sb.append("SourceChain: 0x").append(sourceChain).append("\n");
             sb.append("ImportedInputs: ").append(importedInputs.size()).append("\n");
@@ -300,7 +303,7 @@ public class BlockExtraDataDemo {
             for (int i = 0; i < outs.size(); i++) {
                 EVMOutput out = outs.get(i);
                 sb.append("  Output ").append(i).append(": Address=").append(out.address)
-                  .append(", Amount=").append(out.amount).append(", AssetID=0x")
+                  .append(", Amount=").append(Long.toUnsignedString(out.amount)).append(", AssetID=0x")
                   .append(out.assetID).append("\n");
             }
             return sb.toString();
@@ -343,34 +346,35 @@ public class BlockExtraDataDemo {
 
         @Override
         public byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(4096);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            
-            buf.putInt(typeID);
-            buf.putInt(networkID);
-            buf.put(HexFormat.of().parseHex(blockchainID));
-            buf.put(HexFormat.of().parseHex(destinationChain));
-            
-            buf.putInt(ins.size());
-            for (EVMInput input : ins) {
-                buf.put(input.serialize());
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                
+                dos.writeInt(typeID);
+                dos.writeInt(networkID);
+                dos.write(HexFormat.of().parseHex(blockchainID));
+                dos.write(HexFormat.of().parseHex(destinationChain));
+                
+                dos.writeInt(ins.size());
+                for (EVMInput input : ins) {
+                    dos.write(input.serialize());
+                }
+                
+                dos.writeInt(exportedOutputs.size());
+                for (TransferableOutput out : exportedOutputs) {
+                    dos.write(out.serialize());
+                }
+                
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-            
-            buf.putInt(exportedOutputs.size());
-            for (TransferableOutput out : exportedOutputs) {
-                buf.put(out.serialize());
-            }
-            
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
         }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
-            sb.append("NetworkID: ").append(networkID).append("\n");
+            sb.append("NetworkID: ").append(Integer.toUnsignedString(networkID)).append("\n");
             sb.append("BlockchainID: 0x").append(blockchainID).append("\n");
             sb.append("DestinationChain: 0x").append(destinationChain).append("\n");
             sb.append("Inputs: ").append(ins.size()).append("\n");
@@ -401,22 +405,23 @@ public class BlockExtraDataDemo {
         }
 
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(100);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            buf.put(HexFormat.of().parseHex(address.substring(2)));
-            buf.putLong(amount);
-            buf.put(HexFormat.of().parseHex(assetID));
-            buf.putLong(nonce);
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.write(HexFormat.of().parseHex(address.substring(2)));
+                dos.writeLong(amount);
+                dos.write(HexFormat.of().parseHex(assetID));
+                dos.writeLong(nonce);
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
         public String toString() {
-            return String.format("Address=%s, Amount=%d, AssetID=0x%s, Nonce=%d", 
-                address, amount, assetID, nonce);
+            return String.format("Address=%s, Amount=%s, AssetID=0x%s, Nonce=%s", 
+                address, Long.toUnsignedString(amount), assetID, Long.toUnsignedString(nonce));
         }
     }
 
@@ -434,15 +439,22 @@ public class BlockExtraDataDemo {
         }
 
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(100);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            buf.put(HexFormat.of().parseHex(address.substring(2)));
-            buf.putLong(amount);
-            buf.put(HexFormat.of().parseHex(assetID));
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.write(HexFormat.of().parseHex(address.substring(2)));
+                dos.writeLong(amount);
+                dos.write(HexFormat.of().parseHex(assetID));
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        
+        @Override
+        public String toString() {
+             return String.format("Address=%s, Amount=%s, AssetID=0x%s", 
+                     address, Long.toUnsignedString(amount), assetID);
         }
     }
 
@@ -468,17 +480,18 @@ public class BlockExtraDataDemo {
         }
 
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(500);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            buf.put(HexFormat.of().parseHex(txID));
-            buf.putInt(outputIndex);
-            buf.put(HexFormat.of().parseHex(assetID));
-            buf.putInt(TYPE_ID_SECP256K1_TRANSFER_INPUT);
-            buf.put(input.serialize());
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.write(HexFormat.of().parseHex(txID));
+                dos.writeInt(outputIndex);
+                dos.write(HexFormat.of().parseHex(assetID));
+                dos.writeInt(TYPE_ID_SECP256K1_TRANSFER_INPUT);
+                dos.write(input.serialize());
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -499,17 +512,18 @@ public class BlockExtraDataDemo {
         }
 
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(500);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            buf.putLong(amount);
-            buf.putInt(sigIndices.size());
-            for (Integer idx : sigIndices) {
-                buf.putInt(idx);
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.writeLong(amount);
+                dos.writeInt(sigIndices.size());
+                for (Integer idx : sigIndices) {
+                    dos.writeInt(idx);
+                }
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
         }
     }
 
@@ -531,15 +545,16 @@ public class BlockExtraDataDemo {
         }
 
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(500);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            buf.put(HexFormat.of().parseHex(assetID));
-            buf.putInt(TYPE_ID_SECP256K1_TRANSFER_OUTPUT);
-            buf.put(output.serialize());
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.write(HexFormat.of().parseHex(assetID));
+                dos.writeInt(TYPE_ID_SECP256K1_TRANSFER_OUTPUT);
+                dos.write(output.serialize());
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
@@ -570,19 +585,20 @@ public class BlockExtraDataDemo {
         }
 
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(500);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            buf.putLong(amount);
-            buf.putLong(locktime);
-            buf.putInt(threshold);
-            buf.putInt(addresses.size());
-            for (String addr : addresses) {
-                buf.put(HexFormat.of().parseHex(addr.substring(2)));
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.writeLong(amount);
+                dos.writeLong(locktime);
+                dos.writeInt(threshold);
+                dos.writeInt(addresses.size());
+                for (String addr : addresses) {
+                    dos.write(HexFormat.of().parseHex(addr.substring(2)));
+                }
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
         }
     }
 
@@ -603,18 +619,17 @@ public class BlockExtraDataDemo {
         }
         
         byte[] serialize() {
-            ByteBuffer buf = ByteBuffer.allocate(500);
-            buf.order(ByteOrder.BIG_ENDIAN);
-            
-            buf.putInt(signatures.size());
-            for (String sigHex : signatures) {
-                buf.put(HexFormat.of().parseHex(sigHex));
+            try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream dos = new DataOutputStream(baos);
+                dos.writeInt(signatures.size());
+                for (String sigHex : signatures) {
+                    dos.write(HexFormat.of().parseHex(sigHex));
+                }
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-            
-            byte[] result = new byte[buf.position()];
-            buf.flip();
-            buf.get(result);
-            return result;
         }
     }
 }

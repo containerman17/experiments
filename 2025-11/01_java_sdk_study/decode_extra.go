@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/coreth/plugin/evm/atomic"
@@ -58,7 +59,7 @@ func decodeExtData(hexStr string, c codec.Manager) {
 			}
 			fmt.Printf("Outputs: %d\n", len(utx.Outs))
 			for j, out := range utx.Outs {
-				fmt.Printf("  Output %d: Address=%s, Amount=%d, AssetID=0x%x\n", j, out.Address, out.Amount, out.AssetID[:])
+				fmt.Printf("  Output %d: Address=%s, Amount=%d, AssetID=0x%x\n", j, strings.ToLower(out.Address.String()), out.Amount, out.AssetID[:])
 			}
 		case *atomic.UnsignedExportTx:
 			fmt.Printf("Type: ExportTx\n")
@@ -67,7 +68,7 @@ func decodeExtData(hexStr string, c codec.Manager) {
 			fmt.Printf("DestinationChain: 0x%x\n", utx.DestinationChain[:])
 			fmt.Printf("Inputs: %d\n", len(utx.Ins))
 			for j, input := range utx.Ins {
-				fmt.Printf("  Input %d: Address=%s, Amount=%d, AssetID=0x%x, Nonce=%d\n", j, input.Address, input.Amount, input.AssetID[:], input.Nonce)
+				fmt.Printf("  Input %d: Address=%s, Amount=%d, AssetID=0x%x, Nonce=%d\n", j, strings.ToLower(input.Address.String()), input.Amount, input.AssetID[:], input.Nonce)
 			}
 			fmt.Printf("ExportedOutputs: %d\n", len(utx.ExportedOutputs))
 			for j, out := range utx.ExportedOutputs {

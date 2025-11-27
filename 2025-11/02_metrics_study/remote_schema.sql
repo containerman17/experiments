@@ -116,3 +116,12 @@ CREATE TABLE default.raw_txs
 ENGINE = MergeTree
 ORDER BY (chain_id, block_number)
 SETTINGS index_granularity = 8192;
+
+-- default.sync_watermark
+CREATE TABLE default.sync_watermark
+(
+    `chain_id` UInt32,
+    `block_number` UInt32
+)
+ENGINE = EmbeddedRocksDB
+PRIMARY KEY chain_id;

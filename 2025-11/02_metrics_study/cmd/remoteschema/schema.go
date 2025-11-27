@@ -44,7 +44,7 @@ func main() {
 		SELECT database, name 
 		FROM system.tables 
 		WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-		  AND name LIKE 'raw_%'
+		  AND (name LIKE 'raw_%' OR name = 'sync_watermark')
 		ORDER BY database, name
 	`)
 	if err != nil {

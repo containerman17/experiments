@@ -6,10 +6,8 @@ import (
 )
 
 func (s *Server) handlePlayground(w http.ResponseWriter, r *http.Request) {
-	// Get chains from store
 	chains := s.store.GetChains()
 
-	// Get metrics from registered metrics
 	metrics := make([]string, 0, len(s.metrics)+4)
 	for _, m := range s.metrics {
 		metrics = append(metrics, m.Name)
@@ -29,270 +27,227 @@ func playgroundHTML(chains []uint32, metrics []string) string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Metrics Playground</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>[x-cloak] { display: none !important; }</style>
+  <title>EVM Metrics</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f8f9fa; color: #333; padding: 16px; }
+    .header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+    h1 { font-size: 20px; font-weight: 600; }
+    select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; }
+    .periods { display: flex; gap: 4px; }
+    .periods button { padding: 6px 12px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .periods button.active { background: #4285f4; color: #fff; border-color: #4285f4; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 12px; }
+    .card { background: #fff; border-radius: 6px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .card-title { font-size: 13px; font-weight: 500; margin-bottom: 8px; }
+    .chart-wrap { height: 80px; position: relative; }
+    .chart-wrap svg { width: 100%; height: 100%; }
+    .chart-wrap .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; }
+    .card-footer { margin-top: 6px; font-size: 11px; }
+    .card-footer a { color: #4285f4; text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-footer a:hover { text-decoration: underline; }
+    .tooltip { position: fixed; background: #333; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; pointer-events: none; z-index: 100; display: none; }
+  </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-4">
-  <div x-data="playground()" x-init="init()" class="max-w-4xl mx-auto">
-    <h1 class="text-2xl font-bold mb-6 text-cyan-400">Metrics Playground</h1>
-    
-    <!-- Mode toggle -->
-    <div class="flex gap-2 mb-4">
-      <button @click="mode = 'metrics'; fetch()" 
-              :class="mode === 'metrics' ? 'bg-cyan-600' : 'bg-gray-700'" 
-              class="px-4 py-2 rounded text-sm font-medium">
-        Time Series
-      </button>
-      <button @click="mode = 'rolling'; fetch()" 
-              :class="mode === 'rolling' ? 'bg-cyan-600' : 'bg-gray-700'"
-              class="px-4 py-2 rounded text-sm font-medium">
-        Rolling Window
-      </button>
+<body>
+  <div class="header">
+    <h1>EVM Metrics</h1>
+    <div>
+      <label>Chain: </label>
+      <select id="chainSelect"></select>
     </div>
-
-    <!-- Controls -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-      <div>
-        <label class="block text-xs text-gray-400 mb-1">Chain</label>
-        <select x-model="chainId" @change="fetch()" class="w-full bg-gray-800 rounded px-3 py-2 text-sm">
-          <template x-for="c in chains" :key="c">
-            <option :value="c" x-text="c"></option>
-          </template>
-          <option value="total">Total</option>
-        </select>
-      </div>
-      
-      <div>
-        <label class="block text-xs text-gray-400 mb-1">Metric</label>
-        <select x-model="metric" @change="fetch()" class="w-full bg-gray-800 rounded px-3 py-2 text-sm">
-          <template x-for="m in metrics" :key="m">
-            <option :value="m" x-text="m"></option>
-          </template>
-        </select>
-      </div>
-      
-      <template x-if="mode === 'metrics'">
-        <div>
-          <label class="block text-xs text-gray-400 mb-1">Granularity</label>
-          <select x-model="granularity" @change="prefillDates(); fetch()" class="w-full bg-gray-800 rounded px-3 py-2 text-sm">
-            <option value="hour">Hour</option>
-            <option value="day">Day</option>
-            <option value="week">Week</option>
-            <option value="month">Month</option>
-          </select>
-        </div>
-      </template>
-      
-      <div>
-        <label class="block text-xs text-gray-400 mb-1">&nbsp;</label>
-        <button @click="fetch()" :disabled="loading"
-                class="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 rounded px-4 py-2 text-sm font-medium">
-          <span x-show="!loading">Fetch</span>
-          <span x-show="loading">...</span>
-        </button>
-      </div>
+    <div>
+      <label>Period: </label>
+      <span class="periods">
+        <button data-period="24h">24h</button>
+        <button data-period="7d" class="active">7d</button>
+        <button data-period="30d">30d</button>
+        <button data-period="90d">90d</button>
+        <button data-period="180d">180d</button>
+        <button data-period="1y">1y</button>
+        <button data-period="3y">3y</button>
+      </span>
     </div>
-
-    <!-- Date range (only for time series) -->
-    <template x-if="mode === 'metrics'">
-      <div class="grid grid-cols-2 gap-3 mb-4">
-        <div>
-          <label class="block text-xs text-gray-400 mb-1">Start</label>
-          <input type="datetime-local" x-model="startDate" @change="fetch()"
-                 class="w-full bg-gray-800 rounded px-3 py-2 text-sm">
-        </div>
-        <div>
-          <label class="block text-xs text-gray-400 mb-1">End</label>
-          <input type="datetime-local" x-model="endDate" @change="fetch()"
-                 class="w-full bg-gray-800 rounded px-3 py-2 text-sm">
-        </div>
-      </div>
-    </template>
-
-    <!-- Error -->
-    <div x-show="error" x-cloak class="bg-red-900/50 text-red-300 rounded p-3 mb-4 text-sm" x-text="error"></div>
-
-    <!-- API Request -->
-    <div x-show="lastUrl" x-cloak class="bg-gray-800 rounded p-3 mb-4">
-      <div class="text-xs text-gray-400 mb-1">API Request</div>
-      <a :href="lastUrl" target="_blank" class="text-xs text-cyan-300 hover:text-cyan-200 underline break-all" x-text="location.origin + lastUrl"></a>
-    </div>
-
-    <!-- Chart -->
-    <div x-show="mode === 'metrics' && chartData.length > 0" x-cloak class="bg-gray-800 rounded p-4 mb-4">
-      <canvas id="chart" height="200"></canvas>
-    </div>
-
-    <!-- Rolling window results -->
-    <div x-show="mode === 'rolling' && rollingData" x-cloak class="bg-gray-800 rounded p-4">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <template x-for="[key, val] in Object.entries(rollingData || {})" :key="key">
-          <div class="text-center">
-            <div class="text-xs text-gray-400 mb-1" x-text="formatKey(key)"></div>
-            <div class="text-lg font-mono text-cyan-400" x-text="formatValue(val)"></div>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <!-- Raw JSON -->
-    <details class="mt-4">
-      <summary class="text-xs text-gray-500 cursor-pointer">Raw Response</summary>
-      <pre class="bg-gray-800 rounded p-3 mt-2 text-xs overflow-auto max-h-64" x-text="JSON.stringify(rawResponse, null, 2)"></pre>
-    </details>
   </div>
+  <div class="grid" id="grid"></div>
+  <div class="tooltip" id="tooltip"></div>
 
   <script>
     const CHAINS = ` + string(chainsJSON) + `;
     const METRICS = ` + string(metricsJSON) + `;
+    const CHAIN_NAMES = {43114: 'C-Chain', 73772: 'Swimmer', 432204: 'Dexalot', 4337: 'Beam'};
+    const PERIODS = {
+      '24h':  { hours: 24,       granularity: 'hour' },
+      '7d':   { hours: 24*7,     granularity: 'hour' },
+      '30d':  { hours: 24*30,    granularity: 'day' },
+      '90d':  { hours: 24*90,    granularity: 'day' },
+      '180d': { hours: 24*180,   granularity: 'week' },
+      '1y':   { hours: 24*365,   granularity: 'week' },
+      '3y':   { hours: 24*365*3, granularity: 'month' }
+    };
 
-    function playground() {
-      return {
-        mode: 'metrics',
-        chainId: '43114',
-        metric: 'icmGasBurned',
-        granularity: 'month',
-        startDate: '',
-        endDate: '',
-        chains: CHAINS.map(String),
-        metrics: METRICS,
-        loading: false,
-        error: '',
-        chartData: [],
-        rollingData: null,
-        rawResponse: null,
-        lastUrl: '',
-        chart: null,
+    let currentChain = '43114';
+    let currentPeriod = '7d';
+    let abortControllers = {};
 
-        init() {
-          this.prefillDates();
-          this.fetch();
-        },
+    const chainSelect = document.getElementById('chainSelect');
+    const grid = document.getElementById('grid');
+    const tooltip = document.getElementById('tooltip');
 
-        prefillDates() {
-          const now = new Date();
-          const end = new Date(now);
-          end.setMinutes(0, 0, 0);
-          
-          let start = new Date(end);
-          switch (this.granularity) {
-            case 'hour': start.setHours(start.getHours() - 48); break;
-            case 'day': start.setDate(start.getDate() - 30); break;
-            case 'week': start.setDate(start.getDate() - 84); break;
-            case 'month': start.setMonth(start.getMonth() - 12); break;
-          }
-          
-          this.startDate = this.toLocalISO(start);
-          this.endDate = this.toLocalISO(end);
-        },
+    // Init chain selector
+    CHAINS.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = CHAIN_NAMES[c] ? CHAIN_NAMES[c] + ' (ID: ' + c + ')' : 'Chain ' + c;
+      chainSelect.appendChild(opt);
+    });
+    const totalOpt = document.createElement('option');
+    totalOpt.value = 'total';
+    totalOpt.textContent = 'All Chains (Total)';
+    chainSelect.appendChild(totalOpt);
+    chainSelect.value = currentChain;
 
-        toLocalISO(d) {
-          return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-        },
+    chainSelect.onchange = () => { currentChain = chainSelect.value; fetchAll(); };
 
-        async fetch() {
-          this.loading = true;
-          this.error = '';
-          this.rawResponse = null;
-          
-          try {
-            if (this.mode === 'metrics') {
-              await this.fetchTimeSeries();
-            } else {
-              await this.fetchRolling();
-            }
-          } catch (e) {
-            this.error = e.message;
-          }
-          
-          this.loading = false;
-        },
+    // Period buttons
+    document.querySelectorAll('.periods button').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelector('.periods button.active').classList.remove('active');
+        btn.classList.add('active');
+        currentPeriod = btn.dataset.period;
+        fetchAll();
+      };
+    });
 
-        async fetchTimeSeries() {
-          const startTs = Math.floor(new Date(this.startDate).getTime() / 1000);
-          const endTs = Math.floor(new Date(this.endDate).getTime() / 1000);
-          
-          const url = '/v2/chains/' + this.chainId + '/metrics/' + this.metric + 
-            '?startTimestamp=' + startTs + '&endTimestamp=' + endTs + 
-            '&timeInterval=' + this.granularity + '&pageSize=500';
-          
-          this.lastUrl = url;
-          const res = await window.fetch(url);
-          if (!res.ok) throw new Error(await res.text());
-          
-          const data = await res.json();
-          this.rawResponse = data;
-          this.chartData = (data.results || []).reverse();
-          this.renderChart();
-        },
+    // Create cards
+    METRICS.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = 'card-' + m;
+      card.innerHTML = '<div class="card-title">' + formatMetricName(m) + '</div>' +
+        '<div class="chart-wrap"><div class="loading">Loading...</div><svg viewBox="0 0 400 80" preserveAspectRatio="none"></svg></div>' +
+        '<div class="card-footer"><a class="data-link" target="_blank">JSON</a></div>';
+      grid.appendChild(card);
+    });
 
-        async fetchRolling() {
-          const url = '/v2/chains/' + this.chainId + '/rollingWindowMetrics/' + this.metric;
-          this.lastUrl = url;
-          const res = await window.fetch(url);
-          if (!res.ok) throw new Error(await res.text());
-          
-          const data = await res.json();
-          this.rawResponse = data;
-          this.rollingData = data.result;
-        },
+    function formatMetricName(m) {
+      return m.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+    }
 
-        renderChart() {
-          this.$nextTick(() => {
-            const ctx = document.getElementById('chart');
-            if (!ctx) return;
-            
-            if (this.chart) this.chart.destroy();
-          
-          this.chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: this.chartData.map(d => {
-                const date = new Date(d.timestamp * 1000);
-                if (this.granularity === 'hour') return date.toLocaleString('en', {month:'short', day:'numeric', hour:'numeric'});
-                return date.toLocaleDateString('en', {month:'short', day:'numeric'});
-              }),
-              datasets: [{
-                data: this.chartData.map(d => parseFloat(d.value) || 0),
-                backgroundColor: 'rgba(34, 211, 238, 0.6)',
-                borderColor: 'rgba(34, 211, 238, 1)',
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false } },
-              scales: {
-                x: { ticks: { color: '#9ca3af', maxTicksLimit: 10 }, grid: { color: '#374151' } },
-                y: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
-              }
-            }
-          });
-          });
-        },
+    function fetchAll() {
+      METRICS.forEach(m => fetchMetric(m));
+    }
 
-        formatKey(k) {
-          return k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
-        },
+    async function fetchMetric(metric) {
+      const card = document.getElementById('card-' + metric);
+      const svg = card.querySelector('svg');
+      const loading = card.querySelector('.loading');
+      const dataLink = card.querySelector('.data-link');
 
-        formatValue(v) {
-          if (!v || v === '0') return '0';
-          const n = parseFloat(v);
-          if (n >= 1e12) return (n/1e12).toFixed(2) + 'T';
-          if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
-          if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
-          if (n >= 1e3) return (n/1e3).toFixed(2) + 'K';
-          return n.toLocaleString();
-        },
+      // Abort previous
+      if (abortControllers[metric]) abortControllers[metric].abort();
+      abortControllers[metric] = new AbortController();
+      const signal = abortControllers[metric].signal;
 
-        curlCmd() {
-          return 'curl "' + location.origin + this.lastUrl + '"';
+      loading.style.display = 'flex';
+      svg.innerHTML = '';
+
+      const p = PERIODS[currentPeriod];
+      const now = Math.floor(Date.now() / 1000);
+      const startTs = now - p.hours * 3600;
+      
+      // Cumulative metrics don't support hour granularity
+      let granularity = p.granularity;
+      if (metric.startsWith('cumulative') && granularity === 'hour') {
+        granularity = 'day';
+      }
+
+      const url = '/v2/chains/' + currentChain + '/metrics/' + metric +
+        '?startTimestamp=' + startTs + '&endTimestamp=' + now +
+        '&timeInterval=' + granularity + '&pageSize=500';
+
+      dataLink.href = url;
+      dataLink.textContent = url;
+
+      try {
+        const res = await fetch(url, { signal });
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        if (signal.aborted) return;
+
+        const points = (data.results || []).reverse();
+        if (points.length > 0) {
+          renderChart(svg, points, metric);
+        } else {
+          svg.innerHTML = '<text x="200" y="45" text-anchor="middle" fill="#999" font-size="12">No data</text>';
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        svg.innerHTML = '<text x="200" y="45" text-anchor="middle" fill="#c00" font-size="12">Error</text>';
+      } finally {
+        if (!signal.aborted) loading.style.display = 'none';
+      }
+    }
+
+    function renderChart(svg, points, metric) {
+      const vals = points.map(p => parseFloat(p.value) || 0);
+      const times = points.map(p => p.timestamp);
+      const max = Math.max(...vals);
+      const min = Math.min(...vals);
+      const range = max - min || 1;
+
+      const w = 400, h = 80, padY = 4;
+      const scaleX = i => (i / (vals.length - 1)) * w;
+      const scaleY = v => padY + (1 - (v - min) / range) * (h - padY * 2);
+
+      // Line path
+      let d = vals.map((v, i) => (i === 0 ? 'M' : 'L') + scaleX(i).toFixed(1) + ',' + scaleY(v).toFixed(1)).join(' ');
+      
+      // Fill path
+      let fillD = d + ' L' + w + ',' + h + ' L0,' + h + ' Z';
+
+      svg.innerHTML = 
+        '<defs><linearGradient id="grad-' + metric + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="#4285f4" stop-opacity="0.3"/>' +
+        '<stop offset="100%" stop-color="#4285f4" stop-opacity="0.05"/>' +
+        '</linearGradient></defs>' +
+        '<path d="' + fillD + '" fill="url(#grad-' + metric + ')"/>' +
+        '<path d="' + d + '" fill="none" stroke="#4285f4" stroke-width="1.5"/>' +
+        '<circle class="hover-dot" r="4" fill="#4285f4" stroke="#fff" stroke-width="1.5" style="display:none"/>' +
+        '<rect class="hover-area" x="0" y="0" width="' + w + '" height="' + h + '" fill="transparent"/>';
+
+      // Hover interaction
+      const hoverArea = svg.querySelector('.hover-area');
+      const hoverDot = svg.querySelector('.hover-dot');
+      hoverArea.onmousemove = e => {
+        const rect = svg.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width * w;
+        const i = Math.round(x / w * (vals.length - 1));
+        if (i >= 0 && i < vals.length) {
+          const date = new Date(times[i] * 1000);
+          const dateStr = date.toLocaleString('en', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+          tooltip.style.display = 'block';
+          tooltip.style.left = e.clientX + 10 + 'px';
+          tooltip.style.top = e.clientY - 30 + 'px';
+          tooltip.innerHTML = '<b>' + formatValue(vals[i]) + '</b><br>' + dateStr;
+          hoverDot.setAttribute('cx', scaleX(i));
+          hoverDot.setAttribute('cy', scaleY(vals[i]));
+          hoverDot.style.display = 'block';
         }
       };
+      hoverArea.onmouseleave = () => { tooltip.style.display = 'none'; hoverDot.style.display = 'none'; };
     }
+
+    function formatValue(v) {
+      if (v >= 1e12) return (v/1e12).toFixed(2) + 'T';
+      if (v >= 1e9) return (v/1e9).toFixed(2) + 'B';
+      if (v >= 1e6) return (v/1e6).toFixed(2) + 'M';
+      if (v >= 1e3) return (v/1e3).toFixed(2) + 'K';
+      return v.toLocaleString();
+    }
+
+    // Initial fetch
+    fetchAll();
   </script>
 </body>
 </html>`

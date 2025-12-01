@@ -58,6 +58,7 @@ func (s *Server) setupRoutes() {
 	r.Use(middleware.Recoverer)
 	r.Use(s.activityMiddleware)
 
+	r.Get("/", s.handleIndex)
 	r.Get("/v2/chains/{chainId}/metrics/{metricName}", s.handleGetMetric)
 	r.Get("/v2/chains/{chainId}/rollingWindowMetrics/{metricName}", s.handleRollingWindowMetric)
 	r.Get("/playground", s.handlePlayground)
@@ -294,4 +295,24 @@ func (s *Server) computeRollingWindow(chainID uint32, metric, agg string) *rolli
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(`<!DOCTYPE html>
+<html>
+<head>
+  <title>EVM Metrics API</title>
+  <style>body{font-family:system-ui;max-width:600px;margin:40px auto;padding:0 20px;line-height:1.6}a{color:#4285f4}</style>
+</head>
+<body>
+  <h1>EVM Metrics API</h1>
+  <p>This API is compatible with:</p>
+  <ul>
+    <li><a href="https://developers.avacloud.io/metrics-api/chain-metrics/get-metrics-for-evm-chains">GET /v2/chains/{chainId}/metrics/{metric}</a></li>
+    <li><a href="https://developers.avacloud.io/metrics-api/chain-metrics/get-rolling-window-metrics-for-evm-chains">GET /v2/chains/{chainId}/rollingWindowMetrics/{metric}</a></li>
+  </ul>
+  <p>Check out the <a href="/playground">Playground</a> for a live demo!</p>
+</body>
+</html>`))
 }

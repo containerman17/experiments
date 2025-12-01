@@ -35,12 +35,17 @@ func (s *Syncer) syncValueMetric(ctx context.Context, chainID uint32, metric Val
 	// Calculate complete periods
 	periods := completePeriods(startTime, remoteTime, gran)
 	if len(periods) == 0 {
+		log.Printf("up to date %s/%s chain %s", metric.Name, gran, chainStr(chainID))
 		return nil
 	}
 
 	// Query all periods at once
 	periodStart := periods[0].Start
 	periodEnd := periods[len(periods)-1].End
+
+	log.Printf("syncing %s/%s chain %s: %s → %s (%d periods)",
+		metric.Name, gran, chainStr(chainID),
+		periodStart.Format("2006-01-02 15:04"), periodEnd.Format("2006-01-02 15:04"), len(periods))
 
 	chStart := time.Now()
 	rows, err := s.ch.Query(ctx, metric.Query, chainID, periodStart, periodEnd, string(gran))
@@ -146,12 +151,17 @@ func (s *Syncer) syncCumulativeMetric(ctx context.Context, chainID uint32, metri
 	// Calculate complete periods
 	periods := completePeriods(startTime, remoteTime, gran)
 	if len(periods) == 0 {
+		log.Printf("up to date %s/%s chain %s", metric.Name, gran, chainStr(chainID))
 		return nil
 	}
 
 	// Query - cumulative queries do full scan but only return periods >= watermark
 	periodStart := periods[0].Start
 	periodEnd := periods[len(periods)-1].End
+
+	log.Printf("syncing %s/%s chain %s: %s → %s (%d periods)",
+		metric.Name, gran, chainStr(chainID),
+		periodStart.Format("2006-01-02 15:04"), periodEnd.Format("2006-01-02 15:04"), len(periods))
 
 	chStart := time.Now()
 	rows, err := s.ch.Query(ctx, metric.Query, chainID, periodStart, periodEnd, string(gran))

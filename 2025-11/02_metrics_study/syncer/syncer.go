@@ -48,6 +48,8 @@ func (s *Syncer) Run(ctx context.Context) {
 }
 
 func (s *Syncer) syncOnce(ctx context.Context) error {
+	log.Printf("checking watermarks...")
+
 	// Get all chain watermarks with block_time
 	watermarks, err := s.ch.GetSyncWatermarks(ctx)
 	if err != nil {
@@ -59,7 +61,6 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 
 	// Track max remote time for total chain
 	var maxRemoteTime time.Time
-	anyChainSynced := false
 
 	for _, wm := range watermarks {
 		prevTs := chainStates[wm.ChainID]
@@ -83,7 +84,6 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 		syncMonth := prevTs == 0 || truncMonth(now) != truncMonth(prev)
 
 		if syncHour || syncDay || syncWeek || syncMonth {
-			anyChainSynced = true
 			log.Printf("chain %s: block_time %s (prev: %s) -> hour:%v day:%v week:%v month:%v",
 				chainStr(wm.ChainID), now.Format("2006-01-02 15:04"), prev.Format("2006-01-02 15:04"),
 				syncHour, syncDay, syncWeek, syncMonth)
@@ -122,8 +122,8 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 		s.store.SetChainState(wm.ChainID, now.Unix())
 	}
 
-	// Sync total if any chain was synced
-	if anyChainSynced && !maxRemoteTime.IsZero() {
+	// Always sync total (it checks its own watermarks)
+	if !maxRemoteTime.IsZero() {
 		s.syncTotal(ctx, maxRemoteTime)
 	}
 

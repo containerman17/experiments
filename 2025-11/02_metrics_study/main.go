@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -54,6 +55,21 @@ func main() {
 
 	// Start syncer in background
 	go sync.Run(context.Background())
+
+	// Auto-stop after 24h of inactivity
+	if os.Getenv("AUTO_STOP") == "true" {
+		go func() {
+			const idleTimeout = 24 * time.Hour
+			for {
+				time.Sleep(time.Minute)
+				last := apiServer.LastActivity()
+				if last > 0 && time.Since(time.Unix(last, 0)) > idleTimeout {
+					log.Printf("No requests for 24h, shutting down")
+					os.Exit(0)
+				}
+			}
+		}()
+	}
 
 	// Run API server (blocks)
 	if err := apiServer.Run(apiAddr); err != nil {

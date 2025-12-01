@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,6 +26,9 @@ type Server struct {
 	rwCache   map[string]*rollingWindowResult // key: chainID:metric
 	rwCacheMu sync.RWMutex
 	rwWmCache map[string]int64 // watermark cache to detect changes
+
+	// Activity tracking for auto-stop
+	lastActivity atomic.Int64
 }
 
 type rollingWindowResult struct {
@@ -52,6 +56,7 @@ func (s *Server) setupRoutes() {
 	r := chi.NewRouter()
 	// r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(s.activityMiddleware)
 
 	r.Get("/v2/chains/{chainId}/metrics/{metricName}", s.handleGetMetric)
 	r.Get("/v2/chains/{chainId}/rollingWindowMetrics/{metricName}", s.handleRollingWindowMetric)
@@ -59,6 +64,17 @@ func (s *Server) setupRoutes() {
 	r.Get("/health", s.handleHealth)
 
 	s.router = r
+}
+
+func (s *Server) activityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.lastActivity.Store(time.Now().Unix())
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) LastActivity() int64 {
+	return s.lastActivity.Load()
 }
 
 func (s *Server) Run(addr string) error {

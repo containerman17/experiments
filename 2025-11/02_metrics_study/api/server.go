@@ -55,6 +55,7 @@ func (s *Server) setupRoutes() {
 
 	r.Get("/v2/chains/{chainId}/metrics/{metricName}", s.handleGetMetric)
 	r.Get("/v2/chains/{chainId}/rollingWindowMetrics/{metricName}", s.handleRollingWindowMetric)
+	r.Get("/playground", s.handlePlayground)
 	r.Get("/health", s.handleHealth)
 
 	s.router = r

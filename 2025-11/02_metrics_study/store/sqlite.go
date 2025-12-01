@@ -370,3 +370,25 @@ func (b *Batch) Commit() error {
 func (b *Batch) Rollback() error {
 	return b.tx.Rollback()
 }
+
+// GetChains returns all distinct chain IDs from metrics table (excludes total chain)
+func (s *Store) GetChains() []uint32 {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT chain_id FROM metrics 
+		WHERE chain_id != 4294967295 
+		ORDER BY chain_id
+	`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var chains []uint32
+	for rows.Next() {
+		var chainID uint32
+		if err := rows.Scan(&chainID); err == nil {
+			chains = append(chains, chainID)
+		}
+	}
+	return chains
+}

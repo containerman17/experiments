@@ -64,6 +64,10 @@ func (c *Client) Query(ctx context.Context, query string, chainID uint32, period
 	}
 	q = strings.ReplaceAll(q, "{granularityCamelCase}", granCamel)
 
+	// Fix week to use Monday start (mode 1) to match prod
+	q = strings.ReplaceAll(q, "toStartOfWeek(block_time)", "toStartOfWeek(block_time, 1)")
+	q = strings.ReplaceAll(q, "toStartOfWeek(min(block_time))", "toStartOfWeek(min(block_time), 1)")
+
 	return c.queryWithRetry(ctx, q)
 }
 

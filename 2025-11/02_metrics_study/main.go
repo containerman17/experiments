@@ -25,9 +25,9 @@ func main() {
 		log.Fatal("CLICKHOUSE_HOST and CLICKHOUSE_USER are required")
 	}
 
-	pebblePath := os.Getenv("PEBBLE_PATH")
-	if pebblePath == "" {
-		pebblePath = "data/pebble"
+	sqlitePath := os.Getenv("SQLITE_PATH")
+	if sqlitePath == "" {
+		sqlitePath = "data/metrics.db"
 	}
 
 	apiAddr := os.Getenv("API_ADDR")
@@ -36,7 +36,7 @@ func main() {
 	}
 
 	// Initialize store
-	st := store.New(pebblePath)
+	st := store.New(sqlitePath)
 	defer st.Close()
 
 	// Initialize ClickHouse client
@@ -44,12 +44,13 @@ func main() {
 	defer ch.Close()
 
 	// Initialize syncer
+	valueMetrics := syncer.AllValueMetrics()
 	sync := syncer.New(ch, st)
-	sync.RegisterValueMetrics(syncer.AllValueMetrics()...)
-	sync.RegisterEntityMetrics(syncer.AllEntityMetrics()...)
+	sync.RegisterValueMetrics(valueMetrics...)
+	sync.RegisterCumulativeMetrics(syncer.AllCumulativeMetrics()...)
 
-	// Initialize API server
-	apiServer := api.New(st)
+	// Initialize API server (pass metrics for rolling window aggregation info)
+	apiServer := api.New(st, valueMetrics)
 
 	// Start syncer in background
 	go sync.Run(context.Background())

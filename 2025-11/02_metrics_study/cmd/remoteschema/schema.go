@@ -23,7 +23,7 @@ func main() {
 		log.Fatal("CLICKHOUSE_HOST and CLICKHOUSE_USER are required")
 	}
 
-	conn, err := clickhouse.Open(&clickhouse.Options{
+	conn := clickhouse.OpenDB(&clickhouse.Options{
 		Addr:     []string{host},
 		Protocol: clickhouse.HTTP,
 		TLS:      &tls.Config{},
@@ -32,19 +32,16 @@ func main() {
 			Password: password,
 		},
 	})
-	if err != nil {
-		log.Fatal("Failed to connect:", err)
-	}
 	defer conn.Close()
 
 	ctx := context.Background()
 
 	// Get raw_ prefixed tables
-	rows, err := conn.Query(ctx, `
+	rows, err := conn.QueryContext(ctx, `
 		SELECT database, name 
 		FROM system.tables 
 		WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-		  AND (name LIKE 'raw_%' OR name = 'sync_watermark')
+		  AND (name LIKE 'raw_%' OR name = 'sync_watermark' OR name = 'chain_status')
 		ORDER BY database, name
 	`)
 	if err != nil {
@@ -61,7 +58,7 @@ func main() {
 
 		// Get CREATE TABLE statement
 		var createStmt string
-		row := conn.QueryRow(ctx, fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", database, table))
+		row := conn.QueryRowContext(ctx, fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", database, table))
 		if err := row.Scan(&createStmt); err != nil {
 			log.Printf("Failed to get schema for %s.%s: %v", database, table, err)
 			continue

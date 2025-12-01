@@ -2,10 +2,11 @@ package syncer
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"log"
 	"math/big"
-	"sort"
 	"time"
 
 	"metrics-syncer/clickhouse"
@@ -24,46 +25,40 @@ const (
 
 var AllGranularities = []Granularity{Hour, Day, Week, Month}
 
-// MaxPeriodsPerSync limits how many periods to process in one sync iteration
-const MaxPeriodsPerSync = 5000
+// CumulativeGranularities - cumulative metrics skip hour (too expensive)
+var CumulativeGranularities = []Granularity{Day, Week, Month}
 
-// maxPeriods returns period limit based on granularity (coarser = fewer periods)
-func maxPeriods(gran Granularity, isEntity bool) int {
-	if isEntity {
-		// Entity metrics do heavy GROUP BY, need smaller batches
-		switch gran {
-		case Hour:
-			return 24 // 1 day
-		case Day:
-			return 7 // 1 week
-		case Week:
-			return 2 // 2 weeks
-		case Month:
-			return 1 // 1 month
-		}
-	}
-	return MaxPeriodsPerSync
-}
-
-// ValueMetric defines a metric that returns a single value per period
+// ValueMetric defines a metric that returns a single value per period (incremental)
 type ValueMetric struct {
-	Name  string // API name (camelCase)
-	Query string // ClickHouse query with placeholders
+	Name       string // API name (camelCase)
+	Query      string // ClickHouse query with placeholders
+	Version    string // Optional version - if empty, uses hash of Query
+	RollingAgg string // "sum", "max", "avg", "" = not in rolling windows
 }
 
-// EntityMetric defines a metric that tracks unique entities
-type EntityMetric struct {
-	Name           string // Internal name for entity storage
-	CumulativeName string // API name for cumulative metric (camelCase)
-	Query          string // ClickHouse query returning 'entity' column
+// CumulativeMetric defines a metric that requires full table scan (e.g., unique counts)
+// These skip hourly granularity because they're expensive
+type CumulativeMetric struct {
+	Name    string // API name (camelCase), e.g., "cumulativeAddresses"
+	Query   string // ClickHouse query - does full scan, returns only periods >= watermark
+	Version string // Optional version - if empty, uses hash of Query
+}
+
+// getVersion returns explicit version or hash of query
+func getVersion(version, query string) string {
+	if version != "" {
+		return version
+	}
+	h := sha256.Sum256([]byte(query))
+	return hex.EncodeToString(h[:8]) // 16 char hex
 }
 
 // Syncer handles metric synchronization
 type Syncer struct {
-	ch            *clickhouse.Client
-	store         *store.Store
-	valueMetrics  []ValueMetric
-	entityMetrics []EntityMetric
+	ch                *clickhouse.Client
+	store             *store.Store
+	valueMetrics      []ValueMetric
+	cumulativeMetrics []CumulativeMetric
 }
 
 func New(ch *clickhouse.Client, st *store.Store) *Syncer {
@@ -77,11 +72,11 @@ func (s *Syncer) RegisterValueMetrics(metrics ...ValueMetric) {
 	s.valueMetrics = append(s.valueMetrics, metrics...)
 }
 
-func (s *Syncer) RegisterEntityMetrics(metrics ...EntityMetric) {
-	s.entityMetrics = append(s.entityMetrics, metrics...)
+func (s *Syncer) RegisterCumulativeMetrics(metrics ...CumulativeMetric) {
+	s.cumulativeMetrics = append(s.cumulativeMetrics, metrics...)
 }
 
-// Run starts the sync loop
+// Run starts the watermark-driven sync loop
 func (s *Syncer) Run(ctx context.Context) {
 	for {
 		if err := s.syncOnce(ctx); err != nil {
@@ -97,50 +92,134 @@ func (s *Syncer) Run(ctx context.Context) {
 }
 
 func (s *Syncer) syncOnce(ctx context.Context) error {
-	// Get all chain watermarks
+	// Get all chain watermarks with block_time
 	watermarks, err := s.ch.GetSyncWatermarks(ctx)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("syncing %d chains", len(watermarks))
+	// Load chain states from SQLite
+	chainStates := s.store.GetAllChainStates()
+
+	// Track max remote time for total chain
+	var maxRemoteTime time.Time
+	anyChainSynced := false
 
 	for _, wm := range watermarks {
-		// Get block_time for this chain's watermark
-		remoteTime, err := s.ch.GetBlockTime(ctx, wm.ChainID, wm.BlockNumber)
-		if err != nil {
-			log.Printf("failed to get block time for chain %d: %v", wm.ChainID, err)
+		prevTs := chainStates[wm.ChainID]
+		prev := time.Unix(prevTs, 0).UTC()
+		now := wm.BlockTime
+
+		// Track maximum for total
+		if maxRemoteTime.IsZero() || now.After(maxRemoteTime) {
+			maxRemoteTime = now
+		}
+
+		// Skip if no change (compare unix timestamps to avoid precision issues)
+		if now.Unix() == prevTs {
 			continue
 		}
 
-		// Sync all metrics for this chain
+		// Determine which granularities need sync
+		syncHour := prevTs == 0 || truncHour(now) != truncHour(prev)
+		syncDay := prevTs == 0 || truncDay(now) != truncDay(prev)
+		syncWeek := prevTs == 0 || truncWeek(now) != truncWeek(prev)
+		syncMonth := prevTs == 0 || truncMonth(now) != truncMonth(prev)
+
+		if syncHour || syncDay || syncWeek || syncMonth {
+			anyChainSynced = true
+			log.Printf("chain %d: block_time %s (prev: %s) -> hour:%v day:%v week:%v month:%v",
+				wm.ChainID, now.Format("2006-01-02 15:04"), prev.Format("2006-01-02 15:04"),
+				syncHour, syncDay, syncWeek, syncMonth)
+		}
+
+		// Sync value metrics for triggered granularities
 		for _, metric := range s.valueMetrics {
-			for _, gran := range AllGranularities {
-				if err := s.syncValueMetric(ctx, wm.ChainID, metric, gran, remoteTime); err != nil {
-					log.Printf("failed to sync %s/%s for chain %d: %v", metric.Name, gran, wm.ChainID, err)
-				}
+			if syncHour {
+				s.syncValueMetric(ctx, wm.ChainID, metric, Hour, now)
+			}
+			if syncDay {
+				s.syncValueMetric(ctx, wm.ChainID, metric, Day, now)
+			}
+			if syncWeek {
+				s.syncValueMetric(ctx, wm.ChainID, metric, Week, now)
+			}
+			if syncMonth {
+				s.syncValueMetric(ctx, wm.ChainID, metric, Month, now)
 			}
 		}
 
-		for _, metric := range s.entityMetrics {
-			for _, gran := range AllGranularities {
-				if err := s.syncEntityMetric(ctx, wm.ChainID, metric, gran, remoteTime); err != nil {
-					log.Printf("failed to sync %s/%s for chain %d: %v", metric.Name, gran, wm.ChainID, err)
-				}
+		// Sync cumulative metrics (skip hour - too expensive)
+		for _, metric := range s.cumulativeMetrics {
+			if syncDay {
+				s.syncCumulativeMetric(ctx, wm.ChainID, metric, Day, now)
+			}
+			if syncWeek {
+				s.syncCumulativeMetric(ctx, wm.ChainID, metric, Week, now)
+			}
+			if syncMonth {
+				s.syncCumulativeMetric(ctx, wm.ChainID, metric, Month, now)
 			}
 		}
+
+		// Persist chain state to SQLite
+		s.store.SetChainState(wm.ChainID, now.Unix())
+	}
+
+	// Sync total if any chain was synced
+	if anyChainSynced && !maxRemoteTime.IsZero() {
+		s.syncTotal(ctx, maxRemoteTime)
 	}
 
 	return nil
 }
 
+// Truncate helpers - return unix timestamp for comparison (includes year)
+func truncHour(t time.Time) int64  { return t.Truncate(time.Hour).Unix() }
+func truncDay(t time.Time) int64   { return t.Truncate(24 * time.Hour).Unix() }
+func truncWeek(t time.Time) int64  { return truncateToPeriod(t, Week).Unix() }
+func truncMonth(t time.Time) int64 { return truncateToPeriod(t, Month).Unix() }
+
+// TotalChainID is the pseudo-chain ID for aggregated metrics across all chains
+const TotalChainID uint32 = 0xFFFFFFFF // -1 as uint32
+
+// syncTotal syncs the "total" pseudo-chain across all chains
+func (s *Syncer) syncTotal(ctx context.Context, remoteTime time.Time) {
+	// Sync value metrics
+	for _, metric := range s.valueMetrics {
+		for _, gran := range AllGranularities {
+			if err := s.syncValueMetric(ctx, TotalChainID, metric, gran, remoteTime); err != nil {
+				log.Printf("failed to sync %s/%s for total: %v", metric.Name, gran, err)
+			}
+		}
+	}
+
+	// Sync cumulative metrics
+	for _, metric := range s.cumulativeMetrics {
+		for _, gran := range CumulativeGranularities {
+			if err := s.syncCumulativeMetric(ctx, TotalChainID, metric, gran, remoteTime); err != nil {
+				log.Printf("failed to sync %s/%s for total: %v", metric.Name, gran, err)
+			}
+		}
+	}
+}
+
 func (s *Syncer) syncValueMetric(ctx context.Context, chainID uint32, metric ValueMetric, gran Granularity, remoteTime time.Time) error {
-	// Get local watermark
-	localWatermark, hasLocal := s.store.GetWatermark(chainID, metric.Name, string(gran))
+	version := getVersion(metric.Version, metric.Query)
+
+	// Get local watermark and check version
+	localWm, hasLocal := s.store.GetWatermark(chainID, metric.Name, string(gran))
+	if hasLocal && localWm.Version != version {
+		log.Printf("version changed for %s/%s chain %d: %s -> %s, resetting", metric.Name, gran, chainID, localWm.Version, version)
+		if err := s.store.DeleteMetricData(chainID, metric.Name, string(gran)); err != nil {
+			return err
+		}
+		hasLocal = false
+	}
 
 	var startTime time.Time
 	if hasLocal {
-		startTime = time.Unix(localWatermark, 0).UTC()
+		startTime = time.Unix(localWm.LastTs, 0).UTC()
 	} else {
 		// New chain - get min block time
 		minTime, err := s.ch.GetMinBlockTime(ctx, chainID)
@@ -154,12 +233,6 @@ func (s *Syncer) syncValueMetric(ctx context.Context, chainID uint32, metric Val
 	periods := completePeriods(startTime, remoteTime, gran)
 	if len(periods) == 0 {
 		return nil
-	}
-
-	// Limit periods per sync to avoid long-running queries
-	limit := maxPeriods(gran, false)
-	if len(periods) > limit {
-		periods = periods[:limit]
 	}
 
 	// Query all periods at once
@@ -189,54 +262,75 @@ func (s *Syncer) syncValueMetric(ctx context.Context, chainID uint32, metric Val
 	chDuration := time.Since(chStart)
 
 	// Store in batch
-	pebbleStart := time.Now()
-	batch := s.store.NewBatch()
-	defer batch.Close()
-
-	// Get previous cumulative value
-	_, prevCumulative, hasPrev := s.store.GetLatestMetric(chainID, "cumulative"+capitalizeFirst(metric.Name), string(gran))
-	if !hasPrev {
-		prevCumulative = big.NewInt(0)
+	sqliteStart := time.Now()
+	batch, err := s.store.NewBatch()
+	if err != nil {
+		return err
 	}
 
-	cumulative := new(big.Int).Set(prevCumulative)
 	for _, p := range periods {
 		ts := p.Start.Unix()
 		value := results[ts]
 		if value == nil {
 			value = big.NewInt(0)
 		}
-
-		// Store regular metric
-		batch.SetMetric(chainID, metric.Name, string(gran), ts, value)
-
-		// Store cumulative
-		cumulative.Add(cumulative, value)
-		batch.SetMetric(chainID, "cumulative"+capitalizeFirst(metric.Name), string(gran), ts, new(big.Int).Set(cumulative))
+		if err := batch.SetMetric(chainID, metric.Name, string(gran), ts, value.String()); err != nil {
+			batch.Rollback()
+			return err
+		}
 	}
 
-	// Update watermark
-	batch.SetWatermark(chainID, metric.Name, string(gran), periods[len(periods)-1].End.Unix())
+	// Update watermark with version
+	if err := batch.SetWatermark(chainID, metric.Name, string(gran), periods[len(periods)-1].End.Unix(), version); err != nil {
+		batch.Rollback()
+		return err
+	}
 
 	if err := batch.Commit(); err != nil {
 		return err
 	}
-	pebbleDuration := time.Since(pebbleStart)
+	sqliteDuration := time.Since(sqliteStart)
 
-	log.Printf("synced %s/%s chain %d: %d periods until %s (ch: %dms, pebble: %dms)",
+	log.Printf("synced %s/%s chain %d: %d periods until %s (ch: %dms, sqlite: %dms)",
 		metric.Name, gran, chainID, len(periods),
 		periods[len(periods)-1].End.Format("2006-01-02 15:04"),
-		chDuration.Milliseconds(), pebbleDuration.Milliseconds())
+		chDuration.Milliseconds(), sqliteDuration.Milliseconds())
+
+	// Invalidate total watermark if this chain synced new data
+	if chainID != TotalChainID {
+		s.invalidateTotalWatermark(metric.Name, string(gran), periods[0].Start.Unix(), version)
+	}
+
 	return nil
 }
 
-func (s *Syncer) syncEntityMetric(ctx context.Context, chainID uint32, metric EntityMetric, gran Granularity, remoteTime time.Time) error {
-	// Get local watermark
-	localWatermark, hasLocal := s.store.GetWatermark(chainID, metric.Name, string(gran))
+// invalidateTotalWatermark pushes total's watermark back if a chain synced older data
+func (s *Syncer) invalidateTotalWatermark(metric, granularity string, oldestPeriodTs int64, version string) {
+	totalWm, hasWm := s.store.GetWatermark(TotalChainID, metric, granularity)
+	if !hasWm || oldestPeriodTs < totalWm.LastTs {
+		// Push total watermark back to include this new data
+		s.store.SetWatermark(TotalChainID, metric, granularity, oldestPeriodTs, version)
+		log.Printf("invalidated total watermark for %s/%s to %s",
+			metric, granularity, time.Unix(oldestPeriodTs, 0).Format("2006-01-02 15:04"))
+	}
+}
+
+func (s *Syncer) syncCumulativeMetric(ctx context.Context, chainID uint32, metric CumulativeMetric, gran Granularity, remoteTime time.Time) error {
+	version := getVersion(metric.Version, metric.Query)
+
+	// Get local watermark and check version
+	localWm, hasLocal := s.store.GetWatermark(chainID, metric.Name, string(gran))
+	if hasLocal && localWm.Version != version {
+		log.Printf("version changed for %s/%s chain %d: %s -> %s, resetting", metric.Name, gran, chainID, localWm.Version, version)
+		if err := s.store.DeleteMetricData(chainID, metric.Name, string(gran)); err != nil {
+			return err
+		}
+		hasLocal = false
+	}
 
 	var startTime time.Time
 	if hasLocal {
-		startTime = time.Unix(localWatermark, 0).UTC()
+		startTime = time.Unix(localWm.LastTs, 0).UTC()
 	} else {
 		// New chain - get min block time
 		minTime, err := s.ch.GetMinBlockTime(ctx, chainID)
@@ -252,22 +346,9 @@ func (s *Syncer) syncEntityMetric(ctx context.Context, chainID uint32, metric En
 		return nil
 	}
 
-	// Limit periods per sync - entity metrics need smaller batches
-	limit := maxPeriods(gran, true)
-	if len(periods) > limit {
-		periods = periods[:limit]
-	}
-
-	// ONE query for entire range - returns (entity, first_seen_period)
+	// Query - cumulative queries do full scan but only return periods >= watermark
 	periodStart := periods[0].Start
 	periodEnd := periods[len(periods)-1].End
-
-	log.Printf("querying %s/%s chain %d: %s to %s...", metric.Name, gran, chainID,
-		periodStart.Format("2006-01-02"), periodEnd.Format("2006-01-02"))
-
-	// Single batch for everything
-	batch := s.store.NewBatch()
-	defer batch.Close()
 
 	chStart := time.Now()
 	rows, err := s.ch.Query(ctx, metric.Query, chainID, periodStart, periodEnd, string(gran))
@@ -276,67 +357,62 @@ func (s *Syncer) syncEntityMetric(ctx context.Context, chainID uint32, metric En
 	}
 	defer rows.Close()
 
-	// Track new entity counts in memory
-	newCounts := make(map[int64]int64)
-	entityCount := 0
-
+	// Collect results
+	results := make(map[int64]*big.Int)
 	for rows.Next() {
-		var entity []byte
-		var firstSeenPeriod time.Time
-		if err := scanEntityWithPeriod(rows, &entity, &firstSeenPeriod); err != nil {
+		var period time.Time
+		var value big.Int
+		if err := rows.Scan(&period, &value); err != nil {
 			return err
 		}
-		// SetEntityIfNew checks main DB, writes to batch, returns true if new
-		if batch.SetEntityIfNew(chainID, metric.Name, entity, firstSeenPeriod.Unix()) {
-			newCounts[firstSeenPeriod.Unix()]++
-		}
-		entityCount++
-		if entityCount%100000 == 0 {
-			log.Printf("  ...processed %d entities so far", entityCount)
-		}
+		results[period.Unix()] = new(big.Int).Set(&value)
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 	chDuration := time.Since(chStart)
-	log.Printf("  query done: %d entities in %dms", entityCount, chDuration.Milliseconds())
 
-	// Merge with existing counts from DB
-	pebbleStart := time.Now()
-	counts := s.store.CountEntitiesByPeriod(chainID, metric.Name)
-	for ts, cnt := range newCounts {
-		if counts[ts] == nil {
-			counts[ts] = big.NewInt(cnt)
-		} else {
-			counts[ts].Add(counts[ts], big.NewInt(cnt))
+	if len(results) == 0 {
+		// No data yet, still update watermark
+		s.store.SetWatermark(chainID, metric.Name, string(gran), periods[len(periods)-1].End.Unix(), version)
+		return nil
+	}
+
+	// Store in batch
+	sqliteStart := time.Now()
+	batch, err := s.store.NewBatch()
+	if err != nil {
+		return err
+	}
+
+	for ts, value := range results {
+		if err := batch.SetMetric(chainID, metric.Name, string(gran), ts, value.String()); err != nil {
+			batch.Rollback()
+			return err
 		}
 	}
 
-	// Sort periods and compute cumulative
-	var sortedPeriods []int64
-	for ts := range counts {
-		sortedPeriods = append(sortedPeriods, ts)
+	// Update watermark with version
+	if err := batch.SetWatermark(chainID, metric.Name, string(gran), periods[len(periods)-1].End.Unix(), version); err != nil {
+		batch.Rollback()
+		return err
 	}
-	sort.Slice(sortedPeriods, func(i, j int) bool { return sortedPeriods[i] < sortedPeriods[j] })
-
-	cumulative := big.NewInt(0)
-	for _, ts := range sortedPeriods {
-		cumulative.Add(cumulative, counts[ts])
-		batch.SetMetric(chainID, metric.CumulativeName, string(gran), ts, new(big.Int).Set(cumulative))
-	}
-
-	// Update watermark
-	batch.SetWatermark(chainID, metric.Name, string(gran), periods[len(periods)-1].End.Unix())
 
 	if err := batch.Commit(); err != nil {
 		return err
 	}
-	pebbleDuration := time.Since(pebbleStart)
+	sqliteDuration := time.Since(sqliteStart)
 
-	log.Printf("synced %s/%s chain %d: %d periods until %s, %d entities (ch: %dms, pebble: %dms)",
-		metric.Name, gran, chainID, len(periods),
+	log.Printf("synced %s/%s chain %d: %d periods until %s (ch: %dms, sqlite: %dms)",
+		metric.Name, gran, chainID, len(results),
 		periods[len(periods)-1].End.Format("2006-01-02 15:04"),
-		entityCount, chDuration.Milliseconds(), pebbleDuration.Milliseconds())
+		chDuration.Milliseconds(), sqliteDuration.Milliseconds())
+
+	// Invalidate total watermark if this chain synced new data
+	if chainID != TotalChainID {
+		s.invalidateTotalWatermark(metric.Name, string(gran), periods[0].Start.Unix(), version)
+	}
+
 	return nil
 }
 
@@ -405,20 +481,11 @@ func nextPeriod(t time.Time, gran Granularity) time.Time {
 	}
 }
 
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
+func scanValue(rows *sql.Rows) (time.Time, *big.Int, error) {
+	var period time.Time
+	var value big.Int
+	if err := rows.Scan(&period, &value); err != nil {
+		return time.Time{}, nil, err
 	}
-	return string(s[0]-32) + s[1:]
-}
-
-func scanEntityWithPeriod(rows *sql.Rows, entity *[]byte, period *time.Time) error {
-	var b []byte
-	var p time.Time
-	if err := rows.Scan(&b, &p); err != nil {
-		return err
-	}
-	*entity = b
-	*period = p
-	return nil
+	return period, &value, nil
 }

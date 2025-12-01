@@ -37,12 +37,22 @@ func (c *Client) Close() error {
 	return c.db.Close()
 }
 
+// TotalChainID is the pseudo-chain ID for aggregated metrics across all chains
+const TotalChainID uint32 = 0xFFFFFFFF // -1 as uint32
+
 // Query executes a query with retry on connection errors.
-// Placeholders: {chain_id}, {period_start}, {period_end}, {granularity}
+// Placeholders: {chain_filter}, {period_start}, {period_end}, {granularity}
 func (c *Client) Query(ctx context.Context, query string, chainID uint32, periodStart, periodEnd time.Time, granularity string) (*sql.Rows, error) {
 	// Replace placeholders
 	q := query
-	q = strings.ReplaceAll(q, "{chain_id}", fmt.Sprintf("%d", chainID))
+
+	// {chain_filter} expands to "chain_id = X" for regular chains, "1=1" for total
+	if chainID == TotalChainID {
+		q = strings.ReplaceAll(q, "{chain_filter}", "1=1")
+	} else {
+		q = strings.ReplaceAll(q, "{chain_filter}", fmt.Sprintf("chain_id = %d", chainID))
+	}
+
 	q = strings.ReplaceAll(q, "{period_start}", fmt.Sprintf("toDateTime64('%s', 3)", periodStart.UTC().Format("2006-01-02 15:04:05.000")))
 	q = strings.ReplaceAll(q, "{period_end}", fmt.Sprintf("toDateTime64('%s', 3)", periodEnd.UTC().Format("2006-01-02 15:04:05.000")))
 	q = strings.ReplaceAll(q, "{granularity}", granularity)
@@ -63,7 +73,7 @@ func (c *Client) QueryRaw(ctx context.Context, query string) (*sql.Rows, error) 
 }
 
 func (c *Client) queryWithRetry(ctx context.Context, query string) (*sql.Rows, error) {
-	log.Printf("QUERY: %s", query)
+	// log.Printf("QUERY: %s", query)
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		rows, err := c.db.QueryContext(ctx, query)
@@ -92,12 +102,23 @@ func (c *Client) queryWithRetry(ctx context.Context, query string) (*sql.Rows, e
 // ChainWatermark represents a chain's sync state
 type ChainWatermark struct {
 	ChainID     uint32
-	BlockNumber uint32
+	BlockNumber uint64
+	BlockTime   time.Time
 }
 
-// GetSyncWatermarks returns all chain watermarks
+// GetSyncWatermarks returns all chain watermarks with block_time for EVM chains
 func (c *Client) GetSyncWatermarks(ctx context.Context) ([]ChainWatermark, error) {
-	rows, err := c.QueryRaw(ctx, "SELECT chain_id, block_number FROM sync_watermark")
+	// Join chain_status with raw_blocks to get block_time
+	rows, err := c.QueryRaw(ctx, `
+		SELECT 
+			cs.chain_id,
+			cs.last_block_on_chain,
+			rb.block_time
+		FROM chain_status cs
+		JOIN raw_blocks rb 
+			ON rb.chain_id = cs.chain_id 
+			AND rb.block_number = cs.last_block_on_chain
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +127,7 @@ func (c *Client) GetSyncWatermarks(ctx context.Context) ([]ChainWatermark, error
 	var watermarks []ChainWatermark
 	for rows.Next() {
 		var w ChainWatermark
-		if err := rows.Scan(&w.ChainID, &w.BlockNumber); err != nil {
+		if err := rows.Scan(&w.ChainID, &w.BlockNumber, &w.BlockTime); err != nil {
 			return nil, err
 		}
 		watermarks = append(watermarks, w)
@@ -114,39 +135,15 @@ func (c *Client) GetSyncWatermarks(ctx context.Context) ([]ChainWatermark, error
 	return watermarks, rows.Err()
 }
 
-// GetBlockTime returns the block_time for a given chain and block number
-func (c *Client) GetBlockTime(ctx context.Context, chainID, blockNumber uint32) (time.Time, error) {
-	query := fmt.Sprintf(`
-		SELECT block_time 
-		FROM raw_blocks 
-		WHERE chain_id = %d AND block_number = %d 
-		LIMIT 1
-	`, chainID, blockNumber)
-
-	rows, err := c.QueryRaw(ctx, query)
-	if err != nil {
-		return time.Time{}, err
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		return time.Time{}, fmt.Errorf("block not found: chain=%d block=%d", chainID, blockNumber)
-	}
-
-	var blockTime time.Time
-	if err := rows.Scan(&blockTime); err != nil {
-		return time.Time{}, err
-	}
-	return blockTime, nil
-}
-
-// GetMinBlockTime returns the minimum block_time for a chain
+// GetMinBlockTime returns the minimum block_time for a chain (or global if total)
 func (c *Client) GetMinBlockTime(ctx context.Context, chainID uint32) (time.Time, error) {
-	query := fmt.Sprintf(`
-		SELECT min(block_time) 
-		FROM raw_blocks 
-		WHERE chain_id = %d
-	`, chainID)
+	var query string
+	if chainID == TotalChainID {
+		// Global min for total
+		query = `SELECT min(block_time) FROM raw_blocks`
+	} else {
+		query = fmt.Sprintf(`SELECT min(block_time) FROM raw_blocks WHERE chain_id = %d`, chainID)
+	}
 
 	rows, err := c.QueryRaw(ctx, query)
 	if err != nil {
@@ -164,4 +161,3 @@ func (c *Client) GetMinBlockTime(ctx context.Context, chainID uint32) (time.Time
 	}
 	return minTime, nil
 }
-

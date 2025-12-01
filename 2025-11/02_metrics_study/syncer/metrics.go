@@ -3,29 +3,33 @@ package syncer
 // All metric definitions
 // Note: All value columns are cast to UInt256 for big.Int scanning
 
+// ========== VALUE METRICS (incremental, all granularities) ==========
+
 var TxCount = ValueMetric{
-	Name: "txCount",
+	Name:       "txCount",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(count(*)) as value
 		FROM raw_txs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		GROUP BY period
-		ORDER BY period
+		ORDER BY period 
 	`,
 }
 
 var GasUsed = ValueMetric{
-	Name: "gasUsed",
+	Name:       "gasUsed",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(sum(gas_used)) as value
 		FROM raw_txs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		GROUP BY period
@@ -34,13 +38,14 @@ var GasUsed = ValueMetric{
 }
 
 var FeesPaid = ValueMetric{
-	Name: "feesPaid",
+	Name:       "feesPaid",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(sum(gas_used * gas_price)) as value
 		FROM raw_txs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		GROUP BY period
@@ -49,14 +54,15 @@ var FeesPaid = ValueMetric{
 }
 
 var AvgTps = ValueMetric{
-	Name: "avgTps",
+	Name:       "avgTps",
+	RollingAgg: "avg",
 	Query: `
 		WITH period_data AS (
 			SELECT
 				toStartOf{granularityCamelCase}(block_time) as period,
 				count(*) as tx_count
 			FROM raw_txs
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
 			GROUP BY period
@@ -70,7 +76,8 @@ var AvgTps = ValueMetric{
 }
 
 var MaxTps = ValueMetric{
-	Name: "maxTps",
+	Name:       "maxTps",
+	RollingAgg: "max",
 	Query: `
 		WITH txs_per_second AS (
 			SELECT 
@@ -78,7 +85,7 @@ var MaxTps = ValueMetric{
 				toStartOfSecond(block_time) as second,
 				count(*) as tx_count
 			FROM raw_txs
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
 			GROUP BY period, second
@@ -93,14 +100,15 @@ var MaxTps = ValueMetric{
 }
 
 var AvgGps = ValueMetric{
-	Name: "avgGps",
+	Name:       "avgGps",
+	RollingAgg: "avg",
 	Query: `
 		WITH period_data AS (
 			SELECT
 				toStartOf{granularityCamelCase}(block_time) as period,
 				sum(gas_used) as gas_used
 			FROM raw_txs
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
 			GROUP BY period
@@ -114,7 +122,8 @@ var AvgGps = ValueMetric{
 }
 
 var MaxGps = ValueMetric{
-	Name: "maxGps",
+	Name:       "maxGps",
+	RollingAgg: "max",
 	Query: `
 		WITH gas_per_second AS (
 			SELECT 
@@ -122,7 +131,7 @@ var MaxGps = ValueMetric{
 				toStartOfSecond(block_time) as second,
 				sum(gas_used) as gas_used
 			FROM raw_blocks
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
 			GROUP BY period, second
@@ -137,13 +146,14 @@ var MaxGps = ValueMetric{
 }
 
 var AvgGasPrice = ValueMetric{
-	Name: "avgGasPrice",
+	Name:       "avgGasPrice",
+	RollingAgg: "avg",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(avg(gas_price)) as value
 		FROM raw_txs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		GROUP BY period
@@ -152,13 +162,14 @@ var AvgGasPrice = ValueMetric{
 }
 
 var MaxGasPrice = ValueMetric{
-	Name: "maxGasPrice",
+	Name:       "maxGasPrice",
+	RollingAgg: "max",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(max(gas_price)) as value
 		FROM raw_txs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		GROUP BY period
@@ -167,13 +178,14 @@ var MaxGasPrice = ValueMetric{
 }
 
 var Contracts = ValueMetric{
-	Name: "contracts",
+	Name:       "contracts",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(count(*)) as value
 		FROM raw_traces
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
@@ -184,7 +196,8 @@ var Contracts = ValueMetric{
 }
 
 var ActiveAddresses = ValueMetric{
-	Name: "activeAddresses",
+	Name:       "activeAddresses",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
@@ -192,7 +205,7 @@ var ActiveAddresses = ValueMetric{
 		FROM (
 			SELECT "from" as address, block_time
 			FROM raw_traces
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
 			  AND "from" != unhex('0000000000000000000000000000000000000000')
@@ -201,7 +214,7 @@ var ActiveAddresses = ValueMetric{
 			
 			SELECT "to" as address, block_time
 			FROM raw_traces
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
 			  AND "to" IS NOT NULL
@@ -213,13 +226,14 @@ var ActiveAddresses = ValueMetric{
 }
 
 var ActiveSenders = ValueMetric{
-	Name: "activeSenders",
+	Name:       "activeSenders",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(uniq("from")) as value
 		FROM raw_traces
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		  AND "from" != unhex('0000000000000000000000000000000000000000')
@@ -229,13 +243,14 @@ var ActiveSenders = ValueMetric{
 }
 
 var Deployers = ValueMetric{
-	Name: "deployers",
+	Name:       "deployers",
+	RollingAgg: "sum",
 	Query: `
 		SELECT
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(uniq("from")) as value
 		FROM raw_traces
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
@@ -253,7 +268,7 @@ var IcmSent = ValueMetric{
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(count(*)) as value
 		FROM raw_logs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		  AND topic0 = unhex('2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8')
@@ -269,7 +284,7 @@ var IcmReceived = ValueMetric{
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(count(*)) as value
 		FROM raw_logs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		  AND topic0 = unhex('292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34')
@@ -285,7 +300,7 @@ var IcmTotal = ValueMetric{
 			toStartOf{granularityCamelCase}(block_time) as period,
 			toUInt256(count(*)) as value
 		FROM raw_logs
-		WHERE chain_id = {chain_id}
+		WHERE {chain_filter}
 		  AND block_time >= {period_start}
 		  AND block_time < {period_end}
 		  AND (
@@ -297,71 +312,170 @@ var IcmTotal = ValueMetric{
 	`,
 }
 
-// Note: UsdcVolume is chain-specific (Avalanche C-Chain only)
-var UsdcVolume = ValueMetric{
-	Name: "usdcVolume",
+// ========== CUMULATIVE METRICS (full scan, day/week/month only) ==========
+// These query ClickHouse directly with baseline + window function
+// Skip hourly granularity (too expensive ~55s per chain)
+
+var CumulativeTxCount = CumulativeMetric{
+	Name: "cumulativeTxCount",
 	Query: `
+		WITH
+		txs_per_period AS (
+			SELECT
+				toStartOf{granularityCamelCase}(block_time) as period,
+				count(*) as period_count
+			FROM raw_txs
+			WHERE {chain_filter}
+			  AND block_time >= {period_start}
+			  AND block_time < {period_end}
+			GROUP BY period
+		),
+		baseline AS (
+			SELECT count(*) as prev_cumulative
+			FROM raw_txs
+			WHERE {chain_filter}
+			  AND block_time < {period_start}
+		)
 		SELECT
-			toStartOf{granularityCamelCase}(block_time) as period,
-			toUInt256(sum(reinterpretAsUInt256(reverse(data))) / 1000000) as value
-		FROM raw_logs
-		WHERE chain_id = {chain_id}
-		  AND address = unhex('b97ef9ef8734c71904d8002f8b6bc66dd9c48a6e')
-		  AND topic0 = unhex('ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef')
-		  AND block_time >= {period_start}
-		  AND block_time < {period_end}
-		GROUP BY period
+			period,
+			toUInt256((SELECT prev_cumulative FROM baseline) + sum(period_count) OVER (ORDER BY period)) as value
+		FROM txs_per_period
 		ORDER BY period
 	`,
 }
 
-// Entity metrics - track unique entities for cumulative counting
-// Queries return (entity, first_seen_period) - batched for efficiency
-
-var Addresses = EntityMetric{
-	Name:           "addresses",
-	CumulativeName: "cumulativeAddresses",
+var CumulativeContracts = CumulativeMetric{
+	Name: "cumulativeContracts",
 	Query: `
-		SELECT 
-			address as entity,
-			toStartOf{granularityCamelCase}(min(block_time)) as first_seen_period
-		FROM (
-			SELECT "from" as address, block_time
+		WITH
+		contracts_per_period AS (
+			SELECT
+				toStartOf{granularityCamelCase}(block_time) as period,
+				count(*) as period_count
 			FROM raw_traces
-			WHERE chain_id = {chain_id}
+			WHERE {chain_filter}
 			  AND block_time >= {period_start}
 			  AND block_time < {period_end}
-			  AND "from" != unhex('0000000000000000000000000000000000000000')
-			
-			UNION ALL
-			
-			SELECT "to" as address, block_time
+			  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
+			  AND tx_success = true
+			GROUP BY period
+		),
+		baseline AS (
+			SELECT count(*) as prev_cumulative
 			FROM raw_traces
-			WHERE chain_id = {chain_id}
-			  AND block_time >= {period_start}
-			  AND block_time < {period_end}
-			  AND "to" IS NOT NULL
-			  AND "to" != unhex('0000000000000000000000000000000000000000')
+			WHERE {chain_filter}
+			  AND block_time < {period_start}
+			  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
+			  AND tx_success = true
 		)
-		GROUP BY address
+		SELECT
+			period,
+			toUInt256((SELECT prev_cumulative FROM baseline) + sum(period_count) OVER (ORDER BY period)) as value
+		FROM contracts_per_period
+		ORDER BY period
 	`,
 }
 
-var DeployersEntity = EntityMetric{
-	Name:           "deployersEntity",
-	CumulativeName: "cumulativeDeployers",
+var CumulativeAddresses = CumulativeMetric{
+	Name: "cumulativeAddresses",
 	Query: `
-		SELECT 
-			"from" as entity,
-			toStartOf{granularityCamelCase}(min(block_time)) as first_seen_period
-		FROM raw_traces
-		WHERE chain_id = {chain_id}
-		  AND block_time >= {period_start}
-		  AND block_time < {period_end}
-		  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
-		  AND tx_success = true
-		  AND "from" != unhex('0000000000000000000000000000000000000000')
-		GROUP BY "from"
+		WITH
+		first_appearances AS (
+			SELECT 
+				toStartOf{granularityCamelCase}(min(block_time)) as first_period,
+				address
+			FROM (
+				SELECT "from" as address, block_time
+				FROM raw_traces
+				WHERE {chain_filter}
+				  AND block_time >= {period_start}
+				  AND block_time < {period_end}
+				  AND "from" != unhex('0000000000000000000000000000000000000000')
+				
+				UNION ALL
+				
+				SELECT "to" as address, block_time
+				FROM raw_traces
+				WHERE {chain_filter}
+				  AND block_time >= {period_start}
+				  AND block_time < {period_end}
+				  AND "to" IS NOT NULL
+				  AND "to" != unhex('0000000000000000000000000000000000000000')
+			)
+			GROUP BY address
+		),
+		new_per_period AS (
+			SELECT 
+				first_period as period,
+				uniq(address) as new_count
+			FROM first_appearances
+			GROUP BY period
+		),
+		baseline AS (
+			SELECT countDistinct(address) as prev_cumulative
+			FROM (
+				SELECT "from" as address
+				FROM raw_traces
+				WHERE {chain_filter}
+				  AND block_time < {period_start}
+				  AND "from" != unhex('0000000000000000000000000000000000000000')
+				
+				UNION ALL
+				
+				SELECT "to" as address
+				FROM raw_traces
+				WHERE {chain_filter}
+				  AND block_time < {period_start}
+				  AND "to" IS NOT NULL
+				  AND "to" != unhex('0000000000000000000000000000000000000000')
+			)
+		)
+		SELECT
+			period,
+			toUInt256((SELECT prev_cumulative FROM baseline) + sum(new_count) OVER (ORDER BY period)) as value
+		FROM new_per_period
+		ORDER BY period
+	`,
+}
+
+var CumulativeDeployers = CumulativeMetric{
+	Name: "cumulativeDeployers",
+	Query: `
+		WITH
+		first_deployments AS (
+			SELECT 
+				toStartOf{granularityCamelCase}(min(block_time)) as first_period,
+				"from" as deployer
+			FROM raw_traces
+			WHERE {chain_filter}
+			  AND block_time >= {period_start}
+			  AND block_time < {period_end}
+			  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
+			  AND tx_success = true
+			  AND "from" != unhex('0000000000000000000000000000000000000000')
+			GROUP BY deployer
+		),
+		new_per_period AS (
+			SELECT 
+				first_period as period,
+				uniq(deployer) as new_count
+			FROM first_deployments
+			GROUP BY period
+		),
+		baseline AS (
+			SELECT countDistinct("from") as prev_cumulative
+			FROM raw_traces
+			WHERE {chain_filter}
+			  AND block_time < {period_start}
+			  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
+			  AND tx_success = true
+			  AND "from" != unhex('0000000000000000000000000000000000000000')
+		)
+		SELECT
+			period,
+			toUInt256((SELECT prev_cumulative FROM baseline) + sum(new_count) OVER (ORDER BY period)) as value
+		FROM new_per_period
+		ORDER BY period
 	`,
 }
 
@@ -384,14 +498,15 @@ func AllValueMetrics() []ValueMetric {
 		IcmSent,
 		IcmReceived,
 		IcmTotal,
-		UsdcVolume,
 	}
 }
 
-// AllEntityMetrics returns all entity metrics
-func AllEntityMetrics() []EntityMetric {
-	return []EntityMetric{
-		Addresses,
-		DeployersEntity,
+// AllCumulativeMetrics returns all cumulative metrics
+func AllCumulativeMetrics() []CumulativeMetric {
+	return []CumulativeMetric{
+		CumulativeTxCount,
+		CumulativeContracts,
+		CumulativeAddresses,
+		CumulativeDeployers,
 	}
 }

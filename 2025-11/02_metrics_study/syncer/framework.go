@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"math/big"
 	"time"
@@ -128,8 +129,8 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 
 		if syncHour || syncDay || syncWeek || syncMonth {
 			anyChainSynced = true
-			log.Printf("chain %d: block_time %s (prev: %s) -> hour:%v day:%v week:%v month:%v",
-				wm.ChainID, now.Format("2006-01-02 15:04"), prev.Format("2006-01-02 15:04"),
+			log.Printf("chain %s: block_time %s (prev: %s) -> hour:%v day:%v week:%v month:%v",
+				chainStr(wm.ChainID), now.Format("2006-01-02 15:04"), prev.Format("2006-01-02 15:04"),
 				syncHour, syncDay, syncWeek, syncMonth)
 		}
 
@@ -183,6 +184,14 @@ func truncMonth(t time.Time) int64 { return truncateToPeriod(t, Month).Unix() }
 // TotalChainID is the pseudo-chain ID for aggregated metrics across all chains
 const TotalChainID uint32 = 0xFFFFFFFF // -1 as uint32
 
+// chainStr returns a readable string for chain ID (e.g., "total" or "43114")
+func chainStr(chainID uint32) string {
+	if chainID == TotalChainID {
+		return "total"
+	}
+	return fmt.Sprintf("%d", chainID)
+}
+
 // syncTotal syncs the "total" pseudo-chain across all chains
 func (s *Syncer) syncTotal(ctx context.Context, remoteTime time.Time) {
 	// Sync value metrics
@@ -210,7 +219,7 @@ func (s *Syncer) syncValueMetric(ctx context.Context, chainID uint32, metric Val
 	// Get local watermark and check version
 	localWm, hasLocal := s.store.GetWatermark(chainID, metric.Name, string(gran))
 	if hasLocal && localWm.Version != version {
-		log.Printf("version changed for %s/%s chain %d: %s -> %s, resetting", metric.Name, gran, chainID, localWm.Version, version)
+		log.Printf("version changed for %s/%s chain %s: %s -> %s, resetting", metric.Name, gran, chainStr(chainID), localWm.Version, version)
 		if err := s.store.DeleteMetricData(chainID, metric.Name, string(gran)); err != nil {
 			return err
 		}
@@ -291,8 +300,8 @@ func (s *Syncer) syncValueMetric(ctx context.Context, chainID uint32, metric Val
 	}
 	sqliteDuration := time.Since(sqliteStart)
 
-	log.Printf("synced %s/%s chain %d: %d periods until %s (ch: %dms, sqlite: %dms)",
-		metric.Name, gran, chainID, len(periods),
+	log.Printf("synced %s/%s chain %s: %d periods until %s (ch: %dms, sqlite: %dms)",
+		metric.Name, gran, chainStr(chainID), len(periods),
 		periods[len(periods)-1].End.Format("2006-01-02 15:04"),
 		chDuration.Milliseconds(), sqliteDuration.Milliseconds())
 
@@ -321,7 +330,7 @@ func (s *Syncer) syncCumulativeMetric(ctx context.Context, chainID uint32, metri
 	// Get local watermark and check version
 	localWm, hasLocal := s.store.GetWatermark(chainID, metric.Name, string(gran))
 	if hasLocal && localWm.Version != version {
-		log.Printf("version changed for %s/%s chain %d: %s -> %s, resetting", metric.Name, gran, chainID, localWm.Version, version)
+		log.Printf("version changed for %s/%s chain %s: %s -> %s, resetting", metric.Name, gran, chainStr(chainID), localWm.Version, version)
 		if err := s.store.DeleteMetricData(chainID, metric.Name, string(gran)); err != nil {
 			return err
 		}
@@ -403,8 +412,8 @@ func (s *Syncer) syncCumulativeMetric(ctx context.Context, chainID uint32, metri
 	}
 	sqliteDuration := time.Since(sqliteStart)
 
-	log.Printf("synced %s/%s chain %d: %d periods until %s (ch: %dms, sqlite: %dms)",
-		metric.Name, gran, chainID, len(results),
+	log.Printf("synced %s/%s chain %s: %d periods until %s (ch: %dms, sqlite: %dms)",
+		metric.Name, gran, chainStr(chainID), len(results),
 		periods[len(periods)-1].End.Format("2006-01-02 15:04"),
 		chDuration.Milliseconds(), sqliteDuration.Milliseconds())
 

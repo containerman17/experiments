@@ -312,6 +312,34 @@ var IcmTotal = ValueMetric{
 	`,
 }
 
+var IcmGasBurned = ValueMetric{
+	Name:       "icmGasBurned",
+	RollingAgg: "sum",
+	Query: `
+		WITH icm_txs AS (
+			SELECT DISTINCT chain_id, transaction_hash
+			FROM raw_logs
+			WHERE {chain_filter}
+			  AND block_time >= {period_start}
+			  AND block_time < {period_end}
+			  AND (
+				topic0 = unhex('2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8')
+				OR topic0 = unhex('292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34')
+			  )
+		)
+		SELECT
+			toStartOf{granularityCamelCase}(block_time) as period,
+			toUInt256(sum(gas_used * gas_price)) as value
+		FROM raw_txs
+		WHERE {chain_filter}
+		  AND block_time >= {period_start}
+		  AND block_time < {period_end}
+		  AND (chain_id, hash) IN (SELECT chain_id, transaction_hash FROM icm_txs)
+		GROUP BY period
+		ORDER BY period
+	`,
+}
+
 // ========== CUMULATIVE METRICS (full scan, day/week/month only) ==========
 // These query ClickHouse directly with baseline + window function
 // Skip hourly granularity (too expensive ~55s per chain)
@@ -498,6 +526,7 @@ func AllValueMetrics() []ValueMetric {
 		IcmSent,
 		IcmReceived,
 		IcmTotal,
+		IcmGasBurned,
 	}
 }
 

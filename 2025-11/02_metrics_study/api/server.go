@@ -50,7 +50,7 @@ func New(st *store.Store, metrics []syncer.ValueMetric) *Server {
 
 func (s *Server) setupRoutes() {
 	r := chi.NewRouter()
-	// r.Use(middleware.Logger) // Disabled - kills performance
+	// r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
 	r.Get("/v2/chains/{chainId}/metrics/{metricName}", s.handleGetMetric)

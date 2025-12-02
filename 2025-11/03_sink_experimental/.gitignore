@@ -1,0 +1,16 @@
+# Local config with real RPC URLs
+config.yaml
+
+# Data directories
+data/
+*.db
+
+# Binaries
+sink
+evm-sink
+
+# IDE
+.idea/
+.vscode/
+*.swp
+

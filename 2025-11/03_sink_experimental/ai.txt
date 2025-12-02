@@ -1,0 +1,183 @@
+# EVM Sink - Technical Notes for AI Context
+
+## What This Is
+
+A Go service that ingests EVM blockchain data (blocks, receipts, traces) from RPC nodes, stores in PebbleDB, 
+compacts to S3, and serves to consumers via TCP streaming. Designed for multi-chain support.
+
+## Architecture Decisions
+
+### Storage Strategy: PebbleDB → S3
+
+1. **PebbleDB (hot)**: All blocks land here first
+   - Key format: `block:{chainID}:{blockNum:020d}` (20-digit padding for lexicographic ordering)
+   - Value: JSON blob of NormalizedBlock (block + receipts + traces)
+   - Keeps ~1000 blocks as buffer before compaction
+
+2. **S3 (cold)**: Compacted historical data
+   - Format: `.jsonl.zstd` (newline-delimited JSON, zstd compressed)
+   - 100 blocks per file
+   - Path: `{prefix}/{chainID}/{startBlock:020d}-{endBlock:020d}.jsonl.zstd`
+
+3. **Why this split?**
+   - PebbleDB for fast writes and recent block access
+   - S3 for cheap, durable historical storage
+   - Compaction happens in background, doesn't block ingestion
+
+### Adaptive RPC Controller
+
+Problem: RPC nodes have varying capacities, network latencies differ, load fluctuates.
+
+Solution: One knob - `max_parallelism`. Everything else derived:
+- `min_parallelism` = max(2, maxP/10)
+- `target_latency` = 1200ms (allows 200ms ping + 1s work)
+- `max_latency` = 2000ms
+- `max_errors_per_min` = 10
+
+Adjustment runs every 5s based on 60s sliding window:
+- If errors > threshold: halve parallelism (aggressive backoff)
+- If P95 > max_latency: reduce by 2
+- If P95 < target * 0.7: increase by 1 (cautious)
+
+### No Cache Layer
+
+Originally planned lookahead cache for S3 batches. Removed because:
+- Ingestion is only ~10 blocks ahead of consumers
+- Most reads hit PebbleDB directly
+- Complexity wasn't worth it
+
+### TCP Streaming Protocol
+
+NDJSON over TCP. Simple and works.
+
+Client sends:
+- `{"type":"list_chains"}` → get available chains
+- `{"chain_id":N,"from_block":M}` → start streaming
+
+Server sends:
+- `{"type":"chains","chains":[...]}` → chain list response
+- `{"type":"block","chain_id":N,"block_number":M,"data":{...}}` → block data
+- `{"type":"status","status":"live","head_block":N}` → caught up notification
+- `{"type":"error","message":"..."}` → errors
+
+### Streaming Logic
+
+1. **Catching up from S3**: Load 100-block batches, send sequentially
+2. **Near tip**: When current batch contains latest block, switch to live
+3. **Live mode**: Poll PebbleDB every 50ms for new blocks
+
+### Ingestion Logic
+
+1. Startup: Resume from PebbleDB latest → S3 latest → block 1
+2. Poll RPC for latest block every 100ms when at tip
+3. Fetch 100 blocks at a time with batch RPC calls
+4. Save to PebbleDB, notify server of new blocks
+
+### Compaction
+
+- Runs every 10s per chain
+- Only compacts if >1100 blocks in PebbleDB (keeps 1000 as buffer)
+- Aligns to 100-block boundaries
+- Uploads to S3, then deletes from PebbleDB
+
+## File Structure
+
+```
+evm-sink/
+├── cmd/sink/main.go      # Entry point, config, wiring, ingestion loop
+├── rpc/
+│   ├── types.go          # EVM types (Block, Transaction, Receipt, etc.) + Config
+│   ├── controller.go     # Adaptive parallelism controller
+│   └── fetcher.go        # Batch RPC client for blocks/receipts/traces
+├── storage/
+│   ├── pebble.go         # PebbleDB operations
+│   ├── s3.go             # S3 upload/download with zstd
+│   └── compactor.go      # Background compaction
+├── api/
+│   └── server.go         # TCP streaming server
+├── client/
+│   └── client.go         # Go client library for consumers
+├── config.yaml           # Local config (gitignored)
+├── config.example.yaml   # Template
+└── go.mod
+```
+
+## Config (Simplified)
+
+```yaml
+pebble_path: ./data/pebble
+listen_addr: ":9090"
+
+s3_bucket: bucket-name
+s3_region: auto
+s3_endpoint: https://xxx.r2.cloudflarestorage.com  # R2/MinIO
+s3_access_key: ...
+s3_secret_key: ...
+s3_prefix: v1
+
+chains:
+  - chain_id: 43114
+    name: C-Chain
+    rpcs:
+      - url: http://node:8545
+        max_parallelism: 128
+```
+
+## Key Types
+
+```go
+// What we store per block
+type NormalizedBlock struct {
+    Block    Block                 `json:"block"`
+    Traces   []TraceResultOptional `json:"traces"`
+    Receipts []Receipt             `json:"receipts"`
+}
+
+// Minimal RPC config - one knob
+type RPCConfig struct {
+    URL            string `yaml:"url"`
+    MaxParallelism int    `yaml:"max_parallelism"`
+}
+```
+
+## Things That Were Planned But Not Implemented
+
+1. Prometheus metrics - not added yet
+2. Multiple RPCs per chain with load balancing - only uses first RPC
+3. Graceful shutdown - just kills on Ctrl+C
+
+## Cloudflare R2 Support
+
+Works with any S3-compatible storage. For R2:
+- Set `s3_endpoint` to R2 URL
+- Set `s3_region` to "auto"
+- Provide R2 access key and secret
+
+## Client Library Usage
+
+```go
+// List chains
+chains, _ := client.GetChains(ctx, "localhost:9090")
+
+// Stream blocks
+c := client.NewClient("localhost:9090", chainID)
+blocks, errs := c.StreamBlocks(ctx, fromBlock)
+for block := range blocks {
+    // process block.Data (json.RawMessage)
+}
+```
+
+## Performance Characteristics
+
+- Ingestion: ~10-500 blocks/sec depending on RPC capacity and trace complexity
+- Compaction: ~100 blocks every 10s once buffer fills
+- Serving: Limited by network, not CPU (just streaming JSON)
+- Memory: Minimal - no large caches
+
+## Dependencies
+
+- github.com/cockroachdb/pebble/v2 - embedded KV store
+- github.com/aws/aws-sdk-go-v2 - S3 client
+- github.com/klauspost/compress/zstd - compression
+- gopkg.in/yaml.v3 - config parsing
+

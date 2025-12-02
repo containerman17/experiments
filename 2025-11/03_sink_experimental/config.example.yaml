@@ -1,0 +1,24 @@
+pebble_path: /data/evm-sink/pebble
+listen_addr: ":9090"
+
+# S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
+s3_bucket: evm-blocks
+s3_region: auto                    # Use "auto" for R2
+s3_endpoint: ""                    # Custom endpoint, e.g., "https://xxx.r2.cloudflarestorage.com"
+s3_access_key: ""                  # Leave empty to use AWS env vars / instance role
+s3_secret_key: ""
+s3_prefix: v1                      # Global prefix: v1/{chainID}/...
+
+chains:
+  - chain_id: 1
+    name: ethereum
+    rpcs:
+      - url: http://eth-node.internal:8545
+        max_parallelism: 50
+
+  - chain_id: 137
+    name: polygon
+    rpcs:
+      - url: http://polygon-node.internal:8545
+        max_parallelism: 100
+

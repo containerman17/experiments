@@ -1,31 +1,19 @@
 package client
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"evm-sink/rpc"
 	"fmt"
-	"io"
-	"net"
+	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/klauspost/compress/zstd"
 )
-
-// BlockMessage received from server
-type BlockMessage struct {
-	Type        string          `json:"type"`
-	ChainID     uint64          `json:"chain_id"`
-	BlockNumber uint64          `json:"block_number"`
-	Data        json.RawMessage `json:"data"`
-}
-
-// StatusMessage received from server
-type StatusMessage struct {
-	Type      string `json:"type"`
-	Status    string `json:"status"`
-	HeadBlock uint64 `json:"head_block"`
-}
 
 // ChainInfo from server
 type ChainInfo struct {
@@ -34,31 +22,18 @@ type ChainInfo struct {
 	LatestBlock uint64 `json:"latest_block"`
 }
 
-// ChainsResponse from server
-type ChainsResponse struct {
-	Type   string      `json:"type"`
-	Chains []ChainInfo `json:"chains"`
-}
-
-// Message is a union of all message types
-type Message struct {
-	Type        string          `json:"type"`
-	ChainID     uint64          `json:"chain_id,omitempty"`
-	BlockNumber uint64          `json:"block_number,omitempty"`
-	Data        json.RawMessage `json:"data,omitempty"`
-	Status      string          `json:"status,omitempty"`
-	HeadBlock   uint64          `json:"head_block,omitempty"`
-	Message     string          `json:"message,omitempty"`
+// Block represents a received block with its parsed data
+type Block struct {
+	Number uint64
+	Data   *rpc.NormalizedBlock
 }
 
 // Client connects to an EVM sink and streams blocks
 type Client struct {
 	addr      string
 	chainID   uint64
-	conn      net.Conn
-	zr        *zstd.Decoder
-	zw        *zstd.Encoder
-	reader    *bufio.Reader
+	conn      *websocket.Conn
+	zstdDec   *zstd.Decoder
 	reconnect bool
 }
 
@@ -74,10 +49,12 @@ func WithReconnect(enabled bool) Option {
 
 // NewClient creates a new sink client
 func NewClient(addr string, chainID uint64, opts ...Option) *Client {
+	dec, _ := zstd.NewReader(nil)
 	c := &Client{
 		addr:      addr,
 		chainID:   chainID,
 		reconnect: true,
+		zstdDec:   dec,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -85,122 +62,51 @@ func NewClient(addr string, chainID uint64, opts ...Option) *Client {
 	return c
 }
 
-// GetChains fetches the list of available chains from the server
+// GetChains fetches the list of available chains from the server via HTTP
 func GetChains(ctx context.Context, addr string) ([]ChainInfo, error) {
-	dialer := net.Dialer{Timeout: 10 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://"+addr+"/chains", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	defer conn.Close()
 
-	// Set read deadline for the response
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-
-	// Wrap in zstd
-	zw, err := zstd.NewWriter(conn, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create zstd writer: %w", err)
+		return nil, fmt.Errorf("failed to fetch chains: %w", err)
 	}
-	defer zw.Close()
+	defer resp.Body.Close()
 
-	zr, err := zstd.NewReader(conn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create zstd reader: %w", err)
-	}
-	defer zr.Close()
-
-	// Send list_chains command
-	cmd := struct {
-		Type string `json:"type"`
-	}{Type: "list_chains"}
-
-	data, _ := json.Marshal(cmd)
-	if _, err := zw.Write(append(data, '\n')); err != nil {
-		return nil, fmt.Errorf("failed to send command: %w", err)
-	}
-	if err := zw.Flush(); err != nil {
-		return nil, fmt.Errorf("failed to flush command: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	// Read response
-	reader := bufio.NewReader(zr)
-	line, err := reader.ReadBytes('\n')
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var resp ChainsResponse
-	if err := json.Unmarshal(line, &resp); err != nil {
+	var chains []ChainInfo
+	if err := json.NewDecoder(resp.Body).Decode(&chains); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if resp.Type == "error" {
-		return nil, fmt.Errorf("server error")
-	}
-
-	return resp.Chains, nil
+	return chains, nil
 }
 
-// Connect establishes connection and sends greeting
+// Connect establishes WebSocket connection
 func (c *Client) Connect(ctx context.Context, fromBlock uint64) error {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", c.addr)
+	url := fmt.Sprintf("ws://%s/ws?chain=%d&from=%d", c.addr, c.chainID, fromBlock)
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	conn, _, err := dialer.DialContext(ctx, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	c.conn = conn
-
-	// Wrap in zstd
-	c.zw, err = zstd.NewWriter(conn, zstd.WithEncoderLevel(zstd.SpeedFastest))
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("failed to create zstd writer: %w", err)
-	}
-
-	c.zr, err = zstd.NewReader(conn)
-	if err != nil {
-		c.zw.Close()
-		conn.Close()
-		return fmt.Errorf("failed to create zstd reader: %w", err)
-	}
-
-	c.reader = bufio.NewReader(c.zr)
-
-	// Send greeting
-	greeting := struct {
-		ChainID   uint64 `json:"chain_id"`
-		FromBlock uint64 `json:"from_block"`
-	}{
-		ChainID:   c.chainID,
-		FromBlock: fromBlock,
-	}
-
-	data, err := json.Marshal(greeting)
-	if err != nil {
-		c.Close()
-		return fmt.Errorf("failed to marshal greeting: %w", err)
-	}
-
-	if _, err := c.zw.Write(append(data, '\n')); err != nil {
-		c.Close()
-		return fmt.Errorf("failed to send greeting: %w", err)
-	}
-	c.zw.Flush()
 
 	return nil
 }
 
 // Close closes the connection
 func (c *Client) Close() error {
-	if c.zr != nil {
-		c.zr.Close()
-		c.zr = nil
-	}
-	if c.zw != nil {
-		c.zw.Close()
-		c.zw = nil
-	}
 	if c.conn != nil {
 		err := c.conn.Close()
 		c.conn = nil
@@ -209,41 +115,60 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// ReadMessage reads the next message from the server
-func (c *Client) ReadMessage() (*Message, error) {
-	line, err := c.reader.ReadBytes('\n')
+// parseBlockNumber parses hex block number string to uint64
+func parseBlockNumber(hexNum string) (uint64, error) {
+	numStr := strings.TrimPrefix(hexNum, "0x")
+	return strconv.ParseUint(numStr, 16, 64)
+}
+
+// ReadBlocks reads the next binary frame and returns parsed blocks
+// A single frame may contain 1-100 blocks
+func (c *Client) ReadBlocks() ([]Block, error) {
+	_, data, err := c.conn.ReadMessage()
 	if err != nil {
 		return nil, err
 	}
 
-	var msg Message
-	if err := json.Unmarshal(line, &msg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
+	// Decompress
+	decompressed, err := c.zstdDec.DecodeAll(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress: %w", err)
 	}
 
-	if msg.Type == "error" {
-		return nil, fmt.Errorf("server error: %s", msg.Message)
+	// Parse JSONL - each line is a NormalizedBlock
+	var blocks []Block
+	for _, line := range bytes.Split(decompressed, []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		var nb rpc.NormalizedBlock
+		if err := json.Unmarshal(line, &nb); err != nil {
+			return nil, fmt.Errorf("failed to parse block: %w", err)
+		}
+		blockNum, err := parseBlockNumber(nb.Block.Number)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse block number: %w", err)
+		}
+		blocks = append(blocks, Block{
+			Number: blockNum,
+			Data:   &nb,
+		})
 	}
 
-	return &msg, nil
+	return blocks, nil
 }
 
 // StreamConfig configures the stream
 type StreamConfig struct {
-	FromBlock  uint64
-	BufferSize int // Number of blocks to buffer
+	FromBlock uint64
 }
 
 // BlockHandler is called for each received block
-type BlockHandler func(chainID, blockNumber uint64, data json.RawMessage) error
+type BlockHandler func(blockNumber uint64, data *rpc.NormalizedBlock) error
 
 // Stream connects and streams blocks, calling handler for each block
 // Automatically reconnects on disconnect if enabled
 func (c *Client) Stream(ctx context.Context, cfg StreamConfig, handler BlockHandler) error {
-	if cfg.BufferSize <= 0 {
-		cfg.BufferSize = 100
-	}
-
 	currentBlock := cfg.FromBlock
 
 	for {
@@ -271,7 +196,7 @@ func (c *Client) Stream(ctx context.Context, cfg StreamConfig, handler BlockHand
 			default:
 			}
 
-			msg, err := c.ReadMessage()
+			blocks, err := c.ReadBlocks()
 			if err != nil {
 				c.Close()
 				if !c.reconnect {
@@ -281,42 +206,35 @@ func (c *Client) Stream(ctx context.Context, cfg StreamConfig, handler BlockHand
 				break // Reconnect
 			}
 
-			switch msg.Type {
-			case "block":
-				if err := handler(msg.ChainID, msg.BlockNumber, msg.Data); err != nil {
+			for _, block := range blocks {
+				// Filter blocks below our fromBlock (handles unaligned S3 batch start)
+				if block.Number < currentBlock {
+					continue
+				}
+				if err := handler(block.Number, block.Data); err != nil {
 					c.Close()
 					return err
 				}
-				currentBlock = msg.BlockNumber + 1
-
-			case "status":
-				// At tip, just continue reading
-				continue
-
-			case "error":
-				c.Close()
-				return fmt.Errorf("server error: %s", msg.Message)
+				currentBlock = block.Number + 1
 			}
 		}
 	}
 }
 
 // StreamBlocks is a convenience method that returns a channel of blocks
-func (c *Client) StreamBlocks(ctx context.Context, fromBlock uint64) (<-chan *BlockMessage, <-chan error) {
-	blocks := make(chan *BlockMessage, 100)
+func (c *Client) StreamBlocks(ctx context.Context, fromBlock uint64) (<-chan *Block, <-chan error) {
+	blocks := make(chan *Block, 100)
 	errs := make(chan error, 1)
 
 	go func() {
 		defer close(blocks)
 		defer close(errs)
 
-		err := c.Stream(ctx, StreamConfig{FromBlock: fromBlock}, func(chainID, blockNumber uint64, data json.RawMessage) error {
+		err := c.Stream(ctx, StreamConfig{FromBlock: fromBlock}, func(blockNumber uint64, data *rpc.NormalizedBlock) error {
 			select {
-			case blocks <- &BlockMessage{
-				Type:        "block",
-				ChainID:     chainID,
-				BlockNumber: blockNumber,
-				Data:        data,
+			case blocks <- &Block{
+				Number: blockNumber,
+				Data:   data,
 			}:
 				return nil
 			case <-ctx.Done():
@@ -331,6 +249,3 @@ func (c *Client) StreamBlocks(ctx context.Context, fromBlock uint64) (<-chan *Bl
 
 	return blocks, errs
 }
-
-// Ensure io package is used (for interface compliance if needed)
-var _ io.Reader = (*zstd.Decoder)(nil)

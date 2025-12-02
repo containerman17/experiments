@@ -3,7 +3,7 @@
 ## What This Is
 
 A Go service that ingests EVM blockchain data (blocks, receipts, traces) from RPC nodes, stores in PebbleDB, 
-compacts to S3, and serves to consumers via zstd-compressed TCP streaming. Designed for multi-chain support.
+compacts to S3, and serves to consumers via HTTP + WebSocket with zstd-compressed frames. Designed for multi-chain support.
 
 ## Architecture Decisions
 
@@ -34,10 +34,10 @@ Solution: One knob - `max_parallelism`. Everything else derived:
 - `max_latency` = 2000ms
 - `max_errors_per_min` = 10
 
-Adjustment runs every 5s based on 60s sliding window:
+Adjustment runs every 2s based on 60s sliding window:
 - If errors > threshold: halve parallelism (aggressive backoff)
 - If P95 > max_latency: reduce by 2
-- If P95 < target * 0.7: increase by 1 (cautious)
+- If P95 < target: increase by 1
 
 ### WebSocket Head Tracker
 
@@ -56,28 +56,28 @@ The `Fetcher.StreamBlocks()` uses a sliding window approach:
 - Polls for new blocks every 100ms when at tip
 - Window size configurable via `lookahead` config (default: 100)
 
-### TCP Streaming Protocol
+### HTTP + WebSocket Streaming Protocol
 
-**Zstd-compressed** NDJSON over TCP (not plain text!).
+**Endpoints:**
+- `GET /chains` → HTTP JSON response (list available chains)
+- `GET /ws?chain={id}&from={block}` → WebSocket upgrade, binary frames only
 
-Client sends:
-- `{"type":"list_chains"}` → get available chains
-- `{"chain_id":N,"from_block":M}` → start streaming
+**WebSocket frames:** Binary only - `zstd(NormalizedBlock\n...)`, 1 to 100 blocks per frame
 
-Server sends:
-- `{"type":"chains","chains":[...]}` → chain list response
-- `{"type":"block","chain_id":N,"block_number":M,"data":{...}}` → block data
-- `{"type":"status","status":"live","head_block":N}` → caught up notification
-- `{"type":"error","message":"..."}` → errors
+**Historical:** S3 blob sent as-is (already compressed JSONL with ~100 blocks)
+**Live:** Each block compressed individually
 
-Both sides wrap TCP connection in zstd encoder/decoder.
+Frame contents (after decompression, split on `\n`):
+- Each line is a raw `NormalizedBlock` JSON
+- Block number extracted from `block.number` field (hex encoded)
+- No wrappers, no status messages - just blocks
 
 ### Streaming Logic (Server)
 
-1. **Try PebbleDB first**: If block exists in hot storage, send immediately
-2. **Fallback to S3**: Download 100-block batch with 10-batch lookahead prefetching
-3. **At tip**: Send "live" status, poll PebbleDB every 50ms for new blocks
-4. **Flush strategy**: Flush after each block at tip (low latency), after each S3 batch (good compression)
+1. **Try PebbleDB first**: If block exists in hot storage, compress and send immediately
+2. **Fallback to S3**: Send raw S3 blob (already compressed) with 10-batch lookahead prefetching
+3. **At tip**: Poll PebbleDB every 50ms for new blocks
+4. **Client handles first-frame alignment**: Filters blocks < fromBlock (S3 batches may start earlier)
 
 ### Ingestion Logic
 
@@ -85,11 +85,12 @@ Both sides wrap TCP connection in zstd encoder/decoder.
 2. WebSocket subscription provides instant latest block (no polling needed)
 3. Sliding window fetches blocks in parallel, processes in order
 4. Save to PebbleDB, notify server of new blocks
-5. Log progress every 5s with blocks/sec, ETA, current parallelism
+5. Log progress every 5s with blocks/sec, ETA, parallelism, P95 latency
+6. On any error: stop and restart from last saved block (no partial data)
 
 ### Compaction
 
-- Runs every 10s per chain
+- Runs every 3s per chain
 - Only compacts if >1100 blocks in PebbleDB (keeps 1000 as buffer)
 - Aligns to 100-block boundaries (1-100, 101-200, etc.)
 - Uploads to S3, then deletes from PebbleDB
@@ -101,6 +102,8 @@ evm-sink/
 ├── cmd/
 │   ├── sink/main.go          # Entry point, config, wiring, ingestion loop
 │   └── example-client/main.go # Example client with reconnection and stats
+├── consts/
+│   └── consts.go             # All tunable constants (RPC*, Fetcher*, Storage*, Server*)
 ├── rpc/
 │   ├── types.go              # EVM types (Block, Transaction, Receipt, etc.) + Config
 │   ├── controller.go         # Adaptive parallelism controller with semaphore
@@ -111,7 +114,7 @@ evm-sink/
 │   ├── s3.go                 # S3 upload/download with zstd, batch helpers
 │   └── compactor.go          # Background compaction
 ├── api/
-│   └── server.go             # TCP streaming server with zstd compression
+│   └── server.go             # HTTP + WebSocket server with zstd frames
 ├── client/
 │   └── client.go             # Go client library for consumers
 ├── config.yaml               # Local config (gitignored)
@@ -123,8 +126,7 @@ evm-sink/
 
 ```yaml
 pebble_path: ./data/pebble
-listen_addr: ":9090"
-lookahead: 100  # Sliding window size for block fetching
+lookahead: 200  # Sliding window size for block fetching
 
 s3_bucket: bucket-name
 s3_region: auto
@@ -134,11 +136,18 @@ s3_secret_key: ...
 s3_prefix: v1
 
 chains:
+  # Avalanche C-Chain
   - chain_id: 43114
     name: C-Chain
     rpcs:
-      - url: http://node:8545/rpc  # Must contain /rpc for WebSocket conversion
-        max_parallelism: 128
+      - url: http://avalanche-node:9650/ext/bc/C/rpc
+        max_parallelism: 200
+
+  # Avalanche L1 subnets - URL format: /ext/bc/{blockchainID}/rpc
+  - chain_id: 836
+    name: BnryMainnet
+    rpcs:
+      - url: http://avalanche-node:9650/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
 ```
 
 ## Key Types
@@ -148,7 +157,7 @@ chains:
 type NormalizedBlock struct {
     Block      Block                 `json:"block"`
     Traces     []TraceResultOptional `json:"traces"`
-    StateDiffs []StateDiffResult     `json:"stateDiffs"`  // Currently unused
+    StateDiffs []StateDiffResult     `json:"stateDiffs"`
     Receipts   []Receipt             `json:"receipts"`
 }
 
@@ -165,19 +174,25 @@ type RPCConfig struct {
 }
 ```
 
-## Trace Fetching Strategy
+## Trace & State Diff Fetching Strategy
 
+**Call Traces:**
 1. **Try debug_traceBlockByNumber first** - fetches all traces for a block in one call
 2. **Fallback to debug_traceTransaction** - per-transaction if block trace fails
 3. **Handle precompile errors** - "incorrect number of top-level calls" returns nil trace (expected)
-4. **Batch size for debug calls** - capped at 20 to avoid overwhelming debug endpoint
+
+**State Diffs:**
+- Uses `debug_traceTransaction` with `prestateTracer` and `diffMode: true`
+- Returns pre/post state for each address touched by the transaction
+- Batched per-transaction (no block-level equivalent)
+
+**Batch size for debug calls** - capped to avoid overwhelming debug endpoint (see `consts.FetcherDebugBatchSizeMax`)
 
 ## Things That Were Planned But Not Implemented
 
 1. Prometheus metrics - not added yet
 2. Multiple RPCs per chain with load balancing - only uses first RPC
 3. Full graceful shutdown - components have Stop() methods but main.go just blocks forever
-4. StateDiffs fetching - field exists in NormalizedBlock but never populated
 
 ## Cloudflare R2 Support
 
@@ -190,20 +205,21 @@ Works with any S3-compatible storage. For R2:
 ## Client Library Usage
 
 ```go
-// List chains
+// List chains via HTTP
 chains, _ := client.GetChains(ctx, "localhost:9090")
 
-// Stream blocks with channel API
+// Stream blocks with channel API (WebSocket)
 c := client.NewClient("localhost:9090", chainID)
 blocks, errs := c.StreamBlocks(ctx, fromBlock)
 for block := range blocks {
-    // process block.Data (json.RawMessage)
+    // block.Number is the block number
+    // block.Data is *rpc.NormalizedBlock (fully parsed)
 }
 
 // Stream blocks with handler API (auto-reconnects)
 c := client.NewClient("localhost:9090", chainID, client.WithReconnect(true))
-err := c.Stream(ctx, client.StreamConfig{FromBlock: 1}, func(chainID, blockNum uint64, data json.RawMessage) error {
-    // process block
+err := c.Stream(ctx, client.StreamConfig{FromBlock: 1}, func(blockNum uint64, block *rpc.NormalizedBlock) error {
+    // block is fully parsed NormalizedBlock
     return nil
 })
 ```
@@ -215,11 +231,12 @@ err := c.Stream(ctx, client.StreamConfig{FromBlock: 1}, func(chainID, blockNum u
 - Serving: Limited by network, not CPU (just streaming compressed JSON)
 - Memory: Minimal - no large caches, streaming design
 - S3 prefetching: 10 batches lookahead when serving historical data
+- Compression: ~10:1 for historical (S3 batches), ~3:1 for live blocks
 
 ## Dependencies
 
 - github.com/cockroachdb/pebble/v2 - embedded KV store
 - github.com/aws/aws-sdk-go-v2 - S3 client
-- github.com/klauspost/compress/zstd - compression (both storage and TCP)
-- github.com/gorilla/websocket - WebSocket for head tracking
+- github.com/klauspost/compress/zstd - compression (storage and WebSocket frames)
+- github.com/gorilla/websocket - WebSocket for head tracking and client serving
 - gopkg.in/yaml.v3 - config parsing

@@ -1,16 +1,19 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"evm-sink/client"
+	"evm-sink/rpc"
 	"flag"
 	"fmt"
 	"log"
-	"net"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -29,7 +32,7 @@ func main() {
 
 	ctx := context.Background()
 
-	// If no chain specified, list available chains
+	// If no chain specified, list available chains via HTTP
 	if *chainID == 0 {
 		chains, err := client.GetChains(ctx, *addr)
 		if err != nil {
@@ -56,13 +59,22 @@ func main() {
 		fmt.Printf("[%s] Connecting to %s, chain %d, from block %d...\n",
 			time.Now().Format("15:04:05"), *addr, *chainID, nextBlock)
 
-		err := streamBlocks(ctx, *addr, *chainID, nextBlock, func(blockNum uint64, data json.RawMessage) error {
+		err := streamBlocks(ctx, *addr, *chainID, nextBlock, func(blockNum uint64, block *rpc.NormalizedBlock) error {
 			// Validate order
 			if blockNum != lastBlock+1 {
 				log.Fatalf("FATAL: Expected block %d, got %d", lastBlock+1, blockNum)
 			}
 			lastBlock = blockNum
 			totalBlocks++
+
+			// if len(block.Receipts) == 1 {
+			// 	data, err := json.MarshalIndent(block, "", "  ")
+			// 	if err != nil {
+			// 		log.Fatalf("Failed to marshal block to JSON: %v", err)
+			// 	}
+			// 	fmt.Println(string(data))
+			// 	os.Exit(0)
+			// }
 
 			// Log every second
 			if time.Since(lastLogTime) >= time.Second {
@@ -74,8 +86,8 @@ func main() {
 				totalElapsed := now.Sub(startTime).Seconds()
 				avgRate := float64(totalBlocks) / totalElapsed
 
-				fmt.Printf("Block %d | %.1f blk/s recent | %.1f blk/s avg | %d total\n",
-					blockNum, recentRate, avgRate, totalBlocks)
+				fmt.Printf("Block %d | %.1f blk/s recent | %.1f blk/s avg | %d total | %d txs\n",
+					blockNum, recentRate, avgRate, totalBlocks, len(block.Block.Transactions))
 
 				lastLogTime = now
 				lastLogBlocks = totalBlocks
@@ -91,74 +103,76 @@ func main() {
 	}
 }
 
-func streamBlocks(ctx context.Context, addr string, chainID, fromBlock uint64, handler func(uint64, json.RawMessage) error) error {
-	// Connect with timeout
-	dialer := net.Dialer{Timeout: connectTimeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+// parseBlockNumber parses hex block number string to uint64
+func parseBlockNumber(hexNum string) (uint64, error) {
+	numStr := strings.TrimPrefix(hexNum, "0x")
+	return strconv.ParseUint(numStr, 16, 64)
+}
+
+func streamBlocks(ctx context.Context, addr string, chainID, fromBlock uint64, handler func(uint64, *rpc.NormalizedBlock) error) error {
+	// Connect via WebSocket
+	url := fmt.Sprintf("ws://%s/ws?chain=%d&from=%d", addr, chainID, fromBlock)
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: connectTimeout,
+	}
+
+	conn, _, err := dialer.DialContext(ctx, url, nil)
 	if err != nil {
 		return fmt.Errorf("connect failed: %w", err)
 	}
 	defer conn.Close()
 
-	// Wrap in zstd
-	zw, err := zstd.NewWriter(conn, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	// Create zstd decoder for decompressing frames
+	zstdDec, err := zstd.NewReader(nil)
 	if err != nil {
-		return fmt.Errorf("zstd writer failed: %w", err)
+		return fmt.Errorf("zstd decoder failed: %w", err)
 	}
-	defer zw.Close()
+	defer zstdDec.Close()
 
-	zr, err := zstd.NewReader(conn)
-	if err != nil {
-		return fmt.Errorf("zstd reader failed: %w", err)
-	}
-	defer zr.Close()
-
-	// Send greeting
-	greeting := struct {
-		ChainID   uint64 `json:"chain_id"`
-		FromBlock uint64 `json:"from_block"`
-	}{ChainID: chainID, FromBlock: fromBlock}
-
-	data, _ := json.Marshal(greeting)
-	if _, err := zw.Write(append(data, '\n')); err != nil {
-		return fmt.Errorf("send greeting failed: %w", err)
-	}
-	if err := zw.Flush(); err != nil {
-		return fmt.Errorf("flush greeting failed: %w", err)
-	}
-
-	reader := bufio.NewReader(zr)
+	currentBlock := fromBlock
 
 	// Stream blocks
 	for {
 		// Set read deadline for each message
 		conn.SetReadDeadline(time.Now().Add(readTimeout))
 
-		line, err := reader.ReadBytes('\n')
+		_, data, err := conn.ReadMessage()
 		if err != nil {
 			return fmt.Errorf("read failed: %w", err)
 		}
 
-		var msg struct {
-			Type        string          `json:"type"`
-			BlockNumber uint64          `json:"block_number"`
-			Data        json.RawMessage `json:"data"`
-			Message     string          `json:"message"`
-		}
-		if err := json.Unmarshal(line, &msg); err != nil {
-			return fmt.Errorf("unmarshal failed: %w", err)
+		// Decompress
+		decompressed, err := zstdDec.DecodeAll(data, nil)
+		if err != nil {
+			return fmt.Errorf("decompress failed: %w", err)
 		}
 
-		switch msg.Type {
-		case "block":
-			if err := handler(msg.BlockNumber, msg.Data); err != nil {
+		// Parse JSONL - each line is a NormalizedBlock
+		for _, line := range bytes.Split(decompressed, []byte{'\n'}) {
+			if len(line) == 0 {
+				continue
+			}
+
+			var block rpc.NormalizedBlock
+			if err := json.Unmarshal(line, &block); err != nil {
+				return fmt.Errorf("parse block failed: %w", err)
+			}
+
+			blockNum, err := parseBlockNumber(block.Block.Number)
+			if err != nil {
+				return fmt.Errorf("parse block number failed: %w", err)
+			}
+
+			// Filter blocks below our fromBlock (handles unaligned S3 batch)
+			if blockNum < currentBlock {
+				continue
+			}
+
+			if err := handler(blockNum, &block); err != nil {
 				return err
 			}
-		case "status":
-			// At tip, continue
-			continue
-		case "error":
-			return fmt.Errorf("server error: %s", msg.Message)
+			currentBlock = blockNum + 1
 		}
 	}
 }

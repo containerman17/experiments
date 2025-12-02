@@ -186,7 +186,6 @@ type Config struct {
 	S3AccessKey string        `yaml:"s3_access_key"` // Optional, uses AWS env vars if empty
 	S3SecretKey string        `yaml:"s3_secret_key"` // Optional, uses AWS env vars if empty
 	S3Prefix    string        `yaml:"s3_prefix"`     // Global prefix, e.g. "v1" -> v1/{chainID}/...
-	ListenAddr  string        `yaml:"listen_addr"`
-	Lookahead   int           `yaml:"lookahead"` // Sliding window size for block fetching (default 100)
+	Lookahead   int           `yaml:"lookahead"`     // Sliding window size for block fetching (default 100)
 	Chains      []ChainConfig `yaml:"chains"`
 }

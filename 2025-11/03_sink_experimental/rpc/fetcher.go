@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"evm-sink/consts"
 	"fmt"
 	"log"
 	"net"
@@ -47,34 +48,33 @@ func NewFetcher(cfg FetcherConfig) (*Fetcher, error) {
 
 	// Derive batch sizes from controller's parallelism
 	parallelism := cfg.Controller.CurrentParallelism()
-	batchSize := 100                         // Standard batch for blocks/receipts
-	debugBatchSize := max(1, parallelism/10) // Debug calls are heavy, scale with parallelism
-	if debugBatchSize > 20 {
-		debugBatchSize = 20 // Cap at 20 to avoid overwhelming debug endpoint
+	debugBatchSize := max(1, parallelism/10)
+	if debugBatchSize > consts.FetcherDebugBatchSizeMax {
+		debugBatchSize = consts.FetcherDebugBatchSizeMax
 	}
 
 	transport := &http.Transport{
-		MaxIdleConns:        10000,
-		MaxIdleConnsPerHost: 10000,
-		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        consts.FetcherMaxIdleConns,
+		MaxIdleConnsPerHost: consts.FetcherMaxIdleConns,
+		IdleConnTimeout:     consts.FetcherIdleConnTimeout,
 		DisableKeepAlives:   false,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   consts.FetcherDialTimeout,
+			KeepAlive: consts.FetcherDialTimeout,
 		}).DialContext,
 	}
 
 	return &Fetcher{
 		controller:     cfg.Controller,
 		headTracker:    headTracker,
-		batchSize:      batchSize,
+		batchSize:      consts.FetcherBatchSize,
 		debugBatchSize: debugBatchSize,
-		maxRetries:     3,
-		retryDelay:     500 * time.Millisecond,
+		maxRetries:     consts.FetcherMaxRetries,
+		retryDelay:     consts.FetcherRetryDelay,
 		chainID:        cfg.ChainID,
 		chainName:      cfg.ChainName,
 		httpClient: &http.Client{
-			Timeout:   5 * time.Minute,
+			Timeout:   consts.FetcherHTTPTimeout,
 			Transport: transport,
 		},
 	}, nil
@@ -412,9 +412,21 @@ func (f *Fetcher) fetchSingleBlock(ctx context.Context, blockNum uint64) (*Norma
 		tracesMap = make(map[string]*TraceResultOptional)
 	}
 
+	// Fetch state diffs
+	var stateDiffsMap map[string]*StateDiffResult
+	if len(txInfos) > 0 {
+		stateDiffsMap, err = f.fetchStateDiffsBatch(ctx, txInfos)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch state diffs: %w", err)
+		}
+	} else {
+		stateDiffsMap = make(map[string]*StateDiffResult)
+	}
+
 	// Assemble
 	receipts := make([]Receipt, len(block.Transactions))
 	traces := make([]TraceResultOptional, len(block.Transactions))
+	stateDiffs := make([]StateDiffResult, len(block.Transactions))
 
 	for j, tx := range block.Transactions {
 		receipt, ok := receiptsMap[tx.Hash]
@@ -429,12 +441,20 @@ func (f *Fetcher) fetchSingleBlock(ctx context.Context, blockNum uint64) (*Norma
 		} else {
 			traces[j] = TraceResultOptional{TxHash: tx.Hash, Result: nil}
 		}
+
+		stateDiff, ok := stateDiffsMap[tx.Hash]
+		if ok && stateDiff != nil {
+			stateDiffs[j] = *stateDiff
+		} else {
+			stateDiffs[j] = StateDiffResult{TxHash: tx.Hash, Result: nil}
+		}
 	}
 
 	return &NormalizedBlock{
-		Block:    block,
-		Receipts: receipts,
-		Traces:   traces,
+		Block:      block,
+		Receipts:   receipts,
+		Traces:     traces,
+		StateDiffs: stateDiffs,
 	}, nil
 }
 
@@ -763,4 +783,124 @@ func (f *Fetcher) fetchTracesBatch(ctx context.Context, from, to uint64, txInfos
 
 func isPrecompileError(msg string) bool {
 	return strings.Contains(msg, "incorrect number of top-level calls")
+}
+
+// fetchStateDiffsBatch fetches state diffs for transactions using prestateTracer with diffMode
+func (f *Fetcher) fetchStateDiffsBatch(ctx context.Context, txInfos []txInfo) (map[string]*StateDiffResult, error) {
+	stateDiffsMap := make(map[string]*StateDiffResult)
+	var mu sync.Mutex
+
+	var txRequests []JSONRPCRequest
+	txHashToIdx := make(map[int]string)
+
+	for i, tx := range txInfos {
+		txRequests = append(txRequests, JSONRPCRequest{
+			Jsonrpc: "2.0",
+			Method:  "debug_traceTransaction",
+			Params: []interface{}{
+				tx.hash,
+				map[string]interface{}{
+					"tracer":       "prestateTracer",
+					"tracerConfig": map[string]bool{"diffMode": true},
+				},
+			},
+			ID: i,
+		})
+		txHashToIdx[i] = tx.hash
+	}
+
+	txBatches := chunksOf(txRequests, f.debugBatchSize)
+	var wg sync.WaitGroup
+	var batchErr error
+
+	for batchIdx, batch := range txBatches {
+		wg.Add(1)
+		go func(idx int, requests []JSONRPCRequest) {
+			defer wg.Done()
+
+			var responses []JSONRPCResponse
+			var err error
+
+			for attempt := 0; attempt <= f.maxRetries; attempt++ {
+				if attempt > 0 {
+					delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+					if delay > 10*time.Second {
+						delay = 10 * time.Second
+					}
+					time.Sleep(delay)
+				}
+
+				err = f.controller.Execute(ctx, func() error {
+					var innerErr error
+					responses, innerErr = f.batchRpcCallDebug(ctx, requests)
+					return innerErr
+				})
+
+				if err != nil {
+					continue
+				}
+
+				hasRetryableError := false
+				for _, resp := range responses {
+					if resp.Error != nil && !isPrecompileError(resp.Error.Message) {
+						hasRetryableError = true
+						break
+					}
+				}
+
+				if !hasRetryableError {
+					break
+				}
+			}
+
+			if err != nil {
+				mu.Lock()
+				if batchErr == nil {
+					batchErr = fmt.Errorf("state diff batch %d failed after retries: %w", idx, err)
+				}
+				mu.Unlock()
+				return
+			}
+
+			for _, resp := range responses {
+				txHash := txHashToIdx[resp.ID]
+
+				if resp.Error != nil {
+					if isPrecompileError(resp.Error.Message) {
+						mu.Lock()
+						stateDiffsMap[txHash] = &StateDiffResult{TxHash: txHash, Result: nil}
+						mu.Unlock()
+						continue
+					} else {
+						mu.Lock()
+						if batchErr == nil {
+							batchErr = fmt.Errorf("state diff for tx %s failed: %s", txHash, resp.Error.Message)
+						}
+						mu.Unlock()
+						return
+					}
+				}
+
+				var stateDiff StateDiff
+				if err := StrictUnmarshal(resp.Result, &stateDiff); err != nil {
+					mu.Lock()
+					if batchErr == nil {
+						batchErr = fmt.Errorf("failed to parse state diff for tx %s: %w", txHash, err)
+					}
+					mu.Unlock()
+					return
+				}
+
+				mu.Lock()
+				stateDiffsMap[txHash] = &StateDiffResult{TxHash: txHash, Result: &stateDiff}
+				mu.Unlock()
+			}
+		}(batchIdx, batch)
+	}
+
+	wg.Wait()
+	if batchErr != nil {
+		return nil, batchErr
+	}
+	return stateDiffsMap, nil
 }

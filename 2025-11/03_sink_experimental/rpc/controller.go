@@ -2,19 +2,11 @@ package rpc
 
 import (
 	"context"
+	"evm-sink/consts"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
-)
-
-const (
-	windowDuration       = 60 * time.Second
-	adjustInterval       = 5 * time.Second
-	defaultMaxParallel   = 50
-	defaultTargetLatency = 1200 * time.Millisecond // 200ms ping + 1s work = healthy
-	defaultMaxLatency    = 2000 * time.Millisecond // Hard ceiling before backoff
-	defaultMaxErrors     = 10
 )
 
 type RequestMetric struct {
@@ -44,30 +36,27 @@ type Controller struct {
 func NewController(cfg RPCConfig) *Controller {
 	maxP := cfg.MaxParallelism
 	if maxP <= 0 {
-		maxP = defaultMaxParallel
+		maxP = consts.RPCDefaultMaxParallelism
 	}
 
 	// Derive everything else from maxParallelism
-	minP := max(2, maxP/10)               // Floor at 10% of max, minimum 2
-	targetLatency := defaultTargetLatency // 800ms - good for most nodes
-	maxLatency := defaultMaxLatency       // 2s - if slower, something's wrong
-	maxErrors := defaultMaxErrors         // 10 errors/min triggers backoff
+	minP := max(2, maxP/10)
 
 	c := &Controller{
 		url:             cfg.URL,
 		maxParallelism:  maxP,
 		minParallelism:  minP,
-		targetLatency:   targetLatency,
-		maxLatency:      maxLatency,
-		maxErrorsPerMin: maxErrors,
-		semaphore:       make(chan struct{}, maxP),
+		targetLatency:   consts.RPCTargetLatency,
+		maxLatency:      consts.RPCMaxLatency,
+		maxErrorsPerMin: consts.RPCMaxErrorsPerMinute,
+		semaphore:       make(chan struct{}, maxP), // Capacity is max, but we start with min tokens
 		metrics:         make([]RequestMetric, 0, 1000),
 		stopCh:          make(chan struct{}),
 	}
-	c.currentParallel.Store(int32(maxP))
+	c.currentParallel.Store(int32(minP))
 
-	// Fill semaphore to current capacity
-	for i := 0; i < maxP; i++ {
+	// Fill semaphore to min capacity - will climb up based on performance
+	for i := 0; i < minP; i++ {
 		c.semaphore <- struct{}{}
 	}
 
@@ -84,6 +73,31 @@ func (c *Controller) URL() string {
 
 func (c *Controller) CurrentParallelism() int {
 	return int(c.currentParallel.Load())
+}
+
+// P95Latency returns the current P95 latency from the metrics window
+func (c *Controller) P95Latency() time.Duration {
+	c.metricsMu.Lock()
+	defer c.metricsMu.Unlock()
+
+	if len(c.metrics) < 10 {
+		return 0
+	}
+
+	var durations []time.Duration
+	for _, m := range c.metrics {
+		durations = append(durations, m.Duration)
+	}
+
+	sort.Slice(durations, func(i, j int) bool {
+		return durations[i] < durations[j]
+	})
+
+	p95Idx := int(float64(len(durations)) * 0.95)
+	if p95Idx >= len(durations) {
+		p95Idx = len(durations) - 1
+	}
+	return durations[p95Idx]
 }
 
 // Acquire blocks until a slot is available
@@ -131,7 +145,7 @@ func (c *Controller) Execute(ctx context.Context, fn func() error) error {
 
 func (c *Controller) adjustLoop() {
 	defer c.wg.Done()
-	ticker := time.NewTicker(adjustInterval)
+	ticker := time.NewTicker(consts.RPCAdjustInterval)
 	defer ticker.Stop()
 
 	for {
@@ -149,7 +163,7 @@ func (c *Controller) adjust() {
 	defer c.metricsMu.Unlock()
 
 	// Prune old metrics
-	cutoff := time.Now().Add(-windowDuration)
+	cutoff := time.Now().Add(-consts.RPCMetricsWindow)
 	validStart := 0
 	for i, m := range c.metrics {
 		if m.Timestamp.After(cutoff) {
@@ -197,11 +211,8 @@ func (c *Controller) adjust() {
 	} else if p95Latency > c.maxLatency {
 		// Reduce on high latency
 		newParallel = current - 2
-	} else if p95Latency > c.targetLatency {
-		// Hold steady
-		newParallel = current
-	} else if p95Latency < c.targetLatency*7/10 {
-		// Cautious increase when performing well
+	} else if p95Latency < c.targetLatency {
+		// Increase when below target
 		newParallel = current + 1
 	}
 

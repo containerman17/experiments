@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"evm-sink/consts"
 	"fmt"
 	"log"
 	"time"
@@ -20,9 +21,10 @@ func formatSize(bytes int) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMG"[exp])
 }
 
+// Aliases for convenience
 const (
-	MinBlocksBeforeCompaction = 1000 // Keep at least 1k blocks in PebbleDB
-	CompactionCheckInterval   = 10 * time.Second
+	MinBlocksBeforeCompaction = consts.StorageMinBlocksBeforeCompaction
+	CompactionCheckInterval   = consts.StorageCompactionInterval
 )
 
 type Compactor struct {

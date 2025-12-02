@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"evm-sink/consts"
 	"fmt"
 	"io"
 
@@ -14,9 +15,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-const (
-	BatchSize = 100 // blocks per S3 file
-)
+// BatchSize is blocks per S3 file (alias for convenience)
+const BatchSize = consts.StorageBatchSize
 
 // BatchStart returns the first block of the batch containing blockNum
 // Batches are 1-based: 1-100, 101-200, etc.
@@ -171,6 +171,21 @@ func (c *S3Client) Download(ctx context.Context, key string) ([][]byte, error) {
 	}
 
 	return blocks, nil
+}
+
+// DownloadRaw retrieves raw compressed data from S3 without decompressing
+// Used for streaming to clients (they decompress themselves)
+func (c *S3Client) DownloadRaw(ctx context.Context, key string) ([]byte, error) {
+	resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to download from S3: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
 }
 
 // Exists checks if a key exists in S3

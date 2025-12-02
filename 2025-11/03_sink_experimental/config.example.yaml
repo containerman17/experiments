@@ -1,25 +1,37 @@
 pebble_path: /data/evm-sink/pebble
-listen_addr: ":9090"
-lookahead: 100                     # Sliding window for block fetching (higher = more parallel fetches)
+lookahead: 200                     # Sliding window for block fetching (higher = more parallel fetches)
 
 # S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
 s3_bucket: evm-blocks
 s3_region: auto                    # Use "auto" for R2
-s3_endpoint: ""                    # Custom endpoint, e.g., "https://xxx.r2.cloudflarestorage.com"
+s3_endpoint: ""                    # Custom endpoint for R2/MinIO, e.g., "https://xxx.r2.cloudflarestorage.com"
 s3_access_key: ""                  # Leave empty to use AWS env vars / instance role
 s3_secret_key: ""
 s3_prefix: v1                      # Global prefix: v1/{chainID}/...
 
 chains:
-  - chain_id: 1
-    name: ethereum
+  # Avalanche C-Chain (main EVM chain)
+  - chain_id: 43114
+    name: C-Chain
     rpcs:
-      - url: http://eth-node.internal:8545
-        max_parallelism: 50
+      - url: http://avalanche-node:9650/ext/bc/C/rpc
+        max_parallelism: 200
 
-  - chain_id: 137
-    name: polygon
+  # Avalanche L1 subnets - URL format: /ext/bc/{blockchainID}/rpc
+  - chain_id: 836
+    name: BnryMainnet
     rpcs:
-      - url: http://polygon-node.internal:8545
-        max_parallelism: 100
+      - url: http://avalanche-node:9650/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
+        max_parallelism: 200
 
+  - chain_id: 10507
+    name: NumbersEVM
+    rpcs:
+      - url: http://avalanche-node:9650/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
+        max_parallelism: 128
+
+  - chain_id: 8198
+    name: Hatchyverse
+    rpcs:
+      - url: http://avalanche-node:9650/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
+        max_parallelism: 128

@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // BlockMessage received from server
@@ -53,6 +56,8 @@ type Client struct {
 	addr      string
 	chainID   uint64
 	conn      net.Conn
+	zr        *zstd.Decoder
+	zw        *zstd.Encoder
 	reader    *bufio.Reader
 	reconnect bool
 }
@@ -82,12 +87,28 @@ func NewClient(addr string, chainID uint64, opts ...Option) *Client {
 
 // GetChains fetches the list of available chains from the server
 func GetChains(ctx context.Context, addr string) ([]ChainInfo, error) {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 	defer conn.Close()
+
+	// Set read deadline for the response
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+
+	// Wrap in zstd
+	zw, err := zstd.NewWriter(conn, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zstd writer: %w", err)
+	}
+	defer zw.Close()
+
+	zr, err := zstd.NewReader(conn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zstd reader: %w", err)
+	}
+	defer zr.Close()
 
 	// Send list_chains command
 	cmd := struct {
@@ -95,12 +116,15 @@ func GetChains(ctx context.Context, addr string) ([]ChainInfo, error) {
 	}{Type: "list_chains"}
 
 	data, _ := json.Marshal(cmd)
-	if _, err := conn.Write(append(data, '\n')); err != nil {
+	if _, err := zw.Write(append(data, '\n')); err != nil {
 		return nil, fmt.Errorf("failed to send command: %w", err)
+	}
+	if err := zw.Flush(); err != nil {
+		return nil, fmt.Errorf("failed to flush command: %w", err)
 	}
 
 	// Read response
-	reader := bufio.NewReader(conn)
+	reader := bufio.NewReader(zr)
 	line, err := reader.ReadBytes('\n')
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
@@ -126,7 +150,22 @@ func (c *Client) Connect(ctx context.Context, fromBlock uint64) error {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	c.conn = conn
-	c.reader = bufio.NewReader(conn)
+
+	// Wrap in zstd
+	c.zw, err = zstd.NewWriter(conn, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to create zstd writer: %w", err)
+	}
+
+	c.zr, err = zstd.NewReader(conn)
+	if err != nil {
+		c.zw.Close()
+		conn.Close()
+		return fmt.Errorf("failed to create zstd reader: %w", err)
+	}
+
+	c.reader = bufio.NewReader(c.zr)
 
 	// Send greeting
 	greeting := struct {
@@ -139,22 +178,33 @@ func (c *Client) Connect(ctx context.Context, fromBlock uint64) error {
 
 	data, err := json.Marshal(greeting)
 	if err != nil {
-		c.conn.Close()
+		c.Close()
 		return fmt.Errorf("failed to marshal greeting: %w", err)
 	}
 
-	if _, err := c.conn.Write(append(data, '\n')); err != nil {
-		c.conn.Close()
+	if _, err := c.zw.Write(append(data, '\n')); err != nil {
+		c.Close()
 		return fmt.Errorf("failed to send greeting: %w", err)
 	}
+	c.zw.Flush()
 
 	return nil
 }
 
 // Close closes the connection
 func (c *Client) Close() error {
+	if c.zr != nil {
+		c.zr.Close()
+		c.zr = nil
+	}
+	if c.zw != nil {
+		c.zw.Close()
+		c.zw = nil
+	}
 	if c.conn != nil {
-		return c.conn.Close()
+		err := c.conn.Close()
+		c.conn = nil
+		return err
 	}
 	return nil
 }
@@ -281,3 +331,6 @@ func (c *Client) StreamBlocks(ctx context.Context, fromBlock uint64) (<-chan *Bl
 
 	return blocks, errs
 }
+
+// Ensure io package is used (for interface compliance if needed)
+var _ io.Reader = (*zstd.Decoder)(nil)

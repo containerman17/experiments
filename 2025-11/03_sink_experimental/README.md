@@ -1,6 +1,6 @@
 # EVM Sink
 
-High-throughput EVM blockchain data ingestion service. Pulls blocks, receipts, and traces from RPC nodes, stores locally, compacts to S3, and streams to consumers over TCP.
+High-throughput EVM blockchain data ingestion service. Pulls blocks, receipts, and traces from RPC nodes, stores locally, compacts to S3, and streams to consumers over zstd-compressed TCP.
 
 ## Quick Start
 
@@ -16,19 +16,22 @@ go build -o sink ./cmd/sink
 
 ```
 RPC Nodes → [Ingestion] → PebbleDB → [Compaction] → S3
-                              ↓
-                         TCP Server → Consumers
+     ↑                         ↓
+  WebSocket              TCP Server → Consumers
+ (newHeads)              (zstd compressed)
 ```
 
-1. **Ingestion**: Fetches blocks with receipts and traces from RPC, saves to PebbleDB
-2. **Compaction**: Background process compacts old blocks (100 at a time) to S3 as `.jsonl.zstd`
-3. **Serving**: Streams blocks to consumers - from PebbleDB if recent, S3 if old
+1. **Head Tracking**: WebSocket subscription to `newHeads` for instant block notifications
+2. **Ingestion**: Sliding window fetcher pulls blocks with receipts and traces in parallel
+3. **Compaction**: Background process compacts old blocks (100 at a time) to S3 as `.jsonl.zstd`
+4. **Serving**: Streams zstd-compressed blocks to consumers - from PebbleDB if recent, S3 if old
 
 ## Configuration
 
 ```yaml
 pebble_path: ./data/pebble
 listen_addr: ":9090"
+lookahead: 100  # sliding window size for fetching
 
 # S3-compatible storage (AWS S3, Cloudflare R2, MinIO)
 s3_bucket: my-bucket
@@ -42,9 +45,11 @@ chains:
   - chain_id: 1
     name: ethereum
     rpcs:
-      - url: http://eth-node:8545
+      - url: http://eth-node:8545/rpc  # must contain /rpc for WebSocket
         max_parallelism: 50  # the only tuning knob
 ```
+
+**Note**: RPC URL must contain `/rpc` which gets converted to `/ws` for WebSocket head tracking.
 
 ## Consumer Client
 
@@ -54,7 +59,7 @@ import "evm-sink/client"
 // List available chains
 chains, _ := client.GetChains(ctx, "localhost:9090")
 
-// Stream blocks
+// Stream blocks (channel API)
 c := client.NewClient("localhost:9090", 1) // chain_id = 1
 blocks, errs := c.StreamBlocks(ctx, 12345) // from block 12345
 
@@ -62,11 +67,31 @@ for block := range blocks {
     fmt.Printf("Block %d\n", block.BlockNumber)
     // block.Data is json.RawMessage containing NormalizedBlock
 }
+
+// Stream blocks (handler API with auto-reconnect)
+c := client.NewClient("localhost:9090", 1, client.WithReconnect(true))
+err := c.Stream(ctx, client.StreamConfig{FromBlock: 1}, func(chainID, blockNum uint64, data json.RawMessage) error {
+    // process block
+    return nil
+})
+```
+
+## Example Client
+
+```bash
+# Build example client
+go build -o example-client ./cmd/example-client
+
+# List chains
+./example-client -addr localhost:9090
+
+# Stream a chain
+./example-client -addr localhost:9090 -chain 43114 -from 1
 ```
 
 ## Protocol
 
-TCP with newline-delimited JSON.
+Zstd-compressed TCP with newline-delimited JSON.
 
 **List chains:**
 ```
@@ -84,6 +109,8 @@ TCP with newline-delimited JSON.
 ← {"type":"block","chain_id":1,"block_number":19000001,"data":{...}}  // live blocks
 ```
 
+Both client and server wrap TCP connection in zstd encoder/decoder.
+
 ## Storage
 
 **PebbleDB (hot):** Recent blocks, key = `block:{chainID}:{blockNum:020d}`
@@ -96,8 +123,9 @@ TCP with newline-delimited JSON.
 
 The `max_parallelism` setting is the only knob. The system automatically:
 - Backs off on errors (halves parallelism)
-- Reduces parallelism if latency exceeds 2s
-- Increases parallelism when latency is good (<840ms)
+- Reduces parallelism if P95 latency exceeds 2s
+- Increases parallelism when P95 < 840ms
+- Adjusts every 5s based on 60s sliding window
 
 Target: 80-90% RPC utilization without overloading.
 
@@ -111,6 +139,23 @@ type NormalizedBlock struct {
     Receipts []Receipt             `json:"receipts"`
     Traces   []TraceResultOptional `json:"traces"`
 }
+
+type TraceResultOptional struct {
+    TxHash string     `json:"txHash"`
+    Result *CallTrace `json:"result"`  // nil for precompile calls
+}
 ```
 
-Traces use `debug_traceBlockByNumber` with `callTracer`.
+Traces use `debug_traceBlockByNumber` with `callTracer`, falling back to per-tx `debug_traceTransaction` if needed.
+
+## Ingestion Progress
+
+The sink logs progress every 5 seconds:
+```
+[Chain 43114 - C-Chain] block 50234567 | 142.3 blk/s avg | 1234 behind, eta 8s | p=50
+```
+
+- `blk/s avg`: average since start
+- `behind`: blocks remaining to sync
+- `eta`: estimated time to catch up
+- `p=50`: current parallelism level

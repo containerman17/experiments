@@ -2,9 +2,23 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 )
+
+func formatSize(bytes int) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := unit, 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMG"[exp])
+}
 
 const (
 	MinBlocksBeforeCompaction = 1000 // Keep at least 1k blocks in PebbleDB
@@ -130,7 +144,8 @@ func (c *Compactor) compactOneBatch(ctx context.Context) bool {
 	// Upload to S3
 	key := S3Key(c.s3Prefix, c.chainID, batchStart, batchEnd)
 
-	if err := c.s3.Upload(ctx, key, blocks); err != nil {
+	size, err := c.s3.Upload(ctx, key, blocks)
+	if err != nil {
 		log.Printf("[Compactor] Chain %d: error uploading batch %d-%d: %v", c.chainID, batchStart, batchEnd, err)
 		return false
 	}
@@ -141,6 +156,6 @@ func (c *Compactor) compactOneBatch(ctx context.Context) bool {
 		return false
 	}
 
-	log.Printf("[Compactor] Chain %d: compacted blocks %d-%d to %s", c.chainID, batchStart, batchEnd, key)
+	log.Printf("[Compactor] Chain %d: compacted blocks %d-%d (%s)", c.chainID, batchStart, batchEnd, formatSize(size))
 	return true
 }

@@ -3,7 +3,7 @@
 ## What This Is
 
 A Go service that ingests EVM blockchain data (blocks, receipts, traces) from RPC nodes, stores in PebbleDB, 
-compacts to S3, and serves to consumers via TCP streaming. Designed for multi-chain support.
+compacts to S3, and serves to consumers via zstd-compressed TCP streaming. Designed for multi-chain support.
 
 ## Architecture Decisions
 
@@ -39,16 +39,26 @@ Adjustment runs every 5s based on 60s sliding window:
 - If P95 > max_latency: reduce by 2
 - If P95 < target * 0.7: increase by 1 (cautious)
 
-### No Cache Layer
+### WebSocket Head Tracker
 
-Originally planned lookahead cache for S3 batches. Removed because:
-- Ingestion is only ~10 blocks ahead of consumers
-- Most reads hit PebbleDB directly
-- Complexity wasn't worth it
+The `HeadTracker` (rpc/heads.go) subscribes to `newHeads` via WebSocket for instant block notifications:
+- On startup: fetches initial block via HTTP RPC
+- Then subscribes to `eth_subscribe("newHeads")` via WebSocket
+- Latest block is cached in atomic - `GetLatestBlock()` is instant, no RPC call
+- Auto-reconnects on disconnect with 5s delay
+- **Requires** `/rpc` in URL which gets converted to `/ws` for WebSocket
+
+### Sliding Window Block Fetcher
+
+The `Fetcher.StreamBlocks()` uses a sliding window approach:
+- Keeps `windowSize` fetches in flight simultaneously
+- Processes results in order as they complete
+- Polls for new blocks every 100ms when at tip
+- Window size configurable via `lookahead` config (default: 100)
 
 ### TCP Streaming Protocol
 
-NDJSON over TCP. Simple and works.
+**Zstd-compressed** NDJSON over TCP (not plain text!).
 
 Client sends:
 - `{"type":"list_chains"}` → get available chains
@@ -60,53 +70,61 @@ Server sends:
 - `{"type":"status","status":"live","head_block":N}` → caught up notification
 - `{"type":"error","message":"..."}` → errors
 
-### Streaming Logic
+Both sides wrap TCP connection in zstd encoder/decoder.
 
-1. **Catching up from S3**: Load 100-block batches, send sequentially
-2. **Near tip**: When current batch contains latest block, switch to live
-3. **Live mode**: Poll PebbleDB every 50ms for new blocks
+### Streaming Logic (Server)
+
+1. **Try PebbleDB first**: If block exists in hot storage, send immediately
+2. **Fallback to S3**: Download 100-block batch with 10-batch lookahead prefetching
+3. **At tip**: Send "live" status, poll PebbleDB every 50ms for new blocks
+4. **Flush strategy**: Flush after each block at tip (low latency), after each S3 batch (good compression)
 
 ### Ingestion Logic
 
 1. Startup: Resume from PebbleDB latest → S3 latest → block 1
-2. Poll RPC for latest block every 100ms when at tip
-3. Fetch 100 blocks at a time with batch RPC calls
+2. WebSocket subscription provides instant latest block (no polling needed)
+3. Sliding window fetches blocks in parallel, processes in order
 4. Save to PebbleDB, notify server of new blocks
+5. Log progress every 5s with blocks/sec, ETA, current parallelism
 
 ### Compaction
 
 - Runs every 10s per chain
 - Only compacts if >1100 blocks in PebbleDB (keeps 1000 as buffer)
-- Aligns to 100-block boundaries
+- Aligns to 100-block boundaries (1-100, 101-200, etc.)
 - Uploads to S3, then deletes from PebbleDB
 
 ## File Structure
 
 ```
 evm-sink/
-├── cmd/sink/main.go      # Entry point, config, wiring, ingestion loop
+├── cmd/
+│   ├── sink/main.go          # Entry point, config, wiring, ingestion loop
+│   └── example-client/main.go # Example client with reconnection and stats
 ├── rpc/
-│   ├── types.go          # EVM types (Block, Transaction, Receipt, etc.) + Config
-│   ├── controller.go     # Adaptive parallelism controller
-│   └── fetcher.go        # Batch RPC client for blocks/receipts/traces
+│   ├── types.go              # EVM types (Block, Transaction, Receipt, etc.) + Config
+│   ├── controller.go         # Adaptive parallelism controller with semaphore
+│   ├── fetcher.go            # Sliding window block fetcher with batch RPC
+│   └── heads.go              # WebSocket head tracker (newHeads subscription)
 ├── storage/
-│   ├── pebble.go         # PebbleDB operations
-│   ├── s3.go             # S3 upload/download with zstd
-│   └── compactor.go      # Background compaction
+│   ├── pebble.go             # PebbleDB operations
+│   ├── s3.go                 # S3 upload/download with zstd, batch helpers
+│   └── compactor.go          # Background compaction
 ├── api/
-│   └── server.go         # TCP streaming server
+│   └── server.go             # TCP streaming server with zstd compression
 ├── client/
-│   └── client.go         # Go client library for consumers
-├── config.yaml           # Local config (gitignored)
-├── config.example.yaml   # Template
+│   └── client.go             # Go client library for consumers
+├── config.yaml               # Local config (gitignored)
+├── config.example.yaml       # Template
 └── go.mod
 ```
 
-## Config (Simplified)
+## Config
 
 ```yaml
 pebble_path: ./data/pebble
 listen_addr: ":9090"
+lookahead: 100  # Sliding window size for block fetching
 
 s3_bucket: bucket-name
 s3_region: auto
@@ -119,7 +137,7 @@ chains:
   - chain_id: 43114
     name: C-Chain
     rpcs:
-      - url: http://node:8545
+      - url: http://node:8545/rpc  # Must contain /rpc for WebSocket conversion
         max_parallelism: 128
 ```
 
@@ -128,9 +146,16 @@ chains:
 ```go
 // What we store per block
 type NormalizedBlock struct {
-    Block    Block                 `json:"block"`
-    Traces   []TraceResultOptional `json:"traces"`
-    Receipts []Receipt             `json:"receipts"`
+    Block      Block                 `json:"block"`
+    Traces     []TraceResultOptional `json:"traces"`
+    StateDiffs []StateDiffResult     `json:"stateDiffs"`  // Currently unused
+    Receipts   []Receipt             `json:"receipts"`
+}
+
+// Trace result (nil Result for precompile calls)
+type TraceResultOptional struct {
+    TxHash string     `json:"txHash"`
+    Result *CallTrace `json:"result"`
 }
 
 // Minimal RPC config - one knob
@@ -140,11 +165,19 @@ type RPCConfig struct {
 }
 ```
 
+## Trace Fetching Strategy
+
+1. **Try debug_traceBlockByNumber first** - fetches all traces for a block in one call
+2. **Fallback to debug_traceTransaction** - per-transaction if block trace fails
+3. **Handle precompile errors** - "incorrect number of top-level calls" returns nil trace (expected)
+4. **Batch size for debug calls** - capped at 20 to avoid overwhelming debug endpoint
+
 ## Things That Were Planned But Not Implemented
 
 1. Prometheus metrics - not added yet
 2. Multiple RPCs per chain with load balancing - only uses first RPC
-3. Graceful shutdown - just kills on Ctrl+C
+3. Full graceful shutdown - components have Stop() methods but main.go just blocks forever
+4. StateDiffs fetching - field exists in NormalizedBlock but never populated
 
 ## Cloudflare R2 Support
 
@@ -152,6 +185,7 @@ Works with any S3-compatible storage. For R2:
 - Set `s3_endpoint` to R2 URL
 - Set `s3_region` to "auto"
 - Provide R2 access key and secret
+- Uses path-style addressing
 
 ## Client Library Usage
 
@@ -159,25 +193,33 @@ Works with any S3-compatible storage. For R2:
 // List chains
 chains, _ := client.GetChains(ctx, "localhost:9090")
 
-// Stream blocks
+// Stream blocks with channel API
 c := client.NewClient("localhost:9090", chainID)
 blocks, errs := c.StreamBlocks(ctx, fromBlock)
 for block := range blocks {
     // process block.Data (json.RawMessage)
 }
+
+// Stream blocks with handler API (auto-reconnects)
+c := client.NewClient("localhost:9090", chainID, client.WithReconnect(true))
+err := c.Stream(ctx, client.StreamConfig{FromBlock: 1}, func(chainID, blockNum uint64, data json.RawMessage) error {
+    // process block
+    return nil
+})
 ```
 
 ## Performance Characteristics
 
 - Ingestion: ~10-500 blocks/sec depending on RPC capacity and trace complexity
 - Compaction: ~100 blocks every 10s once buffer fills
-- Serving: Limited by network, not CPU (just streaming JSON)
-- Memory: Minimal - no large caches
+- Serving: Limited by network, not CPU (just streaming compressed JSON)
+- Memory: Minimal - no large caches, streaming design
+- S3 prefetching: 10 batches lookahead when serving historical data
 
 ## Dependencies
 
 - github.com/cockroachdb/pebble/v2 - embedded KV store
 - github.com/aws/aws-sdk-go-v2 - S3 client
-- github.com/klauspost/compress/zstd - compression
+- github.com/klauspost/compress/zstd - compression (both storage and TCP)
+- github.com/gorilla/websocket - WebSocket for head tracking
 - gopkg.in/yaml.v3 - config parsing
-

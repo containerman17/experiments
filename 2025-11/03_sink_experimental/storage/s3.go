@@ -86,28 +86,31 @@ func S3Key(prefix string, chainID, startBlock, endBlock uint64) string {
 
 // Upload compresses and uploads block data to S3
 // blocks should be JSON-encoded NormalizedBlock data (one per entry)
-func (c *S3Client) Upload(ctx context.Context, key string, blocks [][]byte) error {
+// Returns the compressed size in bytes
+func (c *S3Client) Upload(ctx context.Context, key string, blocks [][]byte) (int, error) {
 	// Create JSONL content
 	var buf bytes.Buffer
 	zw, err := zstd.NewWriter(&buf, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {
-		return fmt.Errorf("failed to create zstd writer: %w", err)
+		return 0, fmt.Errorf("failed to create zstd writer: %w", err)
 	}
 
 	for _, block := range blocks {
 		if _, err := zw.Write(block); err != nil {
 			zw.Close()
-			return fmt.Errorf("failed to write block: %w", err)
+			return 0, fmt.Errorf("failed to write block: %w", err)
 		}
 		if _, err := zw.Write([]byte{'\n'}); err != nil {
 			zw.Close()
-			return fmt.Errorf("failed to write newline: %w", err)
+			return 0, fmt.Errorf("failed to write newline: %w", err)
 		}
 	}
 
 	if err := zw.Close(); err != nil {
-		return fmt.Errorf("failed to close zstd writer: %w", err)
+		return 0, fmt.Errorf("failed to close zstd writer: %w", err)
 	}
+
+	compressedSize := buf.Len()
 
 	// Upload to S3
 	_, err = c.client.PutObject(ctx, &s3.PutObjectInput{
@@ -117,10 +120,10 @@ func (c *S3Client) Upload(ctx context.Context, key string, blocks [][]byte) erro
 		ContentType: aws.String("application/zstd"),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to upload to S3: %w", err)
+		return 0, fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
-	return nil
+	return compressedSize, nil
 }
 
 // Download retrieves and decompresses block data from S3

@@ -10,6 +10,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 type Server struct {
@@ -195,23 +197,40 @@ func (s *Server) acceptLoop() {
 func (s *Server) handleClient(conn net.Conn) {
 	defer conn.Close()
 
+	// Wrap connection in zstd for compression
+	zr, err := zstd.NewReader(conn)
+	if err != nil {
+		log.Printf("[Server] Failed to create zstd reader: %v", err)
+		return
+	}
+	defer zr.Close()
+
+	zw, err := zstd.NewWriter(conn, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		log.Printf("[Server] Failed to create zstd writer: %v", err)
+		return
+	}
+	defer zw.Close()
+
 	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-	reader := bufio.NewReader(conn)
+	reader := bufio.NewReader(zr)
 	line, err := reader.ReadBytes('\n')
 	if err != nil {
-		s.sendError(conn, "failed to read message")
+		s.sendError(zw, "failed to read message")
 		return
 	}
 
 	var msg ClientMessage
 	if err := json.Unmarshal(line, &msg); err != nil {
-		s.sendError(conn, "invalid message format")
+		s.sendError(zw, "invalid message format")
 		return
 	}
 
 	if msg.Type == "list_chains" {
-		s.sendChains(conn)
+		if err := s.sendChains(zw); err != nil {
+			log.Printf("[Server] Failed to send chains: %v", err)
+		}
 		return
 	}
 
@@ -219,7 +238,7 @@ func (s *Server) handleClient(conn net.Conn) {
 	_, ok := s.chains[msg.ChainID]
 	s.mu.RUnlock()
 	if !ok {
-		s.sendError(conn, fmt.Sprintf("unknown chain %d", msg.ChainID))
+		s.sendError(zw, fmt.Sprintf("unknown chain %d", msg.ChainID))
 		return
 	}
 
@@ -232,74 +251,38 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	log.Printf("[Server] Client connected for chain %d from block %d", msg.ChainID, fromBlock)
 
-	if err := s.streamBlocks(conn, msg.ChainID, fromBlock); err != nil {
+	if err := s.streamBlocks(zw, msg.ChainID, fromBlock); err != nil {
 		log.Printf("[Server] Client stream ended: %v", err)
 	}
 }
 
-func (s *Server) sendChains(conn net.Conn) {
+func (s *Server) sendChains(zw *zstd.Encoder) error {
 	resp := ChainsResponse{
 		Type:   "chains",
 		Chains: s.GetChains(),
 	}
 	data, _ := json.Marshal(resp)
-	conn.Write(append(data, '\n'))
-}
-
-// streamBlocks streams blocks directly from PebbleDB, falling back to S3 for old data
-func (s *Server) streamBlocks(conn net.Conn, chainID, fromBlock uint64) error {
-	ctx := s.ctx
-	currentBlock := fromBlock
-	sentLiveStatus := false
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Try PebbleDB first
-		data, err := s.storage.GetBlock(chainID, currentBlock)
-		if err == nil {
-			if err := s.sendBlock(conn, chainID, currentBlock, data); err != nil {
-				return err
-			}
-			currentBlock++
-			sentLiveStatus = false
-			continue
-		}
-
-		// Not in PebbleDB - try S3
-		batchStart := storage.BatchStart(currentBlock)
-		batchEnd := storage.BatchEnd(batchStart)
-		key := storage.S3Key(s.s3Prefix, chainID, batchStart, batchEnd)
-
-		blocks, err := s.s3.Download(ctx, key)
-		if err == nil && len(blocks) > 0 {
-			// Send all blocks from this batch starting from currentBlock
-			offset := int(currentBlock - batchStart)
-			for i := offset; i < len(blocks); i++ {
-				blockNum := batchStart + uint64(i)
-				if err := s.sendBlock(conn, chainID, blockNum, blocks[i]); err != nil {
-					return err
-				}
-			}
-			currentBlock = batchStart + uint64(len(blocks))
-			sentLiveStatus = false
-			continue
-		}
-
-		// Block not available anywhere - we're at the tip, wait
-		if !sentLiveStatus {
-			s.sendStatus(conn, "live", currentBlock-1)
-			sentLiveStatus = true
-		}
-		time.Sleep(50 * time.Millisecond)
+	if _, err := zw.Write(append(data, '\n')); err != nil {
+		return err
 	}
+	return zw.Flush()
 }
 
-func (s *Server) sendBlock(conn net.Conn, chainID, blockNum uint64, data []byte) error {
+func (s *Server) sendError(zw *zstd.Encoder, message string) {
+	msg := ErrorMessage{Type: "error", Message: message}
+	data, _ := json.Marshal(msg)
+	zw.Write(append(data, '\n'))
+	zw.Flush()
+}
+
+func (s *Server) sendStatus(zw *zstd.Encoder, status string, headBlock uint64) {
+	msg := StatusMessage{Type: "status", Status: status, HeadBlock: headBlock}
+	data, _ := json.Marshal(msg)
+	zw.Write(append(data, '\n'))
+	zw.Flush()
+}
+
+func (s *Server) sendBlock(zw *zstd.Encoder, chainID, blockNum uint64, data []byte) error {
 	msg := BlockMessage{
 		Type:        "block",
 		ChainID:     chainID,
@@ -312,21 +295,121 @@ func (s *Server) sendBlock(conn net.Conn, chainID, blockNum uint64, data []byte)
 		return fmt.Errorf("failed to marshal block %d: %w", blockNum, err)
 	}
 
-	if _, err := conn.Write(append(encoded, '\n')); err != nil {
+	if _, err := zw.Write(append(encoded, '\n')); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (s *Server) sendError(conn net.Conn, message string) {
-	msg := ErrorMessage{Type: "error", Message: message}
-	data, _ := json.Marshal(msg)
-	conn.Write(append(data, '\n'))
+// s3BatchResult holds prefetched S3 batch data
+type s3BatchResult struct {
+	batchStart uint64
+	blocks     [][]byte
+	err        error
 }
 
-func (s *Server) sendStatus(conn net.Conn, status string, headBlock uint64) {
-	msg := StatusMessage{Type: "status", Status: status, HeadBlock: headBlock}
-	data, _ := json.Marshal(msg)
-	conn.Write(append(data, '\n'))
+// streamBlocks streams blocks with zstd compression, flushing after batches
+func (s *Server) streamBlocks(zw *zstd.Encoder, chainID, fromBlock uint64) error {
+	ctx := s.ctx
+	currentBlock := fromBlock
+	sentLiveStatus := false
+
+	const s3Lookahead = 10
+
+	// S3 prefetch cache: batchStart -> result channel
+	s3Cache := make(map[uint64]chan s3BatchResult)
+	var s3CacheMu sync.Mutex
+
+	// Helper to start S3 prefetch
+	prefetchS3 := func(batchStart uint64) {
+		s3CacheMu.Lock()
+		if _, exists := s3Cache[batchStart]; exists {
+			s3CacheMu.Unlock()
+			return
+		}
+		ch := make(chan s3BatchResult, 1)
+		s3Cache[batchStart] = ch
+		s3CacheMu.Unlock()
+
+		go func() {
+			key := storage.S3Key(s.s3Prefix, chainID, batchStart, storage.BatchEnd(batchStart))
+			blocks, err := s.s3.Download(ctx, key)
+			ch <- s3BatchResult{batchStart: batchStart, blocks: blocks, err: err}
+		}()
+	}
+
+	// Helper to get S3 batch (waits for prefetch if in progress)
+	getS3Batch := func(batchStart uint64) ([][]byte, error) {
+		s3CacheMu.Lock()
+		ch, exists := s3Cache[batchStart]
+		s3CacheMu.Unlock()
+
+		if !exists {
+			// Not prefetched, fetch synchronously
+			key := storage.S3Key(s.s3Prefix, chainID, batchStart, storage.BatchEnd(batchStart))
+			return s.s3.Download(ctx, key)
+		}
+
+		result := <-ch
+
+		// Clean up cache
+		s3CacheMu.Lock()
+		delete(s3Cache, batchStart)
+		s3CacheMu.Unlock()
+
+		return result.blocks, result.err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Try PebbleDB first
+		data, err := s.storage.GetBlock(chainID, currentBlock)
+		if err == nil {
+			if err := s.sendBlock(zw, chainID, currentBlock, data); err != nil {
+				return err
+			}
+			zw.Flush() // Flush each block at tip for low latency
+			currentBlock++
+			sentLiveStatus = false
+			continue
+		}
+
+		// Not in PebbleDB - use S3 with prefetching
+		batchStart := storage.BatchStart(currentBlock)
+
+		// Prefetch next batches
+		for i := 0; i < s3Lookahead; i++ {
+			prefetchBatch := batchStart + uint64(i)*storage.BatchSize
+			prefetchS3(prefetchBatch)
+		}
+
+		blocks, err := getS3Batch(batchStart)
+		if err == nil && len(blocks) > 0 {
+			// Send all blocks from this batch starting from currentBlock
+			offset := int(currentBlock - batchStart)
+			for i := offset; i < len(blocks); i++ {
+				blockNum := batchStart + uint64(i)
+				if err := s.sendBlock(zw, chainID, blockNum, blocks[i]); err != nil {
+					return err
+				}
+			}
+			zw.Flush() // Flush after each S3 batch for good compression
+			currentBlock = batchStart + uint64(len(blocks))
+			sentLiveStatus = false
+			continue
+		}
+
+		// Block not available anywhere - we're at the tip, wait
+		if !sentLiveStatus {
+			s.sendStatus(zw, "live", currentBlock-1)
+			sentLiveStatus = true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

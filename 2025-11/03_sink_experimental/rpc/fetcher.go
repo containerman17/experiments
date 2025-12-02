@@ -16,6 +16,7 @@ import (
 
 type Fetcher struct {
 	controller     *Controller
+	headTracker    *HeadTracker
 	batchSize      int
 	debugBatchSize int
 	maxRetries     int
@@ -29,9 +30,21 @@ type FetcherConfig struct {
 	Controller *Controller
 	ChainID    uint64
 	ChainName  string
+	Ctx        context.Context // For HeadTracker WebSocket
 }
 
-func NewFetcher(cfg FetcherConfig) *Fetcher {
+func NewFetcher(cfg FetcherConfig) (*Fetcher, error) {
+	// Create HeadTracker for WebSocket subscription
+	headTracker, err := NewHeadTracker(cfg.Ctx, cfg.Controller.URL(), cfg.ChainID, cfg.ChainName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create head tracker: %w", err)
+	}
+
+	// Start head tracker (gets initial block via RPC, then subscribes via WebSocket)
+	if err := headTracker.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start head tracker: %w", err)
+	}
+
 	// Derive batch sizes from controller's parallelism
 	parallelism := cfg.Controller.CurrentParallelism()
 	batchSize := 100                         // Standard batch for blocks/receipts
@@ -53,6 +66,7 @@ func NewFetcher(cfg FetcherConfig) *Fetcher {
 
 	return &Fetcher{
 		controller:     cfg.Controller,
+		headTracker:    headTracker,
 		batchSize:      batchSize,
 		debugBatchSize: debugBatchSize,
 		maxRetries:     3,
@@ -63,7 +77,7 @@ func NewFetcher(cfg FetcherConfig) *Fetcher {
 			Timeout:   5 * time.Minute,
 			Transport: transport,
 		},
-	}
+	}, nil
 }
 
 // Controller returns the underlying RPC controller
@@ -231,35 +245,9 @@ func (f *Fetcher) batchRpcCallDebug(ctx context.Context, requests []JSONRPCReque
 	return nil, fmt.Errorf("debug batch request failed after %d retries: %w", f.maxRetries, lastErr)
 }
 
+// GetLatestBlock returns the latest block number (instant, from WebSocket subscription)
 func (f *Fetcher) GetLatestBlock(ctx context.Context) (uint64, error) {
-	requests := []JSONRPCRequest{{
-		Jsonrpc: "2.0",
-		Method:  "eth_blockNumber",
-		Params:  []interface{}{},
-		ID:      1,
-	}}
-
-	var responses []JSONRPCResponse
-	err := f.controller.Execute(ctx, func() error {
-		var err error
-		responses, err = f.batchRpcCall(ctx, requests)
-		return err
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	var blockNumHex string
-	if err := json.Unmarshal(responses[0].Result, &blockNumHex); err != nil {
-		return 0, fmt.Errorf("failed to unmarshal block number: %w", err)
-	}
-
-	var blockNum uint64
-	if _, err := fmt.Sscanf(blockNumHex, "0x%x", &blockNum); err != nil {
-		return 0, fmt.Errorf("failed to parse block number: %w", err)
-	}
-
-	return blockNum, nil
+	return f.headTracker.GetLatestBlock(), nil
 }
 
 func chunksOf[T any](items []T, size int) [][]T {
@@ -277,36 +265,135 @@ func chunksOf[T any](items []T, size int) [][]T {
 	return chunks
 }
 
-// FetchBlockRange fetches all blocks in [from, to] inclusive with receipts and traces
-func (f *Fetcher) FetchBlockRange(ctx context.Context, from, to uint64) ([]*NormalizedBlock, error) {
-	if from > to {
-		return nil, fmt.Errorf("invalid range: from %d > to %d", from, to)
+// blockResult holds the result of fetching a single block
+type blockResult struct {
+	blockNum uint64
+	block    *NormalizedBlock
+	err      error
+}
+
+// StreamBlocks fetches blocks using a sliding window approach
+// Keeps windowSize fetches in flight, processes in order as they complete
+// Runs forever until context is cancelled, polling for new blocks at tip
+func (f *Fetcher) StreamBlocks(ctx context.Context, from uint64, windowSize int, out chan<- *NormalizedBlock) error {
+	// Map of pending fetches: blockNum -> result channel
+	pending := make(map[uint64]chan blockResult)
+	nextToSend := from
+	latestBlock := uint64(0)
+
+	// Helper to start a fetch for a block
+	startFetch := func(blockNum uint64) {
+		ch := make(chan blockResult, 1)
+		pending[blockNum] = ch
+		go func(bn uint64, resultCh chan blockResult) {
+			block, err := f.fetchSingleBlock(ctx, bn)
+			resultCh <- blockResult{blockNum: bn, block: block, err: err}
+		}(blockNum, ch)
 	}
 
-	// Fetch blocks
-	blocks, err := f.fetchBlocksBatch(ctx, from, to)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch blocks: %w", err)
-	}
-
-	// Collect all transactions
-	var allTxs []txInfo
-	for blockIdx, block := range blocks {
-		blockNum := from + uint64(blockIdx)
-		for txIdx, tx := range block.Transactions {
-			allTxs = append(allTxs, txInfo{
-				hash:     tx.Hash,
-				blockNum: blockNum,
-				blockIdx: blockIdx,
-				txIdx:    txIdx,
-			})
+	// Helper to refresh latest and fill window
+	refreshAndFill := func() error {
+		newLatest, err := f.GetLatestBlock(ctx)
+		if err != nil {
+			return err
 		}
+		if newLatest > latestBlock {
+			latestBlock = newLatest
+		}
+		// Fill window with new blocks
+		for blockNum := nextToSend + uint64(len(pending)); blockNum <= latestBlock && len(pending) < windowSize; blockNum++ {
+			if _, exists := pending[blockNum]; !exists {
+				startFetch(blockNum)
+			}
+		}
+		return nil
+	}
+
+	// Get initial latest and fill window
+	if err := refreshAndFill(); err != nil {
+		return fmt.Errorf("failed to get latest block: %w", err)
+	}
+
+	// Process blocks in order, forever
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// If nothing pending, we're at tip - poll for new blocks
+		if len(pending) == 0 {
+			time.Sleep(100 * time.Millisecond)
+			if err := refreshAndFill(); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Wait for the next sequential block
+		ch, ok := pending[nextToSend]
+		if !ok {
+			return fmt.Errorf("missing pending fetch for block %d", nextToSend)
+		}
+
+		result := <-ch
+		delete(pending, nextToSend)
+
+		if result.err != nil {
+			return fmt.Errorf("failed to fetch block %d: %w", nextToSend, result.err)
+		}
+
+		// Send block
+		select {
+		case out <- result.block:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		nextToSend++
+
+		// Refill window
+		for blockNum := nextToSend + uint64(len(pending)); blockNum <= latestBlock && len(pending) < windowSize; blockNum++ {
+			if _, exists := pending[blockNum]; !exists {
+				startFetch(blockNum)
+			}
+		}
+
+		// If window not full, check for new blocks
+		if len(pending) < windowSize {
+			_ = refreshAndFill() // Ignore error, will retry next iteration
+		}
+	}
+}
+
+// fetchSingleBlock fetches a single block with its receipts and traces
+func (f *Fetcher) fetchSingleBlock(ctx context.Context, blockNum uint64) (*NormalizedBlock, error) {
+	// Fetch block
+	blocks, err := f.fetchBlocksBatch(ctx, blockNum, blockNum)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch block: %w", err)
+	}
+	if len(blocks) == 0 {
+		return nil, fmt.Errorf("no block returned")
+	}
+	block := blocks[0]
+
+	// Collect transaction info
+	var txInfos []txInfo
+	for txIdx, tx := range block.Transactions {
+		txInfos = append(txInfos, txInfo{
+			hash:     tx.Hash,
+			blockNum: blockNum,
+			blockIdx: 0,
+			txIdx:    txIdx,
+		})
 	}
 
 	// Fetch receipts
 	var receiptsMap map[string]Receipt
-	if len(allTxs) > 0 {
-		receiptsMap, err = f.fetchReceiptsBatch(ctx, allTxs)
+	if len(txInfos) > 0 {
+		receiptsMap, err = f.fetchReceiptsBatch(ctx, txInfos)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch receipts: %w", err)
 		}
@@ -316,8 +403,8 @@ func (f *Fetcher) FetchBlockRange(ctx context.Context, from, to uint64) ([]*Norm
 
 	// Fetch traces
 	var tracesMap map[string]*TraceResultOptional
-	if len(allTxs) > 0 {
-		tracesMap, err = f.fetchTracesBatch(ctx, from, to, allTxs)
+	if len(txInfos) > 0 {
+		tracesMap, err = f.fetchTracesBatch(ctx, blockNum, blockNum, txInfos)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch traces: %w", err)
 		}
@@ -325,36 +412,30 @@ func (f *Fetcher) FetchBlockRange(ctx context.Context, from, to uint64) ([]*Norm
 		tracesMap = make(map[string]*TraceResultOptional)
 	}
 
-	// Assemble normalized blocks
-	result := make([]*NormalizedBlock, len(blocks))
-	for i := range blocks {
-		blockNum := from + uint64(i)
-		receipts := make([]Receipt, len(blocks[i].Transactions))
-		traces := make([]TraceResultOptional, len(blocks[i].Transactions))
+	// Assemble
+	receipts := make([]Receipt, len(block.Transactions))
+	traces := make([]TraceResultOptional, len(block.Transactions))
 
-		for j, tx := range blocks[i].Transactions {
-			receipt, ok := receiptsMap[tx.Hash]
-			if !ok {
-				return nil, fmt.Errorf("missing receipt for tx %s in block %d", tx.Hash, blockNum)
-			}
-			receipts[j] = receipt
-
-			trace, ok := tracesMap[tx.Hash]
-			if ok && trace != nil {
-				traces[j] = *trace
-			} else {
-				traces[j] = TraceResultOptional{TxHash: tx.Hash, Result: nil}
-			}
+	for j, tx := range block.Transactions {
+		receipt, ok := receiptsMap[tx.Hash]
+		if !ok {
+			return nil, fmt.Errorf("missing receipt for tx %s", tx.Hash)
 		}
+		receipts[j] = receipt
 
-		result[i] = &NormalizedBlock{
-			Block:    blocks[i],
-			Receipts: receipts,
-			Traces:   traces,
+		trace, ok := tracesMap[tx.Hash]
+		if ok && trace != nil {
+			traces[j] = *trace
+		} else {
+			traces[j] = TraceResultOptional{TxHash: tx.Hash, Result: nil}
 		}
 	}
 
-	return result, nil
+	return &NormalizedBlock{
+		Block:    block,
+		Receipts: receipts,
+		Traces:   traces,
+	}, nil
 }
 
 func (f *Fetcher) fetchBlocksBatch(ctx context.Context, from, to uint64) ([]Block, error) {

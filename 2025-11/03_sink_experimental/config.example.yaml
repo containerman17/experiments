@@ -1,5 +1,6 @@
 pebble_path: /data/evm-sink/pebble
 listen_addr: ":9090"
+lookahead: 100                     # Sliding window for block fetching (higher = more parallel fetches)
 
 # S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
 s3_bucket: evm-blocks

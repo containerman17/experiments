@@ -1,5 +1,5 @@
 pebble_path: /data/evm-sink/pebble
-lookahead: 200                     # Sliding window for block fetching (higher = more parallel fetches)
+default_lookahead: 100             # default: 100
 
 # S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
 s3_bucket: evm-blocks
@@ -13,25 +13,15 @@ chains:
   # Avalanche C-Chain (main EVM chain)
   - chain_id: 43114
     name: C-Chain
-    rpcs:
-      - url: http://avalanche-node:9650/ext/bc/C/rpc
-        max_parallelism: 200
+    url: http://localhost:9650/ext/bc/C/rpc
+    max_parallelism: 200           # default: 200
+    max_latency_ms: 1000           # default: 1000 - reduce parallelism above this, grow below half
+    lookahead: 100                 # default: default_lookahead
 
   # Avalanche L1 subnets - URL format: /ext/bc/{blockchainID}/rpc
-  - chain_id: 836
-    name: BnryMainnet
-    rpcs:
-      - url: http://avalanche-node:9650/ext/bc/J3MYb3rDARLmB7FrRybinyjKqVTqmerbCr9bAXDatrSaHiLxQ/rpc
-        max_parallelism: 200
-
-  - chain_id: 10507
-    name: NumbersEVM
-    rpcs:
-      - url: http://avalanche-node:9650/ext/bc/2PDRxzc6jMbZSTLb3sufkVszgQc2jtDnYZGtDTAAfom1CTwPsE/rpc
-        max_parallelism: 128
-
   - chain_id: 8198
     name: Hatchyverse
-    rpcs:
-      - url: http://avalanche-node:9650/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
-        max_parallelism: 128
+    url: http://localhost:9650/ext/bc/2tig763SuFas5WGk6vsjj8uWzTwq8DKvAN8YgeouwFZe28XjNm/rpc
+    max_parallelism: 200
+    max_latency_ms: 1000
+    lookahead: 100

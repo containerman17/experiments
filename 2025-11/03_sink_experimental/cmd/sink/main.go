@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"evm-sink/api"
@@ -29,7 +30,9 @@ func main() {
 	}
 
 	var cfg rpc.Config
-	if err := yaml.Unmarshal(configData, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(configData))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		log.Fatalf("Failed to parse config: %v", err)
 	}
 
@@ -67,14 +70,12 @@ func main() {
 		// Register chain with server
 		server.RegisterChain(chainID, chainName)
 
-		// Create controller for first RPC (could round-robin multiple)
-		if len(chainCfg.RPCs) == 0 {
-			log.Printf("[Chain %d - %s] No RPCs configured, skipping", chainID, chainName)
+		if chainCfg.URL == "" {
+			log.Printf("[Chain %d - %s] No URL configured, skipping", chainID, chainName)
 			continue
 		}
 
-		rpcCfg := chainCfg.RPCs[0]
-		controller := rpc.NewController(rpcCfg)
+		controller := rpc.NewController(chainCfg)
 
 		// Create fetcher (includes WebSocket head tracker)
 		fetcher, err := rpc.NewFetcher(rpc.FetcherConfig{
@@ -93,9 +94,12 @@ func main() {
 		compactor.Start(ctx)
 
 		// Start ingestion loop
-		lookahead := cfg.Lookahead
+		lookahead := chainCfg.Lookahead
 		if lookahead <= 0 {
-			lookahead = 100 // default
+			lookahead = cfg.DefaultLookahead
+		}
+		if lookahead <= 0 {
+			lookahead = 100 // fallback default
 		}
 		go func(chainID uint64, chainName string, lookahead int) {
 			runIngestion(ctx, fetcher, store, s3Client, server, chainID, chainName, cfg.S3Prefix, lookahead)

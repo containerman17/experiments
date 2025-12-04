@@ -141,15 +141,13 @@ Each block is stored as a `NormalizedBlock`:
 
 ```go
 type NormalizedBlock struct {
-    Block      Block                 `json:"block"`
-    Receipts   []Receipt             `json:"receipts"`
-    Traces     []TraceResultOptional `json:"traces"`
-    StateDiffs []StateDiffResult     `json:"stateDiffs"`
+    Block    Block                 `json:"block"`
+    Receipts []Receipt             `json:"receipts"`
+    Traces   []TraceResultOptional `json:"traces"`
 }
 ```
 
 - **Traces**: `debug_traceBlockByNumber` with `callTracer`, fallback to per-tx
-- **StateDiffs**: `debug_traceTransaction` with `prestateTracer` + `diffMode: true`
 
 ## Ingestion Progress
 

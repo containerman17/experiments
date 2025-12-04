@@ -155,10 +155,9 @@ chains:
 ```go
 // What we store per block
 type NormalizedBlock struct {
-    Block      Block                 `json:"block"`
-    Traces     []TraceResultOptional `json:"traces"`
-    StateDiffs []StateDiffResult     `json:"stateDiffs"`
-    Receipts   []Receipt             `json:"receipts"`
+    Block    Block                 `json:"block"`
+    Traces   []TraceResultOptional `json:"traces"`
+    Receipts []Receipt             `json:"receipts"`
 }
 
 // Trace result (nil Result for precompile calls)

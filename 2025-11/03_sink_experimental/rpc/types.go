@@ -92,24 +92,6 @@ type TraceResultOptional struct {
 	Result *CallTrace `json:"result"`
 }
 
-// StateDiff from prestateTracer with diffMode: true
-type StateDiff struct {
-	Pre  map[string]*AccountState `json:"pre"`
-	Post map[string]*AccountState `json:"post"`
-}
-
-type AccountState struct {
-	Balance string            `json:"balance,omitempty"`
-	Nonce   uint64            `json:"nonce,omitempty"`
-	Code    string            `json:"code,omitempty"`
-	Storage map[string]string `json:"storage,omitempty"`
-}
-
-type StateDiffResult struct {
-	TxHash string     `json:"txHash"`
-	Result *StateDiff `json:"result"`
-}
-
 type Receipt struct {
 	BlockHash         string  `json:"blockHash"`
 	BlockNumber       string  `json:"blockNumber"`
@@ -140,10 +122,9 @@ type Log struct {
 }
 
 type NormalizedBlock struct {
-	Block      Block                 `json:"block"`
-	Traces     []TraceResultOptional `json:"traces"`
-	StateDiffs []StateDiffResult     `json:"stateDiffs"`
-	Receipts   []Receipt             `json:"receipts"`
+	Block    Block                 `json:"block"`
+	Traces   []TraceResultOptional `json:"traces"`
+	Receipts []Receipt             `json:"receipts"`
 }
 
 type JSONRPCRequest struct {
@@ -167,25 +148,23 @@ type JSONRPCError struct {
 
 // Config types
 
-type RPCConfig struct {
-	URL            string `yaml:"url"`
-	MaxParallelism int    `yaml:"max_parallelism"` // The only knob you need. Default: 50
-}
-
 type ChainConfig struct {
-	ChainID uint64      `yaml:"chain_id"`
-	Name    string      `yaml:"name"`
-	RPCs    []RPCConfig `yaml:"rpcs"`
+	ChainID        uint64 `yaml:"chain_id"`
+	Name           string `yaml:"name"`
+	URL            string `yaml:"url"`
+	MaxParallelism int    `yaml:"max_parallelism"` // Default: 200
+	MaxLatencyMs   int    `yaml:"max_latency_ms"`  // Max P95 latency before reducing parallelism. Default: 1000. Target = max/2
+	Lookahead      int    `yaml:"lookahead"`       // Sliding window size, overrides default_lookahead
 }
 
 type Config struct {
-	PebblePath  string        `yaml:"pebble_path"`
-	S3Bucket    string        `yaml:"s3_bucket"`
-	S3Region    string        `yaml:"s3_region"`
-	S3Endpoint  string        `yaml:"s3_endpoint"`   // Custom endpoint for R2/MinIO/etc
-	S3AccessKey string        `yaml:"s3_access_key"` // Optional, uses AWS env vars if empty
-	S3SecretKey string        `yaml:"s3_secret_key"` // Optional, uses AWS env vars if empty
-	S3Prefix    string        `yaml:"s3_prefix"`     // Global prefix, e.g. "v1" -> v1/{chainID}/...
-	Lookahead   int           `yaml:"lookahead"`     // Sliding window size for block fetching (default 100)
-	Chains      []ChainConfig `yaml:"chains"`
+	PebblePath       string        `yaml:"pebble_path"`
+	S3Bucket         string        `yaml:"s3_bucket"`
+	S3Region         string        `yaml:"s3_region"`
+	S3Endpoint       string        `yaml:"s3_endpoint"`       // Custom endpoint for R2/MinIO/etc
+	S3AccessKey      string        `yaml:"s3_access_key"`     // Optional, uses AWS env vars if empty
+	S3SecretKey      string        `yaml:"s3_secret_key"`     // Optional, uses AWS env vars if empty
+	S3Prefix         string        `yaml:"s3_prefix"`         // Global prefix, e.g. "v1" -> v1/{chainID}/...
+	DefaultLookahead int           `yaml:"default_lookahead"` // Default sliding window size (default 100)
+	Chains           []ChainConfig `yaml:"chains"`
 }

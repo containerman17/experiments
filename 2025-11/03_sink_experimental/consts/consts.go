@@ -12,16 +12,13 @@ const (
 	RPCMetricsWindow = 60 * time.Second
 
 	// RPCAdjustInterval is how often parallelism is adjusted
-	RPCAdjustInterval = 2 * time.Second
+	RPCAdjustInterval = 1 * time.Second
 
 	// RPCDefaultMaxParallelism if not specified in config
 	RPCDefaultMaxParallelism = 200
 
-	// RPCTargetLatency - aim for this P95 latency
-	RPCTargetLatency = 1200 * time.Millisecond
-
-	// RPCMaxLatency - reduce parallelism if P95 exceeds this
-	RPCMaxLatency = 2000 * time.Millisecond
+	// RPCMaxLatency - default max P95 latency before reducing parallelism
+	RPCMaxLatency = 1000 * time.Millisecond
 
 	// RPCMaxErrorsPerMinute - halve parallelism if exceeded
 	RPCMaxErrorsPerMinute = 10

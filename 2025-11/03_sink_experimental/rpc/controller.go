@@ -33,11 +33,18 @@ type Controller struct {
 	wg     sync.WaitGroup
 }
 
-func NewController(cfg RPCConfig) *Controller {
+func NewController(cfg ChainConfig) *Controller {
 	maxP := cfg.MaxParallelism
 	if maxP <= 0 {
 		maxP = consts.RPCDefaultMaxParallelism
 	}
+
+	maxLatency := time.Duration(cfg.MaxLatencyMs) * time.Millisecond
+	if maxLatency <= 0 {
+		maxLatency = consts.RPCMaxLatency
+	}
+	// targetLatency is half of max - grow parallelism when below this
+	targetLatency := maxLatency / 2
 
 	// Derive everything else from maxParallelism
 	minP := max(2, maxP/10)
@@ -46,8 +53,8 @@ func NewController(cfg RPCConfig) *Controller {
 		url:             cfg.URL,
 		maxParallelism:  maxP,
 		minParallelism:  minP,
-		targetLatency:   consts.RPCTargetLatency,
-		maxLatency:      consts.RPCMaxLatency,
+		targetLatency:   targetLatency,
+		maxLatency:      maxLatency,
 		maxErrorsPerMin: consts.RPCMaxErrorsPerMinute,
 		semaphore:       make(chan struct{}, maxP), // Capacity is max, but we start with min tokens
 		metrics:         make([]RequestMetric, 0, 1000),
@@ -212,8 +219,17 @@ func (c *Controller) adjust() {
 		// Reduce on high latency
 		newParallel = current - 2
 	} else if p95Latency < c.targetLatency {
-		// Increase when below target
-		newParallel = current + 1
+		// Grow faster when latency is way below target
+		// At 10% of target: grow by ~10, at 50%: grow by ~2, at 90%: grow by 1
+		ratio := float64(p95Latency) / float64(c.targetLatency)
+		growth := int(1.0 / (ratio + 0.1)) // +0.1 to avoid division by zero
+		if growth < 1 {
+			growth = 1
+		}
+		if growth > 20 {
+			growth = 20
+		}
+		newParallel = current + growth
 	}
 
 	// Clamp to bounds

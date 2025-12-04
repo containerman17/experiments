@@ -281,13 +281,30 @@ func (f *Fetcher) StreamBlocks(ctx context.Context, from uint64, windowSize int,
 	nextToSend := from
 	latestBlock := uint64(0)
 
-	// Helper to start a fetch for a block
+	// Helper to start a fetch for a block (retries forever until success or context cancelled)
 	startFetch := func(blockNum uint64) {
 		ch := make(chan blockResult, 1)
 		pending[blockNum] = ch
 		go func(bn uint64, resultCh chan blockResult) {
-			block, err := f.fetchSingleBlock(ctx, bn)
-			resultCh <- blockResult{blockNum: bn, block: block, err: err}
+			attempt := 0
+			for {
+				// start := time.Now()
+				block, err := f.fetchSingleBlock(ctx, bn)
+				if err == nil {
+					// log.Printf("[Chain %d - %s] block %d fetched in %dms",
+					// 	f.chainID, f.chainName, bn, time.Since(start).Milliseconds())
+					resultCh <- blockResult{blockNum: bn, block: block, err: nil}
+					return
+				}
+				if ctx.Err() != nil {
+					resultCh <- blockResult{blockNum: bn, block: nil, err: ctx.Err()}
+					return
+				}
+				attempt++
+				log.Printf("[Chain %d - %s] Block %d fetch failed (attempt %d): %v. Retrying in 1s...",
+					f.chainID, f.chainName, bn, attempt, err)
+				time.Sleep(1 * time.Second)
+			}
 		}(blockNum, ch)
 	}
 
@@ -412,21 +429,9 @@ func (f *Fetcher) fetchSingleBlock(ctx context.Context, blockNum uint64) (*Norma
 		tracesMap = make(map[string]*TraceResultOptional)
 	}
 
-	// Fetch state diffs
-	var stateDiffsMap map[string]*StateDiffResult
-	if len(txInfos) > 0 {
-		stateDiffsMap, err = f.fetchStateDiffsBatch(ctx, txInfos)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch state diffs: %w", err)
-		}
-	} else {
-		stateDiffsMap = make(map[string]*StateDiffResult)
-	}
-
 	// Assemble
 	receipts := make([]Receipt, len(block.Transactions))
 	traces := make([]TraceResultOptional, len(block.Transactions))
-	stateDiffs := make([]StateDiffResult, len(block.Transactions))
 
 	for j, tx := range block.Transactions {
 		receipt, ok := receiptsMap[tx.Hash]
@@ -441,20 +446,12 @@ func (f *Fetcher) fetchSingleBlock(ctx context.Context, blockNum uint64) (*Norma
 		} else {
 			traces[j] = TraceResultOptional{TxHash: tx.Hash, Result: nil}
 		}
-
-		stateDiff, ok := stateDiffsMap[tx.Hash]
-		if ok && stateDiff != nil {
-			stateDiffs[j] = *stateDiff
-		} else {
-			stateDiffs[j] = StateDiffResult{TxHash: tx.Hash, Result: nil}
-		}
 	}
 
 	return &NormalizedBlock{
-		Block:      block,
-		Receipts:   receipts,
-		Traces:     traces,
-		StateDiffs: stateDiffs,
+		Block:    block,
+		Receipts: receipts,
+		Traces:   traces,
 	}, nil
 }
 
@@ -664,9 +661,14 @@ func (f *Fetcher) fetchTracesBatch(ctx context.Context, from, to uint64, txInfos
 
 	if blockTraceSuccess && blockErr == nil {
 		for _, txInfo := range txInfos {
-			if traces, ok := blockTraces[txInfo.blockNum]; ok && txInfo.txIdx < len(traces) {
-				tracesMap[txInfo.hash] = &traces[txInfo.txIdx]
+			traces, ok := blockTraces[txInfo.blockNum]
+			if !ok {
+				return nil, fmt.Errorf("block %d traces missing from response", txInfo.blockNum)
 			}
+			if txInfo.txIdx >= len(traces) {
+				return nil, fmt.Errorf("block %d has %d traces but tx index is %d", txInfo.blockNum, len(traces), txInfo.txIdx)
+			}
+			tracesMap[txInfo.hash] = &traces[txInfo.txIdx]
 		}
 		return tracesMap, nil
 	}
@@ -783,124 +785,4 @@ func (f *Fetcher) fetchTracesBatch(ctx context.Context, from, to uint64, txInfos
 
 func isPrecompileError(msg string) bool {
 	return strings.Contains(msg, "incorrect number of top-level calls")
-}
-
-// fetchStateDiffsBatch fetches state diffs for transactions using prestateTracer with diffMode
-func (f *Fetcher) fetchStateDiffsBatch(ctx context.Context, txInfos []txInfo) (map[string]*StateDiffResult, error) {
-	stateDiffsMap := make(map[string]*StateDiffResult)
-	var mu sync.Mutex
-
-	var txRequests []JSONRPCRequest
-	txHashToIdx := make(map[int]string)
-
-	for i, tx := range txInfos {
-		txRequests = append(txRequests, JSONRPCRequest{
-			Jsonrpc: "2.0",
-			Method:  "debug_traceTransaction",
-			Params: []interface{}{
-				tx.hash,
-				map[string]interface{}{
-					"tracer":       "prestateTracer",
-					"tracerConfig": map[string]bool{"diffMode": true},
-				},
-			},
-			ID: i,
-		})
-		txHashToIdx[i] = tx.hash
-	}
-
-	txBatches := chunksOf(txRequests, f.debugBatchSize)
-	var wg sync.WaitGroup
-	var batchErr error
-
-	for batchIdx, batch := range txBatches {
-		wg.Add(1)
-		go func(idx int, requests []JSONRPCRequest) {
-			defer wg.Done()
-
-			var responses []JSONRPCResponse
-			var err error
-
-			for attempt := 0; attempt <= f.maxRetries; attempt++ {
-				if attempt > 0 {
-					delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
-					if delay > 10*time.Second {
-						delay = 10 * time.Second
-					}
-					time.Sleep(delay)
-				}
-
-				err = f.controller.Execute(ctx, func() error {
-					var innerErr error
-					responses, innerErr = f.batchRpcCallDebug(ctx, requests)
-					return innerErr
-				})
-
-				if err != nil {
-					continue
-				}
-
-				hasRetryableError := false
-				for _, resp := range responses {
-					if resp.Error != nil && !isPrecompileError(resp.Error.Message) {
-						hasRetryableError = true
-						break
-					}
-				}
-
-				if !hasRetryableError {
-					break
-				}
-			}
-
-			if err != nil {
-				mu.Lock()
-				if batchErr == nil {
-					batchErr = fmt.Errorf("state diff batch %d failed after retries: %w", idx, err)
-				}
-				mu.Unlock()
-				return
-			}
-
-			for _, resp := range responses {
-				txHash := txHashToIdx[resp.ID]
-
-				if resp.Error != nil {
-					if isPrecompileError(resp.Error.Message) {
-						mu.Lock()
-						stateDiffsMap[txHash] = &StateDiffResult{TxHash: txHash, Result: nil}
-						mu.Unlock()
-						continue
-					} else {
-						mu.Lock()
-						if batchErr == nil {
-							batchErr = fmt.Errorf("state diff for tx %s failed: %s", txHash, resp.Error.Message)
-						}
-						mu.Unlock()
-						return
-					}
-				}
-
-				var stateDiff StateDiff
-				if err := StrictUnmarshal(resp.Result, &stateDiff); err != nil {
-					mu.Lock()
-					if batchErr == nil {
-						batchErr = fmt.Errorf("failed to parse state diff for tx %s: %w", txHash, err)
-					}
-					mu.Unlock()
-					return
-				}
-
-				mu.Lock()
-				stateDiffsMap[txHash] = &StateDiffResult{TxHash: txHash, Result: &stateDiff}
-				mu.Unlock()
-			}
-		}(batchIdx, batch)
-	}
-
-	wg.Wait()
-	if batchErr != nil {
-		return nil, batchErr
-	}
-	return stateDiffsMap, nil
 }

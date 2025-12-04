@@ -6,8 +6,7 @@ data/
 *.db
 
 # Binaries
-sink
-!./cmd/sink/
+./sink
 evm-sink
 
 # IDE

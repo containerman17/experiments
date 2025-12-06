@@ -126,14 +126,14 @@ func runIngestion(ctx context.Context, fetcher *rpc.Fetcher, store *storage.Stor
 		default:
 		}
 
-		// Determine starting block: PebbleDB > S3 > block 1
+		// Determine starting block: PebbleDB > S3 meta > block 1
 		currentBlock := uint64(1)
 		if latest, ok := store.LatestBlock(chainID); ok {
 			currentBlock = latest + 1
 			log.Printf("[Chain %d - %s] Resuming from PebbleDB at block %d", chainID, chainName, currentBlock)
-		} else if latestS3, err := s3Client.FindLatestBatch(ctx, s3Prefix, chainID); err == nil && latestS3 > 0 {
-			currentBlock = latestS3 + 1
-			log.Printf("[Chain %d - %s] Resuming from S3 at block %d", chainID, chainName, currentBlock)
+		} else if meta, err := s3Client.GetMeta(ctx, s3Prefix, chainID); err == nil && meta.LastCompactedBlock > 0 {
+			currentBlock = meta.LastCompactedBlock + 1
+			log.Printf("[Chain %d - %s] Resuming from S3 meta at block %d", chainID, chainName, currentBlock)
 		} else {
 			log.Printf("[Chain %d - %s] Starting from block 1", chainID, chainName)
 		}

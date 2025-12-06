@@ -5,6 +5,7 @@ import (
 	"evm-sink/consts"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -21,7 +22,6 @@ func formatSize(bytes int) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMG"[exp])
 }
 
-// Aliases for convenience
 const (
 	MinBlocksBeforeCompaction = consts.StorageMinBlocksBeforeCompaction
 	CompactionCheckInterval   = consts.StorageCompactionInterval
@@ -75,7 +75,6 @@ func (c *Compactor) run(ctx context.Context) {
 }
 
 func (c *Compactor) compact(ctx context.Context) {
-	// Loop until we can't compact anymore
 	for {
 		select {
 		case <-ctx.Done():
@@ -83,82 +82,161 @@ func (c *Compactor) compact(ctx context.Context) {
 		default:
 		}
 
-		if !c.compactOneBatch(ctx) {
-			return // Nothing more to compact
+		if !c.compactParallel(ctx) {
+			return
 		}
 	}
 }
 
-// compactOneBatch compacts one batch, returns true if successful (more might be available)
-func (c *Compactor) compactOneBatch(ctx context.Context) bool {
-	// Check if we have enough blocks to start compacting
+func (c *Compactor) compactParallel(ctx context.Context) bool {
+	const (
+		MaxBatches  = 100
+		Concurrency = 50
+	)
+
+	startTime := time.Now()
+
+	// Check if we have enough blocks
 	blockCount := c.storage.BlockCount(c.chainID)
 	if blockCount < MinBlocksBeforeCompaction+BatchSize {
 		return false
 	}
 
-	// Find first block
 	firstBlock, ok := c.storage.FirstBlock(c.chainID)
 	if !ok {
 		return false
 	}
 
-	// Align to batch boundary (1-based: 1-100, 101-200, etc.)
-	batchStart := BatchStart(firstBlock)
-
-	// Check we still have buffer after this compaction
 	latestBlock, ok := c.storage.LatestBlock(c.chainID)
 	if !ok {
 		return false
 	}
 
-	// Make sure we keep MinBlocksBeforeCompaction in hot storage
-	batchEnd := BatchEnd(batchStart)
-	if latestBlock < batchEnd+MinBlocksBeforeCompaction {
-		return false
-	}
+	// Calculate range to compact
+	batchStart := BatchStart(firstBlock)
+	var numBatches int
 
-	// Check if we have all 100 consecutive blocks
-	hasAll, err := c.storage.HasConsecutiveBlocks(c.chainID, batchStart, BatchSize)
-	if err != nil {
-		log.Printf("[Compactor] Chain %d: error checking blocks: %v", c.chainID, err)
-		return false
-	}
-	if !hasAll {
-		return false
-	}
-
-	// Read all blocks
-	blocks, err := c.storage.GetBatch(c.chainID, batchStart, BatchSize)
-	if err != nil {
-		log.Printf("[Compactor] Chain %d: error reading batch at %d: %v", c.chainID, batchStart, err)
-		return false
-	}
-
-	// Verify all blocks are present
-	for i, block := range blocks {
-		if block == nil {
-			log.Printf("[Compactor] Chain %d: missing block %d in batch", c.chainID, batchStart+uint64(i))
-			return false
+	for i := 0; i < MaxBatches; i++ {
+		start := batchStart + uint64(i)*BatchSize
+		end := BatchEnd(start)
+		if latestBlock < end+MinBlocksBeforeCompaction {
+			break
 		}
+		numBatches++
 	}
 
-	// Upload to S3
-	key := S3Key(c.s3Prefix, c.chainID, batchStart, batchEnd)
+	if numBatches == 0 {
+		return false
+	}
 
-	size, err := c.s3.Upload(ctx, key, blocks)
+	rangeStart := batchStart
+	rangeEnd := BatchEnd(batchStart + uint64(numBatches-1)*BatchSize)
+
+	// Read all blocks in one iterator pass
+	allBlocks, err := c.storage.GetBlockRange(c.chainID, rangeStart, rangeEnd)
 	if err != nil {
-		log.Printf("[Compactor] Chain %d: error uploading batch %d-%d: %v", c.chainID, batchStart, batchEnd, err)
+		log.Printf("[Compactor] Chain %d: failed to read block range: %v", c.chainID, err)
 		return false
 	}
 
-	// Delete from PebbleDB
-	if err := c.storage.DeleteBatch(c.chainID, batchStart, BatchSize); err != nil {
-		log.Printf("[Compactor] Chain %d: error deleting batch %d-%d: %v", c.chainID, batchStart, batchEnd, err)
+	// Sort into batches
+	batches := make([][][]byte, numBatches)
+	for i := 0; i < numBatches; i++ {
+		start := batchStart + uint64(i)*BatchSize
+		batch := make([][]byte, BatchSize)
+		complete := true
+
+		for j := 0; j < BatchSize; j++ {
+			blockNum := start + uint64(j)
+			data, ok := allBlocks[blockNum]
+			if !ok {
+				complete = false
+				break
+			}
+			batch[j] = data
+		}
+
+		if !complete {
+			numBatches = i // Truncate at first incomplete batch
+			break
+		}
+		batches[i] = batch
+	}
+
+	if numBatches == 0 {
+		return false
+	}
+	batches = batches[:numBatches]
+
+	// Parallel compress + upload with single concurrency limit
+	type result struct {
+		batchStart uint64
+		size       int
+		err        error
+	}
+	results := make([]result, numBatches)
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, Concurrency)
+
+	for i, batch := range batches {
+		wg.Add(1)
+		go func(idx int, blocks [][]byte) {
+			defer wg.Done()
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			batchStartBlock := batchStart + uint64(idx)*BatchSize
+
+			compressed, err := CompressBlocks(blocks)
+			if err != nil {
+				results[idx] = result{batchStartBlock, 0, err}
+				return
+			}
+
+			key := S3Key(c.s3Prefix, c.chainID, batchStartBlock, BatchEnd(batchStartBlock))
+			size, err := c.s3.UploadCompressed(ctx, key, compressed)
+			results[idx] = result{batchStartBlock, size, err}
+		}(i, batch)
+	}
+
+	wg.Wait()
+
+	// Find contiguous success prefix
+	var committed int
+	var totalSize int
+	var lastEnd uint64
+
+	for _, r := range results {
+		if r.err != nil {
+			break
+		}
+		committed++
+		totalSize += r.size
+		lastEnd = BatchEnd(r.batchStart)
+	}
+
+	if committed == 0 {
 		return false
 	}
 
-	_ = size
-	log.Printf("[Compactor] Chain %d: compacted blocks %d-%d (%s)", c.chainID, batchStart, batchEnd, formatSize(size))
+	// Write meta file first
+	meta := ChainMeta{LastCompactedBlock: lastEnd}
+	if err := c.s3.PutMeta(ctx, c.s3Prefix, c.chainID, meta); err != nil {
+		log.Printf("[Compactor] Chain %d: failed to write meta: %v", c.chainID, err)
+		return false
+	}
+
+	// Delete from PebbleDB using range delete
+	deleteStart := batchStart
+	deleteEnd := lastEnd
+	if err := c.storage.DeleteBlockRange(c.chainID, deleteStart, deleteEnd); err != nil {
+		log.Printf("[Compactor] Chain %d: delete failed: %v", c.chainID, err)
+	}
+
+	log.Printf("[Compactor] Chain %d: compacted %d batches (%d-%d) %s in %.1fs",
+		c.chainID, committed, batchStart, lastEnd, formatSize(totalSize), time.Since(startTime).Seconds())
+
 	return true
 }

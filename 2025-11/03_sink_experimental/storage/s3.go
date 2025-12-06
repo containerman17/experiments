@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"evm-sink/consts"
 	"fmt"
 	"io"
@@ -84,46 +85,55 @@ func S3Key(prefix string, chainID, startBlock, endBlock uint64) string {
 	return fmt.Sprintf("%s/%d/%020d-%020d.jsonl.zstd", prefix, chainID, startBlock, endBlock)
 }
 
-// Upload compresses and uploads block data to S3
-// blocks should be JSON-encoded NormalizedBlock data (one per entry)
-// Returns the compressed size in bytes
-func (c *S3Client) Upload(ctx context.Context, key string, blocks [][]byte) (int, error) {
-	// Create JSONL content
+// CompressBlocks compresses blocks into JSONL+zstd format
+func CompressBlocks(blocks [][]byte) ([]byte, error) {
 	var buf bytes.Buffer
 	zw, err := zstd.NewWriter(&buf, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {
-		return 0, fmt.Errorf("failed to create zstd writer: %w", err)
+		return nil, fmt.Errorf("failed to create zstd writer: %w", err)
 	}
 
 	for _, block := range blocks {
 		if _, err := zw.Write(block); err != nil {
 			zw.Close()
-			return 0, fmt.Errorf("failed to write block: %w", err)
+			return nil, fmt.Errorf("failed to write block: %w", err)
 		}
 		if _, err := zw.Write([]byte{'\n'}); err != nil {
 			zw.Close()
-			return 0, fmt.Errorf("failed to write newline: %w", err)
+			return nil, fmt.Errorf("failed to write newline: %w", err)
 		}
 	}
 
 	if err := zw.Close(); err != nil {
-		return 0, fmt.Errorf("failed to close zstd writer: %w", err)
+		return nil, fmt.Errorf("failed to close zstd writer: %w", err)
 	}
 
-	compressedSize := buf.Len()
+	return buf.Bytes(), nil
+}
 
-	// Upload to S3
-	_, err = c.client.PutObject(ctx, &s3.PutObjectInput{
+// Upload compresses and uploads block data to S3
+// blocks should be JSON-encoded NormalizedBlock data (one per entry)
+// Returns the compressed size in bytes
+func (c *S3Client) Upload(ctx context.Context, key string, blocks [][]byte) (int, error) {
+	compressed, err := CompressBlocks(blocks)
+	if err != nil {
+		return 0, err
+	}
+	return c.UploadCompressed(ctx, key, compressed)
+}
+
+// UploadCompressed uploads pre-compressed data to S3
+func (c *S3Client) UploadCompressed(ctx context.Context, key string, data []byte) (int, error) {
+	_, err := c.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(c.bucket),
 		Key:         aws.String(key),
-		Body:        bytes.NewReader(buf.Bytes()),
+		Body:        bytes.NewReader(data),
 		ContentType: aws.String("application/zstd"),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to upload to S3: %w", err)
 	}
-
-	return compressedSize, nil
+	return len(data), nil
 }
 
 // Download retrieves and decompresses block data from S3
@@ -245,4 +255,48 @@ func (c *S3Client) FindLatestBatch(ctx context.Context, prefix string, chainID u
 	}
 
 	return latestEndBlock, nil
+}
+
+// MetaKey returns the S3 key for chain metadata
+func MetaKey(prefix string, chainID uint64) string {
+	return fmt.Sprintf("%s/%d/meta.json", prefix, chainID)
+}
+
+// ChainMeta holds compaction progress
+type ChainMeta struct {
+	LastCompactedBlock uint64 `json:"lastCompactedBlock"`
+}
+
+// GetMeta reads chain metadata from S3
+func (c *S3Client) GetMeta(ctx context.Context, prefix string, chainID uint64) (ChainMeta, error) {
+	key := MetaKey(prefix, chainID)
+	resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		// Not found = fresh start
+		return ChainMeta{LastCompactedBlock: 0}, nil
+	}
+	defer resp.Body.Close()
+
+	var meta ChainMeta
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		return ChainMeta{}, fmt.Errorf("failed to decode meta: %w", err)
+	}
+	return meta, nil
+}
+
+// PutMeta writes chain metadata to S3
+func (c *S3Client) PutMeta(ctx context.Context, prefix string, chainID uint64, meta ChainMeta) error {
+	key := MetaKey(prefix, chainID)
+	data, _ := json.Marshal(meta)
+
+	_, err := c.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(c.bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
+		ContentType: aws.String("application/json"),
+	})
+	return err
 }

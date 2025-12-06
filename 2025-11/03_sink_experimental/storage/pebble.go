@@ -184,3 +184,41 @@ func (s *Storage) BlockCount(chainID uint64) int {
 	// This is approximate - assumes no gaps
 	return int(last - first + 1)
 }
+
+// GetBlockRange reads all blocks from startBlock to endBlock (inclusive) in one iterator pass.
+// Returns a map of blockNum -> data. Much faster than multiple GetBatch calls.
+func (s *Storage) GetBlockRange(chainID, startBlock, endBlock uint64) (map[uint64][]byte, error) {
+	result := make(map[uint64][]byte)
+
+	startKey := blockKey(chainID, startBlock)
+	endKey := blockKey(chainID, endBlock+1)
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: startKey,
+		UpperBound: endKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		cid, bn, ok := parseBlockKey(iter.Key())
+		if !ok || cid != chainID {
+			continue
+		}
+		val := iter.Value()
+		data := make([]byte, len(val))
+		copy(data, val)
+		result[bn] = data
+	}
+
+	return result, iter.Error()
+}
+
+// DeleteBlockRange deletes all blocks from startBlock to endBlock (inclusive)
+func (s *Storage) DeleteBlockRange(chainID, startBlock, endBlock uint64) error {
+	startKey := blockKey(chainID, startBlock)
+	endKey := blockKey(chainID, endBlock+1)
+	return s.db.DeleteRange(startKey, endKey, pebble.Sync)
+}

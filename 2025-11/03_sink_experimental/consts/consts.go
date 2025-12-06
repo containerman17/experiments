@@ -12,7 +12,7 @@ const (
 	RPCMetricsWindow = 60 * time.Second
 
 	// RPCAdjustInterval is how often parallelism is adjusted
-	RPCAdjustInterval = 1 * time.Second
+	RPCAdjustInterval = 5 * time.Second
 
 	// RPCDefaultMaxParallelism if not specified in config
 	RPCDefaultMaxParallelism = 200

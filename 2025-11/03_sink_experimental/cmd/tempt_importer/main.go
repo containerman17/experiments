@@ -17,9 +17,9 @@ type chainImport struct {
 
 func main() {
 	chains := []chainImport{
+		// {68414, "/root/clickhouse-metrics-poc/rpc_cache/68414"},
+		// {836, "/root/clickhouse-metrics-poc/rpc_cache/836"},
 		{43114, "/root/clickhouse-metrics-poc/rpc_cache/43114"},
-		{836, "/root/clickhouse-metrics-poc/rpc_cache/836"},
-		{68414, "/root/clickhouse-metrics-poc/rpc_cache/68414"},
 	}
 
 	// Open new DB directly for faster writes - disable WAL for max speed
@@ -59,6 +59,7 @@ func main() {
 		// Import blocks (will verify no gaps during import)
 		startBlock := newLast + 1
 		log.Printf("Importing blocks %d to %d (%d blocks)", startBlock, oldLast, oldLast-startBlock+1)
+
 		imported := importBlocks(oldDb, newDb, chain.chainID, startBlock, oldLast)
 		log.Printf("Imported %d blocks", imported)
 
@@ -158,9 +159,16 @@ func importBlocks(oldDb, newDb *pebble.DB, chainID, start, end uint64) int {
 				log.Fatalf("Gap detected: expected block %d but got %d", expectedBlock, oldBlockNum)
 			}
 
+			val := iter.Value()
+
+			// Verify value is not empty/corrupt
+			if len(val) < 100 {
+				log.Fatalf("Corrupt block %d: value too small (%d bytes)", oldBlockNum, len(val))
+			}
+
 			// Write to batch with new key format
 			newKey := fmt.Sprintf("block:%d:%020d", chainID, oldBlockNum)
-			if err := batch.Set([]byte(newKey), iter.Value(), nil); err != nil {
+			if err := batch.Set([]byte(newKey), val, nil); err != nil {
 				log.Fatalf("Failed to batch block %d: %v", oldBlockNum, err)
 			}
 

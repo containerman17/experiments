@@ -159,6 +159,6 @@ func (c *Compactor) compactOneBatch(ctx context.Context) bool {
 	}
 
 	_ = size
-	// log.Printf("[Compactor] Chain %d: compacted blocks %d-%d (%s)", c.chainID, batchStart, batchEnd, formatSize(size))
+	log.Printf("[Compactor] Chain %d: compacted blocks %d-%d (%s)", c.chainID, batchStart, batchEnd, formatSize(size))
 	return true
 }

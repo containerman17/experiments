@@ -73,10 +73,10 @@ Java SDK can now import this UTXO.
 ════════════════════════════════════════════════════════════
 ```
 
-### 5. Run Java Import CLI
+### 5. Run Java Import demo CLI
 
 ```bash
-mvn exec:java -Dexec.mainClass="network.avax.build.atomic.cli.ImportCli" -q
+mvn compile exec:java -Dexec.mainClass="network.avax.build.atomic.cli.ImportCli" -q
 ```
 
 Output:

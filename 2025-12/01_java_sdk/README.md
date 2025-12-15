@@ -7,26 +7,120 @@ Minimal Java SDK for P-Chain → C-Chain atomic imports on Avalanche. This is a 
 **Design philosophy**: Minimal port from Go source to reduce implementation errors. No abstractions beyond what avalanchego uses. Every struct, codec, and signing detail matches the Go implementation as close as possible.
 
 
-## RPC Client
+## Import CLI
 
-TODO: Document `AvalancheRpcClient` usage
+### 1. Build Go utilities
 
+```bash
+./go_test_setup/build.sh
+```
 
+### 2. Generate wallets
 
-## Import to C-Chain
+```bash
+./go_test_setup/bin/go_generate_keys
+```
 
-TODO: Document full import flow
+Output:
+```
+=== Avalanche Test Wallet Generator ===
+Network: fuji (ID: 5, HRP: fuji)
 
+Generating User wallet...
+Generating Custodian wallet...
+...
+✓ Wallets saved to: .env
+```
+
+### 3. Fund User's C-Chain address
+
+Copy `USER_C_EVM` from `.env` and request AVAX from https://faucet.avax.network/
+
+### 4. Create UTXO for custodian
+
+```bash
+./go_test_setup/bin/go_test_setup
+```
+
+Output:
+```
+Avalanche Test Setup: Prepare UTXOs for Java Import
+
+Node: https://api.avax-test.network
+Amount: 738302 nAVAX (0.000738 AVAX)
+Custodian C-Chain: C-fuji1...
+
+Creating wallet...
+User P-Chain address: KDn87iUQqTN8SUA4x82AtQ2QqN8EGkncb
+
+Step 1: C→P Export
+  TxID: Ato4CKtNuJv1J4YkdBUN6YAfjiNc51ewKGeEwDKn1yfVSTw9a
+  Waiting for acceptance...
+Step 2: P Import
+  TxID: 2TsLB4oWGb7MFTZbu8p156BW7APCYd78PqnVQvauAfjNLKnhBD
+  Waiting for acceptance...
+  Refreshing wallet...
+Step 3: P→C Export to Custodian
+  Available P-Chain balance: 801836 nAVAX, exporting: 701836 nAVAX
+  TxID: 2hEFkyW3AKEs4oDBUsXWeHYpDFn2pCv4ZbnaUdkoftxxH3cb63
+
+════════════════════════════════════════════════════════════
+Done! UTXO created for custodian.
+Amount: 701836 nAVAX (0.000702 AVAX)
+Custodian address: C-fuji1...
+
+Java SDK can now import this UTXO.
+════════════════════════════════════════════════════════════
+```
+
+### 5. Run Java Import CLI
+
+```bash
+mvn exec:java -Dexec.mainClass="network.avax.build.atomic.cli.ImportCli" -q
+```
+
+Output:
+```
+═══════════════════════════════════════════════════════════
+Avalanche Import CLI - P-Chain → C-Chain
+═══════════════════════════════════════════════════════════
+
+Custodian Address: C-fuji13sms9vgl8zx6j7jwecpfv0nqzp8f6y3z74rc8m
+EVM Address:       0x30ad244514480955e5470ECB901274c08D3aa495
+
+Balance Before: 0.002012854 AVAX (2012854000000000 wei)
+
+Querying pending UTXOs from P-Chain...
+Found 1 UTXO(s), total: 0.000081300 AVAX (81300 nAVAX)
+  [1] 81300 nAVAX
+
+Base Fee: 2 wei
+
+Building ImportTx...
+Signing transaction...
+Submitting transaction...
+TxID: yng6Wi4MYxLCibGhhjggaZCgBihmaAatjJEzfFizZ8t7seeAW
+Waiting for acceptance (checking balance).
+Balance changed - transaction accepted!
+
+Scanning last 50 blocks for import...
+Import found in block: 49081588
+
+Balance After:  0.002094153 AVAX (2094153000000000 wei)
+Delta:          0.000081299 AVAX
+
+═══════════════════════════════════════════════════════════
+Import complete!
+═══════════════════════════════════════════════════════════
+```
 
 
 ## Block ExtData Decoding
 
 Parse atomic transactions (ImportTx/ExportTx) embedded in C-Chain block bodies.
 
-### CLI Demo
-
 ```bash
-mvn exec:java -Dexec.mainClass="io.avalanche.atomic.util.BlockExtDataDecoder" \
+mvn exec:java -Dexec.mainClass="network.avax.build.atomic.util.BlockExtDataDecoder" \
   -Dexec.args="71982634 https://api.avax.network/ext/bc/C/rpc" -q
 ```
 
@@ -56,44 +150,11 @@ This cartesian product of structural variations yielded **47 distinct test fixtu
 Fixtures: [src/test/resources/block_extra_data_fixtures.json](src/test/resources/block_extra_data_fixtures.json)
 
 
-
-## Key Generator
-
-Generate test wallets. **For testing only** — production should use HSM/KMS.
-
-```bash
-mvn compile -q
-mvn exec:java -Dexec.mainClass="io.avalanche.atomic.util.KeyGenerator" -q
-```
-
-Output:
-```
-Private Key:      0x...
-P-Chain Mainnet:  P-avax1...
-P-Chain Fuji:     P-fuji1...
-C-Chain Bech32:   C-avax1...
-C-Chain EVM:      0x...
-Written to .env
-```
-
-If `.env` exists, prints `.env already exists` and exits.
-
-### Address Formats
-
-| Address | Used For |
-||-|
-| P-Chain | Receiving exports, staking |
-| C-Chain Bech32 | `avax.getUTXOs` queries |
-| C-Chain EVM | ImportTx destination, EVM balance |
-
-Bech32 addresses share the same 20-byte short ID (`RIPEMD160(SHA256(compressed_pubkey))`), only prefix differs between networks. EVM address uses `keccak256(uncompressed_pubkey)[12:32]`.
-
-
-
 ## Requirements
 
 - Java 21+
 - Maven 3.8+
+- Go 1.21+ (for test setup utilities)
 
 ## Build
 
@@ -104,10 +165,5 @@ mvn clean package -DskipTests
 ## Test
 
 ```bash
-# Unit tests only (excludes E2E tests that require testnet setup)
 mvn test
-
-# E2E tests (requires manual setup — see specs/03_e2e_import_test.md)
-mvn test -Dgroups=e2e
 ```
-

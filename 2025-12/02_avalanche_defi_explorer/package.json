@@ -2,7 +2,9 @@
   "name": "07_avalanche_defi_explorer",
   "type": "module",
   "dependencies": {
+    "dotenv": "^17.2.3",
     "lmdb": "^3.4.4",
+    "solc": "^0.8.33",
     "viem": "^2.43.3"
   },
   "devDependencies": {

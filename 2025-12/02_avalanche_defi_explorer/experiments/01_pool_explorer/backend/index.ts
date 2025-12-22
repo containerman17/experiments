@@ -46,7 +46,7 @@ const poolsDB = new PoolsDB(poolsLmdb.openDB({
     compression: true
 }))
 
-const poolsManager = new PoolsManager(providers, RPC_URL, poolsLmdb)
+const poolsManager = new PoolsManager(providers, RPC_URL, poolsLmdb, poolsDB)
 
 const wsClient = createPublicClient({
     chain: avalanche,
@@ -56,7 +56,7 @@ const wsClient = createPublicClient({
 let lastBlockNumber = Number(await wsClient.getBlockNumber())
 const catchUpTo = Math.floor(lastBlockNumber / PoolsManager.batchSize) * PoolsManager.batchSize
 let lastProcessedBlockNumber = catchUpTo
-await poolsManager.catchUp(catchUpTo, true, poolsDB.addPool.bind(poolsDB))
+await poolsManager.catchUp(catchUpTo, true)
 
 
 wsClient.watchBlockNumber({
@@ -71,7 +71,7 @@ wsClient.watchBlockNumber({
 
 while (true) {
     if (lastBlockNumber <= lastProcessedBlockNumber) {
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 1))
         continue
     }
     const toBlock = Math.min(lastBlockNumber, lastProcessedBlockNumber + PoolsManager.batchSize)
@@ -83,7 +83,7 @@ while (true) {
     if ((lastProcessedBlockNumber + 1) === toBlock) {
         console.log(`Processed block ${toBlock}`)
     } else {
-        console.log(`Processed logs from block ${lastProcessedBlockNumber + 1} to ${toBlock}`)
+        console.log(`Processed ${toBlock - lastProcessedBlockNumber} blocks from ${lastProcessedBlockNumber + 1}`)
     }
     lastProcessedBlockNumber = toBlock
 }

@@ -1,12 +1,14 @@
 import * as lmdb from 'lmdb'
 import { type PoolType } from '../providers/_types.ts'
 
-type StoredPool = {
+export type StoredPool = {
     address: string
     tokens: string[]
     poolType: PoolType
     providerName: string
 }
+
+type PoolCallback = (pool: StoredPool) => void
 
 export class PoolsDB {
     private database: lmdb.Database
@@ -49,7 +51,7 @@ export class PoolsDB {
         this.database.put(pool, storedPool)
     }
 
-    getAllPools(): StoredPool[] {
-        return Array.from(this.poolsInMem.values())
+    public allPools(): Map<string, StoredPool> {
+        return this.poolsInMem
     }
 }   

@@ -9,21 +9,24 @@ import { PoolsDB } from './PoolsDB.ts'
 // const BLOCKS_BEHIND_LOOKUP = (10 * 24 * 60 * 60 * 1000) / 1250 //10 days with 1250ms block time
 const BLOCKS_BEHIND_LOOKUP = (6 * 60 * 60 * 1000) / 1250 //6 hours is fine
 
-//Here we do a bit illogical but very simple behaviour: we do not discover pools in the live mode and do not quote in teh historical mode.
-
 const createPublicClientUniversal = (rpcUrl: string) => {
     return createPublicClient({
         chain: avalanche,
         transport: rpcUrl.startsWith("http") ? http(rpcUrl) : webSocket(rpcUrl),
     })
 }
+
+export type addPoolCallback = (pool: string, tokenIn: string, tokenOut: string, poolType: PoolType, providerName: string) => void
+
 export class PoolsManager {
     private providers: PoolProvider[]
     private cachedRPC: CachedRPC//only for processLogs, do not use in fetching logs 
     private catchUpRPC: ReturnType<typeof createPublicClientUniversal>
     private logsDb: lmdb.Database
+    private lastCatchUpReport = 0
+    private poolsDB: PoolsDB
 
-    constructor(_providers: PoolProvider[], rpcUrl: string, rootDb: lmdb.RootDatabase) {
+    constructor(_providers: PoolProvider[], rpcUrl: string, rootDb: lmdb.RootDatabase, poolsDB: PoolsDB) {
         this.providers = _providers
         this.cachedRPC = new CachedRpcClient(rpcUrl, rootDb.openDB({
             name: 'cached_rpc',
@@ -34,13 +37,14 @@ export class PoolsManager {
             name: 'logs_db',
             compression: true
         })
+        this.poolsDB = poolsDB
     }
 
     public static get batchSize(): number {
         return 100
     }
 
-    async catchUp(blockNumber: number, bustWatermark: boolean = false, addPool: (pool: string, tokenIn: string, tokenOut: string, poolType: PoolType, providerName: string) => void) {
+    async catchUp(blockNumber: number, bustWatermark: boolean = false) {
         if (blockNumber % PoolsManager.batchSize !== 0) {
             throw "blockNumber must be a multiple of batchSize"
         }
@@ -87,7 +91,7 @@ export class PoolsManager {
             await Promise.all(this.providers.map(async (provider) => {
                 const swapEvents = await provider.processLogs(logs, this.cachedRPC)
                 for (const event of swapEvents) {
-                    addPool(event.pool, event.tokenIn, event.tokenOut, event.poolType, event.providerName)
+                    this.poolsDB.addPool(event.pool, event.tokenIn, event.tokenOut, event.poolType, event.providerName)
                 }
             }))
 
@@ -98,17 +102,21 @@ export class PoolsManager {
             const etaMinutes = Math.floor(etaMs / 60000)
             const etaSeconds = Math.floor((etaMs % 60000) / 1000)
 
-            console.log(`Processed logs from block ${fromBlock} to ${toBlock} | Batch ${batchNumber}/${totalBatches} | ${batchesRemaining} remaining | ETA: ${etaMinutes}m ${etaSeconds}s`)
+            if (Date.now() - this.lastCatchUpReport > 1000) {
+                this.lastCatchUpReport = Date.now()
+                console.log(`Processed logs from block ${fromBlock} to ${toBlock} | Batch ${batchNumber}/${totalBatches} | ${batchesRemaining} remaining | ETA: ${etaMinutes}m ${etaSeconds}s`)
+            }
         }
 
         console.log(`Catch up complete. Synced up to block ${blockNumber}`)
     }
 
     async processLiveLogs(logs: Log[]) {
-        // TODO: implement quoting/live processing (no discovery here as per design)
-        for (let provider of this.providers) {
+        await Promise.all(this.providers.map(async (provider) => {
             const swapEvents = await provider.processLogs(logs, this.cachedRPC)
-            // Quoting logic goes here
-        }
+            for (const event of swapEvents) {
+                this.poolsDB.addPool(event.pool, event.tokenIn, event.tokenOut, event.poolType, event.providerName)
+            }
+        }))
     }
 }

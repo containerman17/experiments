@@ -2,12 +2,34 @@ import { type Log } from "viem"
 
 export type CachedRPC = {
     getAddress: (address: string, method: string) => Promise<string>
-    ethCall: (to: string, method: string, cacheForever?: boolean) => Promise<string>
+    ethCall: (to: string, method: string) => Promise<string>
 }
+
+// Pool type constants - matches Solidity constants
+export const POOL_TYPE_UNIV3 = 0 as const
+export const POOL_TYPE_ALGEBRA = 1 as const
+export const POOL_TYPE_LFJ_V1 = 2 as const
+export const POOL_TYPE_LFJ_V2 = 3 as const
+export const POOL_TYPE_DODO = 4 as const
+export const POOL_TYPE_WOOFI = 5 as const
+export const POOL_TYPE_BALANCER_V3 = 6 as const
+export const POOL_TYPE_PHARAOH_V1 = 7 as const
+export const POOL_TYPE_V2 = 8 as const
+
+export type PoolType =
+    | typeof POOL_TYPE_UNIV3
+    | typeof POOL_TYPE_ALGEBRA
+    | typeof POOL_TYPE_LFJ_V1
+    | typeof POOL_TYPE_LFJ_V2
+    | typeof POOL_TYPE_DODO
+    | typeof POOL_TYPE_WOOFI
+    | typeof POOL_TYPE_BALANCER_V3
+    | typeof POOL_TYPE_PHARAOH_V1
+    | typeof POOL_TYPE_V2
 
 export interface PoolProvider {
     name: string
-    poolType: number  // matches Solidity constant
+    poolType: PoolType  // matches Solidity constant
     topics: string[]  // event signatures to filter
 
     // Parse relevant logs from a block
@@ -24,6 +46,6 @@ export interface SwapEvent {
     tokenOut: string
     amountIn: bigint
     amountOut: bigint
-    poolType: number
+    poolType: PoolType
     providerName: string
 }

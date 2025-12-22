@@ -4,5 +4,8 @@
   "dependencies": {
     "lmdb": "^3.4.4",
     "viem": "^2.43.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3"
   }
 }

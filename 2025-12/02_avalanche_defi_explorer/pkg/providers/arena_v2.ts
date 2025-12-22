@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_V2 } from './_types.ts'
 
 // ArenaTrade Factory
 const ARENA_V2_FACTORY = '0xf16784dcaf838a3e16bef7711a62d12413c39bd1'
@@ -32,7 +32,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const arenaV2: PoolProvider = {
     name: 'arena_v2',
-    poolType: 8, // Same as PANGOLIN_V2 - standard V2 interface
+    poolType: POOL_TYPE_V2, // Standard V2 interface
     topics: [V2_SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

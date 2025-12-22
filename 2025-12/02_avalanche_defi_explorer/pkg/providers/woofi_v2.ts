@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_WOOFI } from './_types.ts'
 
 
 const WOOFI_ROUTER = '0x4c4af8dbc524681930a27b2f1af5bcc8062e6fb7'
@@ -9,7 +9,7 @@ const WOO_SWAP_TOPIC = keccak256(toHex('WooRouterSwap(uint8,address,address,uint
 
 export const woofiV2: PoolProvider = {
     name: 'woofi_v2',
-    poolType: 5, // WOOFI
+    poolType: POOL_TYPE_WOOFI,
     topics: [WOO_SWAP_TOPIC],
 
     async processLogs(logs: Log[], _cachedRPC: CachedRPC): Promise<SwapEvent[]> {

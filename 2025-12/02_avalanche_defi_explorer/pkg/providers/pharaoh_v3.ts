@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_UNIV3 } from './_types.ts'
 
 // Pharaoh has two V3 factories (lowercased for comparison)
 const PHARAOH_V3_FACTORIES = new Set([
@@ -34,7 +34,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const pharaohV3: PoolProvider = {
     name: 'pharaoh_v3',
-    poolType: 0, // Uses UNIV3 callback
+    poolType: POOL_TYPE_UNIV3, // Uses UNIV3 callback
     topics: [SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

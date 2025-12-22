@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_PHARAOH_V1 } from './_types.ts'
 
 // Pharaoh V1 (Solidly-style AMM) - volatile and stable pairs
 // Identified by having stable() function
@@ -48,7 +48,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const pharaohV1: PoolProvider = {
     name: 'pharaoh_v1',
-    poolType: 7, // New pool type for Pharaoh V1
+    poolType: POOL_TYPE_PHARAOH_V1,
     topics: [V2_SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

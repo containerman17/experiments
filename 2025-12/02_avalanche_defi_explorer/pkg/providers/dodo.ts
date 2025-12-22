@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_DODO } from './_types.ts'
 
 
 // DODOSwap(address fromToken, address toToken, uint256 fromAmount, uint256 toAmount, address trader, address receiver)
@@ -7,7 +7,7 @@ const DODO_SWAP_TOPIC = keccak256(toHex('DODOSwap(address,address,uint256,uint25
 
 export const dodo: PoolProvider = {
     name: 'dodo',
-    poolType: 4, // DODO
+    poolType: POOL_TYPE_DODO,
     topics: [DODO_SWAP_TOPIC],
 
     async processLogs(logs: Log[], _cachedRPC: CachedRPC): Promise<SwapEvent[]> {

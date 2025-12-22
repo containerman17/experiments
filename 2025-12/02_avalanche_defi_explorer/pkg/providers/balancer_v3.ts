@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_BALANCER_V3 } from './_types.ts'
 
 const BALANCER_V3_VAULT = '0xba1333333333a1ba1108e8412f11850a5c319ba9'
 
@@ -9,7 +9,7 @@ const SWAP_TOPIC = '0x0874b2d545cb271cdbda4e093020c452328b24af12382ed62c4d00f5c2
 
 export const balancerV3: PoolProvider = {
     name: 'balancer_v3',
-    poolType: 6,
+    poolType: POOL_TYPE_BALANCER_V3,
     topics: [SWAP_TOPIC],
 
     async processLogs(logs: Log[], _cachedRPC: CachedRPC): Promise<SwapEvent[]> {

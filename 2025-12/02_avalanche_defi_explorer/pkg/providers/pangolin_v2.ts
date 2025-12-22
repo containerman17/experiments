@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_V2 } from './_types.ts'
 
 const PANGOLIN_V2_FACTORY = '0xefa94de7a4656d787667c749f7e1223d71e9fd88'
 
@@ -31,7 +31,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const pangolinV2: PoolProvider = {
     name: 'pangolin_v2',
-    poolType: 8, // New pool type
+    poolType: POOL_TYPE_V2,
     topics: [V2_SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

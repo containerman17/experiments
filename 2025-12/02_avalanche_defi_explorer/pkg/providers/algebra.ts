@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_ALGEBRA } from './_types.ts'
 
 const ALGEBRA_FACTORY = '0x512eb749541b7cf294be882d636218c84a5e9e5f'
 
@@ -31,7 +31,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const algebra: PoolProvider = {
     name: 'algebra',
-    poolType: 1, // ALGEBRA
+    poolType: POOL_TYPE_ALGEBRA, // ALGEBRA
     topics: [SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

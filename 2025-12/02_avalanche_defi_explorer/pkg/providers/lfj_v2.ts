@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_LFJ_V2 } from './_types.ts'
 
 // LFJ V2 factories
 const LFJ_V2_FACTORIES = new Set([
@@ -46,7 +46,7 @@ function decodePackedAmounts(packed: `0x${string}`): { amountX: bigint; amountY:
 
 export const lfjV2: PoolProvider = {
     name: 'lfj_v2',
-    poolType: 3, // LFJ_V2
+    poolType: POOL_TYPE_LFJ_V2,
     topics: [LB_SWAP_TOPIC_OLD, LB_SWAP_TOPIC_V22],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

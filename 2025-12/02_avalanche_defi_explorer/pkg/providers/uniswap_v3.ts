@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type CachedRPC, type PoolProvider, type SwapEvent, POOL_TYPE_UNIV3 } from './_types.ts'
 
 // Multiple UniswapV3-compatible factories on Avalanche
 const UNISWAP_V3_FACTORIES = new Set([
@@ -35,7 +35,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const uniswapV3: PoolProvider = {
     name: 'uniswap_v3',
-    poolType: 0, // UNIV3
+    poolType: POOL_TYPE_UNIV3,
     topics: [SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

@@ -1,5 +1,5 @@
 import { type Log, decodeAbiParameters, keccak256, toHex } from 'viem'
-import { type PoolProvider, type SwapEvent, type CachedRPC } from './_types.ts'
+import { type PoolProvider, type SwapEvent, type CachedRPC, POOL_TYPE_LFJ_V1 } from './_types.ts'
 
 const LFJ_V1_FACTORY = '0x9ad6c38be94206ca50bb0d90783181662f0cfa10'
 
@@ -31,7 +31,7 @@ async function getPoolTokens(pool: string, cachedRPC: CachedRPC): Promise<{ toke
 
 export const lfjV1: PoolProvider = {
     name: 'lfj_v1',
-    poolType: 2, // LFJ_V1
+    poolType: POOL_TYPE_LFJ_V1,
     topics: [V1_SWAP_TOPIC],
 
     async processLogs(logs: Log[], cachedRPC: CachedRPC): Promise<SwapEvent[]> {

@@ -40,7 +40,6 @@ export function savePools(filePath: string, pools: Iterable<{
  * Format: address:providerName:poolType:swapCount:token1:token2:token3...
  */
 export function loadPools(filePath: string): Map<string, StoredPool> {
-    const pools = new Map<string, StoredPool>()
 
     if (!fs.existsSync(filePath)) {
         console.warn(`Pools file not found: ${filePath}. Starting with empty pool set.`)
@@ -49,6 +48,8 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
 
     const content = fs.readFileSync(filePath, 'utf-8')
     const lines = content.split('\n').filter(line => line.trim().length > 0)
+
+    const poolsArr: StoredPool[] = []
 
     for (const line of lines) {
         const parts = line.split(':')
@@ -78,7 +79,7 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
             continue
         }
 
-        pools.set(address, {
+        poolsArr.push({
             address,
             providerName,
             poolType,
@@ -87,6 +88,11 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
         })
     }
 
-    console.log(`Loaded ${pools.size} pools from ${filePath}`)
+    const pools = new Map<string, StoredPool>()
+    for (const pool of poolsArr.sort((a, b) => b.swapCount - a.swapCount)) {
+        pools.set(pool.address, pool)
+    }
+
+    console.log(`Loaded ${poolsArr.length} pools from ${filePath}`)
     return pools
 }

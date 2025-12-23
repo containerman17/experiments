@@ -11,6 +11,13 @@ export const POOL_TYPE_BALANCER_V3 = 6 as const
 export const POOL_TYPE_PHARAOH_V1 = 7 as const
 export const POOL_TYPE_V2 = 8 as const
 
+export interface CachedRPC {
+    getAddress(address: string, method: string): Promise<string>
+    getDecimals(token: string): Promise<number>
+    getSymbol(token: string): Promise<string>
+    ethCall(to: string, method: string): Promise<string>
+}
+
 export type PoolType =
     | typeof POOL_TYPE_UNIV3
     | typeof POOL_TYPE_ALGEBRA
@@ -43,4 +50,5 @@ export interface SwapEvent {
     amountOut: bigint
     poolType: PoolType
     providerName: string
+    error?: string
 }

@@ -215,5 +215,38 @@
     },
     "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": {
         "slot": 3
+    },
+    "0x00000000efe302beaa2b3e6e1b18d08d69a9012a": {
+        "base": "0x455730fed596673e69db1907be2e521374ba893f1a04cc5f5dd931616cd6b700",
+        "shift": 8,
+        "allowanceBase": "0x455730fed596673e69db1907be2e521374ba893f1a04cc5f5dd931616cd6b701"
+    },
+    "0x6c14c1898c843ff66ca51e87244690bbc28df215": {
+        "slot": 0
+    },
+    "0xff7f8f301f7a706e3cfd3d2275f5dc0b9ee8009b": {
+        "base": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00",
+        "allowanceBase": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace01"
+    },
+    "0x714f020c54cc9d104b6f4f6998c63ce2a31d1888": {
+        "slot": 0
+    },
+    "0x26debd39d5ed069770406fca10a0e4f8d2c743eb": {
+        "base": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00",
+        "allowanceBase": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace01"
+    },
+    "0xd5d053d5b769383e860d1520da7a908e00919f36": {
+        "slot": 0
+    },
+    "0xed2b42d3c9c6e97e11755bb37df29b6375ede3eb": {
+        "slot": 1
+    },
+    "0x7d0394f8898fba73836bf12bd606228887705895": {
+        "base": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00",
+        "allowanceBase": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace01"
+    },
+    "0x45cf39eeb437fa95bb9b52c0105254a6bd25d01e": {
+        "base": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00",
+        "allowanceBase": "0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace01"
     }
 }

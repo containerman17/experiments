@@ -4,8 +4,9 @@ import path from 'path'
 import { providers } from "../../../pkg/providers/index.ts"
 import { createPublicClient, webSocket, http } from "viem"
 import { avalanche } from 'viem/chains'
-import { CachedRpcClient } from '../../../pkg/CachedRpcClient.ts'
+import { getCachedRpcClient } from '../../../pkg/CachedRpcClient.ts'
 import { getRpcUrl, getWsRpcUrl } from '../../../pkg/rpc.ts'
+import { DollarAmounts } from '../../../pkg/poolsdb/DollarAmounts.ts'
 
 const RPC_URL = getRpcUrl()
 const WS_RPC = getWsRpcUrl()
@@ -19,27 +20,16 @@ const poolsLmdb = lmdb.open(poolsDataDir, {
 })
 
 import { Hayabusa } from "../../../pkg/Hayabusa.ts"
-import { DollarPriceStream } from "../../../pkg/poolsdb/DollarPriceStream.ts"
 import { loadPools } from "../../../pkg/poolsdb/PoolLoader.ts"
+import { DollarPrice } from '../../../pkg/poolsdb/DollarPrice.ts'
 
 // Load pools from file
 const poolsFilePath = path.resolve(path.join(__dirname, "../../../experiments/01_discover_pools/pools.txt"))
 const pools = loadPools(poolsFilePath)
 
+
 const ROUTER_CONTRACT = process.env.ROUTER_CONTRACT || ""
-if (!ROUTER_CONTRACT) {
-    console.warn("ROUTER_CONTRACT env var not set, DollarPriceStream might fail")
-    process.exit(1)
-}
-
-const hayabusa = new Hayabusa(RPC_URL, ROUTER_CONTRACT)
-const dollarPriceStream = new DollarPriceStream(pools, hayabusa)
-
-// Setup CachedRPC for processing logs
-const cachedRPC = new CachedRpcClient(RPC_URL, poolsLmdb.openDB({
-    name: 'cached_rpc',
-    compression: true
-}))
+if (!ROUTER_CONTRACT) throw new Error("ROUTER_CONTRACT env var not set")
 
 const wsClient = createPublicClient({
     chain: avalanche,
@@ -55,18 +45,6 @@ let lastBlockNumber = Number(await wsClient.getBlockNumber())
 const catchUpTo = Math.floor(lastBlockNumber / BATCH_SIZE) * BATCH_SIZE
 let lastProcessedBlockNumber = catchUpTo
 
-console.log(`Starting from block ${catchUpTo}`)
-
-// Subscribe to all price updates and log them
-dollarPriceStream.subscribeToPriceUpdates((priceUpdate) => {
-    console.log(`Price update: ${priceUpdate.pool} ${priceUpdate.tokenIn} -> ${priceUpdate.tokenOut}: ${priceUpdate.amountIn} -> ${priceUpdate.amountOut}`)
-})
-
-// Initial price fetch
-console.log("Starting initial price fetch...")
-await dollarPriceStream.refetchPrices()
-console.log("Initial price fetch complete")
-
 wsClient.watchBlockNumber({
     onBlockNumber: (blockNumber: bigint) => {
         lastBlockNumber = Number(blockNumber)
@@ -74,6 +52,24 @@ wsClient.watchBlockNumber({
     onError: (error) => {
         console.error(error)
         process.exit(1)
+    }
+})
+
+const cachedRPC = getCachedRpcClient(RPC_URL)
+const hayabusa = new Hayabusa(RPC_URL, ROUTER_CONTRACT)
+const dollarAmounts = new DollarAmounts(poolsFilePath, hayabusa)
+const dollarPrice = new DollarPrice(dollarAmounts, pools, hayabusa)
+
+dollarPrice.subscribeToPrices(async (price) => {
+    const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
+    const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
+    const decimalsIn = await cachedRPC.getDecimals(price.tokenIn)
+    const decimalsOut = await cachedRPC.getDecimals(price.tokenOut)
+
+    if (price.error) {
+        console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
+    } else {
+        console.log(`${(Number(price.amountIn) / 10 ** decimalsIn).toFixed(8)} ${symbolIn} -> ${(Number(price.amountOut) / 10 ** decimalsOut).toFixed(8)} ${symbolOut} @ ${price.providerName} ${price.pool}`)
     }
 })
 
@@ -88,7 +84,6 @@ while (true) {
         toBlock: BigInt(toBlock),
     })
 
-    // Process logs with all providers directly
     const poolsToInvalidate = new Set<string>()
     await Promise.all(providers.map(async (provider) => {
         const swapEvents = await provider.processLogs(logs, cachedRPC)
@@ -99,10 +94,10 @@ while (true) {
 
     // Invalidate cache for affected pools
     if (poolsToInvalidate.size > 0) {
-        dollarPriceStream.cacheBustedCallback(Array.from(poolsToInvalidate))
-        // Refetch prices after cache invalidation
-        await dollarPriceStream.refetchPrices()
+        //TODO: clear cache
     }
+
+    await dollarPrice.fetchPrices()
 
     if ((lastProcessedBlockNumber + 1) === toBlock) {
         console.log(`Processed block ${toBlock}`)

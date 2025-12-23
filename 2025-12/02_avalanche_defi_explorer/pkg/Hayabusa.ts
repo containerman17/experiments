@@ -96,6 +96,11 @@ export class Hayabusa {
         // Get override for BOTH balance and allowance using whale pattern
         const overrideObj = getOverride(tokenIn, WHALE_ADDRESS, amountIn, this.contract)
 
+        // If override is null, token storage layout cannot be discovered
+        if (!overrideObj) {
+            throw new Error(`Token ${tokenIn} storage override not available (unsupported token)`)
+        }
+
         const pools = path.map(leg => leg.pool)
         const poolTypes = path.map(leg => leg.poolType)
         const tokens = [...path.map(leg => leg.tokenIn), path[path.length - 1].tokenOut]

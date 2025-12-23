@@ -283,6 +283,14 @@ const result = await client.request({
 3. Update `supported_tokens.json` with `allowanceSlot` field
 4. Re-verify with `checkOverrides.ts`
 
+**Special case: Packed storage with struct offsets (e.g., AUSD)**:
+- If balance is packed (e.g., with boolean flag), allowances may NOT be packed
+- Balance and allowance might be in different struct fields at different offsets
+- Example: AUSD has `accountData` (packed balance + bool) at offset 0, `accountAllowances` at offset 1
+- Use `allowanceBase` parameter: set to `base + offset` for the allowance field
+- Note: `getOverride.ts` does NOT apply shift to allowances (only to balances)
+- Debug with `debug_traceCall` and `prestateTracer` to verify storage slots
+
 **When adding many tokens**:
 1. Use `study.ts` for balance discovery
 2. Add all to `supported_tokens.json`

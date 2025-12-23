@@ -92,7 +92,8 @@ export function getOverride(
     if (!spender) throw new Error('spender is required for whale pattern - cannot be undefined')
 
     const override = tokens[token.toLowerCase()]
-    if (!override) throw new Error(`Token ${token} not supported in getOverride. Add it to supported_tokens.json with value null`)
+    if (override === undefined) throw new Error(`Token ${token} not supported in getOverride. Add it to supported_tokens.json with value null`)
+    if (override === null) return null  // Token is known but storage layout cannot be discovered
 
     const balanceSlot = computeStorageSlot(account, override)
     const balanceValue = computeStorageValue(balance, override)
@@ -103,7 +104,8 @@ export function getOverride(
 
     // Always set allowance - spender is required
     const allowanceSlot = computeAllowanceStorageSlot(account, spender, override)
-    const allowanceValue = computeStorageValue(balance, override)
+    // Allowances are NOT packed - they are plain uint256, so no shift
+    const allowanceValue = padHex(`0x${balance.toString(16)}`, { size: 32 })
     stateDiff[allowanceSlot] = allowanceValue
 
     return {

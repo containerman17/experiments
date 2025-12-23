@@ -1,6 +1,6 @@
 import { keccak256, toHex, decodeAbiParameters } from 'viem'
-import { type CachedRPC } from './providers/_types.ts'
 import * as lmdb from 'lmdb'
+import path from 'path'
 
 
 // Get 4-byte selector from method signature
@@ -8,16 +8,25 @@ function selector(sig: string): string {
     return keccak256(toHex(sig)).slice(0, 10)
 }
 
-export class CachedRpcClient implements CachedRPC {
+const rootDb = lmdb.open({
+    path: path.join(import.meta.dirname, "../data/cached_rpc"),
+    compression: true
+})
+
+class CachedRpcClient {
     private rpcUrl: string
     private cache: lmdb.Database
     private cachedCount = 0
     private rpcCount = 0
     private inflight: Map<string, Promise<string>> = new Map()
 
-    constructor(rpcUrl: string, cache: lmdb.Database) {
+    constructor(rpcUrl: string) {
         this.rpcUrl = rpcUrl
-        this.cache = cache
+
+        this.cache = rootDb.openDB({
+            name: rpcUrl,
+            compression: true
+        })
 
         setInterval(() => {
             if (this.rpcCount === 0) return
@@ -115,3 +124,11 @@ export class CachedRpcClient implements CachedRPC {
 }
 
 
+const cache = new Map<string, CachedRpcClient>()
+
+export function getCachedRpcClient(RPC_URL: string) {
+    if (!cache.has(RPC_URL)) {
+        cache.set(RPC_URL, new CachedRpcClient(RPC_URL))
+    }
+    return cache.get(RPC_URL)!
+}

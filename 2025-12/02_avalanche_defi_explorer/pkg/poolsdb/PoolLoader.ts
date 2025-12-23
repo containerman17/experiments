@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import { type PoolType } from '../providers/_types.ts'
+import { type Leg } from '../Hayabusa.ts'
 
 export type StoredPool = {
     address: string

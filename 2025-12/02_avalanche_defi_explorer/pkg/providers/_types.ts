@@ -1,10 +1,5 @@
 import { type Log } from "viem"
 
-export type CachedRPC = {
-    getAddress: (address: string, method: string) => Promise<string>
-    ethCall: (to: string, method: string) => Promise<string>
-}
-
 // Pool type constants - matches Solidity constants
 export const POOL_TYPE_UNIV3 = 0 as const
 export const POOL_TYPE_ALGEBRA = 1 as const

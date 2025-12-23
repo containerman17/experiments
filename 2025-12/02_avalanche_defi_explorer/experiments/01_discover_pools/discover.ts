@@ -1,11 +1,12 @@
-import * as lmdb from 'lmdb'
-import { CachedRpcClient } from '../../pkg/CachedRpcClient.ts'
+import { getCachedRpcClient } from '../../pkg/CachedRpcClient.ts'
 import { providers } from '../../pkg/providers/index.ts'
 import { createPublicClient, http, webSocket } from 'viem'
 import { avalanche } from 'viem/chains'
 import { type Log } from 'viem'
 import { savePools, loadPools } from '../../pkg/poolsdb/PoolLoader.ts'
 import { getRpcUrl } from '../../pkg/rpc.ts'
+import * as lmdb from 'lmdb'
+import * as path from 'path'
 
 const BLOCKS_BEHIND_LOOKUP = (24 * 60 * 60 * 1000) / 1250
 const BATCH_SIZE = 100
@@ -19,6 +20,11 @@ const createPublicClientUniversal = (rpcUrl: string) => {
     })
 }
 
+const discoveredPoolsDb = lmdb.open({
+    path: path.join(import.meta.dirname, "./data/pools_db_cache"),
+    compression: true
+})
+
 type DiscoveredPool = {
     address: string
     providerName: string
@@ -28,21 +34,7 @@ type DiscoveredPool = {
 
 console.log('Starting pool discovery...')
 
-// Setup LMDB for caching
-const rootDb = lmdb.open({
-    path: './data/poolsdb',
-    compression: true
-})
-
-const cachedRPC = new CachedRpcClient(RPC_URL, rootDb.openDB({
-    name: 'cached_rpc',
-    compression: true
-}))
-
-const logsDb = rootDb.openDB({
-    name: 'logs_db',
-    compression: true
-})
+const cachedRPC = getCachedRpcClient(RPC_URL)
 
 const catchUpRPC = createPublicClientUniversal(RPC_URL)
 
@@ -80,7 +72,7 @@ for (let fromBlock = fromBlockBase; fromBlock < roundedBlock; fromBlock += BATCH
     const toBlock = Math.min(fromBlock + BATCH_SIZE - 1, roundedBlock - 1)
     const blockRangeKey = `logs_${fromBlock}_${toBlock}`
 
-    let logs = logsDb.get(blockRangeKey) as Log[] | undefined
+    let logs = discoveredPoolsDb.get(blockRangeKey) as Log[] | undefined
 
     if (!logs) {
         console.time(`Fetching logs from block ${fromBlock} to ${toBlock}`)
@@ -91,7 +83,7 @@ for (let fromBlock = fromBlockBase; fromBlock < roundedBlock; fromBlock += BATCH
         console.timeEnd(`Fetching logs from block ${fromBlock} to ${toBlock}`)
 
         // Store logs in database with block range as key
-        logsDb.put(blockRangeKey, logs)
+        discoveredPoolsDb.put(blockRangeKey, logs)
     }
 
     // Process logs with all providers
@@ -136,5 +128,4 @@ console.log(`Writing pools to ${OUTPUT_FILE}`)
 savePools(OUTPUT_FILE, discoveredPools.values())
 console.log(`Wrote ${discoveredPools.size} pools to ${OUTPUT_FILE}`)
 
-await rootDb.close()
 process.exit(0)

@@ -15,7 +15,19 @@ const erc20Abi = parseAbi([
 
 async function main() {
     const client = createPublicClient({ chain: avalanche, transport: http(RPC) })
-    const tokens = getSupportedTokens()
+
+    // Support optional token address argument
+    const targetToken = process.argv[2]?.toLowerCase() as Address | undefined
+
+    let tokens = getSupportedTokens()
+    if (targetToken) {
+        if (!tokens.map(t => t.toLowerCase()).includes(targetToken)) {
+            console.error(`Error: Token ${targetToken} not found in supported_tokens.json`)
+            process.exit(1)
+        }
+        tokens = [targetToken as Address]
+        console.log(`Testing single token: ${targetToken}\n`)
+    }
 
     const configured = tokens.filter(t => getOverride(t, TEST_ADDRESS, TEST_BALANCE, SPENDER_ADDRESS) !== null)
     const unconfigured = tokens.length - configured.length

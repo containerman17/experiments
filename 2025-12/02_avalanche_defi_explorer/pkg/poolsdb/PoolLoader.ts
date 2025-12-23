@@ -7,23 +7,25 @@ export type StoredPool = {
     tokens: string[]
     poolType: PoolType
     providerName: string
+    swapCount: number
 }
 
 /**
  * Save pools to a semicolon-separated file
- * Format: address:providerName:poolType:token1:token2:token3...
+ * Format: address:providerName:poolType:swapCount:token1:token2:token3...
  */
 export function savePools(filePath: string, pools: Iterable<{
     address: string;
     providerName: string;
     poolType: number;
     tokens: Iterable<string>;
+    swapCount: number;
 }>): void {
     const lines: string[] = []
 
     for (const pool of pools) {
         const tokens = Array.from(pool.tokens).sort()
-        const line = `${pool.address.toLowerCase()}:${pool.providerName}:${pool.poolType}:${tokens.join(':').toLowerCase()}`
+        const line = `${pool.address.toLowerCase()}:${pool.providerName}:${pool.poolType}:${pool.swapCount}:${tokens.join(':').toLowerCase()}`
         lines.push(line)
     }
 
@@ -35,7 +37,7 @@ export function savePools(filePath: string, pools: Iterable<{
 
 /**
  * Load pools from a semicolon-separated file
- * Format: address:providerName:poolType:token1:token2:token3...
+ * Format: address:providerName:poolType:swapCount:token1:token2:token3...
  */
 export function loadPools(filePath: string): Map<string, StoredPool> {
     const pools = new Map<string, StoredPool>()
@@ -50,7 +52,7 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
 
     for (const line of lines) {
         const parts = line.split(':')
-        if (parts.length < 4) {
+        if (parts.length < 5) {
             console.warn(`Invalid pool line (too few parts): ${line}`)
             continue
         }
@@ -58,7 +60,8 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
         const address = parts[0].toLowerCase()
         const providerName = parts[1]
         const poolType = parseInt(parts[2]) as PoolType
-        const tokens = parts.slice(3).map(t => t.toLowerCase())
+        const swapCount = parseInt(parts[3])
+        const tokens = parts.slice(4).map(t => t.toLowerCase())
 
         if (!address.startsWith('0x') || address.length !== 42) {
             console.warn(`Invalid pool address: ${address}`)
@@ -70,11 +73,17 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
             continue
         }
 
+        if (isNaN(swapCount) || swapCount < 0) {
+            console.warn(`Invalid swap count: ${parts[3]}`)
+            continue
+        }
+
         pools.set(address, {
             address,
             providerName,
             poolType,
-            tokens
+            tokens,
+            swapCount
         })
     }
 

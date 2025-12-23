@@ -41,6 +41,7 @@ export class PoolMaster {
     /**
      * Find routes from tokenFrom to tokenTo, searching progressively deeper.
      * Stops searching deeper once stopAt routes are found.
+     * Routes are sorted by swap count (higher activity pools first).
      * @param stopAt - if we have >= this many routes, don't search deeper (default 10)
      */
     public findRoutes(tokenFrom: string, tokenTo: string, stopAt: number = 10): Leg[][] {
@@ -54,23 +55,35 @@ export class PoolMaster {
         for (const leg of oneHops) {
             routes.push([leg])
         }
-        if (routes.length >= stopAt) return routes
+        if (routes.length >= stopAt) return this.sortRoutesBySwapCount(routes)
 
         // 2-hop
         const twoHops = this.getTwoHopRoutes(tokenFrom, tokenTo)
         for (const route of twoHops) routes.push(route)
-        if (routes.length >= stopAt) return routes
+        if (routes.length >= stopAt) return this.sortRoutesBySwapCount(routes)
 
         // 3-hop
         const threeHops = this.getThreeHopRoutes(tokenFrom, tokenTo)
         for (const route of threeHops) routes.push(route)
-        if (routes.length >= stopAt) return routes
+        if (routes.length >= stopAt) return this.sortRoutesBySwapCount(routes)
 
         // 4-hop
         const fourHops = this.getFourHopRoutes(tokenFrom, tokenTo)
         for (const route of fourHops) routes.push(route)
 
-        return routes
+        return this.sortRoutesBySwapCount(routes)
+    }
+
+    /**
+     * Sort routes by swap count (higher first).
+     * For multi-hop routes, uses the minimum swap count across all pools (weakest link).
+     */
+    private sortRoutesBySwapCount(routes: Leg[][]): Leg[][] {
+        return routes.sort((a, b) => {
+            const aMinSwapCount = Math.min(...a.map(leg => this.pools.get(leg.pool)!.swapCount))
+            const bMinSwapCount = Math.min(...b.map(leg => this.pools.get(leg.pool)!.swapCount))
+            return bMinSwapCount - aMinSwapCount
+        })
     }
 
     private getOneHopRoutes(tokenFrom: string, tokenTo: string): Leg[] {

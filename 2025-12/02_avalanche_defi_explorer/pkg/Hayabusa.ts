@@ -45,7 +45,6 @@ export interface QuoteResult {
 export class Hayabusa {
     private client: PublicClient
     private contract: Address
-    private cache = new Map<string, bigint>()
 
     constructor(rpcUrl: string, contractAddress: string) {
         this.client = createPublicClient({
@@ -62,19 +61,11 @@ export class Hayabusa {
 
     /**
      * Quote multiple paths with different amounts
-     * Uses RPC batching for parallel execution, with caching
+     * Uses RPC batching for parallel execution
      */
     async quote(requests: QuoteRequest[]): Promise<QuoteResult[]> {
         const results = await Promise.allSettled(
-            requests.map(req => {
-                const key = this._cacheKey(req.path, req.amountIn)
-                const cached = this.cache.get(key)
-                if (cached !== undefined) return Promise.resolve(cached)
-                return this._doQuote(req.path, req.amountIn).then(out => {
-                    this.cache.set(key, out)
-                    return out
-                })
-            })
+            requests.map(req => this._doQuote(req.path, req.amountIn))
         )
 
         return results.map((r, i) => {
@@ -98,28 +89,12 @@ export class Hayabusa {
         })
     }
 
-    /**
-     * Invalidate cache entries containing any of these pools
-     */
-    bustCache(pools: string[]): void {
-        const poolSet = new Set(pools.map(p => p.toLowerCase()))
-        for (const key of this.cache.keys()) {
-            // Key format: pool1:pool2:...:amountIn
-            const parts = key.split(':')
-            const keyPools = parts.slice(0, -1)
-            if (keyPools.some(p => poolSet.has(p))) {
-                this.cache.delete(key)
-            }
-        }
-    }
-
-    private _cacheKey(path: Path, amountIn: bigint): string {
-        return path.map(leg => leg.pool.toLowerCase()).join(':') + ':' + amountIn.toString()
-    }
-
     private async _doQuote(path: Path, amountIn: bigint): Promise<bigint> {
+        const WHALE_ADDRESS = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' as Address
         const tokenIn = path[0].tokenIn as Address
-        const overrideObj = getOverride(tokenIn, this.contract, amountIn)
+
+        // Get override for BOTH balance and allowance using whale pattern
+        const overrideObj = getOverride(tokenIn, WHALE_ADDRESS, amountIn, this.contract)
 
         const pools = path.map(leg => leg.pool)
         const poolTypes = path.map(leg => leg.poolType)
@@ -127,7 +102,7 @@ export class Hayabusa {
 
         const data = encodeFunctionData({
             abi: getAbi(),
-            functionName: 'quote',
+            functionName: 'swap',  // Use swap() - msg.sender will be whale
             args: [pools, poolTypes, tokens, amountIn]
         })
 
@@ -142,12 +117,8 @@ export class Hayabusa {
             stateOverride = [{ address: addr as Address, stateDiff }]
         }
 
-        // console.log(`Calling Hayabusa at ${this.contract}`)
-        // console.log(`Data: ${data}`)
-        // console.log(`StateOverride: ${JSON.stringify(stateOverride, null, 2)}`)
-
         const result = await this.client.call({
-            account: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', // Use a real address to avoid 0x0 issues
+            account: WHALE_ADDRESS, // Call from whale address
             to: this.contract,
             data,
             stateOverride
@@ -157,7 +128,7 @@ export class Hayabusa {
 
         return decodeFunctionResult({
             abi: getAbi(),
-            functionName: 'quote',
+            functionName: 'swap',
             data: result.data
         }) as bigint
     }

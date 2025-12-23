@@ -181,16 +181,6 @@ contract Hayabusa {
         return _execute(pools, poolTypes, tokens, amountIn);
     }
 
-    /// @notice Quote - tokens must already be on contract (use with state override)
-    function quote(
-        address[] calldata pools,
-        uint8[] calldata poolTypes,
-        address[] calldata tokens,
-        uint256 amountIn
-    ) external returns (uint256) {
-        return _execute(pools, poolTypes, tokens, amountIn);
-    }
-
     function _execute(
         address[] calldata pools,
         uint8[] calldata poolTypes,

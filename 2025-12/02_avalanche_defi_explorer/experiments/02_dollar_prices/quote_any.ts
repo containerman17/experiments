@@ -25,7 +25,7 @@ console.log(`Found ${allCoins.length} unique tokens`)
 // Create Hayabusa instance
 const hayabusa = new Hayabusa(RPC_URL, HAYABUSA_ADDRESS)
 
-const tokens = poolMaster.getAllCoins().slice(0, 5)
+const tokens = poolMaster.getAllCoins().slice(0, 100)
 console.log(`Quoting 1 USDC -> each of ${tokens.length} tokens...`)
 
 const fixedWidth = (str: string, length: number) => {
@@ -53,8 +53,6 @@ for (let token of tokens) {
     const bestQuote = results.sort((a, b) => Number(b.amountOut) - Number(a.amountOut))[0]
     const amountOut = Number(bestQuote.amountOut) / 10 ** decimals
 
-    console.log(`${fixedWidth(symbol, 12)} ${amountOut.toFixed(6)} ${symbol} | ${routes.length} routes`)
-
     // Format and print the path: TokenA=>TokenB TokenB=>TokenC
     const pathStrings = []
     for (const leg of bestQuote.path) {
@@ -62,7 +60,11 @@ for (let token of tokens) {
         const symOut = await cachedRPCClient.getSymbol(leg.tokenOut)
         pathStrings.push(`${symIn}=>${symOut}`)
     }
-    console.log(`  Path: ${pathStrings.join(' ')}`)
+    // console.log(`  Path: ${pathStrings.join(' ')}. \n  Pools: ${bestQuote.path.map(leg => leg.pool).join(', ')}`)
+
+    const zeroQuotesCount = results.filter(result => result.amountOut === 0n).length
+
+    console.log(`${fixedWidth(symbol, 12)} ${amountOut.toFixed(6)} ${symbol} | ${routes.length} routes | Zeros: ${((zeroQuotesCount / routes.length) * 100).toFixed(2)}%`)
 
     console.log('-'.repeat(50))
 }

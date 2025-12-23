@@ -30,6 +30,7 @@ type DiscoveredPool = {
     providerName: string
     poolType: number
     tokens: Set<string>
+    swapCount: number
 }
 
 console.log('Starting pool discovery...')
@@ -61,7 +62,8 @@ for (const [address, pool] of existingPools) {
         address: pool.address,
         providerName: pool.providerName,
         poolType: pool.poolType,
-        tokens: new Set(pool.tokens)
+        tokens: new Set(pool.tokens),
+        swapCount: pool.swapCount
     })
 }
 console.log(`Loaded ${discoveredPools.size} existing pools from ${OUTPUT_FILE}`)
@@ -97,13 +99,15 @@ for (let fromBlock = fromBlockBase; fromBlock < roundedBlock; fromBlock += BATCH
                     address: poolKey,
                     providerName: event.providerName,
                     poolType: event.poolType,
-                    tokens: new Set([event.tokenIn, event.tokenOut])
+                    tokens: new Set([event.tokenIn, event.tokenOut]),
+                    swapCount: 1
                 })
             } else {
-                // Add new tokens to existing pool
+                // Add new tokens to existing pool and increment swap count
                 const pool = discoveredPools.get(poolKey)!
                 pool.tokens.add(event.tokenIn)
                 pool.tokens.add(event.tokenOut)
+                pool.swapCount++
             }
         }
     }))

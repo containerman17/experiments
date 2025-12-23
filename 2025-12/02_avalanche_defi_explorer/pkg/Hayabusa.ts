@@ -131,7 +131,12 @@ export class Hayabusa {
             stateOverride = [{ address: addr as Address, stateDiff }]
         }
 
+        // console.log(`Calling Hayabusa at ${this.contract}`)
+        // console.log(`Data: ${data}`)
+        // console.log(`StateOverride: ${JSON.stringify(stateOverride, null, 2)}`)
+
         const result = await this.client.call({
+            account: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', // Use a real address to avoid 0x0 issues
             to: this.contract,
             data,
             stateOverride

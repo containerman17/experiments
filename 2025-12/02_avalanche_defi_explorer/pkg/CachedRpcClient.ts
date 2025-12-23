@@ -19,12 +19,12 @@ export class CachedRpcClient implements CachedRPC {
         this.rpcUrl = rpcUrl
         this.cache = cache
 
-        // setInterval(() => {
-        //     if (this.cachedCount === 0 && this.rpcCount === 0) return
-        //     console.log(`RPC Stats: ${this.cachedCount} cached, ${this.rpcCount} non-cached served`)
-        //     this.cachedCount = 0
-        //     this.rpcCount = 0
-        // }, 1000)
+        setInterval(() => {
+            if (this.rpcCount === 0) return
+            console.log(`RPC Stats: ${this.cachedCount} cached, ${this.rpcCount} non-cached served`)
+            this.cachedCount = 0
+            this.rpcCount = 0
+        }, 1000)
     }
 
     async ethCall(to: string, method: string): Promise<string> {

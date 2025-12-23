@@ -5,10 +5,11 @@ import { createPublicClient, http, webSocket } from 'viem'
 import { avalanche } from 'viem/chains'
 import { type Log } from 'viem'
 import { savePools, loadPools } from '../../pkg/poolsdb/PoolLoader.ts'
+import { getRpcUrl } from '../../pkg/rpc.ts'
 
 const BLOCKS_BEHIND_LOOKUP = (24 * 60 * 60 * 1000) / 1250
 const BATCH_SIZE = 100
-const RPC_URL = process.env.RPC_URL || 'https://api.avax.network/ext/bc/C/rpc'
+const RPC_URL = getRpcUrl()
 const OUTPUT_FILE = './experiments/01_discover_pools/pools.txt'
 
 const createPublicClientUniversal = (rpcUrl: string) => {

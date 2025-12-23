@@ -4,12 +4,11 @@ import path from 'path'
 import { providers } from "../../../pkg/providers/index.ts"
 import { createPublicClient, webSocket, http } from "viem"
 import { avalanche } from 'viem/chains'
-import dotenv from "dotenv"
 import { CachedRpcClient } from '../../../pkg/CachedRpcClient.ts'
-dotenv.config()
+import { getRpcUrl, getWsRpcUrl } from '../../../pkg/rpc.ts'
 
-const RPC_URL = "http://167.235.8.126:9650/ext/bc/C/rpc"
-const WS_RPC = "ws://167.235.8.126:9650/ext/bc/C/ws"
+const RPC_URL = getRpcUrl()
+const WS_RPC = getWsRpcUrl()
 const BATCH_SIZE = 100
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))

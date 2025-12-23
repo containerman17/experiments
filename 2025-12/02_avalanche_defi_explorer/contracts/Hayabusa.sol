@@ -492,5 +492,27 @@ contract Hayabusa {
         IERC20(_currentTokenIn).transfer(msg.sender, amountToPay);
     }
 
+    function pangolinv3SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata
+    ) external {
+        uint256 amountToPay = amount0Delta > 0
+            ? uint256(amount0Delta)
+            : uint256(amount1Delta);
+        IERC20(_currentTokenIn).transfer(msg.sender, amountToPay);
+    }
+
+    function ramsesV2SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata
+    ) external {
+        uint256 amountToPay = amount0Delta > 0
+            ? uint256(amount0Delta)
+            : uint256(amount1Delta);
+        IERC20(_currentTokenIn).transfer(msg.sender, amountToPay);
+    }
+
     receive() external payable {}
 }

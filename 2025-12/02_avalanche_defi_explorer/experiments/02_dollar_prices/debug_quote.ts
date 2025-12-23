@@ -1,9 +1,9 @@
 import { createPublicClient, http, parseUnits, type Address, encodeFunctionData, decodeErrorResult } from 'viem'
 import { avalanche } from 'viem/chains'
-import 'dotenv/config'
 import fs from 'fs'
+import { getRpcUrl } from '../../pkg/rpc.ts'
 
-const RPC_URL = 'http://167.235.8.126:9650/ext/bc/C/rpc'
+const RPC_URL = getRpcUrl()
 const USDC = '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e' as Address
 const WAVAX = '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7' as Address
 const ROUTER = '0xcc57b84a9b9c7028900a571a739c59032f265030' as Address

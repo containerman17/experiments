@@ -1,7 +1,8 @@
 import { createPublicClient, http, type Address } from 'viem'
 import { avalanche } from 'viem/chains'
+import { getRpcUrl } from '../../pkg/rpc.ts'
 
-const RPC_URL = 'http://167.235.8.126:9650/ext/bc/C/rpc'
+const RPC_URL = getRpcUrl()
 const pool = '0x864d4e5ee7318e97483db7eb0912e09f161516ea' as Address
 
 const client = createPublicClient({

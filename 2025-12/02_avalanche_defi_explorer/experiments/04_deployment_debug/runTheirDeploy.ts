@@ -4,9 +4,9 @@ import { createPublicClient, createWalletClient, http } from 'viem'
 import { avalanche } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
 import { config } from "dotenv"
-import { getRpcUrl } from "../pkg/rpc.ts"
 
 config()
+import { getRpcUrl } from '../../pkg/rpc.ts'
 const RPC = getRpcUrl()
 
 function sleep(ms: number) {
@@ -18,10 +18,11 @@ const dir = import.meta.dirname
 const envPath = `${dir}/../.env`
 const envContent = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : ''
 
-if (/^ROUTER_CONTRACT=/m.test(envContent)) {
-    console.error('💀 ROUTER_CONTRACT already exists in .env. Delete it first.')
-    process.exit(1)
-}
+// Commented out to allow multiple runs
+// if (/^ROUTER_CONTRACT=/m.test(envContent)) {
+//     console.error('💀 ROUTER_CONTRACT already exists in .env. Delete it first.')
+//     process.exit(1)
+// }
 
 const privateKey = process.env.PRIVATE_KEY
 if (!privateKey) {

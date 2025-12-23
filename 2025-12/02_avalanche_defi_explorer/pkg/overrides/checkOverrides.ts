@@ -1,8 +1,9 @@
 import { createPublicClient, http, parseAbi, encodeFunctionData, type Address } from 'viem'
 import { avalanche } from 'viem/chains'
 import { getOverride, getSupportedTokens } from './getOverride.ts'
+import { getRpcUrl } from '../rpc.ts'
 
-const RPC = process.env.RPC || 'http://localhost:9650/ext/bc/C/rpc'
+const RPC = getRpcUrl()
 const TEST_ADDRESS = '0x3062e40000000000000000000000000000000000' as Address
 const TEST_BALANCE = 123456789n
 

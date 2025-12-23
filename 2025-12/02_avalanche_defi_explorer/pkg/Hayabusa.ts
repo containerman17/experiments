@@ -82,7 +82,18 @@ export class Hayabusa {
             if (r.status === 'fulfilled') {
                 return { path: req.path, amountIn: req.amountIn, amountOut: r.value }
             } else {
-                return { path: req.path, amountIn: req.amountIn, amountOut: 0n, error: r.reason?.message || 'failed' }
+                // Capture revert data if available
+                const err = r.reason
+                let errorMessage = err?.message || 'failed'
+
+                // Try to extract revert data in hex format
+                if (err?.data) {
+                    errorMessage += ` | data: ${err.data}`
+                } else if (err?.cause?.data) {
+                    errorMessage += ` | data: ${err.cause.data}`
+                }
+
+                return { path: req.path, amountIn: req.amountIn, amountOut: 0n, error: errorMessage }
             }
         })
     }

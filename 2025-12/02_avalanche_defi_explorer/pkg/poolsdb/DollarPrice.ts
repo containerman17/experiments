@@ -7,15 +7,18 @@ export class DollarPrice {
     private readonly dollarAmounts: DollarAmounts
     private readonly pools: StoredPool[]
     private readonly hayabusa: Hayabusa
+    private readonly multiplyerUSD: bigint
 
     constructor(
         dollarAmounts: DollarAmounts,
         pools: Map<string, StoredPool>,
         hayabusa: Hayabusa,
+        multiplyerUSD: bigint = 1n,
     ) {
         this.dollarAmounts = dollarAmounts
         this.pools = Array.from(pools.values())
         this.hayabusa = hayabusa
+        this.multiplyerUSD = multiplyerUSD
     }
 
     private priceCache: Map<string, bigint> = new Map()
@@ -53,7 +56,7 @@ export class DollarPrice {
         const dollarAmounts = new Map<string, bigint>()
         await Promise.all(Array.from(allTokens).map(async (token) => {
             try {
-                const amount = await this.dollarAmounts.getAmountForOneDollar(token)
+                const amount = (await this.dollarAmounts.getAmountForOneDollar(token)) * this.multiplyerUSD
                 dollarAmounts.set(token.toLowerCase(), amount)
             } catch (e: any) {
                 console.warn(`Failed to get dollar amount for ${token}: ${e.message}`)

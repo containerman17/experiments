@@ -12,9 +12,11 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "@types/ws": "^8.18.1",
+    "bignumber.js": "^9.3.1",
     "express": "^5.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-router-dom": "^7.11.0",
     "react-timeago": "^8.3.0",
     "tailwindcss": "^4.1.18",
     "viem": "^2.43.3",

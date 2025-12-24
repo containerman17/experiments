@@ -36,7 +36,7 @@ if (!ROUTER_CONTRACT) throw new Error("ROUTER_CONTRACT env var not set")
 
 const hayabusa = new Hayabusa(RPC_URL, ROUTER_CONTRACT)
 const dollarAmounts = new DollarAmounts(poolsFilePath, hayabusa)
-const dollarPrice = new DollarPrice(dollarAmounts, pools, hayabusa)
+const dollarPrice = new DollarPrice(dollarAmounts, pools, hayabusa, 100n)
 
 // -- State Management --
 

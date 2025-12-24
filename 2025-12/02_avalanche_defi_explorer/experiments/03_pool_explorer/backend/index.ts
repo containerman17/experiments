@@ -6,96 +6,122 @@ import { avalanche } from 'viem/chains'
 import { getCachedRpcClient } from '../../../pkg/CachedRpcClient.ts'
 import { getRpcUrl, getWsRpcUrl } from '../../../pkg/rpc.ts'
 import { DollarAmounts } from '../../../pkg/poolsdb/DollarAmounts.ts'
-
-const RPC_URL = getRpcUrl()
-const WS_RPC = getWsRpcUrl()
-const BATCH_SIZE = 100
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+import { WebSocketServer } from 'ws'
+import express from 'express'
+import { createServer } from 'http'
+import { createServer as createViteServer } from 'vite'
 
 import { Hayabusa } from "../../../pkg/Hayabusa.ts"
 import { DollarPrice } from '../../../pkg/poolsdb/DollarPrice.ts'
 import { PoolMaster } from '../../../pkg/poolsdb/PoolMaster.ts'
+import { type PoolPriceData, getPriceKey } from '../src/types.ts'
 
-// Load pools from file
+const RPC_URL = getRpcUrl()
+const WS_RPC = getWsRpcUrl()
+const BATCH_SIZE = 100
+const PORT = 5173
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// -- Initialization --
+
 const poolsFilePath = path.resolve(path.join(__dirname, "../../../experiments/01_discover_pools/pools.txt"))
 const poolmaster = new PoolMaster(poolsFilePath)
-const topCoins = poolmaster.getAllCoins(2, 0, "combined").slice(0, 20)
+const topCoins = poolmaster.getAllCoins(2, 0, "combined").slice(0, 100)
 const cachedRPC = getCachedRpcClient(RPC_URL)
 
-const topCoinNames = await Promise.all(topCoins.map(c => cachedRPC.getSymbol(c)))
-
 const pools = poolmaster.getPoolsWithLimitedCoinSet(topCoins)
-console.log(`Working with ${topCoinNames.length} top coins in ${[...pools.values()].length} pools: \n${topCoinNames.join(", ")}`)
-
-
 const ROUTER_CONTRACT = process.env.ROUTER_CONTRACT || ""
 if (!ROUTER_CONTRACT) throw new Error("ROUTER_CONTRACT env var not set")
-
-const wsClient = createPublicClient({
-    chain: avalanche,
-    transport: webSocket(WS_RPC),
-})
-
-const httpClient = createPublicClient({
-    chain: avalanche,
-    transport: http(RPC_URL),
-})
-
-let lastBlockNumber = Number(await httpClient.getBlockNumber())
-const catchUpTo = Math.floor(lastBlockNumber / BATCH_SIZE) * BATCH_SIZE
-let lastProcessedBlockNumber = catchUpTo
-
-wsClient.watchBlockNumber({
-    onBlockNumber: (blockNumber: bigint) => {
-        lastBlockNumber = Number(blockNumber)
-    },
-    onError: (error) => {
-        console.error(error)
-        process.exit(1)
-    }
-})
 
 const hayabusa = new Hayabusa(RPC_URL, ROUTER_CONTRACT)
 const dollarAmounts = new DollarAmounts(poolsFilePath, hayabusa)
 const dollarPrice = new DollarPrice(dollarAmounts, pools, hayabusa)
 
+// -- State Management --
+
+const fullState = new Map<string, PoolPriceData>()
+
+function broadcast(message: any) {
+    const payload = JSON.stringify(message)
+    wss.clients.forEach((client) => {
+        if (client.readyState === 1) client.send(payload)
+    })
+}
+
 dollarPrice.subscribeToPrices(async (prices) => {
-    let nonZeroPrices = 0
-    let zeroPrices = 0
-    let errors = 0
-    for (const price of prices) {
-        // const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
-        // const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
-        // const decimalsIn = await cachedRPC.getDecimals(price.tokenIn)
-        // const decimalsOut = await cachedRPC.getDecimals(price.tokenOut)
-
-        // if (price.error) {
-        //     console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
-        // } else {
-        //     console.log(`${(Number(price.amountIn) / 10 ** decimalsIn).toFixed(8)} ${symbolIn} -> ${(Number(price.amountOut) / 10 ** decimalsOut).toFixed(8)} ${symbolOut} @ ${price.providerName} ${price.pool}`)
-        // }
-        if (price.error) {
-            errors++
-            // const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
-            // const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
-            // console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
-
-        } else if (price.amountOut > 0) {
-            nonZeroPrices++
-        } else {
-            zeroPrices++
+    const patch: PoolPriceData[] = await Promise.all(prices.map(async p => {
+        const [symbolIn, symbolOut, decIn, decOut] = await Promise.all([
+            cachedRPC.getSymbol(p.tokenIn),
+            cachedRPC.getSymbol(p.tokenOut),
+            cachedRPC.getDecimals(p.tokenIn),
+            cachedRPC.getDecimals(p.tokenOut)
+        ])
+        return {
+            pool: p.pool,
+            tokenIn: p.tokenIn,
+            tokenOut: p.tokenOut,
+            tokenInSymbol: symbolIn,
+            tokenOutSymbol: symbolOut,
+            tokenInDecimals: decIn,
+            tokenOutDecimals: decOut,
+            amountIn: p.amountIn.toString(),
+            amountOut: p.error ? "0" : p.amountOut.toString(),
+            providerName: p.providerName,
+            error: p.error,
+            updatedAt: Date.now()
         }
+    }))
+
+    // Apply patch to full state
+    for (const p of patch) {
+        fullState.set(getPriceKey(p), p)
     }
-    console.log(`Non-zero prices: ${nonZeroPrices}, zero prices: ${zeroPrices}, errors: ${errors}`)
+
+    // Broadcast patch
+    broadcast({ type: 'patch', data: patch })
+})
+
+// -- Server & WebSocket --
+
+const app = express()
+const server = createServer(app)
+const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' })
+app.use(vite.middlewares)
+
+const wss = new WebSocketServer({ server })
+
+wss.on('connection', (ws) => {
+    console.log('Client connected')
+    // Send full state as the first "patch" (snapshot)
+    if (fullState.size > 0) {
+        ws.send(JSON.stringify({ type: 'patch', data: Array.from(fullState.values()) }))
+    }
+    ws.on('close', () => console.log('Client disconnected'))
+})
+
+server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`))
+
+// -- Blockchain Monitoring --
+
+const httpClient = createPublicClient({ chain: avalanche, transport: http(RPC_URL) })
+const wsClient = createPublicClient({ chain: avalanche, transport: webSocket(WS_RPC) })
+
+let lastBlockNumber = Number(await httpClient.getBlockNumber())
+let lastProcessedBlockNumber = Math.floor(lastBlockNumber / BATCH_SIZE) * BATCH_SIZE
+
+wsClient.watchBlockNumber({
+    onBlockNumber: (num) => { lastBlockNumber = Number(num) },
+    onError: (err) => { console.error(err); process.exit(1) }
 })
 
 let firstRun = true
 while (true) {
     if (lastBlockNumber <= lastProcessedBlockNumber) {
-        await new Promise(resolve => setTimeout(resolve, 1))
+        await new Promise(r => setTimeout(r, 1))
         continue
     }
+
     const toBlock = Math.min(lastBlockNumber, lastProcessedBlockNumber + BATCH_SIZE)
     const logs = await httpClient.getLogs({
         fromBlock: BigInt(lastProcessedBlockNumber + 1),
@@ -104,27 +130,19 @@ while (true) {
 
     const poolsToInvalidate = new Set<string>()
     await Promise.all(providers.map(async (provider) => {
-        const swapEvents = await provider.processLogs(logs, cachedRPC)
-        for (const event of swapEvents) {
-            poolsToInvalidate.add(event.pool.toLowerCase())
-        }
+        const events = await provider.processLogs(logs, cachedRPC)
+        events.forEach(e => poolsToInvalidate.add(e.pool.toLowerCase()))
     }))
 
-    // Invalidate cache for affected pools
     if (poolsToInvalidate.size > 0 || firstRun) {
         dollarPrice.bustCaches(Array.from(poolsToInvalidate))
-        console.time(`Invalidating cache for ${poolsToInvalidate.size} pools`)
+        const poolProviders = [...new Set(Array.from(poolsToInvalidate).map(p => pools.get(p)?.providerName))]
+        console.time(`Update ${poolsToInvalidate.size} pools ${poolProviders.join(', ')}`)
         await dollarPrice.fetchPrices()
-        console.timeEnd(`Invalidating cache for ${poolsToInvalidate.size} pools`)
+        console.timeEnd(`Update ${poolsToInvalidate.size} pools ${poolProviders.join(', ')}`)
         firstRun = false
-
     }
 
-
-    if ((lastProcessedBlockNumber + 1) === toBlock) {
-        console.log(`Processed block ${toBlock}`)
-    } else {
-        console.log(`Processed ${toBlock - lastProcessedBlockNumber} blocks from ${lastProcessedBlockNumber + 1}`)
-    }
+    console.log(`Processed up to ${toBlock}`)
     lastProcessedBlockNumber = toBlock
 }

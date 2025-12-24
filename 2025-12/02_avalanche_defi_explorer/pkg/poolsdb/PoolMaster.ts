@@ -32,11 +32,76 @@ export class PoolMaster {
         }
     }
 
-    public getAllCoins(): string[] {
-        return Array.from(this.neighborsIndex.entries())
-            .sort((a, b) => b[1].size - a[1].size)
-            .map(([token]) => token)
+    public getAllCoins(minPools: number = 0, minSwaps: number = 0, sortBy: "pool_count" | "swap_count" | "combined" = "pool_count"): string[] {
+        const poolCountForCoin = new Map<string, number>()
+        const swapsForCoin = new Map<string, number>()
+
+        for (const pool of this.pools.values()) {
+            for (const token of pool.tokens) {
+                const oldVal = poolCountForCoin.get(token) || 0
+                poolCountForCoin.set(token, oldVal + 1)
+
+                const oldSwaps = swapsForCoin.get(token) || 0
+                swapsForCoin.set(token, oldSwaps + pool.swapCount)
+            }
+        }
+
+        const candidates = Array.from(this.neighborsIndex.keys())
+            .filter(token => (poolCountForCoin.get(token) || 0) >= minPools)
+            .filter(token => (swapsForCoin.get(token) || 0) >= minSwaps)
+
+        let sorted: string[]
+
+        if (sortBy === "combined") {
+            // Rank-based sorting: sort by each metric, assign ranks, then sort by sum of ranks
+            const poolRanks = new Map<string, number>()
+            const swapRanks = new Map<string, number>()
+
+            // Get pool count ranks (1 = highest pool count)
+            const byPoolCount = [...candidates].sort((a, b) =>
+                (poolCountForCoin.get(b) || 0) - (poolCountForCoin.get(a) || 0)
+            )
+            byPoolCount.forEach((token, index) => poolRanks.set(token, index + 1))
+
+            // Get swap count ranks (1 = highest swap count)
+            const bySwapCount = [...candidates].sort((a, b) =>
+                (swapsForCoin.get(b) || 0) - (swapsForCoin.get(a) || 0)
+            )
+            bySwapCount.forEach((token, index) => swapRanks.set(token, index + 1))
+
+            // Sort by sum of ranks (lower is better)
+            sorted = candidates.sort((a, b) => {
+                const rankSumA = (poolRanks.get(a) || 0) + (swapRanks.get(a) || 0)
+                const rankSumB = (poolRanks.get(b) || 0) + (swapRanks.get(b) || 0)
+                return rankSumA - rankSumB
+            })
+        } else {
+            sorted = candidates.sort((a, b) => {
+                const valA = sortBy === "pool_count" ? (poolCountForCoin.get(a) || 0) : (swapsForCoin.get(a) || 0)
+                const valB = sortBy === "pool_count" ? (poolCountForCoin.get(b) || 0) : (swapsForCoin.get(b) || 0)
+                return valB - valA
+            })
+        }
+
+        return sorted
     }
+
+    public getPoolsWithLimitedCoinSet(coins: string[]): Map<string, StoredPool> {
+        const poolsArray = Array.from(this.pools.values())
+        const filteredPools: StoredPool[] = []
+        for (const pool of poolsArray) {
+            if (pool.tokens.every(token => coins.includes(token))) {
+                filteredPools.push(pool)
+            }
+        }
+        const result: Map<string, StoredPool> = new Map()
+        for (const pool of filteredPools) {
+            result.set(pool.address, pool)
+        }
+        return result
+    }
+
+
 
     /**
      * Find routes from tokenFrom to tokenTo, searching progressively deeper.
@@ -70,6 +135,11 @@ export class PoolMaster {
         // 4-hop
         const fourHops = this.getFourHopRoutes(tokenFrom, tokenTo)
         for (const route of fourHops) routes.push(route)
+        if (routes.length >= stopAt) return this.sortRoutesBySwapCount(routes)
+
+        // 5-hop
+        const fiveHops = this.getFiveHopRoutes(tokenFrom, tokenTo)
+        for (const route of fiveHops) routes.push(route)
 
         return this.sortRoutesBySwapCount(routes)
     }
@@ -217,5 +287,40 @@ export class PoolMaster {
         }
 
         return routes
+    }
+
+    private getFiveHopRoutes(tokenFrom: string, tokenTo: string): Leg[][] {
+        const toNeighbours = this.neighborsIndex.get(tokenTo)
+        if (!toNeighbours) return []
+
+        const routes: Leg[][] = []
+
+        for (const penultimate of toNeighbours) {
+            // Skip if penultimate is one of our endpoints
+            if (penultimate === tokenFrom || penultimate === tokenTo) continue
+
+            // 4-hop routes from start to penultimate
+            const fourHops = this.getFourHopRoutes(tokenFrom, penultimate)
+            // 1-hop routes from penultimate to end
+            const finalLegs = this.getOneHopRoutes(penultimate, tokenTo)
+
+            // Compose them with pool-reuse filtering
+            for (const fourHop of fourHops) {
+                const usedPools = new Set(fourHop.map(leg => leg.pool))
+
+                for (const finalLeg of finalLegs) {
+                    // Skip if final leg reuses a pool from the 4-hop
+                    if (usedPools.has(finalLeg.pool)) continue
+
+                    routes.push([...fourHop, finalLeg])
+                }
+            }
+        }
+
+        return routes
+    }
+
+    public debugGetNeighbors(token: string): string[] {
+        return Array.from(this.neighborsIndex.get(token)!.values())
     }
 }

@@ -1,4 +1,3 @@
-import * as lmdb from 'lmdb'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import { providers } from "../../../pkg/providers/index.ts"
@@ -13,19 +12,21 @@ const WS_RPC = getWsRpcUrl()
 const BATCH_SIZE = 100
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const poolsDataDir = path.resolve(path.join(__dirname, "../../../data/poolsdb/"))
-console.log(poolsDataDir)
-const poolsLmdb = lmdb.open(poolsDataDir, {
-    compression: true,
-})
 
 import { Hayabusa } from "../../../pkg/Hayabusa.ts"
-import { loadPools } from "../../../pkg/poolsdb/PoolLoader.ts"
 import { DollarPrice } from '../../../pkg/poolsdb/DollarPrice.ts'
+import { PoolMaster } from '../../../pkg/poolsdb/PoolMaster.ts'
 
 // Load pools from file
 const poolsFilePath = path.resolve(path.join(__dirname, "../../../experiments/01_discover_pools/pools.txt"))
-const pools = loadPools(poolsFilePath)
+const poolmaster = new PoolMaster(poolsFilePath)
+const topCoins = poolmaster.getAllCoins(2, 0, "combined").slice(0, 10)
+const cachedRPC = getCachedRpcClient(RPC_URL)
+
+const topCoinNames = await Promise.all(topCoins.map(c => cachedRPC.getSymbol(c)))
+
+const pools = poolmaster.getPoolsWithLimitedCoinSet(topCoins)
+console.log(`Working with ${topCoinNames.length} top coins in ${[...pools.values()].length} pools: \n${topCoinNames.join(", ")}`)
 
 
 const ROUTER_CONTRACT = process.env.ROUTER_CONTRACT || ""
@@ -41,7 +42,7 @@ const httpClient = createPublicClient({
     transport: http(RPC_URL),
 })
 
-let lastBlockNumber = Number(await wsClient.getBlockNumber())
+let lastBlockNumber = Number(await httpClient.getBlockNumber())
 const catchUpTo = Math.floor(lastBlockNumber / BATCH_SIZE) * BATCH_SIZE
 let lastProcessedBlockNumber = catchUpTo
 
@@ -55,24 +56,41 @@ wsClient.watchBlockNumber({
     }
 })
 
-const cachedRPC = getCachedRpcClient(RPC_URL)
 const hayabusa = new Hayabusa(RPC_URL, ROUTER_CONTRACT)
 const dollarAmounts = new DollarAmounts(poolsFilePath, hayabusa)
 const dollarPrice = new DollarPrice(dollarAmounts, pools, hayabusa)
 
-dollarPrice.subscribeToPrices(async (price) => {
-    const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
-    const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
-    const decimalsIn = await cachedRPC.getDecimals(price.tokenIn)
-    const decimalsOut = await cachedRPC.getDecimals(price.tokenOut)
+dollarPrice.subscribeToPrices(async (prices) => {
+    let nonZeroPrices = 0
+    let zeroPrices = 0
+    let errors = 0
+    for (const price of prices) {
+        // const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
+        // const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
+        // const decimalsIn = await cachedRPC.getDecimals(price.tokenIn)
+        // const decimalsOut = await cachedRPC.getDecimals(price.tokenOut)
 
-    if (price.error) {
-        console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
-    } else {
-        console.log(`${(Number(price.amountIn) / 10 ** decimalsIn).toFixed(8)} ${symbolIn} -> ${(Number(price.amountOut) / 10 ** decimalsOut).toFixed(8)} ${symbolOut} @ ${price.providerName} ${price.pool}`)
+        // if (price.error) {
+        //     console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
+        // } else {
+        //     console.log(`${(Number(price.amountIn) / 10 ** decimalsIn).toFixed(8)} ${symbolIn} -> ${(Number(price.amountOut) / 10 ** decimalsOut).toFixed(8)} ${symbolOut} @ ${price.providerName} ${price.pool}`)
+        // }
+        if (price.error) {
+            errors++
+            const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
+            const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
+            console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
+
+        } else if (price.amountOut > 0) {
+            nonZeroPrices++
+        } else {
+            zeroPrices++
+        }
     }
+    console.log(`Non-zero prices: ${nonZeroPrices}, zero prices: ${zeroPrices}, errors: ${errors}`)
 })
 
+let firstRun = true
 while (true) {
     if (lastBlockNumber <= lastProcessedBlockNumber) {
         await new Promise(resolve => setTimeout(resolve, 1))
@@ -93,11 +111,15 @@ while (true) {
     }))
 
     // Invalidate cache for affected pools
-    if (poolsToInvalidate.size > 0) {
-        //TODO: clear cache
+    if (poolsToInvalidate.size > 0 || firstRun) {
+        dollarPrice.bustCaches(Array.from(poolsToInvalidate))
+        console.time(`Invalidating cache for ${poolsToInvalidate.size} pools`)
+        await dollarPrice.fetchPrices()
+        console.timeEnd(`Invalidating cache for ${poolsToInvalidate.size} pools`)
+        firstRun = false
+
     }
 
-    await dollarPrice.fetchPrices()
 
     if ((lastProcessedBlockNumber + 1) === toBlock) {
         console.log(`Processed block ${toBlock}`)

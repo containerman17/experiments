@@ -42,8 +42,7 @@ export function savePools(filePath: string, pools: Iterable<{
 export function loadPools(filePath: string): Map<string, StoredPool> {
 
     if (!fs.existsSync(filePath)) {
-        console.warn(`Pools file not found: ${filePath}. Starting with empty pool set.`)
-        return pools
+        throw new Error(`Pools file not found: ${filePath}`)
     }
 
     const content = fs.readFileSync(filePath, 'utf-8')
@@ -93,6 +92,5 @@ export function loadPools(filePath: string): Map<string, StoredPool> {
         pools.set(pool.address, pool)
     }
 
-    console.log(`Loaded ${poolsArr.length} pools from ${filePath}`)
     return pools
 }

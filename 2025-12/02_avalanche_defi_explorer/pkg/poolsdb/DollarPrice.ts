@@ -31,67 +31,102 @@ export class DollarPrice {
         }
     }
 
-    private priceCallbacks: ((event: SwapEvent) => void)[] = []
-    subscribeToPrices(callback: (event: SwapEvent) => void) {
+    private priceCallbacks: ((events: SwapEvent[]) => void)[] = []
+    subscribeToPrices(callback: (events: SwapEvent[]) => void) {
         this.priceCallbacks.push(callback)
     }
 
     async fetchPrices() {
-        for (const pool of this.pools) {
-            if (this.cacheValidPools.has(pool.address)) {
-                continue
+        // Collect all pools that need quoting
+        const poolsToQuote = this.pools.filter(pool => !this.cacheValidPools.has(pool.address))
+        if (poolsToQuote.length === 0) return
+
+        // Gather all unique tokens we need dollar amounts for
+        const allTokens = new Set<string>()
+        for (const pool of poolsToQuote) {
+            for (const token of pool.tokens) {
+                allTokens.add(token)
             }
+        }
 
+        // Fetch dollar amounts for all tokens at once - handle failures gracefully
+        const dollarAmounts = new Map<string, bigint>()
+        await Promise.all(Array.from(allTokens).map(async (token) => {
+            try {
+                const amount = await this.dollarAmounts.getAmountForOneDollar(token)
+                dollarAmounts.set(token.toLowerCase(), amount)
+            } catch (e: any) {
+                console.warn(`Failed to get dollar amount for ${token}: ${e.message}`)
+            }
+        }))
+
+        // Build all quote requests in one pass
+        const quoteRequests: QuoteRequest[] = []
+        const requestToPool: StoredPool[] = [] // Track which pool each request belongs to
+
+        for (const pool of poolsToQuote) {
             const tokens = pool.tokens
-
-            const possibleTokenCombinations: string[][] = []
             for (let i = 0; i < tokens.length; i++) {
                 for (let j = 0; j < tokens.length; j++) {
                     if (i === j) continue
-                    possibleTokenCombinations.push([tokens[i], tokens[j]])
+
+                    const tokenIn = tokens[i].toLowerCase()
+                    const amountIn = dollarAmounts.get(tokenIn)
+                    if (amountIn === undefined) {
+                        continue // Skip tokens we couldn't price in USD
+                    }
+
+                    const leg: Leg = {
+                        pool: pool.address,
+                        poolType: pool.poolType,
+                        tokenIn: tokens[i],
+                        tokenOut: tokens[j],
+                    }
+                    quoteRequests.push({
+                        path: [leg],
+                        amountIn: amountIn,
+                    })
+                    requestToPool.push(pool)
                 }
             }
+        }
 
-            const dollarAmounts = await this.dollarAmounts.getAmountsForOneDollar(pool.tokens)
+        // One huge batch quote
+        const quotes = await this.hayabusa.quote(quoteRequests)
 
-            const quoteRequests: QuoteRequest[] = []
-            for (const tokenCombo of possibleTokenCombinations) {
-                const leg: Leg = {
-                    pool: pool.address,
-                    poolType: pool.poolType,
-                    tokenIn: tokenCombo[0],
-                    tokenOut: tokenCombo[1],
-                }
-                quoteRequests.push({
-                    path: [leg],
-                    amountIn: dollarAmounts.get(tokenCombo[0])!,
-                })
+        // Collect all swap events
+        const swapEvents: SwapEvent[] = []
+
+        // Process all results
+        for (let i = 0; i < quotes.length; i++) {
+            const quote = quotes[i]
+            const pool = requestToPool[i]
+            const leg = quote.path[0]
+            const cacheKey = this.getKey(pool.address, leg.tokenIn, leg.tokenOut)
+
+            if (quote.amountOut > 0n) {
+                this.priceCache.set(cacheKey, quote.amountOut)
             }
 
-            const quotes = await this.hayabusa.quote(quoteRequests)
-            for (const quote of quotes) {
-                const cacheKey = this.getKey(pool.address, quote.path[0].tokenIn, quote.path[0].tokenOut)
-                if (quote.amountOut > 0n) {
-                    this.priceCache.set(cacheKey, quote.amountOut)
-                }
-            }
+            // Collect swap event
+            swapEvents.push({
+                pool: pool.address,
+                tokenIn: leg.tokenIn,
+                tokenOut: leg.tokenOut,
+                amountIn: dollarAmounts.get(leg.tokenIn.toLowerCase())!,
+                amountOut: quote.amountOut,
+                poolType: pool.poolType,
+                providerName: pool.providerName,
+                error: quote.error,
+            })
+        }
 
+        // Call callbacks once with all events
+        this.priceCallbacks.forEach(callback => callback(swapEvents))
+
+        // Mark all pools as cached
+        for (const pool of poolsToQuote) {
             this.cacheValidPools.add(pool.address)
-
-            // Emit swap events for each token combination we quoted
-            for (const quote of quotes) {
-                const leg = quote.path[0]
-                this.priceCallbacks.forEach(callback => callback({
-                    pool: pool.address,
-                    tokenIn: leg.tokenIn,
-                    tokenOut: leg.tokenOut,
-                    amountIn: dollarAmounts.get(leg.tokenIn)!,
-                    amountOut: quote.amountOut,
-                    poolType: pool.poolType,
-                    providerName: pool.providerName,
-                    error: quote.error,
-                }))
-            }
         }
     }
 }

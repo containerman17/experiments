@@ -98,15 +98,10 @@ export class DollarAmounts {
     async getAmountsForOneDollar(tokens: string[]): Promise<Map<string, bigint>> {
         const results = new Map<string, bigint>()
 
-        // Process all tokens in parallel
+        // Process all tokens in parallel and propagate any errors
         const promises = tokens.map(async (token) => {
-            try {
-                const amount = await this.getAmountForOneDollar(token)
-                results.set(token.toLowerCase(), amount)
-            } catch (error) {
-                // Log error but don't fail the entire batch
-                console.warn(`Failed to get amount for token ${token}:`, error)
-            }
+            const amount = await this.getAmountForOneDollar(token)
+            results.set(token.toLowerCase(), amount)
         })
 
         await Promise.all(promises)

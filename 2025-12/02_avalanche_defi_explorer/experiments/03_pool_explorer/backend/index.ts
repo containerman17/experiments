@@ -20,7 +20,7 @@ import { PoolMaster } from '../../../pkg/poolsdb/PoolMaster.ts'
 // Load pools from file
 const poolsFilePath = path.resolve(path.join(__dirname, "../../../experiments/01_discover_pools/pools.txt"))
 const poolmaster = new PoolMaster(poolsFilePath)
-const topCoins = poolmaster.getAllCoins(2, 0, "combined").slice(0, 10)
+const topCoins = poolmaster.getAllCoins(2, 0, "combined").slice(0, 20)
 const cachedRPC = getCachedRpcClient(RPC_URL)
 
 const topCoinNames = await Promise.all(topCoins.map(c => cachedRPC.getSymbol(c)))
@@ -77,9 +77,9 @@ dollarPrice.subscribeToPrices(async (prices) => {
         // }
         if (price.error) {
             errors++
-            const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
-            const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
-            console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
+            // const symbolIn = await cachedRPC.getSymbol(price.tokenIn)
+            // const symbolOut = await cachedRPC.getSymbol(price.tokenOut)
+            // console.log(`❌ FAIL: ${symbolIn} -> ${symbolOut} @ ${price.providerName} ${price.pool} | ${price.error}`)
 
         } else if (price.amountOut > 0) {
             nonZeroPrices++

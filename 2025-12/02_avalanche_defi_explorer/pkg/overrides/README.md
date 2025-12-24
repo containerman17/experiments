@@ -248,6 +248,27 @@ Both balance AND allowance must pass (✅).
 '0x455730fed596673e69db1907be2e521374ba893f1a04cc5f5dd931616cd6b700'
 ```
 
+## Debugging Overrides
+
+**IMPORTANT**: When debugging override issues, **ALWAYS use the existing `checkOverrides.ts` tool** instead of creating new test scripts.
+
+### Test a specific token:
+```bash
+node pkg/overrides/checkOverrides.ts 0xTOKEN_ADDRESS
+```
+
+### Test multiple tokens:
+```bash
+node pkg/overrides/checkOverrides.ts 0xTOKEN1 0xTOKEN2 0xTOKEN3
+```
+
+### Test all configured tokens:
+```bash
+node pkg/overrides/checkOverrides.ts
+```
+
+The tool checks BOTH balance AND allowance overrides and reports which specific check failed.
+
 ## Usage in Code
 
 ```typescript

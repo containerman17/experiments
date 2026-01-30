@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -95,7 +95,8 @@ docker run -d \
     --staking-ephemeral-cert-enabled=true \
     --staking-ephemeral-signer-enabled=true \
     --track-subnets=$FUJI_SUBNET_ID \
-    --partial-sync-primary-network=true
+    --partial-sync-primary-network=true \
+    --public-ip-resolution-service=opendns
 
 echo "Container started: $CONTAINER_NAME"
 
@@ -173,7 +174,7 @@ else
     for i in {1..180}; do
         BLOCK=$(curl -s -X POST -H "Content-Type: application/json" \
             --data '{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}' \
-            "$RPC_URL" 2>/dev/null | jq -r '.result' 2>/dev/null)
+            "$RPC_URL" 2>/dev/null | jq -r '.result' 2>/dev/null || true)
 
         if [ -n "$BLOCK" ] && [ "$BLOCK" != "null" ]; then
             BLOCK_DEC=$((BLOCK))
@@ -203,7 +204,7 @@ EXPECTED_BALANCE=$(cat ./expected-native-balance.txt)
 echo ""
 echo "Verifying state on RPC node..."
 
-BALANCE=$(go run ./cmd/balance "$RPC_URL" "$TARGET_ADDRESS" 2>/dev/null)
+BALANCE=$(go run ./cmd/balance "$RPC_URL" "$TARGET_ADDRESS" 2>/dev/null || true)
 
 if [ -z "$BALANCE" ]; then
     echo "Warning: Could not get balance - chain may not be ready"

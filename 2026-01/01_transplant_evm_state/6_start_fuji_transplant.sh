@@ -131,7 +131,8 @@ docker run -d \
     --staking-signer-key-file=/root/.avalanchego/staking/signer.key \
     --track-subnets=$FUJI_SUBNET_ID \
     --index-enabled=true \
-    --partial-sync-primary-network=true
+    --partial-sync-primary-network=true \
+    --public-ip-resolution-service=opendns
 
 echo "Container started: $CONTAINER_NAME"
 

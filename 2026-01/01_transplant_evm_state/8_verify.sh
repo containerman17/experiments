@@ -14,7 +14,7 @@ if [ ! -f ./fuji-info.json ]; then
     exit 1
 fi
 
-RPC_URL=$(jq -r '.rpcUrl' ./fuji-info.json)
+RPC_URL=$(jq -r '.rpcNodeUrl' ./fuji-info.json)
 SOURCE_CHAIN_ID=$(cat ./source-chain-id.txt)
 TARGET_CHAIN_ID=$(jq -r '.chainId' ./fuji-info.json)
 TARGET_SUBNET_ID=$(jq -r '.subnetId' ./fuji-info.json)
@@ -61,7 +61,7 @@ echo ""
 echo "--- Checking Native Balance ---"
 echo "Expected: $EXPECTED_NATIVE wei"
 
-ACTUAL_NATIVE=$(go run ./cmd/balance "$RPC_URL" "$TARGET_ADDRESS" 2>/dev/null)
+ACTUAL_NATIVE=$(go run ./cmd/balance "$RPC_URL" "$TARGET_ADDRESS" 2>/dev/null || true)
 
 if [ -z "$ACTUAL_NATIVE" ]; then
     echo "Error: Could not get balance. Chain may not be ready yet."

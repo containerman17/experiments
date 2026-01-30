@@ -67,4 +67,4 @@ else
 fi
 echo "=========================================="
 echo ""
-echo "Run ./6_post_transplant_tx.sh to test chain functionality."
+echo "Run ./6_bootstrap_rpc.sh to test RPC node bootstrapping."

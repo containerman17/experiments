@@ -18,11 +18,12 @@ cmd/
 3_stop_source.sh        # Stop source, save chain ID
 4_transplant.sh         # Start target L1, copy chain data
 5_verify.sh             # Verify both balances match
-6_post_transplant_tx.sh # Send 1 ETH + 1k tokens to prove chain works
+6_bootstrap_rpc.sh      # Start RPC node, bootstrap from scratch
+7_post_transplant_tx.sh # Send 1 ETH via RPC node to prove it works
 
 Makefile                # Downloads avalanchego + subnet-evm to bin/
 genesis.json            # Subnet-EVM genesis (no warp)
-chain-config.json       # pruning-enabled: false
+chain-config.json       # pruning-enabled: false, state-sync-enabled: false
 node-config.json        # Logging config
 staking/local/          # 6 sets of staking keys
 ```
@@ -41,7 +42,8 @@ make
 ./3_stop_source.sh        # Stop source
 ./4_transplant.sh         # Start target + transplant
 ./5_verify.sh             # Verify transplanted state
-./6_post_transplant_tx.sh # Send more txs to prove chain works
+./6_bootstrap_rpc.sh      # Bootstrap RPC node from scratch
+./7_post_transplant_tx.sh # Send tx via RPC node to prove it works
 
 # 3. Cleanup
 pkill -f avalanchego
@@ -66,10 +68,15 @@ No external tools (Foundry, etc.) needed.
 - Checks ERC20 balance = 500,000 tokens
 - Confirms chain IDs are DIFFERENT
 
-### Step 6: Post-Transplant
-- Sends **1 ETH** more (balance becomes 100,001 ETH)
-- Sends **1,000 tokens** more (balance becomes 501,000 tokens)
-- Proves chain is fully functional after transplant
+### Step 6: Bootstrap RPC Node
+- Starts a fresh RPC node with **random credentials** (ephemeral staking)
+- No state copied - must sync from scratch with L1 validator
+- Uses chain config with `pruning-enabled: false` and `state-sync-enabled: false`
+- Proves the chain can be bootstrapped by new nodes
+
+### Step 7: Post-Transplant
+- Sends **1 ETH** via the RPC node
+- Proves the bootstrapped RPC node is fully functional
 
 ## Expected Output
 
@@ -97,3 +104,4 @@ SUCCESS! State transplant verified!
 3. **Copy `chainData/<chainId>/db/`** directory
 4. **Contract state preserved** - ERC20 balances work
 5. **Chain fully functional** - accepts new transactions
+6. **New nodes can bootstrap** - RPC node syncs from scratch without state-sync

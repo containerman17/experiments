@@ -15,6 +15,6 @@ expected-native-balance.txt
 erc20-contract.txt
 expected-erc20-balance.txt
 
-# Compiled Go binaries
-network
-erc20
+# Compiled Go binaries (root level only)
+/network
+/erc20

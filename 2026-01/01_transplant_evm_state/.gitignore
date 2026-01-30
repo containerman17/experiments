@@ -1,0 +1,20 @@
+# Downloaded binaries
+bin/
+
+# Runtime data directories
+source_network/
+target_network/
+
+# Generated runtime files
+source-info.json
+target-info.json
+source-chain-id.txt
+target-address.txt
+target-pids.txt
+expected-native-balance.txt
+erc20-contract.txt
+expected-erc20-balance.txt
+
+# Compiled Go binaries
+network
+erc20

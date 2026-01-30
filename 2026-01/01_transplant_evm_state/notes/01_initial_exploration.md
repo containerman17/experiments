@@ -215,3 +215,46 @@ Since you're copying to a fresh mainnet node, it will use the standalone DB patt
 - Warp disable config: `graft/subnet-evm/precompile/contracts/warp/config.go:73-82`
 - AvalancheContext not serialized: `graft/subnet-evm/params/extras/config.go:108`
 - Genesis hash verification: `graft/subnet-evm/core/genesis.go:171-179` (`SetupGenesisBlock`)
+
+
+
+---
+
+## Addendum (2026-01-30 01:47:18 UTC) — Codex (GPT-5)
+
+### Corrections / clarifications
+
+1) **Genesis matching is by effective block hash, not raw JSON bytes**
+   - The VM unmarshals genesis JSON and compares the stored genesis hash to `genesis.ToBlock().Hash()`. JSON whitespace/order differences alone do **not** change the hash; only effective fields/state do.
+   - Source: `graft/subnet-evm/plugin/evm/vm.go:507` (JSON unmarshal in `parseGenesis`), `graft/subnet-evm/core/genesis.go:176` (hash comparison in `SetupGenesisBlock`).
+
+2) **Genesis hash can change due to airdrop file or genesis precompile activations (if used)**
+   - Airdrop data (loaded from a file) and genesis-time precompile activations both modify the genesis state root and therefore the genesis hash. These are not part of the JSON string itself.
+   - Source: `graft/subnet-evm/plugin/evm/vm.go:529` (airdrop file load), `graft/subnet-evm/core/genesis.go:267` (airdrop applied), `graft/subnet-evm/core/genesis.go:302` (genesis precompile activations).
+   - You confirmed **no airdrop** and **no genesis upgrades**, so this is informational only.
+
+3) **Chain DB location is configurable; not always `chainDataDir/<chainID>/db`**
+   - If `DatabasePath` is set, the chain DB lives there. If the chain already initialized in the main DB, it may keep using the prefixed main DB instead of standalone.
+   - Source: `graft/subnet-evm/plugin/evm/vm_database.go:60` (standalone DB selection), `graft/subnet-evm/plugin/evm/vm_database.go:160` (DatabasePath override).
+
+### Where blocks are stored (not just state)
+
+- Blocks, receipts, and preimages are written to the chain DB (`bc.db`), not only state.
+- Source: `graft/subnet-evm/core/blockchain.go:1252` and `graft/subnet-evm/core/blockchain.go:1275` (`writeBlockWithState` writes block + receipts + preimages).
+
+### Which DB is the chain DB in practice
+
+- The VM builds `vm.chaindb` as a prefixed database over the underlying `db`, and that is passed into `eth.New` → `core.NewBlockChain`.
+- Source: `graft/subnet-evm/plugin/evm/vm_database.go:82` (construct `vm.chaindb`), `graft/subnet-evm/plugin/evm/vm.go:610` (pass into `eth.New`), `graft/subnet-evm/eth/backend.go:248` (pass into `core.NewBlockChain`).
+
+### Practical implications for migration
+
+- If you’re using **standalone DB** on mainnet (your case, since the chain has never started there), **blocks + state are in `chainDataDir/<chainID>/db` (or `DatabasePath` if configured)**.
+- If the chain has ever started and chosen the main DB path, you must copy from the main DB with the chain prefix, or ensure standalone DB is used from first start.
+
+
+### Default standalone DB behavior
+
+- `UseStandaloneDatabase` is unset by default, so the VM auto-selects: if `acceptedBlockDB` is empty (fresh chain), it **uses standalone DB**; otherwise it stays on the prefixed main DB.
+- Source: `graft/subnet-evm/plugin/evm/config/default_config.go:12` (no `UseStandaloneDatabase` set), `graft/subnet-evm/plugin/evm/vm_database.go:125` and `graft/subnet-evm/plugin/evm/vm_database.go:131` (auto decision).
+

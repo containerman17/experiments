@@ -13,6 +13,10 @@ type Store = AppState & {
     updatePlateAmount: (plateItemId: string, amount: number) => void
     removeFromPlate: (plateItemId: string) => void
     clearPlate: () => void
+
+    // import/export
+    replaceState: (newState: AppState) => void
+    getState: () => AppState
 }
 
 const nowIso = () => new Date().toISOString()
@@ -114,6 +118,16 @@ export const useStore = create<Store>((set) => ({
             persist(next)
             return next
         })
+    },
+
+    replaceState: (newState: AppState) => {
+        persist(newState)
+        set(newState)
+    },
+
+    getState: (): AppState => {
+        const { products, plate, createdAt, updatedAt } = useStore.getState()
+        return { products, plate, createdAt, updatedAt }
     },
 }))
 

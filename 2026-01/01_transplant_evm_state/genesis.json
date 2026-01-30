@@ -11,6 +11,10 @@
     "istanbulBlock": 0,
     "muirGlacierBlock": 0,
     "subnetEVMTimestamp": 0,
+    "durangoTimestamp": 1707840000,
+    "etnaTimestamp": 1732550400,
+    "fortunaTimestamp": 1741878000,
+    "graniteTimestamp": 1761750000,
     "feeConfig": {
       "gasLimit": 20000000,
       "minBaseFee": 1000000000,

@@ -1,5 +1,6 @@
 import Products from './components/Products'
 import Calculator from './components/Calculator'
+import ExportImport from './components/ExportImport'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <main>
         <Products />
         <Calculator />
+        <ExportImport />
       </main>
     </div>
   )

@@ -178,6 +178,7 @@ export function Calculator() {
 function PlateRow({ plateItem, product, onRemove }: { plateItem: PlateItem; product: Product; onRemove: () => void }) {
     const scaled = scaleMacros(product, plateItem.amount)
     const unit = product.mode === 'per100g' ? 'г' : 'пор.'
+    const kcal = 4 * scaled.protein + 9 * scaled.fat + 4 * scaled.carbs
 
     return (
         <div className="px-3 py-2 border-b hover:bg-gray-50 transition-colors group">
@@ -190,6 +191,8 @@ function PlateRow({ plateItem, product, onRemove }: { plateItem: PlateItem; prod
                         Ж: {formatNumber(scaled.fat)}
                         <span className="mx-1">•</span>
                         У: {formatNumber(scaled.carbs)}
+                        <span className="mx-1">•</span>
+                        К: {formatNumber(kcal)}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">

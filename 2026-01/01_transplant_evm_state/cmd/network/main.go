@@ -46,12 +46,23 @@ type NodeInfo struct {
 	PID    int
 }
 
+type ChainResult struct {
+	SubnetID string `json:"subnetId"`
+	ChainID  string `json:"chainId"`
+}
+
 var (
-	dataDir    string
-	outputPath string
-	validators int
-	background bool
-	chainName  string
+	dataDir         string
+	outputPath      string
+	validators      int
+	background      bool
+	chainName       string
+	nodeURI         string
+	l1NodeURI       string
+	genesisPath     string
+	chainConfigPath string
+	subnetIDStr     string
+	chainIDStr      string
 )
 
 func main() {
@@ -67,11 +78,112 @@ func main() {
 	stopCmd := &cobra.Command{Use: "stop", Short: "Stop network", RunE: runStop}
 	stopCmd.Flags().StringVar(&outputPath, "info", "./network-info.json", "Network info file")
 
-	rootCmd.AddCommand(startCmd, stopCmd)
+	createChainCmd := &cobra.Command{Use: "create-chain", Short: "Create subnet and chain", RunE: runCreateChain}
+	createChainCmd.Flags().StringVar(&nodeURI, "node-uri", "", "Node URI to connect to")
+	createChainCmd.Flags().StringVar(&genesisPath, "genesis", "./genesis.json", "Genesis file path")
+	createChainCmd.Flags().StringVar(&chainConfigPath, "chain-config", "./chain-config.json", "Chain config path")
+	createChainCmd.Flags().StringVar(&chainName, "chain-name", "testchain", "Chain name")
+	createChainCmd.MarkFlagRequired("node-uri")
+
+	convertToL1Cmd := &cobra.Command{Use: "convert-to-l1", Short: "Convert subnet to L1", RunE: runConvertToL1}
+	convertToL1Cmd.Flags().StringVar(&nodeURI, "node-uri", "", "Primary node URI")
+	convertToL1Cmd.Flags().StringVar(&l1NodeURI, "l1-node-uri", "", "L1 validator node URI")
+	convertToL1Cmd.Flags().StringVar(&subnetIDStr, "subnet-id", "", "Subnet ID")
+	convertToL1Cmd.Flags().StringVar(&chainIDStr, "chain-id", "", "Chain ID")
+	convertToL1Cmd.MarkFlagRequired("node-uri")
+	convertToL1Cmd.MarkFlagRequired("l1-node-uri")
+	convertToL1Cmd.MarkFlagRequired("subnet-id")
+	convertToL1Cmd.MarkFlagRequired("chain-id")
+
+	rootCmd.AddCommand(startCmd, stopCmd, createChainCmd, convertToL1Cmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func runCreateChain(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	genesisBytes, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return fmt.Errorf("failed to read genesis: %w", err)
+	}
+
+	kc := secp256k1fx.NewKeychain(genesis.EWOQKey)
+	wallet, err := primary.MakePWallet(ctx, nodeURI, kc, primary.WalletConfig{})
+	if err != nil {
+		return fmt.Errorf("failed to create wallet: %w", err)
+	}
+
+	owner := &secp256k1fx.OutputOwners{Threshold: 1, Addrs: []ids.ShortID{genesis.EWOQKey.Address()}}
+	subnetTx, err := wallet.IssueCreateSubnetTx(owner)
+	if err != nil {
+		return fmt.Errorf("failed to create subnet: %w", err)
+	}
+	subnetID := subnetTx.ID()
+
+	wallet, err = primary.MakePWallet(ctx, nodeURI, kc, primary.WalletConfig{SubnetIDs: []ids.ID{subnetID}})
+	if err != nil {
+		return fmt.Errorf("failed to refresh wallet: %w", err)
+	}
+
+	chainTx, err := wallet.IssueCreateChainTx(subnetID, genesisBytes, constants.SubnetEVMID, nil, chainName)
+	if err != nil {
+		return fmt.Errorf("failed to create chain: %w", err)
+	}
+	chainID := chainTx.ID()
+
+	result := ChainResult{
+		SubnetID: subnetID.String(),
+		ChainID:  chainID.String(),
+	}
+	data, _ := json.Marshal(result)
+	fmt.Println(string(data))
+	return nil
+}
+
+func runConvertToL1(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	subnetID, err := ids.FromString(subnetIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid subnet ID: %w", err)
+	}
+
+	chainID, err := ids.FromString(chainIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid chain ID: %w", err)
+	}
+
+	infoClient := info.NewClient(l1NodeURI)
+	nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get L1 node info: %w", err)
+	}
+
+	validators := []*txs.ConvertSubnetToL1Validator{
+		{
+			NodeID:  nodeID.Bytes(),
+			Weight:  units.Schmeckle,
+			Balance: units.Avax,
+			Signer:  *nodePoP,
+		},
+	}
+
+	kc := secp256k1fx.NewKeychain(genesis.EWOQKey)
+	wallet, err := primary.MakePWallet(ctx, nodeURI, kc, primary.WalletConfig{SubnetIDs: []ids.ID{subnetID}})
+	if err != nil {
+		return fmt.Errorf("failed to create wallet: %w", err)
+	}
+
+	_, err = wallet.IssueConvertSubnetToL1Tx(subnetID, chainID, []byte{}, validators)
+	if err != nil {
+		return fmt.Errorf("failed to convert to L1: %w", err)
+	}
+
+	fmt.Println("Subnet converted to L1 successfully")
+	return nil
 }
 
 func runStart(cmd *cobra.Command, args []string) error {

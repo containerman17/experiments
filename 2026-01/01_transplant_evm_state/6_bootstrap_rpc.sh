@@ -119,9 +119,17 @@ echo "RPC Node ID: $RPC_NODE_ID"
 
 # Wait for chain to sync
 RPC_URL="http://127.0.0.1:$RPC_HTTP_PORT/ext/bc/$TARGET_CHAIN_ID/rpc"
+L1_RPC_URL="http://127.0.0.1:9300/ext/bc/$TARGET_CHAIN_ID/rpc"
 echo ""
 echo "Waiting for chain to sync..."
 echo "RPC URL: $RPC_URL"
+
+# Get expected block count from L1 validator
+EXPECTED_BLOCK=$(curl -s -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}' \
+    "$L1_RPC_URL" | jq -r '.result')
+EXPECTED_BLOCK_DEC=$((EXPECTED_BLOCK))
+echo "L1 validator is at block: $EXPECTED_BLOCK_DEC"
 
 for i in {1..120}; do
     # Try to get block number - if it works, chain is synced
@@ -131,8 +139,14 @@ for i in {1..120}; do
 
     if [ -n "$BLOCK" ] && [ "$BLOCK" != "null" ]; then
         BLOCK_DEC=$((BLOCK))
-        echo "Chain synced! Current block: $BLOCK_DEC"
-        break
+        if [ "$BLOCK_DEC" -ge "$EXPECTED_BLOCK_DEC" ]; then
+            echo "Chain synced! Block: $BLOCK_DEC (expected: $EXPECTED_BLOCK_DEC)"
+            break
+        else
+            if [ $((i % 5)) -eq 0 ]; then
+                echo "  Syncing... block $BLOCK_DEC / $EXPECTED_BLOCK_DEC"
+            fi
+        fi
     fi
 
     if [ $i -eq 120 ]; then
@@ -141,24 +155,64 @@ for i in {1..120}; do
         exit 1
     fi
 
-    if [ $((i % 10)) -eq 0 ]; then
-        echo "  Still waiting... ($i seconds)"
+    if [ $((i % 10)) -eq 0 ] && [ -z "$BLOCK" -o "$BLOCK" = "null" ]; then
+        echo "  Still waiting for chain to start... ($i seconds)"
     fi
     sleep 1
 done
 
+# Verify blocks match between L1 validator and RPC node
+echo ""
+echo "Verifying block hashes match L1 validator..."
+
+MISMATCH=false
+for BLOCK_NUM in $(seq 0 $EXPECTED_BLOCK_DEC); do
+    BLOCK_HEX=$(printf "0x%x" $BLOCK_NUM)
+
+    L1_HASH=$(curl -s -X POST -H "Content-Type: application/json" \
+        --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"$BLOCK_HEX\",false],\"id\":1}" \
+        "$L1_RPC_URL" | jq -r '.result.hash')
+
+    RPC_HASH=$(curl -s -X POST -H "Content-Type: application/json" \
+        --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"$BLOCK_HEX\",false],\"id\":1}" \
+        "$RPC_URL" | jq -r '.result.hash')
+
+    if [ "$L1_HASH" = "$RPC_HASH" ]; then
+        echo "  Block $BLOCK_NUM: OK (${L1_HASH:0:18}...)"
+    else
+        echo "  Block $BLOCK_NUM: MISMATCH!"
+        echo "    L1:  $L1_HASH"
+        echo "    RPC: $RPC_HASH"
+        MISMATCH=true
+    fi
+done
+
+if [ "$MISMATCH" = true ]; then
+    echo "Error: Block hash mismatch detected!"
+    exit 1
+fi
+
+echo ""
+echo "All $((EXPECTED_BLOCK_DEC + 1)) blocks verified!"
+
 # Verify state by checking balance
 TARGET_ADDRESS=$(cat ./target-address.txt)
+EXPECTED_BALANCE=$(cat ./expected-native-balance.txt)
 echo ""
 echo "Verifying state on RPC node..."
 
 BALANCE=$(go run ./cmd/balance "$RPC_URL" "$TARGET_ADDRESS")
-echo "Balance of $TARGET_ADDRESS: $BALANCE wei"
+echo "Balance of $TARGET_ADDRESS:"
+echo "  Expected: $EXPECTED_BALANCE wei"
+echo "  Actual:   $BALANCE wei"
 
 if [ "$BALANCE" = "0" ]; then
-    echo "Warning: Balance is 0 - state may not have synced correctly"
+    echo "ERROR: Balance is 0 - state did not sync correctly!"
+    exit 1
+elif [ "$BALANCE" != "$EXPECTED_BALANCE" ]; then
+    echo "Note: Balance differs (chain may have additional txs)"
 else
-    echo "State verified successfully!"
+    echo "Balance matches expected!"
 fi
 
 # Update target-info.json with RPC node URL for step 7

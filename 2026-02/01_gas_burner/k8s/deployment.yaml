@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:f1d83e3
+          image: containerman17/burner022026:0b0792b
           ports:
             - containerPort: 8080
               name: health
@@ -90,7 +90,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:f1d83e3
+          image: containerman17/burner022026:0b0792b
           ports:
             - containerPort: 8080
               name: health

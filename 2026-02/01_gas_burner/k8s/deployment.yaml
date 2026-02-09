@@ -18,12 +18,13 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:778f91b
-          args: ["--target", "0.04"]
+          image: containerman17/burner022026:4a7ecdf
           ports:
             - containerPort: 8080
               name: health
           env:
+            - name: TARGET_NAVAX
+              value: "0.04"
             - name: PRIVATE_KEY
               valueFrom:
                 secretKeyRef:

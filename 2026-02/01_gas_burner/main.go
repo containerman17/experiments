@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -13,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,8 +36,14 @@ const (
 )
 
 func main() {
-	target := flag.Float64("target", 0, "Target gas price in nAVAX")
-	flag.Parse()
+	target := 0.0
+	if v := os.Getenv("TARGET_NAVAX"); v != "" {
+		var err error
+		target, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			log.Fatalf("invalid TARGET_NAVAX=%q: %v", v, err)
+		}
+	}
 
 	env := loadEnv()
 
@@ -78,8 +84,8 @@ func main() {
 	// --- contract: deploy if needed ---
 	contractAddr := setupContract(env, httpClient, auth)
 
-	if *target <= 0 {
-		log.Println("Ready. Use:  go run . --target <nAVAX>")
+	if target <= 0 {
+		log.Println("Ready. Set TARGET_NAVAX env var to start burning.")
 		return
 	}
 
@@ -90,8 +96,8 @@ func main() {
 
 	// --- WS client for block subscriptions ---
 	wsURL := env["RPC_WS"]
-	targetWei := nAvaxToWei(*target)
-	log.Printf("target=%.2f nAVAX  contract=%s", *target, contractAddr.Hex())
+	targetWei := nAvaxToWei(target)
+	log.Printf("target=%.2f nAVAX  contract=%s", target, contractAddr.Hex())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()

@@ -18,14 +18,30 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:1c0b15d
+          image: containerman17/burner022026:778f91b
           args: ["--target", "0.04"]
+          ports:
+            - containerPort: 8080
+              name: health
           env:
             - name: PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: gas-burner-private-key
                   key: private-key
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
           resources:
             requests:
               cpu: 50m

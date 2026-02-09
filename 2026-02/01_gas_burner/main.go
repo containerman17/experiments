@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -25,8 +27,12 @@ import (
 )
 
 const (
-	burnInterval = 2 * time.Second
-	startIters   = uint64(10_000)
+	burnInterval    = 2 * time.Second
+	startIters      = uint64(10_000)
+	healthPort      = ":8080"
+	minHealthBal    = 0.01 // AVAX
+	maxErrorRate    = 0.50 // 50%
+	errorWindowSize = 1 * time.Hour
 )
 
 func main() {
@@ -91,9 +97,126 @@ func main() {
 	defer cancel()
 
 	tracker := &gasTracker{}
+	errors := newErrorTracker(errorWindowSize)
+
+	// --- health check endpoint ---
+	go startHealthServer(httpClient, fromAddr, errors)
+
 	go subscribeHeads(ctx, wsURL, tracker)
 
-	burnLoop(ctx, httpClient, burner, auth, fromAddr, targetWei, tracker)
+	burnLoop(ctx, httpClient, burner, auth, fromAddr, targetWei, tracker, errors)
+}
+
+// ---------------------------------------------------------------------------
+// Error tracker — rolling window of success/failure timestamps
+// ---------------------------------------------------------------------------
+
+type errorTracker struct {
+	mu      sync.Mutex
+	window  time.Duration
+	results []txResult
+}
+
+type txResult struct {
+	at      time.Time
+	success bool
+}
+
+func newErrorTracker(window time.Duration) *errorTracker {
+	return &errorTracker{window: window}
+}
+
+func (e *errorTracker) record(success bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.results = append(e.results, txResult{at: time.Now(), success: success})
+	e.prune()
+}
+
+func (e *errorTracker) prune() {
+	cutoff := time.Now().Add(-e.window)
+	i := 0
+	for i < len(e.results) && e.results[i].at.Before(cutoff) {
+		i++
+	}
+	e.results = e.results[i:]
+}
+
+func (e *errorTracker) rate() (errorRate float64, total int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.prune()
+	total = len(e.results)
+	if total == 0 {
+		return 0, 0
+	}
+	errors := 0
+	for _, r := range e.results {
+		if !r.success {
+			errors++
+		}
+	}
+	return float64(errors) / float64(total), total
+}
+
+// ---------------------------------------------------------------------------
+// Health check HTTP server
+// ---------------------------------------------------------------------------
+
+func startHealthServer(client *ethclient.Client, addr common.Address, errors *errorTracker) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		checks := make(map[string]interface{})
+		healthy := true
+
+		// check balance
+		balance, err := client.BalanceAt(context.Background(), addr, nil)
+		if err != nil {
+			checks["balance"] = map[string]interface{}{"ok": false, "error": err.Error()}
+			healthy = false
+		} else {
+			bal := weiToAVAX(balance)
+			balOK := bal > minHealthBal
+			checks["balance"] = map[string]interface{}{
+				"ok":       balOK,
+				"avax":     bal,
+				"min_avax": minHealthBal,
+			}
+			if !balOK {
+				healthy = false
+			}
+		}
+
+		// check error rate
+		rate, total := errors.rate()
+		rateOK := total < 10 || rate < maxErrorRate
+		checks["error_rate"] = map[string]interface{}{
+			"ok":           rateOK,
+			"rate":         rate,
+			"max_rate":     maxErrorRate,
+			"total_1h":     total,
+			"window":       errorWindowSize.String(),
+		}
+		if !rateOK {
+			healthy = false
+		}
+
+		checks["address"] = addr.Hex()
+		checks["healthy"] = healthy
+
+		w.Header().Set("Content-Type", "application/json")
+		if healthy {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		json.NewEncoder(w).Encode(checks)
+	})
+
+	log.Printf("[health] listening on %s", healthPort)
+	if err := http.ListenAndServe(healthPort, mux); err != nil {
+		log.Printf("[health] server failed: %v", err)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -286,6 +409,7 @@ func burnLoop(
 	from common.Address,
 	target *big.Int,
 	tracker *gasTracker,
+	errors *errorTracker,
 ) {
 	targetF := float64(target.Uint64())
 	iterations := startIters
@@ -376,9 +500,11 @@ func burnLoop(
 					log.Fatalf("chain does not support EIP-1559: %v", err)
 				}
 				log.Printf("[burn] failed: %v", err)
+				errors.record(false)
 				continue
 			}
 
+			errors.record(true)
 			maxCost := float64(target.Uint64()) * float64(tx.Gas()) / 1e18
 			log.Printf("[burn] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d  cost≤%.6f AVAX  tx=%s",
 				blockNum, baseFeeNav, targetNav, iterations, maxCost, short(tx.Hash().Hex()))

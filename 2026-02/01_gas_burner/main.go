@@ -3,12 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
-	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/big"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"gas-burner/bindings"
+	"gas-burner/burner"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,11 +27,16 @@ import (
 )
 
 const (
+	rpcHTTP = "https://api.avax.network/ext/bc/C/rpc"
+	rpcWS   = "wss://api.avax.network/ext/bc/C/ws"
+
+	stateFile = "/data/state.env"
+
 	burnInterval    = 2 * time.Second
 	startIters      = uint64(10_000)
 	healthPort      = ":8080"
 	minHealthBal    = 0.01 // AVAX
-	maxErrorRate    = 0.50 // 50%
+	maxErrorRate    = 0.50
 	errorWindowSize = 1 * time.Hour
 )
 
@@ -45,13 +50,17 @@ func main() {
 		}
 	}
 
-	env := loadEnv()
+	keyHex := os.Getenv("PRIVATE_KEY")
+	if keyHex == "" {
+		log.Fatal("PRIVATE_KEY env var is required")
+	}
+	privateKey, err := crypto.HexToECDSA(strings.TrimPrefix(keyHex, "0x"))
+	if err != nil {
+		log.Fatalf("invalid PRIVATE_KEY: %v", err)
+	}
+	fromAddr := crypto.PubkeyToAddress(privateKey.PublicKey)
 
-	// --- private key: load or generate ---
-	privateKey, fromAddr := setupKey(env)
-
-	// --- HTTP client for txs + block data ---
-	httpClient, err := ethclient.Dial(env["RPC_HTTP"])
+	httpClient, err := ethclient.Dial(rpcHTTP)
 	if err != nil {
 		log.Fatalf("HTTP RPC failed: %v", err)
 	}
@@ -66,12 +75,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("balance check failed: %v", err)
 	}
+	log.Printf("chain=%d  address=%s  balance=%.6f AVAX", chainID, fromAddr.Hex(), weiToAVAX(balance))
 
-	log.Printf("chain=%d  address=%s  balance=%.6f AVAX",
-		chainID, fromAddr.Hex(), weiToAVAX(balance))
-
-	minBalance := new(big.Int).SetUint64(1e15) // 0.001 AVAX
-	if balance.Cmp(minBalance) <= 0 {
+	if balance.Cmp(new(big.Int).SetUint64(1e15)) <= 0 {
 		fmt.Printf("\n  >>> Fund this address to continue: %s <<<\n\n", fromAddr.Hex())
 		return
 	}
@@ -81,23 +87,16 @@ func main() {
 		log.Fatalf("transactor failed: %v", err)
 	}
 
-	// --- contract: deploy if needed ---
-	contractAddr := setupContract(env, httpClient, auth)
+	// --- contract: load from persistent state or deploy ---
+	contractAddr, selector := setupContract(httpClient, auth)
 
 	if target <= 0 {
 		log.Println("Ready. Set TARGET_NAVAX env var to start burning.")
 		return
 	}
 
-	burner, err := bindings.NewGasBurner(contractAddr, httpClient)
-	if err != nil {
-		log.Fatalf("contract bind failed: %v", err)
-	}
-
-	// --- WS client for block subscriptions ---
-	wsURL := env["RPC_WS"]
 	targetWei := nAvaxToWei(target)
-	log.Printf("target=%.2f nAVAX  contract=%s", target, contractAddr.Hex())
+	log.Printf("target=%.2f nAVAX  contract=%s  selector=0x%x", target, contractAddr.Hex(), selector)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -105,16 +104,86 @@ func main() {
 	tracker := &gasTracker{}
 	errors := newErrorTracker(errorWindowSize)
 
-	// --- health check endpoint ---
 	go startHealthServer(httpClient, fromAddr, errors)
+	go subscribeHeads(ctx, rpcWS, tracker)
 
-	go subscribeHeads(ctx, wsURL, tracker)
-
-	burnLoop(ctx, httpClient, burner, auth, fromAddr, targetWei, tracker, errors)
+	burnLoop(ctx, httpClient, auth, fromAddr, contractAddr, selector, targetWei, tracker, errors)
 }
 
 // ---------------------------------------------------------------------------
-// Error tracker — rolling window of success/failure timestamps
+// Contract setup — load from /data/state.env or deploy a random variant
+// ---------------------------------------------------------------------------
+
+func setupContract(client *ethclient.Client, auth *bind.TransactOpts) (common.Address, [4]byte) {
+	// try loading persisted state
+	if state := loadState(); state != nil {
+		addr := common.HexToAddress(state["CONTRACT"])
+		selBytes, _ := hex.DecodeString(state["SELECTOR"])
+		if len(selBytes) == 4 {
+			var sel [4]byte
+			copy(sel[:], selBytes)
+			log.Printf("contract=%s  selector=0x%s (from %s)", addr.Hex(), state["SELECTOR"], stateFile)
+			return addr, sel
+		}
+	}
+
+	// deploy a random pre-compiled variant
+	idx := rand.Intn(len(burner.Variants))
+	v := burner.Variants[idx]
+	log.Printf("deploying variant %d...", idx)
+
+	addr, tx, err := burner.Deploy(auth, client, v)
+	if err != nil {
+		log.Fatalf("deploy failed: %v", err)
+	}
+	log.Printf("deploy tx=%s  waiting...", tx.Hash().Hex())
+
+	receipt, err := bind.WaitMined(context.Background(), client, tx)
+	if err != nil {
+		log.Fatalf("deploy confirmation failed: %v", err)
+	}
+	log.Printf("deployed at %s  block=%d  gas=%d", addr.Hex(), receipt.BlockNumber.Uint64(), receipt.GasUsed)
+
+	// persist to volume
+	selHex := hex.EncodeToString(v.Selector[:])
+	saveState(map[string]string{"CONTRACT": addr.Hex(), "SELECTOR": selHex})
+
+	return addr, v.Selector
+}
+
+func loadState() map[string]string {
+	f, err := os.Open(stateFile)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	state := map[string]string{}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if ok {
+			state[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+	}
+	return state
+}
+
+func saveState(state map[string]string) {
+	var sb strings.Builder
+	for k, v := range state {
+		fmt.Fprintf(&sb, "%s=%s\n", k, v)
+	}
+	if err := os.WriteFile(stateFile, []byte(sb.String()), 0600); err != nil {
+		log.Printf("warning: could not persist state to %s: %v", stateFile, err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Error tracker
 // ---------------------------------------------------------------------------
 
 type errorTracker struct {
@@ -166,43 +235,31 @@ func (e *errorTracker) rate() (errorRate float64, total int) {
 }
 
 // ---------------------------------------------------------------------------
-// Health check HTTP server
+// Health check
 // ---------------------------------------------------------------------------
 
 func startHealthServer(client *ethclient.Client, addr common.Address, errors *errorTracker) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		checks := make(map[string]interface{})
+		checks := map[string]any{}
 		healthy := true
 
-		// check balance
 		balance, err := client.BalanceAt(context.Background(), addr, nil)
 		if err != nil {
-			checks["balance"] = map[string]interface{}{"ok": false, "error": err.Error()}
+			checks["balance"] = map[string]any{"ok": false, "error": err.Error()}
 			healthy = false
 		} else {
 			bal := weiToAVAX(balance)
 			balOK := bal > minHealthBal
-			checks["balance"] = map[string]interface{}{
-				"ok":       balOK,
-				"avax":     bal,
-				"min_avax": minHealthBal,
-			}
+			checks["balance"] = map[string]any{"ok": balOK, "avax": bal, "min_avax": minHealthBal}
 			if !balOK {
 				healthy = false
 			}
 		}
 
-		// check error rate
 		rate, total := errors.rate()
 		rateOK := total < 10 || rate < maxErrorRate
-		checks["error_rate"] = map[string]interface{}{
-			"ok":           rateOK,
-			"rate":         rate,
-			"max_rate":     maxErrorRate,
-			"total_1h":     total,
-			"window":       errorWindowSize.String(),
-		}
+		checks["error_rate"] = map[string]any{"ok": rateOK, "rate": rate, "max_rate": maxErrorRate, "total_1h": total}
 		if !rateOK {
 			healthy = false
 		}
@@ -220,137 +277,7 @@ func startHealthServer(client *ethclient.Client, addr common.Address, errors *er
 	})
 
 	log.Printf("[health] listening on %s", healthPort)
-	if err := http.ListenAndServe(healthPort, mux); err != nil {
-		log.Printf("[health] server failed: %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// .env management
-// ---------------------------------------------------------------------------
-
-func loadEnv() map[string]string {
-	env := map[string]string{
-		"RPC_HTTP":    "https://api.avax.network/ext/bc/C/rpc",
-		"RPC_WS":     "wss://api.avax.network/ext/bc/C/ws",
-		"PRIVATE_KEY": "",
-		"CONTRACT":    "0x2057741Ff49821F68c81C32928748aF275070fb0",
-	}
-
-	// .env file (local dev)
-	f, err := os.Open(".env")
-	if err == nil {
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			k, v, ok := strings.Cut(line, "=")
-			if ok {
-				env[strings.TrimSpace(k)] = strings.TrimSpace(v)
-			}
-		}
-		f.Close()
-	}
-
-	// OS environment variables override .env
-	for k := range env {
-		if v := os.Getenv(k); v != "" {
-			env[k] = v
-		}
-	}
-
-	return env
-}
-
-func saveEnv(env map[string]string) {
-	data := fmt.Sprintf("# Gas Burner — edit RPC URLs for your chain\nRPC_HTTP=%s\nRPC_WS=%s\nPRIVATE_KEY=%s\nCONTRACT=%s\n",
-		env["RPC_HTTP"], env["RPC_WS"], env["PRIVATE_KEY"], env["CONTRACT"])
-	if err := os.WriteFile(".env", []byte(data), 0600); err != nil {
-		log.Fatalf("failed to write .env: %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Key setup — generates if missing, saves to .env
-// ---------------------------------------------------------------------------
-
-func setupKey(env map[string]string) (*ecdsa.PrivateKey, common.Address) {
-	keyHex := env["PRIVATE_KEY"]
-
-	if keyHex == "" {
-		key, err := crypto.GenerateKey()
-		if err != nil {
-			log.Fatalf("key generation failed: %v", err)
-		}
-		keyHex = fmt.Sprintf("%x", crypto.FromECDSA(key))
-		env["PRIVATE_KEY"] = keyHex
-		saveEnv(env)
-		log.Println("Generated new private key → .env")
-		return key, crypto.PubkeyToAddress(key.PublicKey)
-	}
-
-	key, err := crypto.HexToECDSA(strings.TrimPrefix(keyHex, "0x"))
-	if err != nil {
-		log.Fatalf("invalid PRIVATE_KEY in .env: %v", err)
-	}
-	return key, crypto.PubkeyToAddress(key.PublicKey)
-}
-
-// ---------------------------------------------------------------------------
-// Contract setup — deploys if missing, saves to .env
-// ---------------------------------------------------------------------------
-
-func setupContract(env map[string]string, client *ethclient.Client, auth *bind.TransactOpts) common.Address {
-	if addr := env["CONTRACT"]; addr != "" {
-		a := common.HexToAddress(addr)
-		log.Printf("contract=%s (from .env)", a.Hex())
-		return a
-	}
-
-	log.Println("No CONTRACT in .env — deploying...")
-	addr, tx, _, err := bindings.DeployGasBurner(auth, client)
-	if err != nil {
-		log.Fatalf("deploy failed: %v", err)
-	}
-	log.Printf("deploy tx=%s  waiting...", tx.Hash().Hex())
-
-	receipt, err := bind.WaitMined(context.Background(), client, tx)
-	if err != nil {
-		log.Fatalf("deploy confirmation failed: %v", err)
-	}
-	log.Printf("deployed at %s  block=%d  gas=%d",
-		addr.Hex(), receipt.BlockNumber.Uint64(), receipt.GasUsed)
-
-	env["CONTRACT"] = addr.Hex()
-	saveEnv(env)
-	return addr
-}
-
-// ---------------------------------------------------------------------------
-// Gas price tracker (fed by WS block subscription)
-// ---------------------------------------------------------------------------
-
-type gasTracker struct {
-	mu       sync.RWMutex
-	latest   float64
-	blockNum uint64
-	ready    bool
-}
-
-func (t *gasTracker) update(baseFee *big.Int, blockNum uint64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.latest = float64(baseFee.Uint64())
-	t.blockNum = blockNum
-	t.ready = true
-}
-
-func (t *gasTracker) get() (latest float64, blockNum uint64, ready bool) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.latest, t.blockNum, t.ready
+	http.ListenAndServe(healthPort, mux)
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +310,6 @@ func subscribeOnce(ctx context.Context, wsURL string, tracker *gasTracker) error
 	defer sub.Unsubscribe()
 
 	log.Println("[sub] watching blocks")
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -391,28 +317,52 @@ func subscribeOnce(ctx context.Context, wsURL string, tracker *gasTracker) error
 		case err := <-sub.Err():
 			return fmt.Errorf("stream: %w", err)
 		case head := <-headers:
-			baseFee := head.BaseFee
-			if baseFee == nil {
+			if head.BaseFee == nil {
 				continue
 			}
-			tracker.update(baseFee, head.Number.Uint64())
+			tracker.update(head.BaseFee, head.Number.Uint64())
 			latest, block, _ := tracker.get()
-			log.Printf("[block %d] baseFee=%.2f nAVAX",
-				block, latest/1e9)
+			log.Printf("[block %d] baseFee=%.2f nAVAX", block, latest/1e9)
 		}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Burn loop — steady cadence, reads tracker, sends txs via HTTP
+// Gas price tracker
+// ---------------------------------------------------------------------------
+
+type gasTracker struct {
+	mu       sync.RWMutex
+	latest   float64
+	blockNum uint64
+	ready    bool
+}
+
+func (t *gasTracker) update(baseFee *big.Int, blockNum uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.latest = float64(baseFee.Uint64())
+	t.blockNum = blockNum
+	t.ready = true
+}
+
+func (t *gasTracker) get() (float64, uint64, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.latest, t.blockNum, t.ready
+}
+
+// ---------------------------------------------------------------------------
+// Burn loop
 // ---------------------------------------------------------------------------
 
 func burnLoop(
 	ctx context.Context,
 	client *ethclient.Client,
-	burner *bindings.GasBurner,
 	auth *bind.TransactOpts,
 	from common.Address,
+	contractAddr common.Address,
+	sel [4]byte,
 	target *big.Int,
 	tracker *gasTracker,
 	errors *errorTracker,
@@ -429,7 +379,6 @@ func burnLoop(
 		case <-ctx.Done():
 			log.Println("shutdown")
 			return
-
 		case <-ticker.C:
 			tick++
 
@@ -440,32 +389,29 @@ func burnLoop(
 
 			baseFeeNav := baseFee / 1e9
 			targetNav := targetF / 1e9
-			ratio := baseFee / targetF // <1 = below target, >1 = above
+			ratio := baseFee / targetF
 
-			// adjust iterations proportionally to distance from target
 			var factor float64
 			switch {
 			case ratio < 0.5:
-				factor = 1.10 // way below → aggressive ramp
+				factor = 1.10
 			case ratio < 0.90:
-				factor = 1.05 // below → moderate ramp
+				factor = 1.05
 			case ratio < 1.10:
-				// in the ±10% zone — tiny nudges (anti-oscillation buffer)
 				if ratio < 1.0 {
 					factor = 1.005
 				} else {
 					factor = 0.995
 				}
 			case ratio < 1.30:
-				factor = 0.95 // above → moderate cut
+				factor = 0.95
 			case ratio < 1.50:
-				factor = 0.90 // well above → firm cut
+				factor = 0.90
 			default:
-				factor = 0.80 // way above → aggressive cut
+				factor = 0.80
 			}
 			iterations = clampU64(uint64(float64(iterations)*factor), 100, 10_000_000)
 
-			// above target — don't send, we're keeping a floor not a ceiling
 			if ratio >= 1.0 {
 				if tick%15 == 0 {
 					log.Printf("[hold] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d",
@@ -475,13 +421,12 @@ func burnLoop(
 			}
 			if iterations < 1000 {
 				if tick%15 == 0 {
-					log.Printf("[idle] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d  (iters too low)",
+					log.Printf("[idle] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d  (too low)",
 						blockNum, baseFeeNav, targetNav, iterations)
 				}
 				continue
 			}
 
-			// too many pending — skip
 			pending, _ := client.PendingNonceAt(ctx, from)
 			confirmed, _ := client.NonceAt(ctx, from, nil)
 			if pending-confirmed > 3 {
@@ -489,7 +434,6 @@ func burnLoop(
 				continue
 			}
 
-			// send burn tx
 			auth.Nonce = nil
 			auth.GasLimit = 0
 			auth.GasFeeCap = target
@@ -500,7 +444,7 @@ func burnLoop(
 			auth.GasTipCap = tip
 			auth.GasPrice = nil
 
-			tx, err := burner.Burn(auth, new(big.Int).SetUint64(iterations))
+			tx, err := burner.Burn(auth, client, contractAddr, sel, iterations)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "1559") {
 					log.Fatalf("chain does not support EIP-1559: %v", err)
@@ -531,10 +475,6 @@ func weiToAVAX(wei *big.Int) float64 {
 	f.Quo(f, new(big.Float).SetFloat64(1e18))
 	v, _ := f.Float64()
 	return v
-}
-
-func clamp(v, lo, hi float64) float64 {
-	return math.Max(lo, math.Min(v, hi))
 }
 
 func clampU64(v, lo, hi uint64) uint64 {

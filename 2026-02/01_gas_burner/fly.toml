@@ -1,15 +1,14 @@
-# fly.toml app configuration file generated for 01-gas-burner on 2026-02-09T05:10:17Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
 app = '01-gas-burner'
 primary_region = 'nrt'
 
 [build]
 
 [env]
-  TARGET_NAVAX = "0.04"
+  TARGET_NAVAX = "0.035"
+
+[mounts]
+  source = "data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8080

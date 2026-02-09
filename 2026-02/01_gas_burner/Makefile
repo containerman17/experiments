@@ -1,16 +1,10 @@
-.PHONY: compile generate vet clean
+.PHONY: generate vet clean
 
-compile:
-	@mkdir -p build
-	solc --abi --bin --optimize --optimize-runs 200 -o build/ --overwrite contracts/GasBurner.sol
-
-generate: compile
-	@mkdir -p bindings
-	abigen --abi build/GasBurner.abi --bin build/GasBurner.bin \
-		--pkg bindings --out bindings/gasburner.go --type GasBurner
+generate:
+	go run generate_variants.go
 
 vet: generate
 	go vet ./...
 
 clean:
-	rm -rf build bindings
+	rm -rf build bindings burner/variants.go

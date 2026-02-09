@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gas-burner
+  labels:
+    app: gas-burner
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gas-burner
+  template:
+    metadata:
+      labels:
+        app: gas-burner
+    spec:
+      containers:
+        - name: gas-burner
+          image: containerman17/burner022026:1c0b15d
+          args: ["--target", "0.04"]
+          env:
+            - name: PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gas-burner-private-key
+                  key: private-key
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      restartPolicy: Always

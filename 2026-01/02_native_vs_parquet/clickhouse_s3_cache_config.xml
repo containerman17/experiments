@@ -1,0 +1,10 @@
+<clickhouse>
+    <filesystem_caches>
+        <s3_cache>
+            <path>/root/experiments/2026-01/02_native_vs_parquet/cache/s3_cache/</path>
+            <max_size>100Gi</max_size>
+            <max_elements>10000000</max_elements>
+            <enable_filesystem_query_cache_limit>1</enable_filesystem_query_cache_limit>
+        </s3_cache>
+    </filesystem_caches>
+</clickhouse>

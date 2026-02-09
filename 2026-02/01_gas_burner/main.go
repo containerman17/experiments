@@ -105,28 +105,33 @@ func loadEnv() map[string]string {
 		"RPC_HTTP":    "https://api.avax.network/ext/bc/C/rpc",
 		"RPC_WS":     "wss://api.avax.network/ext/bc/C/ws",
 		"PRIVATE_KEY": "",
-		"CONTRACT":    "",
+		"CONTRACT":    "0x2057741Ff49821F68c81C32928748aF275070fb0",
 	}
 
+	// .env file (local dev)
 	f, err := os.Open(".env")
-	if err != nil {
-		saveEnv(env)
-		log.Println("Created .env with defaults")
-		return env
+	if err == nil {
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			k, v, ok := strings.Cut(line, "=")
+			if ok {
+				env[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			}
+		}
+		f.Close()
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if ok {
-			env[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	// OS environment variables override .env
+	for k := range env {
+		if v := os.Getenv(k); v != "" {
+			env[k] = v
 		}
 	}
+
 	return env
 }
 
@@ -368,15 +373,10 @@ func burnLoop(
 			tx, err := burner.Burn(auth, new(big.Int).SetUint64(iterations))
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "1559") {
-					auth.GasFeeCap = nil
-					auth.GasTipCap = nil
-					auth.GasPrice = target
-					tx, err = burner.Burn(auth, new(big.Int).SetUint64(iterations))
+					log.Fatalf("chain does not support EIP-1559: %v", err)
 				}
-				if err != nil {
-					log.Printf("[burn] failed: %v", err)
-					continue
-				}
+				log.Printf("[burn] failed: %v", err)
+				continue
 			}
 
 			maxCost := float64(target.Uint64()) * float64(tx.Gas()) / 1e18

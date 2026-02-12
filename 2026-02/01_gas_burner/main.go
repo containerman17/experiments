@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	rpcHTTP = "https://api.avax.network/ext/bc/C/rpc"
-	rpcWS   = "wss://api.avax.network/ext/bc/C/ws"
+	defaultRPCHTTP = "https://api.avax.network/ext/bc/C/rpc"
+	defaultRPCWS   = "wss://api.avax.network/ext/bc/C/ws"
 
 	stateFile = "/data/state.env"
 
@@ -41,6 +41,16 @@ const (
 )
 
 func main() {
+	rpcHTTP := defaultRPCHTTP
+	if v := os.Getenv("RPC_URL"); v != "" {
+		rpcHTTP = v
+	}
+	rpcWS := defaultRPCWS
+	if v := os.Getenv("RPC_WS_URL"); v != "" {
+		rpcWS = v
+	}
+	log.Printf("rpc_http=%s  rpc_ws=%s", rpcHTTP, rpcWS)
+
 	target := 0.0
 	if v := os.Getenv("TARGET_NAVAX"); v != "" {
 		var err error
@@ -131,6 +141,11 @@ func setupContract(client *ethclient.Client, auth *bind.TransactOpts) (common.Ad
 	idx := rand.Intn(len(burner.Variants))
 	v := burner.Variants[idx]
 	log.Printf("deploying variant %d...", idx)
+
+	// set gas params so deploy tx doesn't get stuck
+	auth.GasFeeCap = new(big.Int).SetUint64(100_000_000_000) // 100 nAVAX cap
+	auth.GasTipCap = new(big.Int).SetUint64(1_000_000_000)   // 1 nAVAX tip
+	auth.GasPrice = nil
 
 	addr, tx, err := burner.Deploy(auth, client, v)
 	if err != nil {

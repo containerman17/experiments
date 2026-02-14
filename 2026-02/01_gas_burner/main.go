@@ -354,13 +354,11 @@ func burnLoop(
 		var baseGas uint64
 		switch {
 		case ratio >= 0.95:
-			baseGas = 1_000_000
-		case ratio >= 0.90:
-			baseGas = 2_000_000
-		case ratio >= 0.85:
 			baseGas = 4_000_000
-		case ratio >= 0.80:
+		case ratio >= 0.90:
 			baseGas = 8_000_000
+		case ratio >= 0.85:
+			baseGas = 16_000_000
 		default:
 			baseGas = 16_000_000
 		}

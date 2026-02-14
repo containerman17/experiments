@@ -21,19 +21,16 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/joho/godotenv"
 )
 
 const (
-	defaultRPCHTTP = "https://api.avax.network/ext/bc/C/rpc"
-	defaultRPCWS   = "wss://api.avax.network/ext/bc/C/ws"
+	defaultRPC = "https://api.avax.network/ext/bc/C/rpc"
+	stateFile  = "/data/state.env"
 
-	stateFile = "/data/state.env"
-
-	burnInterval    = 2 * time.Second
-	startIters      = uint64(10_000)
+	burnInterval    = 10 * time.Second
 	healthPort      = ":8080"
 	minHealthBal    = 0.01 // AVAX
 	maxErrorRate    = 0.50
@@ -41,15 +38,12 @@ const (
 )
 
 func main() {
-	rpcHTTP := defaultRPCHTTP
+	_ = godotenv.Load()
+	rpcURL := defaultRPC
 	if v := os.Getenv("RPC_URL"); v != "" {
-		rpcHTTP = v
+		rpcURL = v
 	}
-	rpcWS := defaultRPCWS
-	if v := os.Getenv("RPC_WS_URL"); v != "" {
-		rpcWS = v
-	}
-	log.Printf("rpc_http=%s  rpc_ws=%s", rpcHTTP, rpcWS)
+	log.Printf("rpc=%s", rpcURL)
 
 	target := 0.0
 	if v := os.Getenv("TARGET_NAVAX"); v != "" {
@@ -70,7 +64,7 @@ func main() {
 	}
 	fromAddr := crypto.PubkeyToAddress(privateKey.PublicKey)
 
-	httpClient, err := ethclient.Dial(rpcHTTP)
+	httpClient, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		log.Fatalf("HTTP RPC failed: %v", err)
 	}
@@ -111,13 +105,11 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	tracker := &gasTracker{}
 	errors := newErrorTracker(errorWindowSize)
 
 	go startHealthServer(httpClient, fromAddr, errors)
-	go subscribeHeads(ctx, rpcWS, tracker)
 
-	burnLoop(ctx, httpClient, auth, fromAddr, contractAddr, selector, targetWei, tracker, errors)
+	burnLoop(ctx, httpClient, auth, fromAddr, contractAddr, selector, targetWei, errors)
 }
 
 // ---------------------------------------------------------------------------
@@ -137,10 +129,9 @@ func setupContract(client *ethclient.Client, auth *bind.TransactOpts) (common.Ad
 		}
 	}
 
-	// deploy a random pre-compiled variant
-	idx := rand.Intn(len(burner.Variants))
-	v := burner.Variants[idx]
-	log.Printf("deploying variant %d...", idx)
+	// deploy a random variant (unique selector each time)
+	v := burner.RandomVariant()
+	log.Printf("deploying variant 0x%x...", v.Selector)
 
 	// set gas params so deploy tx doesn't get stuck
 	auth.GasFeeCap = new(big.Int).SetUint64(100_000_000_000) // 100 nAVAX cap
@@ -296,79 +287,7 @@ func startHealthServer(client *ethclient.Client, addr common.Address, errors *er
 }
 
 // ---------------------------------------------------------------------------
-// Block subscription via WebSocket — reconnects on failure
-// ---------------------------------------------------------------------------
-
-func subscribeHeads(ctx context.Context, wsURL string, tracker *gasTracker) {
-	for ctx.Err() == nil {
-		err := subscribeOnce(ctx, wsURL, tracker)
-		if ctx.Err() != nil {
-			return
-		}
-		log.Printf("[sub] disconnected: %v — reconnecting in 3s", err)
-		time.Sleep(3 * time.Second)
-	}
-}
-
-func subscribeOnce(ctx context.Context, wsURL string, tracker *gasTracker) error {
-	client, err := ethclient.Dial(wsURL)
-	if err != nil {
-		return fmt.Errorf("ws connect: %w", err)
-	}
-	defer client.Close()
-
-	headers := make(chan *types.Header)
-	sub, err := client.SubscribeNewHead(ctx, headers)
-	if err != nil {
-		return fmt.Errorf("subscribe: %w", err)
-	}
-	defer sub.Unsubscribe()
-
-	log.Println("[sub] watching blocks")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-sub.Err():
-			return fmt.Errorf("stream: %w", err)
-		case head := <-headers:
-			if head.BaseFee == nil {
-				continue
-			}
-			tracker.update(head.BaseFee, head.Number.Uint64())
-			latest, block, _ := tracker.get()
-			log.Printf("[block %d] baseFee=%.2f nAVAX", block, latest/1e9)
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Gas price tracker
-// ---------------------------------------------------------------------------
-
-type gasTracker struct {
-	mu       sync.RWMutex
-	latest   float64
-	blockNum uint64
-	ready    bool
-}
-
-func (t *gasTracker) update(baseFee *big.Int, blockNum uint64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.latest = float64(baseFee.Uint64())
-	t.blockNum = blockNum
-	t.ready = true
-}
-
-func (t *gasTracker) get() (float64, uint64, bool) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.latest, t.blockNum, t.ready
-}
-
-// ---------------------------------------------------------------------------
-// Burn loop
+// Burn loop — polls base fee via HTTP, no WebSocket needed
 // ---------------------------------------------------------------------------
 
 func burnLoop(
@@ -379,15 +298,14 @@ func burnLoop(
 	contractAddr common.Address,
 	sel [4]byte,
 	target *big.Int,
-	tracker *gasTracker,
 	errors *errorTracker,
 ) {
 	targetF := float64(target.Uint64())
-	iterations := startIters
-	tick := 0
 
 	ticker := time.NewTicker(burnInterval)
 	defer ticker.Stop()
+
+	lastLog := time.Time{}
 
 	for {
 		select {
@@ -395,62 +313,53 @@ func burnLoop(
 			log.Println("shutdown")
 			return
 		case <-ticker.C:
-			tick++
-
-			baseFee, blockNum, ready := tracker.get()
-			if !ready {
+			head, err := client.HeaderByNumber(ctx, nil)
+			if err != nil {
+				log.Printf("[poll] header fetch failed: %v", err)
+				continue
+			}
+			if head.BaseFee == nil {
+				log.Printf("[poll] block %d has no baseFee", head.Number.Uint64())
 				continue
 			}
 
+			baseFee := float64(head.BaseFee.Uint64())
+			blockNum := head.Number.Uint64()
 			baseFeeNav := baseFee / 1e9
 			targetNav := targetF / 1e9
 			ratio := baseFee / targetF
 
-			var factor float64
-			switch {
-			case ratio < 0.5:
-				factor = 1.10
-			case ratio < 0.90:
-				factor = 1.05
-			case ratio < 1.10:
-				if ratio < 1.0 {
-					factor = 1.005
-				} else {
-					factor = 0.995
-				}
-			case ratio < 1.30:
-				factor = 0.95
-			case ratio < 1.50:
-				factor = 0.90
-			default:
-				factor = 0.80
-			}
-			iterations = clampU64(uint64(float64(iterations)*factor), 100, 10_000_000)
-
+			// at or above target — fee cap will prevent inclusion anyway
 			if ratio >= 1.0 {
-				if tick%15 == 0 {
-					log.Printf("[hold] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d",
-						blockNum, baseFeeNav, targetNav, iterations)
-				}
-				continue
-			}
-			if iterations < 1000 {
-				if tick%15 == 0 {
-					log.Printf("[idle] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d  (too low)",
-						blockNum, baseFeeNav, targetNav, iterations)
+				if time.Since(lastLog) > 2*time.Minute {
+					log.Printf("[hold] block=%d  baseFee=%.4f  target=%.4f nAVAX", blockNum, baseFeeNav, targetNav)
+					lastLog = time.Now()
 				}
 				continue
 			}
 
+			// pick gas limit: more pressure the further below target, ±20% jitter
+			var baseGas uint64
+			switch {
+			case ratio < 0.80:
+				baseGas = 4_000_000
+			case ratio < 0.90:
+				baseGas = 2_000_000
+			default:
+				baseGas = 1_000_000
+			}
+			jitter := 0.8 + rand.Float64()*0.4 // [0.8, 1.2)
+			gasLimit := uint64(float64(baseGas) * jitter)
+
+			// one tx in flight at a time
 			pending, _ := client.PendingNonceAt(ctx, from)
 			confirmed, _ := client.NonceAt(ctx, from, nil)
-			if pending-confirmed > 3 {
-				log.Printf("[skip] %d pending txs", pending-confirmed)
+			if pending > confirmed {
 				continue
 			}
 
 			auth.Nonce = nil
-			auth.GasLimit = 0
+			auth.GasLimit = gasLimit // hardcoded — estimateGas will fail (INVALID always reverts)
 			auth.GasFeeCap = target
 			tip := big.NewInt(1_000_000_000)
 			if tip.Cmp(target) > 0 {
@@ -459,7 +368,7 @@ func burnLoop(
 			auth.GasTipCap = tip
 			auth.GasPrice = nil
 
-			tx, err := burner.Burn(auth, client, contractAddr, sel, iterations)
+			tx, err := burner.Burn(auth, client, contractAddr, sel)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "1559") {
 					log.Fatalf("chain does not support EIP-1559: %v", err)
@@ -471,8 +380,8 @@ func burnLoop(
 
 			errors.record(true)
 			maxCost := float64(target.Uint64()) * float64(tx.Gas()) / 1e18
-			log.Printf("[burn] block=%d  baseFee=%.2f  target=%.2f nAVAX  iters=%d  cost≤%.6f AVAX  tx=%s",
-				blockNum, baseFeeNav, targetNav, iterations, maxCost, short(tx.Hash().Hex()))
+			log.Printf("[burn] block=%d  baseFee=%.4f  target=%.4f nAVAX  gas=%.1fM  cost≤%.6f AVAX  tx=%s",
+				blockNum, baseFeeNav, targetNav, float64(gasLimit)/1e6, maxCost, tx.Hash().Hex())
 		}
 	}
 }
@@ -492,19 +401,3 @@ func weiToAVAX(wei *big.Int) float64 {
 	return v
 }
 
-func clampU64(v, lo, hi uint64) uint64 {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
-
-func short(s string) string {
-	if len(s) > 18 {
-		return s[:18] + "..."
-	}
-	return s
-}

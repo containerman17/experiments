@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health
@@ -96,7 +96,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health
@@ -174,7 +174,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health
@@ -252,7 +252,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health
@@ -330,7 +330,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health
@@ -408,7 +408,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health
@@ -486,7 +486,7 @@ spec:
     spec:
       containers:
         - name: gas-burner
-          image: containerman17/burner022026:4ccd571
+          image: containerman17/burner022026:f3eb532
           ports:
             - containerPort: 8080
               name: health

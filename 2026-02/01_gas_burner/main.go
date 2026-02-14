@@ -28,7 +28,7 @@ import (
 
 const (
 	defaultRPC = "https://api.avax.network/ext/bc/C/rpc"
-	stateFile  = "/data/state.env"
+	stateFile  = "/data/burner-state.env"
 
 	defaultBurnInterval = 1500 * time.Millisecond
 	healthPort      = ":8080"

@@ -30,7 +30,7 @@ const (
 	defaultRPC = "https://api.avax.network/ext/bc/C/rpc"
 	stateFile  = "/data/state.env"
 
-	burnInterval    = 5 * time.Second
+	defaultBurnInterval = 1500 * time.Millisecond
 	healthPort      = ":8080"
 	minHealthBal    = 0.01 // AVAX
 	maxErrorRate    = 0.50
@@ -100,7 +100,17 @@ func main() {
 	}
 
 	targetWei := nAvaxToWei(target)
-	log.Printf("target=%.2f nAVAX  contract=%s  selector=0x%x", target, contractAddr.Hex(), selector)
+
+	interval := defaultBurnInterval
+	if v := os.Getenv("BURN_INTERVAL_MS"); v != "" {
+		ms, err := strconv.Atoi(v)
+		if err != nil {
+			log.Fatalf("invalid BURN_INTERVAL_MS=%q: %v", v, err)
+		}
+		interval = time.Duration(ms) * time.Millisecond
+	}
+
+	log.Printf("target=%.2f nAVAX  interval=%s  contract=%s  selector=0x%x", target, interval, contractAddr.Hex(), selector)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -109,7 +119,7 @@ func main() {
 
 	go startHealthServer(httpClient, fromAddr, errors)
 
-	burnLoop(ctx, httpClient, auth, fromAddr, contractAddr, selector, targetWei, errors)
+	burnLoop(ctx, httpClient, auth, fromAddr, contractAddr, selector, targetWei, interval, errors)
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +308,7 @@ func burnLoop(
 	contractAddr common.Address,
 	sel [4]byte,
 	target *big.Int,
+	interval time.Duration,
 	errors *errorTracker,
 ) {
 	targetF := float64(target.Uint64())
@@ -314,12 +325,12 @@ func burnLoop(
 		head, err := client.HeaderByNumber(ctx, nil)
 		if err != nil {
 			log.Printf("[poll] header fetch failed: %v", err)
-			sleepRemaining(loopStart, burnInterval, ctx)
+			sleepRemaining(loopStart, interval, ctx)
 			continue
 		}
 		if head.BaseFee == nil {
 			log.Printf("[poll] block %d has no baseFee", head.Number.Uint64())
-			sleepRemaining(loopStart, burnInterval, ctx)
+			sleepRemaining(loopStart, interval, ctx)
 			continue
 		}
 
@@ -335,7 +346,7 @@ func burnLoop(
 				log.Printf("[hold] block=%d  baseFee=%.4f  target=%.4f nAVAX", blockNum, baseFeeNav, targetNav)
 				lastLog = time.Now()
 			}
-			sleepRemaining(loopStart, burnInterval, ctx)
+			sleepRemaining(loopStart, interval, ctx)
 			continue
 		}
 
@@ -356,7 +367,7 @@ func burnLoop(
 		pending, _ := client.PendingNonceAt(ctx, from)
 		confirmed, _ := client.NonceAt(ctx, from, nil)
 		if pending > confirmed {
-			sleepRemaining(loopStart, burnInterval, ctx)
+			sleepRemaining(loopStart, interval, ctx)
 			continue
 		}
 
@@ -377,7 +388,7 @@ func burnLoop(
 			}
 			log.Printf("[burn] failed: %v", err)
 			errors.record(false)
-			sleepRemaining(loopStart, burnInterval, ctx)
+			sleepRemaining(loopStart, interval, ctx)
 			continue
 		}
 
@@ -386,7 +397,7 @@ func burnLoop(
 		log.Printf("[burn] block=%d  baseFee=%.4f  target=%.4f nAVAX  gas=%.1fM  cost≤%.6f AVAX  tx=%s",
 			blockNum, baseFeeNav, targetNav, float64(gasLimit)/1e6, maxCost, tx.Hash().Hex())
 
-		sleepRemaining(loopStart, burnInterval, ctx)
+		sleepRemaining(loopStart, interval, ctx)
 	}
 }
 
@@ -414,4 +425,3 @@ func weiToAVAX(wei *big.Int) float64 {
 	v, _ := f.Float64()
 	return v
 }
-

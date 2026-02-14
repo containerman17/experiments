@@ -30,7 +30,7 @@ const (
 	defaultRPC = "https://api.avax.network/ext/bc/C/rpc"
 	stateFile  = "/data/state.env"
 
-	burnInterval    = 10 * time.Second
+	burnInterval    = 5 * time.Second
 	healthPort      = ":8080"
 	minHealthBal    = 0.01 // AVAX
 	maxErrorRate    = 0.50
@@ -301,94 +301,108 @@ func burnLoop(
 	errors *errorTracker,
 ) {
 	targetF := float64(target.Uint64())
-
-	ticker := time.NewTicker(burnInterval)
-	defer ticker.Stop()
-
 	lastLog := time.Time{}
 
 	for {
-		select {
-		case <-ctx.Done():
+		loopStart := time.Now()
+
+		if ctx.Err() != nil {
 			log.Println("shutdown")
 			return
-		case <-ticker.C:
-			head, err := client.HeaderByNumber(ctx, nil)
-			if err != nil {
-				log.Printf("[poll] header fetch failed: %v", err)
-				continue
-			}
-			if head.BaseFee == nil {
-				log.Printf("[poll] block %d has no baseFee", head.Number.Uint64())
-				continue
-			}
-
-			baseFee := float64(head.BaseFee.Uint64())
-			blockNum := head.Number.Uint64()
-			baseFeeNav := baseFee / 1e9
-			targetNav := targetF / 1e9
-			ratio := baseFee / targetF
-
-			// at or above target — fee cap will prevent inclusion anyway
-			if ratio >= 1.0 {
-				if time.Since(lastLog) > 2*time.Minute {
-					log.Printf("[hold] block=%d  baseFee=%.4f  target=%.4f nAVAX", blockNum, baseFeeNav, targetNav)
-					lastLog = time.Now()
-				}
-				continue
-			}
-
-			// pick gas limit: more pressure the further below target, ±20% jitter
-			var baseGas uint64
-			switch {
-			case ratio < 0.80:
-				baseGas = 4_000_000
-			case ratio < 0.90:
-				baseGas = 2_000_000
-			default:
-				baseGas = 1_000_000
-			}
-			jitter := 0.8 + rand.Float64()*0.4 // [0.8, 1.2)
-			gasLimit := uint64(float64(baseGas) * jitter)
-
-			// one tx in flight at a time
-			pending, _ := client.PendingNonceAt(ctx, from)
-			confirmed, _ := client.NonceAt(ctx, from, nil)
-			if pending > confirmed {
-				continue
-			}
-
-			auth.Nonce = nil
-			auth.GasLimit = gasLimit // hardcoded — estimateGas will fail (INVALID always reverts)
-			auth.GasFeeCap = target
-			tip := big.NewInt(1_000_000_000)
-			if tip.Cmp(target) > 0 {
-				tip = new(big.Int).Set(target)
-			}
-			auth.GasTipCap = tip
-			auth.GasPrice = nil
-
-			tx, err := burner.Burn(auth, client, contractAddr, sel)
-			if err != nil {
-				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "1559") {
-					log.Fatalf("chain does not support EIP-1559: %v", err)
-				}
-				log.Printf("[burn] failed: %v", err)
-				errors.record(false)
-				continue
-			}
-
-			errors.record(true)
-			maxCost := float64(target.Uint64()) * float64(tx.Gas()) / 1e18
-			log.Printf("[burn] block=%d  baseFee=%.4f  target=%.4f nAVAX  gas=%.1fM  cost≤%.6f AVAX  tx=%s",
-				blockNum, baseFeeNav, targetNav, float64(gasLimit)/1e6, maxCost, tx.Hash().Hex())
 		}
+
+		head, err := client.HeaderByNumber(ctx, nil)
+		if err != nil {
+			log.Printf("[poll] header fetch failed: %v", err)
+			sleepRemaining(loopStart, burnInterval, ctx)
+			continue
+		}
+		if head.BaseFee == nil {
+			log.Printf("[poll] block %d has no baseFee", head.Number.Uint64())
+			sleepRemaining(loopStart, burnInterval, ctx)
+			continue
+		}
+
+		baseFee := float64(head.BaseFee.Uint64())
+		blockNum := head.Number.Uint64()
+		baseFeeNav := baseFee / 1e9
+		targetNav := targetF / 1e9
+		ratio := baseFee / targetF
+
+		// at or above target — fee cap will prevent inclusion anyway
+		if ratio >= 1.0 {
+			if time.Since(lastLog) > 2*time.Minute {
+				log.Printf("[hold] block=%d  baseFee=%.4f  target=%.4f nAVAX", blockNum, baseFeeNav, targetNav)
+				lastLog = time.Now()
+			}
+			sleepRemaining(loopStart, burnInterval, ctx)
+			continue
+		}
+
+		// pick gas limit: more pressure the further below target, ±20% jitter
+		var baseGas uint64
+		switch {
+		case ratio < 0.80:
+			baseGas = 4_000_000
+		case ratio < 0.90:
+			baseGas = 2_000_000
+		default:
+			baseGas = 1_000_000
+		}
+		jitter := 0.8 + rand.Float64()*0.4 // [0.8, 1.2)
+		gasLimit := uint64(float64(baseGas) * jitter)
+
+		// one tx in flight at a time
+		pending, _ := client.PendingNonceAt(ctx, from)
+		confirmed, _ := client.NonceAt(ctx, from, nil)
+		if pending > confirmed {
+			sleepRemaining(loopStart, burnInterval, ctx)
+			continue
+		}
+
+		auth.Nonce = nil
+		auth.GasLimit = gasLimit // hardcoded — estimateGas will fail (INVALID always reverts)
+		auth.GasFeeCap = target
+		tip := big.NewInt(1_000_000_000)
+		if tip.Cmp(target) > 0 {
+			tip = new(big.Int).Set(target)
+		}
+		auth.GasTipCap = tip
+		auth.GasPrice = nil
+
+		tx, err := burner.Burn(auth, client, contractAddr, sel)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "1559") {
+				log.Fatalf("chain does not support EIP-1559: %v", err)
+			}
+			log.Printf("[burn] failed: %v", err)
+			errors.record(false)
+			sleepRemaining(loopStart, burnInterval, ctx)
+			continue
+		}
+
+		errors.record(true)
+		maxCost := float64(target.Uint64()) * float64(tx.Gas()) / 1e18
+		log.Printf("[burn] block=%d  baseFee=%.4f  target=%.4f nAVAX  gas=%.1fM  cost≤%.6f AVAX  tx=%s",
+			blockNum, baseFeeNav, targetNav, float64(gasLimit)/1e6, maxCost, tx.Hash().Hex())
+
+		sleepRemaining(loopStart, burnInterval, ctx)
 	}
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+func sleepRemaining(start time.Time, interval time.Duration, ctx context.Context) {
+	elapsed := time.Since(start)
+	if remaining := interval - elapsed; remaining > 0 {
+		select {
+		case <-time.After(remaining):
+		case <-ctx.Done():
+		}
+	}
+}
 
 func nAvaxToWei(nAvax float64) *big.Int {
 	return new(big.Int).SetUint64(uint64(nAvax * 1e9))

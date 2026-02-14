@@ -350,12 +350,19 @@ func burnLoop(
 			continue
 		}
 
-		// pick gas limit: aggressive — ±20% jitter
+		// pick gas limit: scale with distance from target
 		var baseGas uint64
-		if ratio < 0.90 {
-			baseGas = 16_000_000
-		} else {
+		switch {
+		case ratio >= 0.95:
+			baseGas = 1_000_000
+		case ratio >= 0.90:
+			baseGas = 2_000_000
+		case ratio >= 0.85:
+			baseGas = 4_000_000
+		case ratio >= 0.80:
 			baseGas = 8_000_000
+		default:
+			baseGas = 16_000_000
 		}
 		jitter := 0.8 + rand.Float64()*0.4 // [0.8, 1.2)
 		gasLimit := uint64(float64(baseGas) * jitter)

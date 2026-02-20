@@ -1,4 +1,0 @@
-# flyctl launch added from .gitignore
-**/.env
-**/notes/01_ideas.md
-fly.toml

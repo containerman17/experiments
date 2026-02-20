@@ -1,0 +1,279 @@
+import { Bot } from "grammy";
+import yaml from "js-yaml";
+import { readFileSync, writeFileSync, realpathSync } from "fs";
+import { spawn } from "child_process";
+
+interface BotConfig {
+  token: string;
+  cwd: string;
+  session_id?: string;
+}
+
+interface Config {
+  gemini_api_key: string;
+  gemini_model: string;
+  bots: Record<string, BotConfig>;
+}
+
+const CONFIG_PATH = "config.yaml";
+const cfg = yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Config;
+cfg.gemini_model = cfg.gemini_model || "gemini-3-flash-preview";
+
+function saveConfig() {
+  writeFileSync(CONFIG_PATH, yaml.dump(cfg, { lineWidth: -1 }));
+}
+
+const HOME = process.env.HOME || "/root";
+const CLAUDE_BIN = realpathSync(`${HOME}/.local/bin/claude`);
+
+// --- Gemini voice transcription ---
+
+async function transcribeVoice(oggData: Buffer): Promise<string> {
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${cfg.gemini_model}:generateContent?key=${cfg.gemini_api_key}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: "You are a transcription service. Transcribe the speech accurately. Output ONLY the transcription, nothing else." }],
+        },
+        contents: [{
+          parts: [
+            { text: "Transcribe this voice message:" },
+            { inlineData: { mimeType: "audio/ogg", data: oggData.toString("base64") } },
+          ],
+        }],
+      }),
+    },
+  );
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Gemini API error ${resp.status}: ${err}`);
+  }
+
+  const json = (await resp.json()) as any;
+  return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(empty transcription)";
+}
+
+// --- Claude via CLI ---
+
+function runClaude(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+    delete env.CLAUDE_CODE_SSE_PORT;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+
+    const child = spawn(CLAUDE_BIN, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
+    child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("Claude timed out after 5 minutes"));
+    }, 5 * 60 * 1000);
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const stdout = Buffer.concat(stdoutChunks).toString();
+      const stderr = Buffer.concat(stderrChunks).toString();
+      if (code !== 0) {
+        reject(new Error(`Claude exited ${code}: ${stderr.slice(0, 200)}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+// --- Markdown to Telegram HTML ---
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function markdownToTelegramHtml(md: string): string {
+  let out = md;
+  out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+    const escaped = escapeHtml(code.trimEnd());
+    return lang ? `<pre><code class="language-${lang}">${escaped}</code></pre>` : `<pre>${escaped}</pre>`;
+  });
+  out = out.replace(/`([^`]+)`/g, (_m, code) => `<code>${escapeHtml(code)}</code>`);
+  out = out.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  out = out.replace(/__(.+?)__/g, "<b>$1</b>");
+  out = out.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, "<i>$1</i>");
+  out = out.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, "<i>$1</i>");
+  out = out.replace(/~~(.+?)~~/g, "<s>$1</s>");
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  out = out.replace(/^#{1,6}\s+(.+)$/gm, "<b>$1</b>");
+  return out;
+}
+
+function splitMessage(text: string, max = 4096): string[] {
+  if (text.length <= max) return [text];
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= max) { chunks.push(remaining); break; }
+    let i = remaining.lastIndexOf("\n", max);
+    if (i < max / 2) i = remaining.lastIndexOf(" ", max);
+    if (i < max / 2) i = max;
+    chunks.push(remaining.slice(0, i));
+    remaining = remaining.slice(i).trimStart();
+  }
+  return chunks;
+}
+
+async function sendResponse(ctx: any, response: string) {
+  const html = markdownToTelegramHtml(response);
+  for (const chunk of splitMessage(html)) {
+    try {
+      await ctx.reply(chunk, { parse_mode: "HTML" });
+    } catch {
+      await ctx.reply(chunk);
+    }
+  }
+}
+
+// --- Per-chat queue + session state ---
+
+interface ChatState {
+  botName: string;
+  sessionId: string | undefined;
+  queue: string[];
+  processing: boolean;
+}
+
+const chatStates = new Map<string, ChatState>();
+
+function getState(key: string, botName: string): ChatState {
+  let s = chatStates.get(key);
+  if (!s) {
+    s = { botName, sessionId: cfg.bots[botName]?.session_id, queue: [], processing: false };
+    chatStates.set(key, s);
+  }
+  return s;
+}
+
+async function processQueue(key: string, name: string, chatId: number, cwd: string, ctx: any) {
+  const state = getState(key, name);
+  if (state.processing || state.queue.length === 0) return;
+  state.processing = true;
+
+  const prompt = state.queue.splice(0).join("\n\n");
+  const tag = `[${name}:${chatId}]`;
+
+  console.log(`${tag} <- user: ${prompt.slice(0, 200)}`);
+  console.log(`${tag} -> claude: ${prompt.slice(0, 200)}${state.sessionId ? ` (resume ${state.sessionId.slice(0, 8)}...)` : " (new)"}`);
+
+  await ctx.replyWithChatAction("typing");
+  const typingInterval = setInterval(() => {
+    ctx.replyWithChatAction("typing").catch(() => {});
+  }, 4000);
+
+  const t0 = Date.now();
+
+  try {
+    const args = [
+      "-p", prompt,
+      "--output-format", "json",
+      "--dangerously-skip-permissions",
+      "--max-turns", "10",
+      "--model", "claude-opus-4-6",
+    ];
+    if (state.sessionId) {
+      args.push("--resume", state.sessionId);
+    }
+
+    const { stdout } = await runClaude(args, cwd);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    let response: string;
+    try {
+      const result = JSON.parse(stdout);
+      if (result.session_id) {
+        state.sessionId = result.session_id;
+        cfg.bots[state.botName].session_id = result.session_id;
+        saveConfig();
+      }
+      response = result.result || "(no response)";
+    } catch {
+      response = stdout.trim() || "(no response)";
+    }
+
+    console.log(`${tag} <- claude (${elapsed}s): ${response.slice(0, 200)}`);
+
+    await sendResponse(ctx, response);
+    console.log(`${tag} -> user: ${response.slice(0, 200)}`);
+  } catch (err) {
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`${tag} !! claude error (${elapsed}s): ${msg}`);
+    await ctx.reply(`Error: ${msg}`);
+  } finally {
+    clearInterval(typingInterval);
+    state.processing = false;
+    if (state.queue.length > 0) {
+      processQueue(key, name, chatId, cwd, ctx);
+    }
+  }
+}
+
+// --- Bots ---
+
+for (const [name, botCfg] of Object.entries(cfg.bots)) {
+  const bot = new Bot(botCfg.token);
+
+  bot.command("new", (ctx) => {
+    const key = `${name}:${ctx.chat.id}`;
+    const state = getState(key, name);
+    state.sessionId = undefined;
+    state.queue = [];
+    ctx.reply("Starting a new chat.");
+  });
+
+  bot.on("message:voice", async (ctx) => {
+    try {
+      const file = await ctx.getFile();
+      const fileUrl = `https://api.telegram.org/file/bot${botCfg.token}/${file.file_path}`;
+      const resp = await fetch(fileUrl);
+      const oggData = Buffer.from(await resp.arrayBuffer());
+
+      console.log(`[${name}:${ctx.chat.id}] <- user: [voice message]`);
+      const transcription = await transcribeVoice(oggData);
+      console.log(`[${name}:${ctx.chat.id}] transcribed: ${transcription.slice(0, 200)}`);
+
+      await ctx.reply(`🎤 ${transcription}`);
+
+      const key = `${name}:${ctx.chat.id}`;
+      getState(key, name).queue.push(transcription);
+      processQueue(key, name, ctx.chat.id, botCfg.cwd, ctx);
+    } catch (err) {
+      console.error(`[${name}] Voice error:`, err);
+      await ctx.reply(`Voice error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  bot.on("message:text", (ctx) => {
+    const text = ctx.message.text;
+    if (text.startsWith("/")) return;
+
+    const key = `${name}:${ctx.chat.id}`;
+    getState(key, name).queue.push(text);
+    processQueue(key, name, ctx.chat.id, botCfg.cwd, ctx);
+  });
+
+  bot.catch((err) => console.error(`[${name}]`, err));
+  bot.start();
+  console.log(`[${name}] Bot started`);
+}

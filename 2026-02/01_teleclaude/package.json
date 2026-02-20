@@ -1,0 +1,25 @@
+{
+  "name": "01_teleclaude",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "pm2": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop teleclaude",
+    "pm2:logs": "pm2 logs teleclaude"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.49",
+    "grammy": "^1.40.0",
+    "js-yaml": "^4.1.1",
+    "tsx": "^4.21.0"
+  }
+}

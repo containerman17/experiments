@@ -1,7 +1,5 @@
 import { Bot } from "grammy";
 import yaml from "js-yaml";
-import { readFileSync, writeFileSync, realpathSync } from "fs";
-import { spawn } from "child_process";
 
 interface BotConfig {
   token: string;
@@ -15,20 +13,25 @@ interface Config {
   bots: Record<string, BotConfig>;
 }
 
-const CONFIG_PATH = "config.yaml";
-const cfg = yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Config;
-cfg.gemini_model = cfg.gemini_model || "gemini-3-flash-preview";
+const configIdx = process.argv.indexOf("--config");
+const CONFIG_PATH = configIdx !== -1 && process.argv[configIdx + 1] ? process.argv[configIdx + 1] : "config.yaml";
+const cfg = yaml.load(await Bun.file(CONFIG_PATH).text()) as Config;
+cfg.gemini_model = cfg.gemini_model || "gemini-3-pro-preview";
 
 function saveConfig() {
-  writeFileSync(CONFIG_PATH, yaml.dump(cfg, { lineWidth: -1 }));
+  Bun.write(CONFIG_PATH, yaml.dump(cfg, { lineWidth: -1 }));
 }
 
 const HOME = process.env.HOME || "/root";
-const CLAUDE_BIN = realpathSync(`${HOME}/.local/bin/claude`);
+const CLAUDE_BIN = Bun.which("claude") || `${HOME}/.local/bin/claude`;
 
 // --- Gemini voice transcription ---
 
-async function transcribeVoice(oggData: Buffer): Promise<string> {
+async function transcribeVoice(oggData: Buffer, recentMessages: string[]): Promise<string> {
+  const contextHint = recentMessages.length > 0
+    ? `\n\nRecent conversation for context (use this to disambiguate technical terms):\n${recentMessages.join("\n")}`
+    : "";
+
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${cfg.gemini_model}:generateContent?key=${cfg.gemini_api_key}`,
     {
@@ -36,11 +39,14 @@ async function transcribeVoice(oggData: Buffer): Promise<string> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         system_instruction: {
-          parts: [{ text: "You are a transcription service. Transcribe the speech accurately. Output ONLY the transcription, nothing else." }],
+          parts: [{ text: "You are a transcription service for a software engineering conversation. The speaker is discussing code, programming, and technical topics. Preserve technical terms, function names, variable names, CLI commands, and programming jargon accurately. Output ONLY the transcription, nothing else." }],
+        },
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: "low" },
         },
         contents: [{
           parts: [
-            { text: "Transcribe this voice message:" },
+            { text: `Transcribe this voice message:${contextHint}` },
             { inlineData: { mimeType: "audio/ogg", data: oggData.toString("base64") } },
           ],
         }],
@@ -59,41 +65,28 @@ async function transcribeVoice(oggData: Buffer): Promise<string> {
 
 // --- Claude via CLI ---
 
-function runClaude(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    delete env.CLAUDECODE;
-    delete env.CLAUDE_CODE_SSE_PORT;
-    delete env.CLAUDE_CODE_ENTRYPOINT;
+async function runClaude(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+  delete env.CLAUDE_CODE_SSE_PORT;
+  delete env.CLAUDE_CODE_ENTRYPOINT;
 
-    const child = spawn(CLAUDE_BIN, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = Bun.spawn([CLAUDE_BIN, ...args], { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
 
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+  const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
 
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error("Claude timed out after 5 minutes"));
-    }, 5 * 60 * 1000);
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
 
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const stdout = Buffer.concat(stdoutChunks).toString();
-      const stderr = Buffer.concat(stderrChunks).toString();
-      if (code !== 0) {
-        reject(new Error(`Claude exited ${code}: ${stderr.slice(0, 200)}`));
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
+  clearTimeout(timer);
 
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
+  if (exitCode !== 0) {
+    throw new Error(`Claude exited ${exitCode}: ${stderr.slice(0, 200)}`);
+  }
+  return { stdout, stderr };
 }
 
 // --- Markdown to Telegram HTML ---
@@ -152,6 +145,7 @@ interface ChatState {
   sessionId: string | undefined;
   queue: string[];
   processing: boolean;
+  history: string[]; // last N messages for voice transcription context
 }
 
 const chatStates = new Map<string, ChatState>();
@@ -159,7 +153,7 @@ const chatStates = new Map<string, ChatState>();
 function getState(key: string, botName: string): ChatState {
   let s = chatStates.get(key);
   if (!s) {
-    s = { botName, sessionId: cfg.bots[botName]?.session_id, queue: [], processing: false };
+    s = { botName, sessionId: cfg.bots[botName]?.session_id, queue: [], processing: false, history: [] };
     chatStates.set(key, s);
   }
   return s;
@@ -172,6 +166,9 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
 
   const prompt = state.queue.splice(0).join("\n\n");
   const tag = `[${name}:${chatId}]`;
+
+  state.history.push(`User: ${prompt.slice(0, 300)}`);
+  if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
 
   console.log(`${tag} <- user: ${prompt.slice(0, 200)}`);
   console.log(`${tag} -> claude: ${prompt.slice(0, 200)}${state.sessionId ? ` (resume ${state.sessionId.slice(0, 8)}...)` : " (new)"}`);
@@ -210,6 +207,9 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
     } catch {
       response = stdout.trim() || "(no response)";
     }
+
+    state.history.push(`Assistant: ${response.slice(0, 300)}`);
+    if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
 
     console.log(`${tag} <- claude (${elapsed}s): ${response.slice(0, 200)}`);
 
@@ -250,13 +250,14 @@ for (const [name, botCfg] of Object.entries(cfg.bots)) {
       const oggData = Buffer.from(await resp.arrayBuffer());
 
       console.log(`[${name}:${ctx.chat.id}] <- user: [voice message]`);
-      const transcription = await transcribeVoice(oggData);
+      const key = `${name}:${ctx.chat.id}`;
+      const state = getState(key, name);
+      const transcription = await transcribeVoice(oggData, state.history.slice(-10));
       console.log(`[${name}:${ctx.chat.id}] transcribed: ${transcription.slice(0, 200)}`);
 
       await ctx.reply(`🎤 ${transcription}`);
 
-      const key = `${name}:${ctx.chat.id}`;
-      getState(key, name).queue.push(transcription);
+      state.queue.push(transcription);
       processQueue(key, name, ctx.chat.id, botCfg.cwd, ctx);
     } catch (err) {
       console.error(`[${name}] Voice error:`, err);

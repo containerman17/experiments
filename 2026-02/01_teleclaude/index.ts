@@ -63,30 +63,33 @@ async function transcribeVoice(oggData: Buffer, recentMessages: string[]): Promi
   return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(empty transcription)";
 }
 
-// --- Claude via CLI ---
+// --- Claude via CLI (streaming NDJSON) ---
 
-async function runClaude(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+function formatToolCall(name: string, input: any): string {
+  switch (name) {
+    case "Read": return `Reading ${shortenPath(input?.file_path)}`;
+    case "Edit": return `Editing ${shortenPath(input?.file_path)}`;
+    case "Write": return `Writing ${shortenPath(input?.file_path)}`;
+    case "Bash": return `$ ${(input?.command || "").slice(0, 80)}`;
+    case "Glob": return `Searching for ${input?.pattern || "files"}`;
+    case "Grep": return `Grepping "${(input?.pattern || "").slice(0, 40)}"`;
+    case "Task": return `Delegating subtask`;
+    default: return name;
+  }
+}
+
+function shortenPath(p: string): string {
+  if (!p) return "?";
+  const parts = p.split("/");
+  return parts.length > 3 ? `.../${parts.slice(-2).join("/")}` : p;
+}
+
+function makeClaudeEnv() {
   const env = { ...process.env };
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_SSE_PORT;
   delete env.CLAUDE_CODE_ENTRYPOINT;
-
-  const child = Bun.spawn([CLAUDE_BIN, ...args], { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-
-  const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-
-  clearTimeout(timer);
-
-  if (exitCode !== 0) {
-    throw new Error(`Claude exited ${exitCode}: ${stderr.slice(0, 200)}`);
-  }
-  return { stdout, stderr };
+  return env;
 }
 
 // --- Markdown to Telegram HTML ---
@@ -183,39 +186,110 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
   try {
     const args = [
       "-p", prompt,
-      "--output-format", "json",
+      "--output-format", "stream-json",
+      "--verbose",
       "--dangerously-skip-permissions",
       "--max-turns", "10",
       "--model", "claude-opus-4-6",
-      "--append-system-prompt", "After completing any task, ALWAYS end with a text message summarizing what you did and the results. Never end on just a tool use without a text summary.",
     ];
     if (state.sessionId) {
       args.push("--resume", state.sessionId);
     }
 
-    const { stdout } = await runClaude(args, cwd);
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    const child = Bun.spawn([CLAUDE_BIN, ...args], { cwd, env: makeClaudeEnv(), stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+    const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
+    const stderrP = new Response(child.stderr).text();
 
-    let response: string;
-    try {
-      const result = JSON.parse(stdout);
-      if (result.session_id) {
-        state.sessionId = result.session_id;
-        cfg.bots[state.botName].session_id = result.session_id;
-        saveConfig();
-      }
-      response = result.result || `(Claude completed in ${elapsed}s over ${result.num_turns ?? "?"} turns but produced no text summary)`;
-    } catch {
-      response = stdout.trim() || `(Claude completed in ${elapsed}s but produced no parseable output)`;
+    // Status message we keep editing with tool call updates
+    const statusMsg = await ctx.reply("Working...");
+    const toolLog: string[] = [];
+    let lastEditTime = 0;
+    let resultText = "";
+    let sessionId = "";
+
+    async function editStatus(text: string) {
+      const now = Date.now();
+      if (now - lastEditTime < 2000) return;
+      lastEditTime = now;
+      try { await ctx.api.editMessageText(chatId, statusMsg.message_id, text); } catch {}
     }
 
-    state.history.push(`Assistant: ${response.slice(0, 300)}`);
-    if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
+    // Read NDJSON line by line
+    const reader = child.stdout.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
 
-    console.log(`${tag} <- claude (${elapsed}s): ${response.slice(0, 200)}`);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
 
-    await sendResponse(ctx, response);
-    console.log(`${tag} -> user: ${response.slice(0, 200)}`);
+      let nl;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+
+        try {
+          const ev = JSON.parse(line);
+
+          if (ev.type === "system" && ev.subtype === "init" && ev.session_id) {
+            sessionId = ev.session_id;
+          }
+
+          if (ev.type === "assistant" && ev.message?.content) {
+            for (const block of ev.message.content) {
+              if (block.type === "tool_use") {
+                const desc = formatToolCall(block.name, block.input);
+                toolLog.push(desc);
+                console.log(`${tag} tool: ${desc}`);
+                const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
+                const recent = toolLog.slice(-5).join("\n");
+                await editStatus(`Working... (${elapsed}s)\n${recent}`);
+              }
+            }
+          }
+
+          if (ev.type === "result") {
+            resultText = ev.result || "";
+            if (ev.session_id) sessionId = ev.session_id;
+          }
+        } catch {}
+      }
+    }
+
+    const exitCode = await child.exited;
+    clearTimeout(timer);
+
+    if (exitCode !== 0) {
+      const stderr = await stderrP;
+      throw new Error(`Claude exited ${exitCode}: ${stderr.slice(0, 200)}`);
+    }
+
+    if (sessionId) {
+      state.sessionId = sessionId;
+      cfg.bots[state.botName].session_id = sessionId;
+      saveConfig();
+    }
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    // Edit status to "Done"
+    const summary = toolLog.length > 0 ? toolLog.slice(-5).join("\n") : "";
+    const doneMsg = summary ? `Done (${elapsed}s)\n${summary}` : `Done (${elapsed}s)`;
+    try { await ctx.api.editMessageText(chatId, statusMsg.message_id, doneMsg); } catch {}
+
+    // Send Claude's text response if it produced one
+    if (resultText) {
+      state.history.push(`Assistant: ${resultText.slice(0, 300)}`);
+      if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
+      console.log(`${tag} <- claude (${elapsed}s): ${resultText.slice(0, 200)}`);
+      await sendResponse(ctx, resultText);
+    } else {
+      state.history.push(`Assistant: [${toolLog.length} tool calls, no text]`);
+      if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
+      console.log(`${tag} <- claude (${elapsed}s): [${toolLog.length} tool calls, no text]`);
+    }
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const msg = err instanceof Error ? err.message : String(err);

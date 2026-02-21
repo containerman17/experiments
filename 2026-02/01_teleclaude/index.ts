@@ -185,6 +185,11 @@ function killProcess(state: ChatState) {
 
 // Spawn a long-lived Claude process with streaming input/output
 function ensureClaudeProcess(key: string, state: ChatState, tag: string) {
+  // Check if the existing child is still alive
+  if (state.child && state.child.exitCode !== null) {
+    console.log(`${tag} Claude process already exited (code ${state.child.exitCode}), respawning`);
+    state.child = null;
+  }
   if (state.child) return;
 
   const args = [
@@ -338,6 +343,7 @@ function sendUserMessage(key: string, state: ChatState, text: string, ctx: any) 
   }) + "\n";
 
   console.log(`${tag} <- user: ${text.slice(0, 200)}`);
+  console.log(`${tag} -> claude stdin (child alive: ${state.child.exitCode === null})`);
 
   try {
     state.child.stdin.write(msg);
@@ -345,8 +351,22 @@ function sendUserMessage(key: string, state: ChatState, text: string, ctx: any) 
   } catch (err) {
     console.error(`${tag} stdin write error:`, err);
     killProcess(state);
-    ctx.reply("Error: failed to send message to Claude").catch(() => {});
-    return;
+    // Retry once with a fresh process
+    console.log(`${tag} retrying with fresh process`);
+    ensureClaudeProcess(key, state, tag);
+    if (!state.child) {
+      ctx.reply("Error: failed to start Claude process").catch(() => {});
+      return;
+    }
+    try {
+      state.child.stdin.write(msg);
+      state.child.stdin.flush();
+    } catch (err2) {
+      console.error(`${tag} stdin write error on retry:`, err2);
+      killProcess(state);
+      ctx.reply("Error: failed to send message to Claude").catch(() => {});
+      return;
+    }
   }
 
   state.responding = true;

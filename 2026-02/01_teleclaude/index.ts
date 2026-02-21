@@ -171,7 +171,6 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
       "--output-format", "stream-json",
       "--verbose",
       "--dangerously-skip-permissions",
-      "--max-turns", "10",
       "--model", "claude-opus-4-6",
     ];
     if (state.sessionId) {
@@ -179,7 +178,7 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
     }
 
     const child = Bun.spawn([CLAUDE_BIN, ...args], { cwd, env: makeClaudeEnv(), stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
+    const timer = setTimeout(() => child.kill(), 10 * 60 * 1000);
     const stderrP = new Response(child.stderr).text();
 
     const textMessages: string[] = [];

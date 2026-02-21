@@ -111,13 +111,13 @@ function splitMessage(text: string, max = 4096): string[] {
   return chunks;
 }
 
-async function sendResponse(ctx: any, response: string) {
+async function sendResponse(ctx: any, response: string, silent = true) {
   const html = markdownToTelegramHtml(response);
   for (const chunk of splitMessage(html)) {
     try {
-      await ctx.reply(chunk, { parse_mode: "HTML" });
+      await ctx.reply(chunk, { parse_mode: "HTML", disable_notification: silent });
     } catch {
-      await ctx.reply(chunk);
+      await ctx.reply(chunk, { disable_notification: silent });
     }
   }
 }
@@ -171,7 +171,7 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
       "--output-format", "stream-json",
       "--verbose",
       "--dangerously-skip-permissions",
-      "--max-turns", "10",
+      "--effort", "low",
       "--model", "claude-opus-4-6",
     ];
     if (state.sessionId) {

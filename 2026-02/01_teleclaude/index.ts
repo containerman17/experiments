@@ -149,6 +149,7 @@ interface ChatState {
   queue: string[];
   processing: boolean;
   history: string[]; // last N messages for voice transcription context
+  realtime: boolean;
 }
 
 const chatStates = new Map<string, ChatState>();
@@ -156,7 +157,7 @@ const chatStates = new Map<string, ChatState>();
 function getState(key: string, botName: string): ChatState {
   let s = chatStates.get(key);
   if (!s) {
-    s = { botName, sessionId: cfg.bots[botName]?.session_id, queue: [], processing: false, history: [] };
+    s = { botName, sessionId: cfg.bots[botName]?.session_id, queue: [], processing: false, history: [], realtime: false };
     chatStates.set(key, s);
   }
   return s;
@@ -200,18 +201,25 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
     const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
     const stderrP = new Response(child.stderr).text();
 
-    // Status message we keep editing with tool call updates
-    const statusMsg = await ctx.reply("Working...");
     const toolLog: string[] = [];
-    let lastEditTime = 0;
     let resultText = "";
     let sessionId = "";
 
+    // In normal mode: show a "Working..." status we edit with progress
+    // In realtime mode: no status message, send tool calls as they come
+    let statusMsgId: number | undefined;
+    let lastEditTime = 0;
+    if (!state.realtime) {
+      const statusMsg = await ctx.reply("Working...");
+      statusMsgId = statusMsg.message_id;
+    }
+
     async function editStatus(text: string) {
+      if (!statusMsgId) return;
       const now = Date.now();
       if (now - lastEditTime < 2000) return;
       lastEditTime = now;
-      try { await ctx.api.editMessageText(chatId, statusMsg.message_id, text); } catch {}
+      try { await ctx.api.editMessageText(chatId, statusMsgId, text); } catch {}
     }
 
     // Read NDJSON line by line
@@ -243,9 +251,14 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
                 const desc = formatToolCall(block.name, block.input);
                 toolLog.push(desc);
                 console.log(`${tag} tool: ${desc}`);
-                const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
-                const recent = toolLog.slice(-5).join("\n");
-                await editStatus(`Working... (${elapsed}s)\n${recent}`);
+
+                if (state.realtime) {
+                  await ctx.reply(desc);
+                } else {
+                  const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
+                  const recent = toolLog.slice(-5).join("\n");
+                  await editStatus(`Working... (${elapsed}s)\n${recent}`);
+                }
               }
             }
           }
@@ -274,22 +287,37 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-    // Edit status to "Done"
-    const summary = toolLog.length > 0 ? toolLog.slice(-5).join("\n") : "";
-    const doneMsg = summary ? `Done (${elapsed}s)\n${summary}` : `Done (${elapsed}s)`;
-    try { await ctx.api.editMessageText(chatId, statusMsg.message_id, doneMsg); } catch {}
+    if (state.realtime) {
+      // Result text already needs to be sent, plus a "Done" marker
+      if (resultText) {
+        await sendResponse(ctx, resultText);
+      }
+      await ctx.reply(`Done (${elapsed}s)`);
+    } else {
+      // Edit status to "Done"
+      if (statusMsgId) {
+        const doneText = `Done (${elapsed}s)`;
+        try { await ctx.api.editMessageText(chatId, statusMsgId, doneText); } catch {}
+      }
 
-    // Send Claude's text response if it produced one
+      // Flush buffered tool calls + result as separate messages
+      for (const desc of toolLog) {
+        await ctx.reply(desc);
+        await Bun.sleep(100);
+      }
+      if (resultText) {
+        await sendResponse(ctx, resultText);
+      }
+    }
+
+    // Update history
     if (resultText) {
       state.history.push(`Assistant: ${resultText.slice(0, 300)}`);
-      if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
-      console.log(`${tag} <- claude (${elapsed}s): ${resultText.slice(0, 200)}`);
-      await sendResponse(ctx, resultText);
     } else {
       state.history.push(`Assistant: [${toolLog.length} tool calls, no text]`);
-      if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
-      console.log(`${tag} <- claude (${elapsed}s): [${toolLog.length} tool calls, no text]`);
     }
+    if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
+    console.log(`${tag} <- claude (${elapsed}s): ${resultText ? resultText.slice(0, 200) : `[${toolLog.length} tool calls]`}`);
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const msg = err instanceof Error ? err.message : String(err);
@@ -315,6 +343,13 @@ for (const [name, botCfg] of Object.entries(cfg.bots)) {
     state.sessionId = undefined;
     state.queue = [];
     ctx.reply("Starting a new chat.");
+  });
+
+  bot.command("realtime", (ctx) => {
+    const key = `${name}:${ctx.chat.id}`;
+    const state = getState(key, name);
+    state.realtime = !state.realtime;
+    ctx.reply(`Realtime mode: ${state.realtime ? "on" : "off"}`);
   });
 
   bot.on("message:voice", async (ctx) => {

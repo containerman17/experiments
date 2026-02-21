@@ -122,74 +122,125 @@ async function sendResponse(ctx: any, response: string, silent = true) {
   }
 }
 
-// --- Per-chat queue + session state ---
+// --- Per-chat state with long-lived Claude process ---
 
 interface ChatState {
   botName: string;
+  cwd: string;
   sessionId: string | undefined;
-  queue: string[];
-  processing: boolean;
-  history: string[]; // last N messages for voice transcription context
+  history: string[];
   realtime: boolean;
+  // Long-lived Claude process
+  child: ReturnType<typeof Bun.spawn> | null;
+  responding: boolean; // true while Claude is generating a response
+  typingInterval: ReturnType<typeof setInterval> | null;
+  turnStart: number;
+  ctx: any; // latest telegram context for sending replies
 }
 
 const chatStates = new Map<string, ChatState>();
 
-function getState(key: string, botName: string): ChatState {
+function getState(key: string, botName: string, cwd: string): ChatState {
   let s = chatStates.get(key);
   if (!s) {
-    s = { botName, sessionId: cfg.bots[botName]?.session_id, queue: [], processing: false, history: [], realtime: false };
+    s = {
+      botName, cwd,
+      sessionId: cfg.bots[botName]?.session_id,
+      history: [],
+      realtime: true,
+      child: null,
+      responding: false,
+      typingInterval: null,
+      turnStart: 0,
+      ctx: null,
+    };
     chatStates.set(key, s);
   }
   return s;
 }
 
-async function processQueue(key: string, name: string, chatId: number, cwd: string, ctx: any) {
-  const state = getState(key, name);
-  if (state.processing || state.queue.length === 0) return;
-  state.processing = true;
-
-  const prompt = state.queue.splice(0).join("\n\n");
-  const tag = `[${name}:${chatId}]`;
-
-  state.history.push(`User: ${prompt.slice(0, 300)}`);
-  if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
-
-  console.log(`${tag} <- user: ${prompt.slice(0, 200)}`);
-  console.log(`${tag} -> claude: ${prompt.slice(0, 200)}${state.sessionId ? ` (resume ${state.sessionId.slice(0, 8)}...)` : " (new)"}`);
-
-  await ctx.replyWithChatAction("typing");
-  const typingInterval = setInterval(() => {
-    ctx.replyWithChatAction("typing").catch(() => {});
+function startTyping(state: ChatState) {
+  if (state.typingInterval) return;
+  state.ctx?.replyWithChatAction("typing").catch(() => {});
+  state.typingInterval = setInterval(() => {
+    state.ctx?.replyWithChatAction("typing").catch(() => {});
   }, 4000);
+}
 
-  const t0 = Date.now();
+function stopTyping(state: ChatState) {
+  if (state.typingInterval) {
+    clearInterval(state.typingInterval);
+    state.typingInterval = null;
+  }
+}
+
+function killProcess(state: ChatState) {
+  stopTyping(state);
+  if (state.child) {
+    try { state.child.kill(); } catch {}
+    state.child = null;
+  }
+  state.responding = false;
+}
+
+// Spawn a long-lived Claude process with streaming input/output
+function ensureClaudeProcess(key: string, state: ChatState, tag: string) {
+  if (state.child) return;
+
+  const args = [
+    "-p",
+    "--input-format", "stream-json",
+    "--output-format", "stream-json",
+    "--verbose",
+    "--dangerously-skip-permissions",
+    "--model", "claude-opus-4-6",
+  ];
+  if (state.sessionId) {
+    args.push("--resume", state.sessionId);
+  }
+
+  console.log(`${tag} spawning Claude process${state.sessionId ? ` (resume ${state.sessionId.slice(0, 8)}...)` : " (new)"}`);
+
+  const child = Bun.spawn([CLAUDE_BIN, ...args], {
+    cwd: state.cwd,
+    env: makeClaudeEnv(),
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  state.child = child;
+
+  // Background: read stderr
+  new Response(child.stderr).text().then(stderr => {
+    if (stderr.trim()) console.error(`${tag} stderr: ${stderr.slice(0, 500)}`);
+  });
+
+  // Background: read stdout NDJSON events
+  readClaudeOutput(key, state, tag, child);
+
+  // Handle process exit
+  child.exited.then(code => {
+    console.log(`${tag} Claude process exited (code ${code})`);
+    if (state.child === child) {
+      state.child = null;
+      if (state.responding) {
+        state.responding = false;
+        stopTyping(state);
+        if (code !== 0) {
+          state.ctx?.reply(`Error: Claude process exited with code ${code}`).catch(() => {});
+        }
+      }
+    }
+  });
+}
+
+async function readClaudeOutput(key: string, state: ChatState, tag: string, child: ReturnType<typeof Bun.spawn>) {
+  const reader = child.stdout.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const textMessages: string[] = [];
 
   try {
-    const args = [
-      "-p", prompt,
-      "--output-format", "stream-json",
-      "--verbose",
-      "--dangerously-skip-permissions",
-      "--effort", "low",
-      "--model", "claude-opus-4-6",
-    ];
-    if (state.sessionId) {
-      args.push("--resume", state.sessionId);
-    }
-
-    const child = Bun.spawn([CLAUDE_BIN, ...args], { cwd, env: makeClaudeEnv(), stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
-    const stderrP = new Response(child.stderr).text();
-
-    const textMessages: string[] = [];
-    let sessionId = "";
-
-    // Read NDJSON line by line
-    const reader = child.stdout.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -205,7 +256,10 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
           const ev = JSON.parse(line);
 
           if (ev.type === "system" && ev.subtype === "init" && ev.session_id) {
-            sessionId = ev.session_id;
+            state.sessionId = ev.session_id;
+            cfg.bots[state.botName]!.session_id = ev.session_id;
+            saveConfig();
+            console.log(`${tag} session: ${ev.session_id.slice(0, 8)}...`);
           }
 
           if (ev.type === "assistant" && ev.message?.content) {
@@ -215,65 +269,104 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
                 textMessages.push(text);
                 console.log(`${tag} text: ${text.slice(0, 200)}`);
 
-                if (state.realtime) {
-                  await sendResponse(ctx, text);
+                if (state.realtime && state.ctx) {
+                  await sendResponse(state.ctx, text);
                 }
               }
             }
           }
 
           if (ev.type === "result") {
-            if (ev.session_id) sessionId = ev.session_id;
+            if (ev.session_id) {
+              state.sessionId = ev.session_id;
+              cfg.bots[state.botName]!.session_id = ev.session_id;
+              saveConfig();
+            }
+
+            // Claude finished this turn — flush buffered messages
+            stopTyping(state);
+            state.responding = false;
+
+            if (!state.realtime && state.ctx) {
+              for (const text of textMessages) {
+                await sendResponse(state.ctx, text);
+                await Bun.sleep(100);
+              }
+            }
+
+            const elapsed = ((Date.now() - state.turnStart) / 1000).toFixed(1);
+            const allText = textMessages.join("\n\n");
+            if (allText) {
+              state.history.push(`Assistant: ${allText.slice(0, 300)}`);
+            } else {
+              state.history.push(`Assistant: [no text]`);
+            }
+            if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
+
+            console.log(`${tag} <- claude (${elapsed}s): ${allText ? allText.slice(0, 200) : "[no text]"}`);
+            if (state.ctx) {
+              await state.ctx.reply(`Done (${elapsed}s)`);
+            }
+
+            textMessages.length = 0;
           }
         } catch {}
       }
     }
-
-    const exitCode = await child.exited;
-    clearTimeout(timer);
-
-    if (exitCode !== 0) {
-      const stderr = await stderrP;
-      throw new Error(`Claude exited ${exitCode}: ${stderr.slice(0, 200)}`);
-    }
-
-    if (sessionId) {
-      state.sessionId = sessionId;
-      cfg.bots[state.botName]!.session_id = sessionId;
-      saveConfig();
-    }
-
-    // In normal mode, flush all buffered text messages now
-    if (!state.realtime) {
-      for (const text of textMessages) {
-        await sendResponse(ctx, text);
-        await Bun.sleep(100);
-      }
-    }
-
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    await ctx.reply(`Done (${elapsed}s)`);
-    const allText = textMessages.join("\n\n");
-    if (allText) {
-      state.history.push(`Assistant: ${allText.slice(0, 300)}`);
-    } else {
-      state.history.push(`Assistant: [no text]`);
-    }
-    if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
-    console.log(`${tag} <- claude (${elapsed}s): ${allText ? allText.slice(0, 200) : "[no text]"}`);
   } catch (err) {
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`${tag} !! claude error (${elapsed}s): ${msg}`);
-    await ctx.reply(`Error: ${msg}`);
-  } finally {
-    clearInterval(typingInterval);
-    state.processing = false;
-    if (state.queue.length > 0) {
-      processQueue(key, name, chatId, cwd, ctx);
+    console.error(`${tag} stdout read error:`, err);
+  }
+}
+
+function sendUserMessage(key: string, state: ChatState, text: string, ctx: any) {
+  const tag = `[${state.botName}:${key.split(":")[1]}]`;
+  state.ctx = ctx;
+
+  state.history.push(`User: ${text.slice(0, 300)}`);
+  if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
+
+  ensureClaudeProcess(key, state, tag);
+
+  if (!state.child) {
+    ctx.reply("Error: failed to start Claude process").catch(() => {});
+    return;
+  }
+
+  const msg = JSON.stringify({
+    type: "user",
+    message: { role: "user", content: text },
+  }) + "\n";
+
+  console.log(`${tag} <- user: ${text.slice(0, 200)}`);
+
+  try {
+    state.child.stdin.write(msg);
+    state.child.stdin.flush();
+  } catch (err) {
+    console.error(`${tag} stdin write error:`, err);
+    killProcess(state);
+    ctx.reply("Error: failed to send message to Claude").catch(() => {});
+    return;
+  }
+
+  state.responding = true;
+  state.turnStart = Date.now();
+  startTyping(state);
+}
+
+// --- Cleanup on exit ---
+
+function killAllProcesses() {
+  for (const state of chatStates.values()) {
+    if (state.child) {
+      try { state.child.kill(); } catch {}
     }
   }
 }
+
+process.on("SIGINT", () => { killAllProcesses(); process.exit(0); });
+process.on("SIGTERM", () => { killAllProcesses(); process.exit(0); });
+process.on("exit", killAllProcesses);
 
 // --- Bots ---
 
@@ -282,20 +375,16 @@ for (const [name, botCfg] of Object.entries(cfg.bots)) {
 
   bot.command("new", (ctx) => {
     const key = `${name}:${ctx.chat.id}`;
-    const state = getState(key, name);
-    if (state.processing) {
-      ctx.reply("Can't start a new chat while a response is in progress. Please wait for it to finish.");
-      return;
-    }
+    const state = getState(key, name, botCfg.cwd);
+    killProcess(state);
     state.sessionId = undefined;
-    state.queue = [];
     state.history = [];
     ctx.reply("Starting a new chat.");
   });
 
   bot.command("realtime", (ctx) => {
     const key = `${name}:${ctx.chat.id}`;
-    const state = getState(key, name);
+    const state = getState(key, name, botCfg.cwd);
     state.realtime = !state.realtime;
     ctx.reply(`Realtime mode: ${state.realtime ? "on" : "off"}`);
   });
@@ -309,14 +398,13 @@ for (const [name, botCfg] of Object.entries(cfg.bots)) {
 
       console.log(`[${name}:${ctx.chat.id}] <- user: [voice message]`);
       const key = `${name}:${ctx.chat.id}`;
-      const state = getState(key, name);
+      const state = getState(key, name, botCfg.cwd);
       const transcription = await transcribeVoice(oggData, state.history.slice(-10));
       console.log(`[${name}:${ctx.chat.id}] transcribed: ${transcription.slice(0, 200)}`);
 
       await ctx.reply(`🎤 ${transcription}`);
 
-      state.queue.push(transcription);
-      processQueue(key, name, ctx.chat.id, botCfg.cwd, ctx);
+      sendUserMessage(key, state, transcription, ctx);
     } catch (err) {
       console.error(`[${name}] Voice error:`, err);
       await ctx.reply(`Voice error: ${err instanceof Error ? err.message : String(err)}`);
@@ -328,8 +416,8 @@ for (const [name, botCfg] of Object.entries(cfg.bots)) {
     if (text.startsWith("/")) return;
 
     const key = `${name}:${ctx.chat.id}`;
-    getState(key, name).queue.push(text);
-    processQueue(key, name, ctx.chat.id, botCfg.cwd, ctx);
+    const state = getState(key, name, botCfg.cwd);
+    sendUserMessage(key, state, text, ctx);
   });
 
   bot.catch((err) => console.error(`[${name}]`, err));

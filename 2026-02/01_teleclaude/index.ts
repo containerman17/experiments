@@ -252,6 +252,7 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    await ctx.reply(`Done (${elapsed}s)`);
     const allText = textMessages.join("\n\n");
     if (allText) {
       state.history.push(`Assistant: ${allText.slice(0, 300)}`);

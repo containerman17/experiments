@@ -14,7 +14,7 @@ interface Config {
 }
 
 const configIdx = process.argv.indexOf("--config");
-const CONFIG_PATH = configIdx !== -1 && process.argv[configIdx + 1] ? process.argv[configIdx + 1] : "config.yaml";
+const CONFIG_PATH: string = configIdx !== -1 && process.argv[configIdx + 1] ? process.argv[configIdx + 1]! : "config.yaml";
 const cfg = yaml.load(await Bun.file(CONFIG_PATH).text()) as Config;
 cfg.gemini_model = cfg.gemini_model || "gemini-3-pro-preview";
 
@@ -239,7 +239,7 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
 
     if (sessionId) {
       state.sessionId = sessionId;
-      cfg.bots[state.botName].session_id = sessionId;
+      cfg.bots[state.botName]!.session_id = sessionId;
       saveConfig();
     }
 

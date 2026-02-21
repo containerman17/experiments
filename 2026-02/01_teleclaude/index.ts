@@ -37,6 +37,7 @@ async function transcribeVoice(oggData: Buffer, recentMessages: string[]): Promi
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(60000),
       body: JSON.stringify({
         system_instruction: {
           parts: [{ text: "You are a transcription service for a software engineering conversation. The speaker is discussing code, programming, and technical topics. Preserve technical terms, function names, variable names, CLI commands, and programming jargon accurately. Output ONLY the transcription, nothing else." }],

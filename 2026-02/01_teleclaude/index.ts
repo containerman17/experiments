@@ -187,6 +187,7 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
       "--dangerously-skip-permissions",
       "--max-turns", "10",
       "--model", "claude-opus-4-6",
+      "--append-system-prompt", "After completing any task, ALWAYS end with a text message summarizing what you did and the results. Never end on just a tool use without a text summary.",
     ];
     if (state.sessionId) {
       args.push("--resume", state.sessionId);
@@ -203,9 +204,9 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
         cfg.bots[state.botName].session_id = result.session_id;
         saveConfig();
       }
-      response = result.result || "(no response)";
+      response = result.result || `(Claude completed in ${elapsed}s over ${result.num_turns ?? "?"} turns but produced no text summary)`;
     } catch {
-      response = stdout.trim() || "(no response)";
+      response = stdout.trim() || `(Claude completed in ${elapsed}s but produced no parseable output)`;
     }
 
     state.history.push(`Assistant: ${response.slice(0, 300)}`);

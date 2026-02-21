@@ -282,8 +282,13 @@ for (const [name, botCfg] of Object.entries(cfg.bots)) {
   bot.command("new", (ctx) => {
     const key = `${name}:${ctx.chat.id}`;
     const state = getState(key, name);
+    if (state.processing) {
+      ctx.reply("Can't start a new chat while a response is in progress. Please wait for it to finish.");
+      return;
+    }
     state.sessionId = undefined;
     state.queue = [];
+    state.history = [];
     ctx.reply("Starting a new chat.");
   });
 

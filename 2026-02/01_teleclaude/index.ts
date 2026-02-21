@@ -16,7 +16,7 @@ interface Config {
 const configIdx = process.argv.indexOf("--config");
 const CONFIG_PATH = configIdx !== -1 && process.argv[configIdx + 1] ? process.argv[configIdx + 1] : "config.yaml";
 const cfg = yaml.load(await Bun.file(CONFIG_PATH).text()) as Config;
-cfg.gemini_model = cfg.gemini_model || "gemini-3-pro-preview";
+cfg.gemini_model = cfg.gemini_model || "gemini-3.1-pro-preview";
 
 function saveConfig() {
   Bun.write(CONFIG_PATH, yaml.dump(cfg, { lineWidth: -1 }));

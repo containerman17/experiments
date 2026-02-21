@@ -65,25 +65,6 @@ async function transcribeVoice(oggData: Buffer, recentMessages: string[]): Promi
 
 // --- Claude via CLI (streaming NDJSON) ---
 
-function formatToolCall(name: string, input: any): string {
-  switch (name) {
-    case "Read": return `Reading ${shortenPath(input?.file_path)}`;
-    case "Edit": return `Editing ${shortenPath(input?.file_path)}`;
-    case "Write": return `Writing ${shortenPath(input?.file_path)}`;
-    case "Bash": return `$ ${(input?.command || "").slice(0, 80)}`;
-    case "Glob": return `Searching for ${input?.pattern || "files"}`;
-    case "Grep": return `Grepping "${(input?.pattern || "").slice(0, 40)}"`;
-    case "Task": return `Delegating subtask`;
-    default: return name;
-  }
-}
-
-function shortenPath(p: string): string {
-  if (!p) return "?";
-  const parts = p.split("/");
-  return parts.length > 3 ? `.../${parts.slice(-2).join("/")}` : p;
-}
-
 function makeClaudeEnv() {
   const env = { ...process.env };
   delete env.CLAUDECODE;
@@ -201,26 +182,8 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
     const timer = setTimeout(() => child.kill(), 5 * 60 * 1000);
     const stderrP = new Response(child.stderr).text();
 
-    const toolLog: string[] = [];
     const textMessages: string[] = [];
     let sessionId = "";
-
-    // In normal mode: show a "Working..." status we edit with progress
-    // In realtime mode: no status message, send tool calls as they come
-    let statusMsgId: number | undefined;
-    let lastEditTime = 0;
-    if (!state.realtime) {
-      const statusMsg = await ctx.reply("Working...");
-      statusMsgId = statusMsg.message_id;
-    }
-
-    async function editStatus(text: string) {
-      if (!statusMsgId) return;
-      const now = Date.now();
-      if (now - lastEditTime < 2000) return;
-      lastEditTime = now;
-      try { await ctx.api.editMessageText(chatId, statusMsgId, text); } catch {}
-    }
 
     // Read NDJSON line by line
     const reader = child.stdout.getReader();
@@ -247,24 +210,13 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
 
           if (ev.type === "assistant" && ev.message?.content) {
             for (const block of ev.message.content) {
-              if (block.type === "tool_use") {
-                const desc = formatToolCall(block.name, block.input);
-                toolLog.push(desc);
-                console.log(`${tag} tool: ${desc}`);
+              if (block.type === "text" && block.text?.trim()) {
+                const text = block.text.trim();
+                textMessages.push(text);
+                console.log(`${tag} text: ${text.slice(0, 200)}`);
 
                 if (state.realtime) {
-                  await ctx.reply(desc);
-                } else {
-                  const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
-                  const recent = toolLog.slice(-5).join("\n");
-                  await editStatus(`Working... (${elapsed}s)\n${recent}`);
-                }
-              } else if (block.type === "text" && block.text?.trim()) {
-                textMessages.push(block.text.trim());
-                console.log(`${tag} text: ${block.text.slice(0, 200)}`);
-
-                if (state.realtime) {
-                  await sendResponse(ctx, block.text.trim());
+                  await sendResponse(ctx, text);
                 }
               }
             }
@@ -291,38 +243,23 @@ async function processQueue(key: string, name: string, chatId: number, cwd: stri
       saveConfig();
     }
 
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-
-    if (state.realtime) {
-      // Text messages were already sent during streaming
-      await ctx.reply(`Done (${elapsed}s)`);
-    } else {
-      // Edit status to "Done"
-      if (statusMsgId) {
-        const doneText = `Done (${elapsed}s)`;
-        try { await ctx.api.editMessageText(chatId, statusMsgId, doneText); } catch {}
-      }
-
-      // Flush buffered tool calls + text messages as separate messages
-      for (const desc of toolLog) {
-        await ctx.reply(desc);
-        await Bun.sleep(100);
-      }
+    // In normal mode, flush all buffered text messages now
+    if (!state.realtime) {
       for (const text of textMessages) {
         await sendResponse(ctx, text);
         await Bun.sleep(100);
       }
     }
 
-    // Update history
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const allText = textMessages.join("\n\n");
     if (allText) {
       state.history.push(`Assistant: ${allText.slice(0, 300)}`);
     } else {
-      state.history.push(`Assistant: [${toolLog.length} tool calls, no text]`);
+      state.history.push(`Assistant: [no text]`);
     }
     if (state.history.length > 10) state.history.splice(0, state.history.length - 10);
-    console.log(`${tag} <- claude (${elapsed}s): ${allText ? allText.slice(0, 200) : `[${toolLog.length} tool calls]`}`);
+    console.log(`${tag} <- claude (${elapsed}s): ${allText ? allText.slice(0, 200) : "[no text]"}`);
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const msg = err instanceof Error ? err.message : String(err);

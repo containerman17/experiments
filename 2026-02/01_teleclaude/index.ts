@@ -260,6 +260,7 @@ async function readClaudeOutput(key: string, state: ChatState, tag: string, chil
 
         try {
           const ev = JSON.parse(line);
+          console.log(`${tag} ev: ${line.slice(0, 500)}`);
 
           if (ev.type === "system" && ev.subtype === "init" && ev.session_id) {
             state.sessionId = ev.session_id;

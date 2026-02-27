@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -9,11 +8,17 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	corethparams "github.com/ava-labs/avalanchego/graft/coreth/params"
+	corethextras "github.com/ava-labs/avalanchego/graft/coreth/params/extras"
+	corethcustomtypes "github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
+	warpcontract "github.com/ava-labs/avalanchego/graft/coreth/precompile/contracts/warp"
+	_ "github.com/ava-labs/avalanchego/graft/coreth/precompile/registry"
+	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core"
 	"github.com/ava-labs/libevm/core/types"
@@ -25,24 +30,24 @@ import (
 const replayBlockWorkers = 8
 
 var (
-	flagBlock           = flag.Uint64("block", 0, "single block to replay")
-	flagFrom            = flag.Uint64("from", 0, "block range start")
-	flagTo              = flag.Uint64("to", 0, "block range end (inclusive)")
-	flagCacheDir        = flag.String("cache", "cache/blocks", "unused (cache disabled)")
-	flagVerbose         = flag.Bool("v", false, "verbose output")
-	flagProfile         = flag.String("profile", "baseline", "profile name for output labeling")
-	flagSStoreSetMult   = flag.Float64("sstore-set-mult", 1.0, "multiplier for SSTORE clean zero->non-zero cost")
-	flagCreate2Mult     = flag.Float64("create2-mult", 1.0, "multiplier for CREATE2 base cost")
-	flagSkipUnsupported = flag.Bool("skip-unsupported-precompiles", true, "exclude unsupported Avalanche precompile txs from mismatch stats")
-	flagOut             = flag.String("out", "", "path to JSONL tx results (default: out/replay_<profile>_<from>_<to>.jsonl)")
-	flagOutSummary      = flag.String("out-summary", "", "path to JSON summary (default: out/replay_<profile>_<from>_<to>_summary.json)")
-	flagDebug           = flag.Bool("debug", false, "debug mode")
+	flagBlock            = flag.Uint64("block", 0, "single block to replay")
+	flagFrom             = flag.Uint64("from", 0, "block range start")
+	flagTo               = flag.Uint64("to", 0, "block range end (inclusive)")
+	flagCacheDir         = flag.String("cache", "cache/blocks", "unused (cache disabled)")
+	flagVerbose          = flag.Bool("v", false, "verbose output")
+	flagProfile          = flag.String("profile", "baseline", "profile name for output labeling")
+	flagSStoreSetMult    = flag.Float64("sstore-set-mult", 1.0, "multiplier for SSTORE clean zero->non-zero cost")
+	flagCreate2Mult      = flag.Float64("create2-mult", 1.0, "multiplier for CREATE2 base cost")
+	flagSkipUnsupported  = flag.Bool("skip-unsupported-precompiles", true, "exclude unsupported Avalanche precompile txs from mismatch stats")
+	flagTraceUnsupported = flag.Bool("trace-unsupported-precompiles", false, "use debug_traceTransaction to detect internal system-precompile calls (accurate but much slower)")
+	flagDebug            = flag.Bool("debug", false, "debug mode")
 )
 
 type ReplayTxResult struct {
 	BlockNumber      uint64 `json:"block_number"`
 	TxIndex          int    `json:"tx_index"`
 	TxHash           string `json:"tx_hash"`
+	Contract         string `json:"contract"`
 	UnsupportedTx    bool   `json:"unsupported_tx"`
 	SkippedCompare   bool   `json:"skipped_compare"`
 	SkipReason       string `json:"skip_reason,omitempty"`
@@ -85,22 +90,30 @@ type blockReplayResult struct {
 	blockedTxs         int
 	rpcCalls           int64
 	elapsed            time.Duration
-
-	comparisonPrintRows []string
 }
 
 type replayRunConfig struct {
-	chainCfg        *params.ChainConfig
-	chainID         *big.Int
-	profile         string
-	verbose         bool
-	skipUnsupported bool
-	cacheDir        string
+	chainCfg         *params.ChainConfig
+	chainID          *big.Int
+	profile          string
+	verbose          bool
+	skipUnsupported  bool
+	traceUnsupported bool
+	baselineMode     bool
+	cacheDir         string
+}
+
+type contractStats struct {
+	total         int
+	unchanged     int
+	statusChanged int
+	logsChanged   int
+	precompileTxs int
 }
 
 // C-Chain mainnet config (all forks active for blocks > 3.3M).
 func cchainConfig() *params.ChainConfig {
-	return &params.ChainConfig{
+	cfg := &params.ChainConfig{
 		ChainID:             big.NewInt(43114),
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        big.NewInt(0),
@@ -118,10 +131,39 @@ func cchainConfig() *params.ChainConfig {
 		ShanghaiTime:        ptrU64(0),
 		CancunTime:          ptrU64(0),
 	}
+	return corethparams.WithExtra(cfg, &corethextras.ChainConfig{
+		AvalancheContext: corethextras.AvalancheContext{
+			SnowCtx: &snow.Context{NetworkID: 1},
+		},
+		NetworkUpgrades: corethextras.NetworkUpgrades{
+			ApricotPhase1BlockTimestamp:     ptrU64(0),
+			ApricotPhase2BlockTimestamp:     ptrU64(0),
+			ApricotPhase3BlockTimestamp:     ptrU64(0),
+			ApricotPhase4BlockTimestamp:     ptrU64(0),
+			ApricotPhase5BlockTimestamp:     ptrU64(0),
+			ApricotPhasePre6BlockTimestamp:  ptrU64(0),
+			ApricotPhase6BlockTimestamp:     ptrU64(0),
+			ApricotPhasePost6BlockTimestamp: ptrU64(0),
+			BanffBlockTimestamp:             ptrU64(0),
+			CortinaBlockTimestamp:           ptrU64(0),
+			DurangoBlockTimestamp:           ptrU64(0),
+			EtnaTimestamp:                   ptrU64(0),
+			FortunaTimestamp:                ptrU64(0),
+			GraniteTimestamp:                ptrU64(0),
+			HeliconTimestamp:                ptrU64(0),
+		},
+		UpgradeConfig: corethextras.UpgradeConfig{
+			PrecompileUpgrades: []corethextras.PrecompileUpgrade{{
+				Config: warpcontract.NewDefaultConfig(ptrU64(0)),
+			}},
+		},
+	})
 }
 
 func main() {
 	flag.Parse()
+	corethcustomtypes.Register()
+	corethparams.RegisterExtras()
 
 	if *flagDebug {
 		if *flagBlock == 0 {
@@ -154,155 +196,108 @@ func main() {
 	}
 	vm.SetReplayGasSchedule(sstoreSetGas, create2Gas)
 
-	outPath := *flagOut
-	if outPath == "" {
-		outPath = defaultOutPath(*flagProfile, from, to, false)
-	}
-	summaryPath := *flagOutSummary
-	if summaryPath == "" {
-		summaryPath = defaultOutPath(*flagProfile, from, to, true)
-	}
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "create out dir failed: %v\n", err)
-		os.Exit(1)
-	}
-	if err := os.MkdirAll(filepath.Dir(summaryPath), 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "create summary dir failed: %v\n", err)
-		os.Exit(1)
-	}
-
-	outFile, err := os.Create(outPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "open out file failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer outFile.Close()
-	outWriter := bufio.NewWriter(outFile)
-	defer outWriter.Flush()
-	jsonEncoder := json.NewEncoder(outWriter)
-	jsonEncoder.SetEscapeHTML(false)
-
 	chainCfg := cchainConfig()
 	cfg := replayRunConfig{
-		chainCfg:        chainCfg,
-		chainID:         chainCfg.ChainID,
-		profile:         *flagProfile,
-		verbose:         *flagVerbose,
-		skipUnsupported: *flagSkipUnsupported,
-		cacheDir:        *flagCacheDir,
+		chainCfg:         chainCfg,
+		chainID:          chainCfg.ChainID,
+		profile:          *flagProfile,
+		verbose:          *flagVerbose,
+		skipUnsupported:  *flagSkipUnsupported,
+		traceUnsupported: *flagSkipUnsupported && *flagTraceUnsupported,
+		baselineMode:     *flagSStoreSetMult == 1.0 && *flagCreate2Mult == 1.0,
+		cacheDir:         *flagCacheDir,
 	}
 
 	startAll := time.Now()
-	resultsByBlock := replayBlocksParallel(from, to, cfg)
+	resultsCh := replayBlocksParallel(from, to, cfg)
+	totalBlocks := int(to-from) + 1
+	nextPrintBlock := from
+	pending := make(map[uint64]blockReplayResult, totalBlocks)
+	doneBlocks := 0
+	nextRefreshAt := time.Now()
+	lastRenderedCompared := -1
+	lastRenderedStatus := -1
+	lastRenderedLogs := -1
+	lastRenderedDoneBlocks := -1
 
-	var totalExecuted int
 	var totalCompared int
 	var totalStatusChanged int
-	var totalSuccessToRevert int
-	var totalRevertToSuccess int
-	var totalGasMismatch int
-	var totalGasDeltaSum int64
-	var totalGasIncreaseCount int
-	var totalGasIncreaseSum int64
 	var totalLogsChanged int
-	var totalSkippedUnsupported int
-	var totalBlockedTxs int
+	var totalPrecompileTxs int
+	byContract := make(map[string]*contractStats)
 
-	for blockNum := from; blockNum <= to; blockNum++ {
-		res, ok := resultsByBlock[blockNum]
-		if !ok {
-			fatalf("missing result for block %d", blockNum)
+	for res := range resultsCh {
+		pending[res.blockNum] = res
+
+		for {
+			orderedRes, ok := pending[nextPrintBlock]
+			if !ok {
+				break
+			}
+			delete(pending, nextPrintBlock)
+			if orderedRes.err != nil {
+				fatalf("block %d error: %v", nextPrintBlock, orderedRes.err)
+			}
+
+			totalCompared += orderedRes.compared
+			totalStatusChanged += orderedRes.statusChanged
+			totalLogsChanged += orderedRes.logsChanged
+			totalPrecompileTxs += orderedRes.skippedUnsupported
+
+			aggregateContractStats(byContract, orderedRes.rows)
+			doneBlocks++
+			if time.Now().After(nextRefreshAt) {
+				renderDashboard(
+					totalCompared,
+					totalStatusChanged,
+					totalLogsChanged,
+					totalPrecompileTxs,
+					from,
+					to,
+					doneBlocks,
+					totalBlocks,
+					*flagSStoreSetMult,
+					*flagCreate2Mult,
+					sstoreSetGas,
+					create2Gas,
+					byContract,
+					time.Since(startAll),
+				)
+				lastRenderedCompared = totalCompared
+				lastRenderedStatus = totalStatusChanged
+				lastRenderedLogs = totalLogsChanged
+				lastRenderedDoneBlocks = doneBlocks
+				nextRefreshAt = time.Now().Add(1 * time.Second)
+			}
+			nextPrintBlock++
 		}
-		if res.err != nil {
-			fatalf("block %d error: %v", blockNum, res.err)
-		}
-
-		for _, line := range res.comparisonPrintRows {
-			fmt.Println(line)
-		}
-		for _, row := range res.rows {
-			_ = jsonEncoder.Encode(row)
-		}
-		_ = outWriter.Flush()
-
-		fmt.Fprintln(os.Stderr, formatBlockStatusLine(res))
-
-		totalExecuted += res.executed
-		totalCompared += res.compared
-		totalStatusChanged += res.statusChanged
-		totalSuccessToRevert += res.successToRevert
-		totalRevertToSuccess += res.revertToSuccess
-		totalGasMismatch += res.gasMismatches
-		totalGasDeltaSum += res.gasDeltaSum
-		totalGasIncreaseCount += res.gasIncreaseCount
-		totalGasIncreaseSum += res.gasIncreaseSum
-		totalLogsChanged += res.logsChanged
-		totalSkippedUnsupported += res.skippedUnsupported
-		totalBlockedTxs += res.blockedTxs
+	}
+	if nextPrintBlock != to+1 {
+		fatalf("missing block results; next=%d expected_end=%d", nextPrintBlock, to)
 	}
 
-	elapsed := time.Since(startAll)
-	fmt.Fprintf(os.Stderr, "\n=== Summary ===\n")
-	fmt.Fprintf(os.Stderr, "Blocks: %d-%d\n", from, to)
-	fmt.Fprintf(os.Stderr, "Profile: %s\n", *flagProfile)
-	fmt.Fprintf(os.Stderr, "RPC WS: %s (%d conns)\n", hardcodedRPCWSURL, wsParallelConnections)
-	fmt.Fprintf(os.Stderr, "Block workers: %d\n", replayBlockWorkers)
-	fmt.Fprintf(os.Stderr, "SSTORE set gas: %d (base=%d, mult=%.4f)\n", sstoreSetGas, params.SstoreSetGasEIP2200, *flagSStoreSetMult)
-	fmt.Fprintf(os.Stderr, "CREATE2 base gas: %d (base=%d, mult=%.4f)\n", create2Gas, params.Create2Gas, *flagCreate2Mult)
-	fmt.Fprintf(os.Stderr, "Total executed txs: %d\n", totalExecuted)
-	fmt.Fprintf(os.Stderr, "Compared txs: %d\n", totalCompared)
-	fmt.Fprintf(os.Stderr, "Skipped unsupported txs: %d\n", totalSkippedUnsupported)
-	fmt.Fprintf(os.Stderr, "Not executed (block gas limit reached): %d\n", totalBlockedTxs)
-	if totalStatusChanged == 0 {
-		fmt.Fprintf(os.Stderr, "Status: okay\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "Status changes: %d (✅→❌ %d, ❌→✅ %d)\n", totalStatusChanged, totalSuccessToRevert, totalRevertToSuccess)
+	if totalCompared != lastRenderedCompared || totalStatusChanged != lastRenderedStatus || totalLogsChanged != lastRenderedLogs || doneBlocks != lastRenderedDoneBlocks {
+		renderDashboard(
+			totalCompared,
+			totalStatusChanged,
+			totalLogsChanged,
+			totalPrecompileTxs,
+			from,
+			to,
+			doneBlocks,
+			totalBlocks,
+			*flagSStoreSetMult,
+			*flagCreate2Mult,
+			sstoreSetGas,
+			create2Gas,
+			byContract,
+			time.Since(startAll),
+		)
 	}
-	if totalLogsChanged == 0 {
-		fmt.Fprintf(os.Stderr, "Logs: okay\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "Logs changed: %d\n", totalLogsChanged)
-	}
-	if totalGasMismatch == 0 {
-		fmt.Fprintf(os.Stderr, "Gas: okay\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "Gas mismatches: %d\n", totalGasMismatch)
-	}
-	fmt.Fprintf(os.Stderr, "Avg gas delta (all compared): %.2f\n", avgInt64(totalGasDeltaSum, totalCompared))
-	fmt.Fprintf(os.Stderr, "Avg gas increase (delta>0): %.2f\n", avgInt64(totalGasIncreaseSum, totalGasIncreaseCount))
-	fmt.Fprintf(os.Stderr, "Elapsed: %s\n", elapsed.Round(time.Millisecond))
-
-	summary := map[string]any{
-		"from":                    from,
-		"to":                      to,
-		"profile":                 *flagProfile,
-		"rpc_ws":                  hardcodedRPCWSURL,
-		"rpc_ws_connections":      wsParallelConnections,
-		"block_workers":           replayBlockWorkers,
-		"sstore_set_multiplier":   *flagSStoreSetMult,
-		"create2_multiplier":      *flagCreate2Mult,
-		"sstore_set_gas":          sstoreSetGas,
-		"create2_gas":             create2Gas,
-		"total_executed_txs":      totalExecuted,
-		"total_compared_txs":      totalCompared,
-		"skipped_unsupported_txs": totalSkippedUnsupported,
-		"not_executed_txs":        totalBlockedTxs,
-		"status_changes":          totalStatusChanged,
-		"success_to_revert":       totalSuccessToRevert,
-		"revert_to_success":       totalRevertToSuccess,
-		"logs_changed":            totalLogsChanged,
-		"gas_mismatches":          totalGasMismatch,
-		"avg_gas_delta":           avgInt64(totalGasDeltaSum, totalCompared),
-		"avg_gas_increase":        avgInt64(totalGasIncreaseSum, totalGasIncreaseCount),
-		"elapsed_ms":              elapsed.Milliseconds(),
-		"out_jsonl":               outPath,
-	}
-	summaryJSON, _ := json.MarshalIndent(summary, "", "  ")
-	_ = os.WriteFile(summaryPath, summaryJSON, 0o644)
-	fmt.Fprintf(os.Stderr, "Summary JSON: %s\n", summaryPath)
+	fmt.Fprintln(os.Stderr)
 }
 
-func replayBlocksParallel(from uint64, to uint64, cfg replayRunConfig) map[uint64]blockReplayResult {
+func replayBlocksParallel(from uint64, to uint64, cfg replayRunConfig) <-chan blockReplayResult {
 	total := int(to-from) + 1
 	workers := replayBlockWorkers
 	if workers > total {
@@ -333,11 +328,7 @@ func replayBlocksParallel(from uint64, to uint64, cfg replayRunConfig) map[uint6
 		close(results)
 	}()
 
-	byBlock := make(map[uint64]blockReplayResult, total)
-	for res := range results {
-		byBlock[res.blockNum] = res
-	}
-	return byBlock
+	return results
 }
 
 func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
@@ -374,6 +365,11 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 		Random:      &random,
 		BaseFee:     header.BaseFee,
 		GasLimit:    header.GasLimit,
+		Header: &types.Header{
+			Number: new(big.Int).Set(header.Number),
+			Time:   header.Time,
+			Extra:  header.Extra,
+		},
 	}
 
 	signer := types.NewLondonSigner(cfg.chainID)
@@ -396,14 +392,15 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 			if errors.Is(err, core.ErrGasLimitReached) {
 				res.blockGasLimitAtTx = i
 				res.blockedTxs = len(txs) - i
-				res.comparisonPrintRows = append(res.comparisonPrintRows,
-					fmt.Sprintf("⚠ block=%d gas limit reached at tx=%d; marking remaining %d txs as not executed", blockNum, i, res.blockedTxs))
 				appendNotExecutedRows(&res, txs, canonReceipts, i, blockNum, parentBlock, cfg)
 				break
 			}
 			fatalf("block %d tx %d (%s) apply error: %v", blockNum, i, tx.Hash().Hex(), err)
 		}
 
+		// Avalanche C-Chain post-AP1 behavior: effective gas refunds are disabled.
+		// libevm TransitionDb applies upstream refund mechanics, so we reverse that
+		// accounting here to match canonical C-Chain receipt gas semantics.
 		if execResult.RefundedGas > 0 {
 			refundValue := new(uint256.Int).SetUint64(execResult.RefundedGas)
 			gasPrice := uint256.MustFromBig(msg.GasPrice)
@@ -430,15 +427,33 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 		statusChanged := canonStatus != replayStatus
 		gasMismatch := gasDelta != 0
 		unsupportedTx := isUnsupportedPrecompileTx(tx)
-		skippedCompare := cfg.skipUnsupported && unsupportedTx
+		if !unsupportedTx && cfg.traceUnsupported {
+			touches, traceErr := rpc.TraceTouchesSystemPrecompile(tx.Hash().Hex())
+			if traceErr != nil {
+				fatalf("block %d tx %d (%s) trace error: %v", blockNum, i, tx.Hash().Hex(), traceErr)
+			}
+			unsupportedTx = touches
+		}
 
 		replayLogs := state.GetLogs()
 		logsChanged, logsDiffReason, logsCompareErr := compareReceiptLogs(canon.Logs, replayLogs)
+
+		if cfg.skipUnsupported && cfg.baselineMode && !cfg.traceUnsupported && !unsupportedTx && (statusChanged || logsChanged || gasMismatch) {
+			touches, traceErr := rpc.TraceTouchesSystemPrecompile(tx.Hash().Hex())
+			if traceErr != nil {
+				fatalf("block %d tx %d (%s) lazy trace error: %v", blockNum, i, tx.Hash().Hex(), traceErr)
+			}
+			if touches {
+				unsupportedTx = true
+			}
+		}
+		skippedCompare := cfg.skipUnsupported && unsupportedTx
 
 		row := ReplayTxResult{
 			BlockNumber:      blockNum,
 			TxIndex:          i,
 			TxHash:           tx.Hash().Hex(),
+			Contract:         txDestination(tx),
 			UnsupportedTx:    unsupportedTx,
 			SkippedCompare:   skippedCompare,
 			CanonStatus:      canonStatus,
@@ -466,11 +481,6 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 
 		if skippedCompare {
 			res.skippedUnsupported++
-			if cfg.verbose {
-				res.comparisonPrintRows = append(res.comparisonPrintRows,
-					fmt.Sprintf("~ block=%d tx=%d hash=%s skipped=unsupported_precompile canon_status=%d replay_status=%d canon_gas=%d replay_gas=%d delta=%+d logs_changed=%v logs_reason=%s",
-						blockNum, i, tx.Hash().Hex()[:18], canonStatus, replayStatus, canonGas, replayGas, gasDelta, logsChanged, logsDiffReason))
-			}
 			continue
 		}
 
@@ -491,19 +501,8 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 		if gasMismatch {
 			res.gasMismatches++
 		}
-		if logsChanged {
+		if logsChanged && !statusChanged {
 			res.logsChanged++
-		}
-		if statusChanged || logsChanged || (cfg.verbose && gasMismatch) {
-			marker := " "
-			if statusChanged {
-				marker = "!"
-			} else if logsChanged {
-				marker = "ℹ"
-			}
-			res.comparisonPrintRows = append(res.comparisonPrintRows,
-				fmt.Sprintf("%s block=%d tx=%d hash=%s canon_status=%d replay_status=%d canon_gas=%d replay_gas=%d delta=%+d logs_changed=%v logs_reason=%s",
-					marker, blockNum, i, tx.Hash().Hex()[:18], canonStatus, replayStatus, canonGas, replayGas, gasDelta, logsChanged, logsDiffReason))
 		}
 	}
 
@@ -521,14 +520,6 @@ func scaledGas(base uint64, mult float64) (uint64, error) {
 		return 0, fmt.Errorf("scaled gas is zero")
 	}
 	return scaled, nil
-}
-
-func defaultOutPath(profile string, from uint64, to uint64, summary bool) string {
-	suffix := ".jsonl"
-	if summary {
-		suffix = "_summary.json"
-	}
-	return fmt.Sprintf("out/replay_%s_%d_%d%s", profile, from, to, suffix)
 }
 
 func isUnsupportedPrecompileTx(tx *types.Transaction) bool {
@@ -643,6 +634,7 @@ func appendNotExecutedRows(
 			BlockNumber:      blockNum,
 			TxIndex:          j,
 			TxHash:           tx.Hash().Hex(),
+			Contract:         txDestination(tx),
 			UnsupportedTx:    unsupportedTx,
 			SkippedCompare:   skippedCompare,
 			CanonStatus:      canonStatus,
@@ -679,74 +671,201 @@ func appendNotExecutedRows(
 		if row.GasMismatch {
 			res.gasMismatches++
 		}
-		if row.LogsChanged {
+		if row.LogsChanged && !row.StatusChanged {
 			res.logsChanged++
 		}
 	}
 }
 
-func avgInt64(sum int64, count int) float64 {
-	if count == 0 {
+func txDestination(tx *types.Transaction) string {
+	if to := tx.To(); to != nil {
+		return strings.ToLower(to.Hex())
+	}
+	return "<create>"
+}
+
+func aggregateContractStats(byContract map[string]*contractStats, rows []ReplayTxResult) {
+	for _, row := range rows {
+		s, ok := byContract[row.Contract]
+		if !ok {
+			s = &contractStats{}
+			byContract[row.Contract] = s
+		}
+		s.total++
+		if row.UnsupportedTx {
+			s.precompileTxs++
+		}
+		if row.SkippedCompare {
+			continue
+		}
+		switch {
+		case row.StatusChanged:
+			s.statusChanged++
+		case row.LogsChanged:
+			s.logsChanged++
+		default:
+			s.unchanged++
+		}
+	}
+}
+
+func renderDashboard(
+	analyzed int,
+	statusChanged int,
+	logsChanged int,
+	precompileTxs int,
+	from uint64,
+	to uint64,
+	doneBlocks int,
+	totalBlocks int,
+	sstoreMult float64,
+	create2Mult float64,
+	sstoreSetGas uint64,
+	create2Gas uint64,
+	byContract map[string]*contractStats,
+	elapsed time.Duration,
+) {
+	type row struct {
+		contract           string
+		total              int
+		statusChanged      int
+		logsChanged        int
+		affected           int
+		ignoredPrecompiles int
+		statusPct          float64
+		logsPct            float64
+		affectedPct        float64
+	}
+
+	rows := make([]row, 0, len(byContract))
+	for contract, st := range byContract {
+		if st.total == 0 {
+			continue
+		}
+		affected := st.statusChanged + st.logsChanged
+		if affected == 0 {
+			continue
+		}
+		rows = append(rows, row{
+			contract:           contract,
+			total:              st.total,
+			statusChanged:      st.statusChanged,
+			logsChanged:        st.logsChanged,
+			affected:           affected,
+			ignoredPrecompiles: st.precompileTxs,
+			statusPct:          pct(st.statusChanged, st.total),
+			logsPct:            (float64(st.logsChanged) * 100.0) / float64(st.total),
+			affectedPct:        pct(affected, st.total),
+		})
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].affected != rows[j].affected {
+			return rows[i].affected > rows[j].affected
+		}
+		if rows[i].statusChanged != rows[j].statusChanged {
+			return rows[i].statusChanged > rows[j].statusChanged
+		}
+		if rows[i].logsChanged != rows[j].logsChanged {
+			return rows[i].logsChanged > rows[j].logsChanged
+		}
+		if rows[i].total != rows[j].total {
+			return rows[i].total > rows[j].total
+		}
+		return rows[i].contract < rows[j].contract
+	})
+
+	if len(rows) > 20 {
+		rows = rows[:20]
+	}
+
+	affected := statusChanged + logsChanged
+	lastBlock := "<none>"
+	if doneBlocks > 0 {
+		lastBlock = fmt.Sprintf("%d", from+uint64(doneBlocks)-1)
+	}
+	blockRate := 0.0
+	if elapsed > 0 {
+		blockRate = float64(doneBlocks) / elapsed.Seconds()
+	}
+	eta := "n/a"
+	if blockRate > 0 {
+		remaining := totalBlocks - doneBlocks
+		if remaining < 0 {
+			remaining = 0
+		}
+		etaDur := time.Duration(float64(remaining) / blockRate * float64(time.Second)).Round(time.Second)
+		eta = etaDur.String()
+	}
+	fmt.Fprintln(os.Stderr, "Repricing Impact (live)")
+	fmt.Fprintln(os.Stderr, "Repricing config:")
+	fmt.Fprintf(
+		os.Stderr,
+		"  SSTORE (EIP-2200 clean 0->nonzero): old=%d new=%d mult=%.4f\n",
+		params.SstoreSetGasEIP2200,
+		sstoreSetGas,
+		sstoreMult,
+	)
+	fmt.Fprintf(
+		os.Stderr,
+		"  CREATE2 (base): old=%d new=%d mult=%.4f\n",
+		params.Create2Gas,
+		create2Gas,
+		create2Mult,
+	)
+	fmt.Fprintf(os.Stderr, "Block range: %d -> %d\n", from, to)
+	fmt.Fprintf(os.Stderr, "Progress: %d/%d (%.2f%%) | Last block: %s\n", doneBlocks, totalBlocks, pct(doneBlocks, totalBlocks), lastBlock)
+	fmt.Fprintf(os.Stderr, "Block rate: %.2f blk/s | ETA: %s\n", blockRate, eta)
+	fmt.Fprintf(os.Stderr, "Elapsed: %s\n", elapsed.Round(time.Second))
+	fmt.Fprintf(os.Stderr, "Transactions analyzed: %d\n", analyzed)
+	fmt.Fprintf(os.Stderr, "Transactions changed status: %d (%.2f%%)\n", statusChanged, pct(statusChanged, analyzed))
+	fmt.Fprintf(os.Stderr, "Transactions changed logs: %d (%.2f%%)\n", logsChanged, pct(logsChanged, analyzed))
+	fmt.Fprintf(os.Stderr, "Transactions affected total: %d (%.2f%%)\n", affected, pct(affected, analyzed))
+	fmt.Fprintf(os.Stderr, "Ignored (precompiles): %d\n", precompileTxs)
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "All contracts total")
+	fmt.Fprintln(os.Stderr, "contract                                    analyzed   ignored  statusΔ  logsΔ  affected  status%  logs%  affected%")
+	fmt.Fprintf(
+		os.Stderr,
+		"%-42s %9d %8d %8d %7d %10d %8.2f %6.2f %9.2f\n",
+		"TOTAL",
+		analyzed,
+		precompileTxs,
+		statusChanged,
+		logsChanged,
+		affected,
+		pct(statusChanged, analyzed),
+		pct(logsChanged, analyzed),
+		pct(affected, analyzed),
+	)
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Top 20 contracts by affected txs (absolute count, statusΔ + logsΔ)")
+	fmt.Fprintln(os.Stderr, "contract                                    analyzed   ignored  statusΔ  logsΔ  affected  status%  logs%  affected%")
+	if len(rows) == 0 {
+		fmt.Fprintln(os.Stderr, "(no affected contracts yet)")
+	}
+	for _, r := range rows {
+		fmt.Fprintf(
+			os.Stderr,
+			"%-42s %9d %8d %8d %7d %10d %8.2f %6.2f %9.2f\n",
+			r.contract,
+			r.total,
+			r.ignoredPrecompiles,
+			r.statusChanged,
+			r.logsChanged,
+			r.affected,
+			r.statusPct,
+			r.logsPct,
+			r.affectedPct,
+		)
+	}
+}
+
+func pct(v int, total int) float64 {
+	if total == 0 {
 		return 0
 	}
-	return float64(sum) / float64(count)
-}
-
-func blockHealthEmoji(res blockReplayResult) string {
-	if res.statusChanged > 0 || res.logsChanged > 0 {
-		return "🔴"
-	}
-	return "🟢"
-}
-
-func formatBlockStatusLine(res blockReplayResult) string {
-	if res.statusChanged == 0 && res.logsChanged == 0 {
-		parts := []string{
-			fmt.Sprintf("🟢 block %d", res.blockNum),
-			"status okay, logs okay",
-			fmt.Sprintf("tx=%d compared=%d skipped=%d", res.txTotal, res.compared, res.skippedUnsupported),
-		}
-		if res.gasMismatches == 0 {
-			parts = append(parts, "gas okay")
-		} else {
-			parts = append(parts, fmt.Sprintf("gas repriced (mismatch=%d avgΔ=%.2f avg+Δ=%.2f)", res.gasMismatches, avgInt64(res.gasDeltaSum, res.compared), avgInt64(res.gasIncreaseSum, res.gasIncreaseCount)))
-		}
-		if res.blockGasLimitAtTx >= 0 {
-			parts = append(parts, fmt.Sprintf("block gas limit reached at tx=%d (remaining=%d)", res.blockGasLimitAtTx, res.blockedTxs))
-		}
-		parts = append(parts, fmt.Sprintf("rpc=%d", res.rpcCalls), res.elapsed.Round(time.Millisecond).String())
-		return strings.Join(parts, " | ")
-	}
-
-	parts := []string{
-		fmt.Sprintf("%s block %d", blockHealthEmoji(res), res.blockNum),
-		fmt.Sprintf("tx=%d compared=%d skipped=%d", res.txTotal, res.compared, res.skippedUnsupported),
-	}
-
-	if res.statusChanged == 0 {
-		parts = append(parts, "status okay")
-	} else {
-		parts = append(parts, fmt.Sprintf("status Δ=%d (✅→❌ %d, ❌→✅ %d)", res.statusChanged, res.successToRevert, res.revertToSuccess))
-	}
-
-	if res.logsChanged == 0 {
-		parts = append(parts, "logs okay")
-	} else {
-		parts = append(parts, fmt.Sprintf("logs Δ=%d", res.logsChanged))
-	}
-
-	if res.gasMismatches == 0 {
-		parts = append(parts, "gas okay")
-	} else {
-		parts = append(parts, fmt.Sprintf("gas repriced (mismatch=%d avgΔ=%.2f avg+Δ=%.2f)", res.gasMismatches, avgInt64(res.gasDeltaSum, res.compared), avgInt64(res.gasIncreaseSum, res.gasIncreaseCount)))
-	}
-	if res.blockGasLimitAtTx >= 0 {
-		parts = append(parts, fmt.Sprintf("block gas limit reached at tx=%d (remaining=%d)", res.blockGasLimitAtTx, res.blockedTxs))
-	}
-
-	parts = append(parts, fmt.Sprintf("rpc=%d", res.rpcCalls))
-	parts = append(parts, res.elapsed.Round(time.Millisecond).String())
-	return strings.Join(parts, " | ")
+	return (float64(v) * 100.0) / float64(total)
 }
 
 func fatalf(format string, args ...interface{}) {

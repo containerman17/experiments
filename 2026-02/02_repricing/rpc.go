@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -16,7 +17,10 @@ import (
 
 const (
 	hardcodedRPCWSURL     = "ws://127.0.0.1:9650/ext/bc/C/ws"
-	wsParallelConnections = 32
+	wsParallelConnections = 64
+	rpcMaxRetries         = 10
+	rpcRetryMinBackoff    = 1 * time.Second
+	rpcRetryMaxBackoff    = 10 * time.Second
 )
 
 var (
@@ -32,6 +36,11 @@ type RPCClient struct {
 
 	rpcCalls atomic.Int64
 	rpcErrs  atomic.Int64
+}
+
+type callTraceNode struct {
+	To    string          `json:"to"`
+	Calls []callTraceNode `json:"calls"`
 }
 
 func getSharedWSPool() *wsPool {
@@ -112,6 +121,35 @@ func (c *RPCClient) FetchBlockHash(num uint64) common.Hash {
 	return common.HexToHash(block.Hash)
 }
 
+func (c *RPCClient) TraceTouchesSystemPrecompile(txHash string) (bool, error) {
+	raw, err := c.rpcCallRaw("debug_traceTransaction", txHash, map[string]interface{}{"tracer": "callTracer"})
+	if err != nil {
+		return false, err
+	}
+	if string(raw) == "null" {
+		return false, nil
+	}
+	var root callTraceNode
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return false, err
+	}
+	return traceHasSystemPrecompile(root), nil
+}
+
+func traceHasSystemPrecompile(node callTraceNode) bool {
+	if node.To != "" {
+		if isAvalancheSystemPrecompile(common.HexToAddress(node.To)) {
+			return true
+		}
+	}
+	for _, child := range node.Calls {
+		if traceHasSystemPrecompile(child) {
+			return true
+		}
+	}
+	return false
+}
+
 // FetchBlock fetches a block with full transactions and its receipts.
 func (c *RPCClient) FetchBlock(blockNum uint64) (*BlockData, error) {
 	hexBlock := fmt.Sprintf("0x%x", blockNum)
@@ -152,7 +190,28 @@ func (c *RPCClient) rpcCall(method string, params ...interface{}) (string, error
 // rpcCallRaw returns raw JSON result.
 func (c *RPCClient) rpcCallRaw(method string, params ...interface{}) (json.RawMessage, error) {
 	c.rpcCalls.Add(1)
-	return c.wsPool.callRaw(method, params...)
+	var lastErr error
+	for attempt := 0; attempt <= rpcMaxRetries; attempt++ {
+		raw, err := c.wsPool.callRaw(method, params...)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+		c.rpcErrs.Add(1)
+		if attempt == rpcMaxRetries {
+			break
+		}
+		time.Sleep(retryBackoff(attempt))
+	}
+	return nil, fmt.Errorf("rpc %s failed after %d retries: %w", method, rpcMaxRetries, lastErr)
+}
+
+func retryBackoff(attempt int) time.Duration {
+	backoff := rpcRetryMinBackoff << attempt
+	if backoff > rpcRetryMaxBackoff {
+		return rpcRetryMaxBackoff
+	}
+	return backoff
 }
 
 // BlockData holds block + receipts JSON.

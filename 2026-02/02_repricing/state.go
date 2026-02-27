@@ -3,6 +3,7 @@ package main
 import (
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -267,9 +268,7 @@ func (s *ReplayState) GetCodeHash(addr common.Address) common.Hash {
 	}
 	code := s.rpc.FetchCode(addr)
 	if len(code) == 0 {
-		// Return empty hash for EOAs, not zero hash
-		// Per EIP-161: empty accounts return emptyCodeHash
-		return common.Hash{}
+		return types.EmptyCodeHash
 	}
 	return crypto.Keccak256Hash(code)
 }
@@ -414,27 +413,31 @@ func (s *ReplayState) AddSlotToAccessList(addr common.Address, slot common.Hash)
 }
 
 func (s *ReplayState) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
-	s.accessedAddrs = make(map[common.Address]bool)
-	s.accessedSlots = make(map[common.Address]map[common.Hash]bool)
-	s.transient = make(map[common.Address]map[common.Hash]common.Hash)
+	if rules.IsBerlin {
+		s.accessedAddrs = make(map[common.Address]bool)
+		s.accessedSlots = make(map[common.Address]map[common.Hash]bool)
 
-	s.accessedAddrs[sender] = true
-	if dest != nil {
-		s.accessedAddrs[*dest] = true
-	}
-	s.accessedAddrs[coinbase] = true
-	for _, addr := range precompiles {
-		s.accessedAddrs[addr] = true
-	}
-	for _, el := range txAccesses {
-		s.accessedAddrs[el.Address] = true
-		for _, slot := range el.StorageKeys {
-			if s.accessedSlots[el.Address] == nil {
-				s.accessedSlots[el.Address] = make(map[common.Hash]bool)
+		s.accessedAddrs[sender] = true
+		if dest != nil {
+			s.accessedAddrs[*dest] = true
+		}
+		for _, addr := range precompiles {
+			s.accessedAddrs[addr] = true
+		}
+		for _, el := range txAccesses {
+			s.accessedAddrs[el.Address] = true
+			for _, slot := range el.StorageKeys {
+				if s.accessedSlots[el.Address] == nil {
+					s.accessedSlots[el.Address] = make(map[common.Hash]bool)
+				}
+				s.accessedSlots[el.Address][slot] = true
 			}
-			s.accessedSlots[el.Address][slot] = true
+		}
+		if rules.IsShanghai {
+			s.accessedAddrs[coinbase] = true
 		}
 	}
+	s.transient = make(map[common.Address]map[common.Hash]common.Hash)
 }
 
 // ---- vm.StateDB: Transient storage ----
@@ -501,6 +504,10 @@ func (s *ReplayState) GetLogs() []*types.Log {
 	return s.logs
 }
 
+func (s *ReplayState) Logs() []*types.Log {
+	return s.logs
+}
+
 // ---- vm.StateDB: Misc ----
 
 func (s *ReplayState) AddPreimage(hash common.Hash, preimage []byte) {}
@@ -530,6 +537,37 @@ func (s *ReplayState) addJournal(revert func()) {
 
 func (s *ReplayState) TxHash() common.Hash { return s.txHash }
 func (s *ReplayState) TxIndex() int        { return s.txIndex }
+
+func (s *ReplayState) GetPredicate(common.Address, int) (predicate.Predicate, bool) {
+	return nil, false
+}
+
+func (s *ReplayState) GetBalanceMultiCoin(addr common.Address, coinID common.Hash) *big.Int {
+	normalizeCoinID(&coinID)
+	return s.GetState(addr, coinID).Big()
+}
+
+func (s *ReplayState) AddBalanceMultiCoin(addr common.Address, coinID common.Hash, amount *big.Int) {
+	if amount.Sign() == 0 {
+		return
+	}
+	normalizeCoinID(&coinID)
+	newAmount := new(big.Int).Add(s.GetBalanceMultiCoin(addr, coinID), amount)
+	s.SetState(addr, coinID, common.BigToHash(newAmount))
+}
+
+func (s *ReplayState) SubBalanceMultiCoin(addr common.Address, coinID common.Hash, amount *big.Int) {
+	if amount.Sign() == 0 {
+		return
+	}
+	normalizeCoinID(&coinID)
+	newAmount := new(big.Int).Sub(s.GetBalanceMultiCoin(addr, coinID), amount)
+	s.SetState(addr, coinID, common.BigToHash(newAmount))
+}
+
+func normalizeCoinID(coinID *common.Hash) {
+	coinID[0] |= 0x01
+}
 
 // Unused but needed to satisfy some callers
 func ptrU64(v uint64) *uint64    { return &v }

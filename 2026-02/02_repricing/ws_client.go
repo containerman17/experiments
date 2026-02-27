@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -34,6 +35,8 @@ type wsRPCResponse struct {
 	Result  json.RawMessage `json:"result"`
 	Error   json.RawMessage `json:"error"`
 }
+
+const wsRequestTimeout = 20 * time.Second
 
 func newWSClient(wsURL string) (*wsClient, error) {
 	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -75,11 +78,13 @@ func (c *wsClient) callRaw(method string, params ...interface{}) (json.RawMessag
 		Method:  method,
 		Params:  params,
 	}
+	_ = c.conn.SetWriteDeadline(time.Now().Add(wsRequestTimeout))
 	if err := c.conn.WriteJSON(req); err != nil {
 		return nil, fmt.Errorf("ws write %s: %w", method, err)
 	}
 
 	for {
+		_ = c.conn.SetReadDeadline(time.Now().Add(wsRequestTimeout))
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			return nil, fmt.Errorf("ws read %s: %w", method, err)
@@ -94,6 +99,8 @@ func (c *wsClient) callRaw(method string, params ...interface{}) (json.RawMessag
 		if string(resp.Error) != "" && string(resp.Error) != "null" {
 			return nil, fmt.Errorf("rpc error: %s", string(resp.Error))
 		}
+		_ = c.conn.SetWriteDeadline(time.Time{})
+		_ = c.conn.SetReadDeadline(time.Time{})
 		if resp.Result == nil {
 			return json.RawMessage("null"), nil
 		}

@@ -426,28 +426,25 @@ async function readClaudeOutput(
                         );
                         if (state.ctx) {
                             let doneMsg = `Done (${elapsed}s)`;
+                            // ev.usage is per-turn; ev.modelUsage is cumulative
+                            const u = ev.usage;
                             const modelUsage = ev.modelUsage;
-                            if (modelUsage) {
+                            if (u && modelUsage) {
                                 const model = Object.keys(modelUsage)[0];
-                                if (model) {
-                                    const mu = modelUsage[model];
-                                    const used =
-                                        (mu.inputTokens || 0) +
-                                        (mu.cacheReadInputTokens || 0) +
-                                        (mu.cacheCreationInputTokens || 0) +
-                                        (mu.outputTokens || 0);
-                                    const window = mu.contextWindow || 0;
-                                    if (window > 0) {
-                                        const pct = (
-                                            (used / window) *
-                                            100
-                                        ).toFixed(1);
-                                        const usedK = (used / 1000).toFixed(1);
-                                        const windowK = (window / 1000).toFixed(
-                                            0,
-                                        );
-                                        doneMsg += ` | context: ${usedK}k/${windowK}k (${pct}%)`;
-                                    }
+                                const window = model ? modelUsage[model].contextWindow || 0 : 0;
+                                const used =
+                                    (u.input_tokens || 0) +
+                                    (u.cache_read_input_tokens || 0) +
+                                    (u.cache_creation_input_tokens || 0) +
+                                    (u.output_tokens || 0);
+                                if (window > 0) {
+                                    const pct = (
+                                        (used / window) *
+                                        100
+                                    ).toFixed(1);
+                                    const usedK = (used / 1000).toFixed(1);
+                                    const windowK = (window / 1000).toFixed(0);
+                                    doneMsg += ` | context: ${usedK}k/${windowK}k (${pct}%)`;
                                 }
                             }
                             await state.ctx.reply(doneMsg);

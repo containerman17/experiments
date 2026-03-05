@@ -2,28 +2,7 @@ import type WebSocket from 'ws';
 import type { ClientMessage, ServerMessage } from '../shared/types.ts';
 import { listWorkspaces } from './db.ts';
 import { createAgentProcess, sendToAgent, deleteAgent, listAgentsInFolder, getAgentHistory, subscribeToAgent, unsubscribeAll } from './agent-manager.ts';
-import { createTerminal, writeToTerminal, resizeTerminal, closeTerminal } from './terminal-manager.ts';
-
-// Track terminals per connection for cleanup
-const wsTerminals = new Map<WebSocket, Set<string>>();
-
-function trackTerminal(ws: WebSocket, terminalId: string): void {
-  let set = wsTerminals.get(ws);
-  if (!set) { set = new Set(); wsTerminals.set(ws, set); }
-  set.add(terminalId);
-}
-
-function untrackTerminal(ws: WebSocket, terminalId: string): void {
-  wsTerminals.get(ws)?.delete(terminalId);
-}
-
-function closeAllTerminals(ws: WebSocket): void {
-  const set = wsTerminals.get(ws);
-  if (set) {
-    for (const id of set) closeTerminal(id);
-    wsTerminals.delete(ws);
-  }
-}
+import { createTerminal, attachTerminal, detachAll, listTerminals, writeToTerminal, resizeTerminal, closeTerminal } from './terminal-manager.ts';
 
 function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -50,7 +29,7 @@ export function handleConnection(ws: WebSocket): void {
 
   ws.on('close', () => {
     unsubscribeAll(ws);
-    closeAllTerminals(ws);
+    detachAll(ws);
   });
 }
 
@@ -88,16 +67,22 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
     }
 
     case 'terminal.create': {
-      const terminalId = createTerminal(
-        msg.folder,
-        (id, data) => send(ws, { type: 'terminal.output', terminalId: id, data }),
-        (id, exitCode) => {
-          send(ws, { type: 'terminal.exited', terminalId: id, exitCode });
-          untrackTerminal(ws, id);
-        },
-      );
-      trackTerminal(ws, terminalId);
+      const terminalId = createTerminal(msg.folder);
+      // Auto-attach the creator
+      attachTerminal(ws, terminalId);
       send(ws, { type: 'terminal.created', terminalId });
+      break;
+    }
+
+    case 'terminal.list': {
+      const terms = listTerminals(msg.folder);
+      send(ws, { type: 'terminal.list.result', folder: msg.folder, terminals: terms });
+      break;
+    }
+
+    case 'terminal.attach': {
+      const ok = attachTerminal(ws, msg.terminalId);
+      if (!ok) sendError(ws, `Terminal ${msg.terminalId} not found`);
       break;
     }
 
@@ -113,7 +98,6 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
     case 'terminal.close': {
       closeTerminal(msg.terminalId);
-      untrackTerminal(ws, msg.terminalId);
       break;
     }
 

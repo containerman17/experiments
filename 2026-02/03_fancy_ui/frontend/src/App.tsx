@@ -39,7 +39,10 @@ export default function App() {
         case 'agent.history.result':
           dispatch({ type: 'AGENT_HISTORY', agentId: msg.agentId, entries: msg.entries, hasMore: msg.hasMore });
           break;
-        // Terminal messages are handled directly by Terminal component
+        case 'terminal.list.result':
+          dispatch({ type: 'SET_TERMINALS', folder: msg.folder, terminals: msg.terminals });
+          break;
+        // Terminal output/exit messages are handled directly by Terminal component
       }
     });
   }, []);

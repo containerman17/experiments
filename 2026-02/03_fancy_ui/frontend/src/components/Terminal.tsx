@@ -1,7 +1,10 @@
 // Full xterm.js terminal connected to a PTY on the backend via WebSocket.
-// On mount, sends `terminal.create` to spawn a shell in the workspace folder.
+// Supports two modes:
+//   1. Create new: sends `terminal.create`, then auto-attaches on `terminal.created` response
+//   2. Attach existing: sends `terminal.attach` with known terminalId (replays ring buffer)
 // User input → `terminal.input`, backend output → `terminal.output` (base64).
 // Handles resize via ResizeObserver + FitAddon.
+// Does NOT send `terminal.close` on unmount — terminals are persistent.
 
 import { useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
@@ -40,8 +43,11 @@ export function Terminal({ folder, tabId, terminalId }: { folder: string; tabId:
 
     let myTerminalId = terminalId || '';
 
-    // If no terminal ID yet, create one
-    if (!myTerminalId) {
+    if (myTerminalId) {
+      // Attach to existing terminal — backend will replay ring buffer
+      send({ type: 'terminal.attach', terminalId: myTerminalId });
+    } else {
+      // Create new terminal
       send({ type: 'terminal.create', folder });
     }
 
@@ -82,9 +88,7 @@ export function Terminal({ folder, tabId, terminalId }: { folder: string; tabId:
       unsub();
       ro.disconnect();
       term.dispose();
-      if (myTerminalId) {
-        send({ type: 'terminal.close', terminalId: myTerminalId });
-      }
+      // Don't close the terminal — it's persistent. Just detach by unsubscribing.
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally run once
 

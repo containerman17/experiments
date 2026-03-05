@@ -4,7 +4,7 @@
 // Individual components parse the ACP payloads they care about.
 
 import { createContext, useContext, type Dispatch } from 'react';
-import type { AgentInfo, WorkspaceInfo, AgentLogEntry } from '../../shared/types';
+import type { AgentInfo, WorkspaceInfo, AgentLogEntry, TerminalInfo } from '../../shared/types';
 
 // --- Types ---
 
@@ -35,6 +35,7 @@ export interface AppState {
   // Current workspace (derived from URL, only set on workspace page)
   folder: string | null;
   agents: Record<string, AgentState>;
+  terminals: TerminalInfo[];
   tabs: TabDef[];
   activeTabId: string | null;
 }
@@ -43,6 +44,7 @@ export const initialState: AppState = {
   workspaces: [],
   folder: null,
   agents: {},
+  terminals: [],
   tabs: [],
   activeTabId: null,
 };
@@ -53,6 +55,7 @@ export type Action =
   // Backend protocol messages
   | { type: 'SET_WORKSPACES'; workspaces: WorkspaceInfo[] }
   | { type: 'SET_AGENTS'; folder: string; agents: AgentInfo[] }
+  | { type: 'SET_TERMINALS'; folder: string; terminals: TerminalInfo[] }
   | { type: 'AGENT_OUTPUT'; agentId: string; entry: AgentLogEntry }
   | { type: 'AGENT_ERROR'; agentId: string; message: string }
   | { type: 'AGENT_EXITED'; agentId: string; exitCode: number }
@@ -91,6 +94,9 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       return { ...state, agents };
     }
+
+    case 'SET_TERMINALS':
+      return { ...state, terminals: action.terminals };
 
     case 'AGENT_OUTPUT': {
       const a = state.agents[action.agentId];

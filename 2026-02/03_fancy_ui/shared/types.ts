@@ -19,6 +19,14 @@ export interface WorkspaceInfo {
   agentCount: number;
 }
 
+export interface TerminalInfo {
+  id: string;
+  folder: string;
+  cols: number;
+  rows: number;
+  createdAt: number;
+}
+
 export interface AgentLogEntry {
   id: number;
   agentId: string;
@@ -37,6 +45,8 @@ export type ClientMessage =
   | { type: 'agent.message'; agentId: string; payload: unknown }
   | { type: 'agent.history'; agentId: string; before?: number; limit?: number }
   | { type: 'terminal.create'; folder: string }
+  | { type: 'terminal.list'; folder: string }
+  | { type: 'terminal.attach'; terminalId: string }
   | { type: 'terminal.input'; terminalId: string; data: string }
   | { type: 'terminal.resize'; terminalId: string; cols: number; rows: number }
   | { type: 'terminal.close'; terminalId: string };
@@ -50,6 +60,7 @@ export type ServerMessage =
   | { type: 'agent.error'; agentId: string; message: string }
   | { type: 'agent.exited'; agentId: string; exitCode: number }
   | { type: 'agent.history.result'; agentId: string; entries: AgentLogEntry[]; hasMore: boolean }
+  | { type: 'terminal.list.result'; folder: string; terminals: TerminalInfo[] }
   | { type: 'terminal.created'; terminalId: string }
   | { type: 'terminal.output'; terminalId: string; data: string }
   | { type: 'terminal.exited'; terminalId: string; exitCode: number }

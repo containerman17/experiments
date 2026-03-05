@@ -5,102 +5,104 @@
 
 ## Philosophy
 
+This is an **agent control panel**, not an IDE. The user directs agents and observes what's happening. No code editing here (yet — code review/reading later).
+
 No SPA routing. Normal page navigation with full reloads.
 URL path = workspace folder (e.g. `example.com/home/ubuntu/myproject`).
 Root `/` = home page with workspace list.
-Frontend parses raw ACP JSON-RPC from `agent.output` messages — backend is just a tunnel.
+
+The frontend is purely an **observer + optional override**. Agents work independently on the backend. The frontend renders what it sees and sends user input. If disconnected, agents keep working. On reconnect, user gets full history replay.
+
+## Key Architectural Decision: Two Kinds of Terminals
+
+- **User terminals**: persistent PTY shells for poking around. Bottom panel or tabs. User creates, attaches, detaches. Survive reconnects via ring buffer replay.
+- **Agent terminals**: commands the agent is running (ACP `terminal/create`). Rendered **inline in tool call cards** in the chat. User can see live output and kill them. These are handled entirely by the backend — frontend just observes.
 
 ## Stack
 
 - React 19 + Vite + Tailwind v4
 - No react-router (just `window.location.pathname`)
-- No CSS files — Tailwind only
-- xterm.js for terminal
+- xterm.js for user terminals
 
 ## Pages
 
 ### Home (`/`)
-- Fetches `workspace.list` from backend → shows list of folders with agent counts
-- Freestyle text input for entering a folder path (later: file browser)
-- Click workspace or submit path → navigates to `/<folder-path>`
+- Workspace list from `workspace.list`
+- Folder text input (later: file browser)
+- Server URL editor with green/red connection indicator
 
 ### Workspace (`/<folder-path>`)
-- Left: agent list + "Create Agent" button
-- Center: active agent chat OR terminal
-- Right: agent config sidebar (plan, touched files, mode, config options)
-- Tabs for switching between agents and terminals
+- Left: agent list + terminal list + create buttons
+- Center: active agent chat OR user terminal
+- Right: agent sidebar (plan, modes, config, delete)
+- Tab bar for switching
 
 ## ACP Message Handling
 
-Frontend sends raw JSON-RPC wrapped in `agent.message`. Receives raw JSON-RPC via `agent.output`.
+Frontend sends raw JSON-RPC via `agent.message`. Receives via `agent.output`.
 
 ### Lifecycle (frontend drives):
-1. On agent.create → backend spawns process, frontend sends `initialize` then `session/new`
-2. User types message → frontend sends `session/prompt`
-3. Agent streams `session/update` notifications → frontend renders incrementally
-4. Agent may send `session/request_permission` → frontend auto-grants (for now)
-5. Prompt turn ends when `session/prompt` response arrives with StopReason
+1. `agent.create` → backend spawns process
+2. Frontend sends `initialize` then `session/new`
+3. User types → `session/prompt`
+4. Agent streams `session/update` → render incrementally
+5. `session/request_permission` → backend auto-grants (later: frontend can override)
+6. Turn ends with `session/prompt` response (StopReason)
 
-### ACP messages frontend must SEND (via agent.message):
-- `initialize` — on agent create
-- `session/new` — after initialize response
-- `session/prompt` — user message
-- `session/cancel` — stop button
-- `session/set_mode` — mode dropdown change
-- `session/set_config_option` — config dropdown change
+### Messages frontend renders from agent.output:
+- `session/update` — text, tool calls (with inline agent terminal output), plan, thinking
+- `session/prompt` response — stop reason
+- `available_commands_update` — slash commands
+- `current_mode_update` / `config_options_update` — sidebar updates
 
-### ACP messages frontend must HANDLE (from agent.output):
-- `initialize` response — extract agent info/capabilities
-- `session/new` response — extract sessionId, modes, configOptions
-- `session/update` notification — render text, tool calls, plan, thinking
-- `session/prompt` response — stop reason, turn complete
-- `session/request_permission` — auto-grant for now
-- `available_commands_update` notification — slash command list
-- `current_mode_update` notification — mode changed by agent
-- `config_options_update` notification — config changed by agent
-- `fs/read_text_file` request — respond with file content (later)
-- `fs/write_text_file` request — respond with success (later)
+### Messages backend handles (NOT frontend):
+- `terminal/*` — backend executes, responds to agent, broadcasts output
+- `fs/*` — backend reads/writes files, responds to agent
+- `session/request_permission` — backend auto-grants (frontend can override later)
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `main.tsx` | React root mount |
-| `App.tsx` | Route by pathname: home vs workspace |
-| `ws.ts` | WebSocket connection singleton with send/subscribe |
-| `acp.ts` | ACP JSON-RPC helpers: build messages, parse notifications, ID generation |
-| `store.ts` | React context + reducer for app state |
-| `pages/HomePage.tsx` | Workspace list + folder input |
-| `pages/WorkspacePage.tsx` | Layout shell for a workspace |
-| `components/AgentList.tsx` | Sidebar agent list + create button |
-| `components/AgentChat.tsx` | Chat messages, tool calls, thinking, diffs, input |
-| `components/AgentSidebar.tsx` | Plan, touched files, mode, config options |
-| `components/TabBar.tsx` | Horizontal tabs (agents + terminals) |
-| `components/Terminal.tsx` | xterm.js PTY terminal |
+| `App.tsx` | Route by pathname, WS→store bridge |
+| `ws.ts` | WebSocket singleton (auto-connect, reconnect, status callbacks) |
+| `acp.ts` | ACP JSON-RPC helpers |
+| `store.ts` | React context + reducer |
+| `pages/HomePage.tsx` | Workspace list, folder input, server URL |
+| `pages/WorkspacePage.tsx` | Layout shell |
+| `components/AgentList.tsx` | Agent + terminal list, create buttons |
+| `components/AgentChat.tsx` | Chat, tool calls, thinking, diffs |
+| `components/AgentSidebar.tsx` | Plan, modes, config, delete |
+| `components/TabBar.tsx` | Tabs (agents + terminals) |
+| `components/Terminal.tsx` | xterm.js user terminal with attach/detach |
 
-## Implementation Order
+## Done
 
-- [x] Rewrite plan.md
-- [x] ws.ts — WebSocket singleton (auto-connect, reconnect, send/subscribe)
-- [x] acp.ts — JSON-RPC helpers (request/notification/response builders, ACP request factories)
-- [x] store.ts — new state: AgentState with raw log, ACP lifecycle flags, tabs
-- [x] App.tsx — pathname routing (no react-router), WS→store bridge
-- [x] pages/HomePage.tsx — workspace list from backend, folder text input, full-page navigation
-- [x] pages/WorkspacePage.tsx — layout: agent list | chat/terminal | sidebar
-- [x] components/AgentList.tsx — agent list, create Claude/Codex, open terminal
-- [x] components/AgentChat.tsx — ACP lifecycle (initialize→session/new→prompt), render session/update, auto-grant permissions, stop button
-- [x] components/AgentSidebar.tsx — plan, modes, config options parsed from ACP log
-- [x] components/TabBar.tsx — agent + terminal tabs with close
-- [x] components/Terminal.tsx — xterm.js + FitAddon + WebLinksAddon, PTY over WS
-- [x] Build passes (TypeScript clean)
-- [x] Removed react-router-dom dependency
+- [x] WebSocket singleton with status, reconnect, editable URL
+- [x] ACP JSON-RPC helpers
+- [x] Store with agent state, terminal list, tabs
+- [x] Pathname routing, WS→store bridge
+- [x] Home page with workspace list + server indicator
+- [x] Workspace page with agent list, chat, sidebar, tabs
+- [x] Agent chat with full ACP lifecycle
+- [x] Agent sidebar with plan, modes, config, delete (with confirm)
+- [x] User terminals: persistent, attachable, ring buffer replay
+- [x] Terminal list in sidebar for reattach
+- [x] Agent error display (stderr forwarding)
+- [x] Build passes, no react-router
 
-## TODO (not implementing now)
+## Next
 
-- [ ] Respond to `fs/read_text_file` requests from agent (need file access)
-- [ ] Respond to `fs/write_text_file` requests from agent
-- [ ] Respond to `terminal/*` requests from agent (agent-initiated terminals)
-- [ ] File browser for folder selection (replace text input)
+- [ ] Agent terminal output inline in tool call cards (once backend intercepts `terminal/*`)
+- [ ] Bottom panel layout for user terminals (separate from agent chat tabs)
+- [ ] Slash command autocomplete (from `available_commands_update`)
+
+## Later
+
+- [ ] Code viewer (read-only, for reviewing agent output)
+- [ ] File browser for folder selection
 - [ ] Markdown rendering in agent messages
-- [ ] Syntax highlighting in diffs (CodeMirror)
+- [ ] Syntax highlighting in diffs
+- [ ] Permission override UI (approve/deny from frontend)
 - [ ] Mobile layout

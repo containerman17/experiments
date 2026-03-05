@@ -23,11 +23,16 @@ export function WorkspacePage({ folder }: { folder: string }) {
   const dispatch = useDispatch();
   const connected = useConnectionStatus();
 
-  // Set folder in state and fetch agent list
+  // Set folder in state and fetch agent list (re-fetch on reconnect)
   useEffect(() => {
     dispatch({ type: 'SET_FOLDER', folder });
-    send({ type: 'agent.list', folder });
   }, [folder, dispatch]);
+
+  useEffect(() => {
+    if (connected) {
+      send({ type: 'agent.list', folder });
+    }
+  }, [folder, connected]);
 
   // Set document.title to last path segment
   useEffect(() => {
@@ -49,12 +54,12 @@ export function WorkspacePage({ folder }: { folder: string }) {
         {/* Center: content */}
         <div className="flex-1 min-w-0 flex flex-col">
           {activeTab?.kind === 'agent' && activeAgent && (
-            <div className="flex-1 min-h-0 max-w-4xl mx-auto w-full">
+            <div key={activeTab.id} className="flex-1 min-h-0 max-w-4xl mx-auto w-full">
               <AgentChat agent={activeAgent} />
             </div>
           )}
           {activeTab?.kind === 'terminal' && activeTab.terminalId && (
-            <Terminal terminalId={activeTab.terminalId} />
+            <Terminal key={activeTab.terminalId} terminalId={activeTab.terminalId} />
           )}
           {!activeTab && (
             <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">

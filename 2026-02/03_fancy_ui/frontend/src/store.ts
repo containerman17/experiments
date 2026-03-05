@@ -59,7 +59,9 @@ export type Action =
   // UI
   | { type: 'SET_FOLDER'; folder: string | null }
   // Tab state from backend
-  | { type: 'SET_TABS'; tabs: TabInfo[]; activeTabId: string | null };
+  | { type: 'SET_TABS'; tabs: TabInfo[]; activeTabId: string | null }
+  // Clear all data on disconnect (will be re-fetched on reconnect)
+  | { type: 'CLEAR_ALL' };
 
 // --- Reducer ---
 
@@ -159,6 +161,9 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_TABS':
       return { ...state, tabs: action.tabs, activeTabId: action.activeTabId };
+
+    case 'CLEAR_ALL':
+      return { ...initialState, folder: state.folder };
 
     default:
       return state;

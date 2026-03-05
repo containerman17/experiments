@@ -72,9 +72,20 @@ export function Terminal({ terminalId }: { terminalId: string }) {
     });
     ro.observe(containerRef.current);
 
+    // Re-fit on focus/visibility change (e.g. switching devices via tunnel)
+    const onFocus = () => {
+      if (document.hidden) return;
+      fitAddon.fit();
+      send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
     return () => {
       unsub();
       ro.disconnect();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
       term.dispose();
       // Don't close the terminal — it's persistent. Just detach by unsubscribing.
     };

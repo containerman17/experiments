@@ -5,13 +5,16 @@
 
 import { useReducer, useEffect } from 'react';
 import { StateCtx, DispatchCtx, initialState, reducer } from './store';
-import { subscribe as wsSubscribe } from './ws';
+import { subscribe as wsSubscribe, onDisconnect } from './ws';
 import { HomePage } from './pages/HomePage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import type { ServerMessage } from '../../shared/types';
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Clear state on disconnect — will be re-populated on reconnect
+  useEffect(() => onDisconnect(() => dispatch({ type: 'CLEAR_ALL' })), []);
 
   // Bridge WebSocket messages into the store
   useEffect(() => {

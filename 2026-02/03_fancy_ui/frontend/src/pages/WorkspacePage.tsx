@@ -66,8 +66,8 @@ export function WorkspacePage({ folder }: { folder: string }) {
 
       {/* Disconnected overlay */}
       {!connected && (
-        <div className="absolute inset-0 bg-zinc-900/60 flex items-center justify-center z-50">
-          <div className="text-zinc-400 text-lg font-medium">Disconnected</div>
+        <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center z-50">
+          <div className="text-zinc-400 text-lg font-medium">Reconnecting...</div>
         </div>
       )}
     </div>

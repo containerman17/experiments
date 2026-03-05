@@ -8,11 +8,13 @@ import type { ClientMessage, ServerMessage, TabInfo } from '../../shared/types';
 
 type Listener = (msg: ServerMessage) => void;
 type StatusListener = (connected: boolean) => void;
+type DisconnectListener = () => void;
 
 let socket: WebSocket | null = null;
 let connected = false;
 const listeners = new Set<Listener>();
 const statusListeners = new Set<StatusListener>();
+const disconnectListeners = new Set<DisconnectListener>();
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
 function getServerUrl(): string {
@@ -48,6 +50,7 @@ function connect(): void {
   socket.onclose = () => {
     setConnected(false);
     socket = null;
+    for (const fn of disconnectListeners) fn();
     scheduleReconnect();
   };
 
@@ -77,6 +80,11 @@ export function onStatusChange(fn: StatusListener): () => void {
   // Fire immediately with current state
   fn(connected);
   return () => { statusListeners.delete(fn); };
+}
+
+export function onDisconnect(fn: DisconnectListener): () => void {
+  disconnectListeners.add(fn);
+  return () => { disconnectListeners.delete(fn); };
 }
 
 export function isConnected(): boolean {

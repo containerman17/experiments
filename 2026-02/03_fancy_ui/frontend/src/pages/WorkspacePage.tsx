@@ -8,7 +8,9 @@ import { useAppState, useDispatch } from '../store';
 import { send, onStatusChange, isConnected } from '../ws';
 import { AgentChat } from '../components/AgentChat';
 import { TabBar } from '../components/TabBar';
+import { MobileNav } from '../components/MobileNav';
 import { Terminal } from '../components/Terminal';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 function useConnectionStatus(): boolean {
   return useSyncExternalStore(
@@ -21,6 +23,7 @@ export function WorkspacePage({ folder }: { folder: string }) {
   const state = useAppState();
   const dispatch = useDispatch();
   const connected = useConnectionStatus();
+  const isMobile = useIsMobile();
 
   // Set folder in state and fetch agent list (re-fetch on reconnect)
   useEffect(() => {
@@ -43,9 +46,9 @@ export function WorkspacePage({ folder }: { folder: string }) {
   const activeAgent = activeAgentId ? state.agents[activeAgentId] : null;
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-900 text-zinc-100 relative">
-      {/* Tab bar */}
-      <TabBar />
+    <div className="flex flex-col h-dvh bg-zinc-900 text-zinc-100 relative">
+      {/* Navigation: TabBar on desktop, MobileNav on mobile */}
+      {isMobile ? <MobileNav /> : <TabBar />}
 
       {/* Main area */}
       <div className="flex-1 min-h-0 flex flex-col">

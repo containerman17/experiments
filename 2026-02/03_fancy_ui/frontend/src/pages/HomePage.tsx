@@ -31,7 +31,7 @@ export function HomePage() {
   };
 
   return (
-    <div className="h-screen bg-zinc-900 text-zinc-100 flex flex-col">
+    <div className="h-dvh bg-zinc-900 text-zinc-100 flex flex-col">
       {/* Header */}
       <div className="flex items-center px-4 h-10 bg-zinc-800 border-b border-zinc-700 shrink-0">
         <span className="text-sm font-semibold text-zinc-300">Agent UI</span>
@@ -40,8 +40,8 @@ export function HomePage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex items-start justify-center overflow-y-auto pt-16">
-        <div className="w-full max-w-lg px-4">
+      <div className="flex-1 flex items-start justify-center overflow-y-auto pt-8 md:pt-16">
+        <div className="w-full max-w-lg px-4 pb-8">
           <h1 className="text-2xl font-bold mb-6">Workspaces</h1>
 
           {/* Workspace list */}

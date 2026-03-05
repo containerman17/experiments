@@ -81,11 +81,51 @@ export function Terminal({ terminalId }: { terminalId: string }) {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
 
+    // Pinch-to-zoom: adjust font size on two-finger pinch
+    const MIN_FONT = 6;
+    const MAX_FONT = 28;
+    let pinchStartDist = 0;
+    let pinchStartFont = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchStartDist = Math.hypot(dx, dy);
+        pinchStartFont = term.options.fontSize || 13;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || pinchStartDist === 0) return;
+      e.preventDefault(); // prevent page zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const scale = dist / pinchStartDist;
+      const newSize = Math.round(Math.min(MAX_FONT, Math.max(MIN_FONT, pinchStartFont * scale)));
+      if (newSize !== term.options.fontSize) {
+        term.options.fontSize = newSize;
+        fitAddon.fit();
+        send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
+      }
+    };
+
+    const onTouchEnd = () => { pinchStartDist = 0; };
+
+    const el = containerRef.current!;
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+
     return () => {
       unsub();
       ro.disconnect();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
       term.dispose();
       // Don't close the terminal — it's persistent. Just detach by unsubscribing.
     };

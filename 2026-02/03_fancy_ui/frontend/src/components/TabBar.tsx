@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { useAppState } from '../store';
+import type { AgentType } from '../../../shared/types';
 import { send, sendTabsUpdate, onStatusChange, isConnected } from '../ws';
 
 function useConnectionStatus(): boolean {
@@ -14,8 +15,33 @@ function useConnectionStatus(): boolean {
   );
 }
 
+export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agentType?: AgentType }) {
+  if (kind === 'terminal') {
+    return <span className="text-green-400">■</span>;
+  }
+  if (agentType === 'claude') {
+    // Anthropic Claude logo mark (simplified)
+    return (
+      <svg viewBox="0 0 64 64" className="w-3.5 h-3.5 shrink-0">
+        <path d="M37.4 17.2L47.8 46.8H56L42.6 10H32.2L37.4 17.2Z" fill="#D4A27F" />
+        <path d="M26.6 10L8 46.8H16.4L21.2 35.6H38L40.2 46.8H48.2L36.4 10H26.6ZM23.8 28.8L31.4 13.6L36.2 28.8H23.8Z" fill="#D4A27F" />
+      </svg>
+    );
+  }
+  if (agentType === 'codex') {
+    // OpenAI logo mark (simplified hexagonal knot)
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2.7L3.5 7.5v9.1L12 21.3l8.5-4.8V7.5L12 2.7z" />
+        <path d="M12 7.5v9M7.5 10l9 5M16.5 10l-9 5" />
+      </svg>
+    );
+  }
+  return <span className="text-blue-400">●</span>;
+}
+
 export function TabBar() {
-  const { tabs, activeTabId, folder } = useAppState();
+  const { tabs, activeTabId, folder, agents } = useAppState();
   const connected = useConnectionStatus();
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
@@ -71,7 +97,7 @@ export function TabBar() {
       <div className="flex items-center overflow-x-auto min-w-0 flex-1">
         {tabs.map(tab => {
           const isActive = tab.id === activeTabId;
-          const color = tab.kind === 'agent' ? 'text-blue-400' : 'text-green-400';
+          const agentType = tab.agentId ? agents[tab.agentId]?.info.agentType : undefined;
 
           return (
             <button
@@ -81,7 +107,7 @@ export function TabBar() {
                 isActive ? 'bg-zinc-900 border-b-2 border-b-blue-500' : 'bg-zinc-800 hover:bg-zinc-750'
               }`}
             >
-              <span className={color}>{tab.kind === 'agent' ? '\u25CF' : '\u25A0'}</span>
+              <TabIcon kind={tab.kind} agentType={agentType} />
               {editingTabId === tab.id ? (
                 <input
                   ref={inputRef}

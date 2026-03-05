@@ -15,19 +15,20 @@ import {
   type RpcMessage, isResponse, isNotification,
 } from '../acp';
 import { useAcpState } from '../hooks/useAcpState';
+import { useIsMobile } from '../hooks/useIsMobile';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 export function AgentChat({ agent }: { agent: AgentState }) {
   const [input, setInput] = useState('');
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [configMenuOpen, setConfigMenuOpen] = useState(false);
+  const [openConfigId, setOpenConfigId] = useState<string | null>(null);
   const dispatch = useDispatch();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
-  const configMenuRef = useRef<HTMLDivElement>(null);
   const { modes, currentMode, configOptions } = useAcpState(agent);
+  const isMobile = useIsMobile();
 
   const autoResize = (el: HTMLTextAreaElement) => {
     el.style.height = 'auto';
@@ -110,24 +111,27 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
   // Close dropdowns on outside click
   useEffect(() => {
-    if (!modeMenuOpen && !configMenuOpen) return;
+    if (!modeMenuOpen && !openConfigId) return;
     const handler = (e: MouseEvent) => {
       if (modeMenuOpen && modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) setModeMenuOpen(false);
-      if (configMenuOpen && configMenuRef.current && !configMenuRef.current.contains(e.target as Node)) setConfigMenuOpen(false);
+      if (openConfigId) {
+        const el = document.getElementById(`config-dropdown-${openConfigId}`);
+        if (el && !el.contains(e.target as Node)) setOpenConfigId(null);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [modeMenuOpen, configMenuOpen]);
+  }, [modeMenuOpen, openConfigId]);
 
   const currentModeName = modes.find(m => m.id === currentMode)?.name || currentMode;
 
-  // Accumulate log entries into logical chat messages
-  const chatMessages = useMemo(() => accumulate(agent.log), [agent.log]);
+  // Accumulate log entries into logical chat messages, grouping consecutive tool calls
+  const chatMessages = useMemo(() => groupToolCalls(accumulate(agent.log)), [agent.log]);
 
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <div className="flex-1 overflow-y-auto px-3 py-2 pb-10">
         {agent.error && (
           <div className="mx-2 mt-2 px-3 py-2 bg-red-950 border border-red-800 rounded-lg text-red-300 text-sm font-mono whitespace-pre-wrap">
             {agent.error}
@@ -149,96 +153,110 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       {/* Loading indicator */}
       <div className={`shrink-0 h-px ${agent.busy ? 'loading-bar' : 'bg-zinc-700'}`} />
 
-      {/* Input */}
-      <div className="shrink-0 bg-zinc-800/50 px-3 py-2">
-        <div className="flex items-end gap-2">
-          {/* Mode switcher — upward dropdown */}
-          {modes.length > 0 && (
-            <div className="relative shrink-0" ref={modeMenuRef}>
-              <button
-                onClick={() => { setModeMenuOpen(v => !v); setConfigMenuOpen(false); }}
-                className="px-2 py-1 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
-                title={`Mode: ${currentModeName}`}
-              >
-                {currentModeName || 'Mode'}
-              </button>
-              {modeMenuOpen && (
-                <div className="absolute bottom-full left-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[120px]">
-                  {modes.map((m: any) => (
-                    <button
-                      key={m.id}
-                      onClick={() => handleModeChange(m.id)}
-                      className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        m.id === currentMode
-                          ? 'bg-blue-600 text-white'
-                          : 'text-zinc-200 hover:bg-zinc-600'
-                      }`}
-                    >
-                      <div>{m.name || m.id}</div>
-                      {m.description && <div className="text-[10px] text-zinc-400 mt-0.5">{m.description}</div>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+      {/* Input — Zed-style: textarea on top, toolbar below */}
+      <div className="shrink-0 px-3 pb-2 pt-1">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={e => { setInput(e.target.value); autoResize(e.target); }}
+          placeholder={agent.acpSessionId ? `Message ${agent.info.agentType === 'claude' ? 'Claude' : 'Codex'} Agent...` : 'Waiting for agent...'}
+          disabled={!agent.acpSessionId}
+          rows={1}
+          className={`w-full bg-transparent text-zinc-100 outline-none resize-none placeholder-zinc-500 disabled:opacity-50 ${
+            isMobile ? 'text-base py-1.5' : 'text-sm py-1'
+          }`}
+          style={{ maxHeight: '8rem' }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+          }}
+        />
 
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => { setInput(e.target.value); autoResize(e.target); }}
-            placeholder={agent.acpSessionId ? 'Message...' : 'Waiting for agent...'}
-            disabled={!agent.acpSessionId}
-            rows={1}
-            className="flex-1 bg-transparent text-zinc-100 text-sm py-1.5 outline-none resize-none placeholder-zinc-500 disabled:opacity-50"
-            style={{ maxHeight: '8rem' }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-            }}
-          />
+        {/* Toolbar row */}
+        <div className="flex items-center gap-1 py-0.5">
+          {/* Session ID — left side */}
+          <span className="text-[10px] text-zinc-600 truncate flex-1 min-w-0 hidden sm:block" title={agent.acpSessionId || agent.info.id}>
+            {agent.acpSessionId?.slice(0, 8) || ''}
+          </span>
 
-          {/* Config gear — upward popover */}
-          {configOptions.length > 0 && (
-            <div className="relative shrink-0" ref={configMenuRef}>
-              <button
-                onClick={() => { setConfigMenuOpen(v => !v); setModeMenuOpen(false); }}
-                className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors"
-                title="Settings"
-              >
-                <svg viewBox="0 0 20 20" className="w-4 h-4 fill-current">
-                  <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                </svg>
-              </button>
-              {configMenuOpen && (
-                <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[180px] p-2 space-y-2">
-                  {configOptions.map((opt: any) => (
-                    <div key={opt.id} className="text-xs">
-                      <div className="text-zinc-400 mb-0.5">{opt.name}</div>
-                      <select
-                        value={opt.currentValue}
-                        onChange={e => handleConfigChange(opt.id, e.target.value)}
-                        className="w-full bg-zinc-800 text-zinc-200 text-xs rounded px-1.5 py-1 border border-zinc-600 outline-none"
+          {/* Right-aligned controls */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Mode switcher */}
+            {modes.length > 0 && (
+              <div className="relative" ref={modeMenuRef}>
+                <button
+                  onClick={() => setModeMenuOpen(v => !v)}
+                  className="px-2 py-0.5 text-[11px] rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+                  title={`Mode: ${currentModeName}`}
+                >
+                  {currentModeName || 'Mode'} <span className="text-zinc-600">&#9662;</span>
+                </button>
+                {modeMenuOpen && (
+                  <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[140px]">
+                    {modes.map((m: any) => (
+                      <button
+                        key={m.id}
+                        onClick={() => handleModeChange(m.id)}
+                        className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                          m.id === currentMode
+                            ? 'bg-blue-600 text-white'
+                            : 'text-zinc-200 hover:bg-zinc-600'
+                        }`}
                       >
-                        {opt.options?.map((o: any) => (
-                          <option key={o.value || o.name} value={o.value || o.name}>{o.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                        <div>{m.name || m.id}</div>
+                        {m.description && <div className="text-[10px] text-zinc-400 mt-0.5">{m.description}</div>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
-          {agent.busy ? (
-            <button onClick={handleCancel} className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer">
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
+            {/* Config options as inline dropdowns */}
+            {configOptions.map((opt: any) => {
+              const selectedLabel = opt.options?.find((o: any) => (o.value || o.name) === opt.currentValue)?.name || opt.currentValue;
+              const isOpen = openConfigId === opt.id;
+              return (
+                <div key={opt.id} className="relative" id={`config-dropdown-${opt.id}`}>
+                  <button
+                    onClick={() => setOpenConfigId(isOpen ? null : opt.id)}
+                    className="px-2 py-0.5 text-[11px] rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+                    title={opt.name}
+                  >
+                    {selectedLabel} <span className="text-zinc-600">&#9662;</span>
+                  </button>
+                  {isOpen && (
+                    <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[140px]">
+                      {opt.options?.map((o: any) => {
+                        const val = o.value || o.name;
+                        return (
+                          <button
+                            key={val}
+                            onClick={() => { handleConfigChange(opt.id, val); setOpenConfigId(null); }}
+                            className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                              val === opt.currentValue
+                                ? 'bg-blue-600 text-white'
+                                : 'text-zinc-200 hover:bg-zinc-600'
+                            }`}
+                          >
+                            {o.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {agent.busy && (
+              <button onClick={handleCancel} className={`flex items-center justify-center rounded-md bg-red-500/20 hover:bg-red-500/40 active:bg-red-500/60 text-red-400 transition-colors cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Stop">
+                <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
+              </button>
+            )}
+            <button onClick={handleSend} disabled={!agent.acpSessionId || !input.trim()} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors disabled:opacity-20 text-zinc-200 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Send">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
             </button>
-          ) : (
-            <button onClick={handleSend} disabled={!agent.acpSessionId || !input.trim()} className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-20 text-white text-sm cursor-pointer">
-              ↑
-            </button>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -252,6 +270,7 @@ type ChatMsg =
   | { kind: 'agent-text'; text: string }
   | { kind: 'agent-thought'; text: string }
   | { kind: 'tool-call'; tc: any }
+  | { kind: 'tool-group'; calls: any[] }
   | { kind: 'plan'; entries: any[] }
   | { kind: 'mode-change'; modeId: string; modeName?: string }
 ;
@@ -352,6 +371,34 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
   return msgs;
 }
 
+// --- Group consecutive tool calls into collapsible groups ---
+
+function groupToolCalls(msgs: ChatMsg[]): ChatMsg[] {
+  const result: ChatMsg[] = [];
+  let toolBatch: any[] = [];
+
+  function flushBatch() {
+    if (toolBatch.length === 0) return;
+    if (toolBatch.length === 1) {
+      result.push({ kind: 'tool-call', tc: toolBatch[0] });
+    } else {
+      result.push({ kind: 'tool-group', calls: toolBatch });
+    }
+    toolBatch = [];
+  }
+
+  for (const msg of msgs) {
+    if (msg.kind === 'tool-call') {
+      toolBatch.push(msg.tc);
+    } else {
+      flushBatch();
+      result.push(msg);
+    }
+  }
+  flushBatch();
+  return result;
+}
+
 // --- Render a single chat message ---
 
 function ChatMessage({ msg, isLast }: { msg: ChatMsg; isLast: boolean }) {
@@ -359,7 +406,7 @@ function ChatMessage({ msg, isLast }: { msg: ChatMsg; isLast: boolean }) {
     case 'user':
       return (
         <div className="flex justify-end my-3">
-          <div className="max-w-[min(80%,48rem)] bg-blue-600 text-white rounded-lg px-2.5 py-1.5 text-sm whitespace-pre-wrap">
+          <div className="max-w-[min(90%,48rem)] bg-blue-600 text-white rounded-lg px-2.5 py-1.5 text-sm whitespace-pre-wrap">
             {msg.text}
           </div>
         </div>
@@ -377,6 +424,9 @@ function ChatMessage({ msg, isLast }: { msg: ChatMsg; isLast: boolean }) {
 
     case 'tool-call':
       return <div className="max-w-[48rem]"><ToolCallCard tc={msg.tc} /></div>;
+
+    case 'tool-group':
+      return <div className="max-w-[48rem]"><ToolGroupCard calls={msg.calls} /></div>;
 
     case 'plan':
       return <div className="max-w-[48rem]"><PlanCard entries={msg.entries} /></div>;
@@ -440,6 +490,27 @@ function ToolCallCard({ tc }: { tc: any }) {
       {tc.content?.filter((c: any) => c.type === 'diff').map((d: any, i: number) => (
         <DiffBlock key={i} diff={d} />
       ))}
+    </div>
+  );
+}
+
+function ToolGroupCard({ calls }: { calls: any[] }) {
+  const [open, setOpen] = useState(false);
+  const completed = calls.filter(tc => tc.status === 'completed').length;
+  return (
+    <div className="border-l-2 border-zinc-700">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-zinc-500 hover:text-zinc-400 transition-colors w-full text-left"
+      >
+        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>&#9656;</span>
+        <span>
+          {completed === calls.length
+            ? `${calls.length} tool call${calls.length !== 1 ? 's' : ''}`
+            : `${completed}/${calls.length} tool calls`}
+        </span>
+      </button>
+      {open && calls.map((tc, i) => <ToolCallCard key={i} tc={tc} />)}
     </div>
   );
 }

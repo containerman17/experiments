@@ -80,9 +80,11 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       // Add/update agents
       for (const info of action.agents) {
-        agents[info.id] = agents[info.id]
-          ? { ...agents[info.id], info }
-          : { info, acpInitialized: false, log: [], hasMoreHistory: false, busy: false };
+        const existing = agents[info.id];
+        const acpSessionId = info.sessionId || existing?.acpSessionId;
+        agents[info.id] = existing
+          ? { ...existing, info, ...(acpSessionId && { acpSessionId }) }
+          : { info, acpInitialized: false, log: [], hasMoreHistory: false, busy: false, ...(acpSessionId && { acpSessionId }) };
       }
       return { ...state, agents };
     }
@@ -120,11 +122,29 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'AGENT_HISTORY': {
       const a = state.agents[action.agentId];
       if (!a) return state;
+      // Extract sessionId from history if not already set
+      let acpSessionId = a.acpSessionId;
+      if (!acpSessionId) {
+        for (const entry of action.entries) {
+          if (entry.direction === 'out') {
+            const msg = entry.payload as any;
+            if (msg.id !== undefined && !msg.method && msg.result?.sessionId) {
+              acpSessionId = msg.result.sessionId;
+              break;
+            }
+          }
+        }
+      }
       return {
         ...state,
         agents: {
           ...state.agents,
-          [action.agentId]: { ...a, log: [...action.entries, ...a.log], hasMoreHistory: action.hasMore },
+          [action.agentId]: {
+            ...a,
+            log: [...action.entries, ...a.log],
+            hasMoreHistory: action.hasMore,
+            ...(acpSessionId && { acpSessionId }),
+          },
         },
       };
     }

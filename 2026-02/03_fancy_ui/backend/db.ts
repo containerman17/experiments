@@ -21,7 +21,8 @@ db.exec(`
     folder TEXT NOT NULL,
     agent_type TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    session_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS agent_log (
@@ -54,6 +55,10 @@ db.exec(`
   );
 `);
 
+// --- Migrations ---
+try { db.exec(`ALTER TABLE agents ADD COLUMN session_id TEXT`); } catch { /* already exists */ }
+try { db.exec(`ALTER TABLE agents ADD COLUMN acp_state TEXT`); } catch { /* already exists */ }
+
 // --- Prepared statements ---
 
 const stmtInsertAgent = db.prepare(
@@ -65,12 +70,12 @@ const stmtArchiveAgent = db.prepare(
 );
 
 const stmtListAgents = db.prepare(
-  `SELECT id, folder, agent_type AS agentType, created_at AS createdAt
+  `SELECT id, folder, agent_type AS agentType, created_at AS createdAt, session_id AS sessionId, acp_state AS acpState
    FROM agents WHERE folder = ? AND archived = 0 ORDER BY created_at DESC`
 );
 
 const stmtGetAgent = db.prepare(
-  `SELECT id, folder, agent_type AS agentType, created_at AS createdAt
+  `SELECT id, folder, agent_type AS agentType, created_at AS createdAt, session_id AS sessionId, acp_state AS acpState
    FROM agents WHERE id = ? AND archived = 0`
 );
 
@@ -114,12 +119,32 @@ export function archiveAgent(id: string): void {
   stmtArchiveAgent.run(id);
 }
 
+const stmtSetSessionId = db.prepare(`UPDATE agents SET session_id = ? WHERE id = ?`);
+
+export function setAgentSessionId(id: string, sessionId: string): void {
+  stmtSetSessionId.run(sessionId, id);
+}
+
+const stmtSetAcpState = db.prepare(`UPDATE agents SET acp_state = ? WHERE id = ?`);
+
+export function setAgentAcpState(id: string, acpState: unknown): void {
+  stmtSetAcpState.run(JSON.stringify(acpState), id);
+}
+
+function parseAgentRow(row: any): AgentInfo | undefined {
+  if (!row) return undefined;
+  if (row.acpState && typeof row.acpState === 'string') {
+    try { row.acpState = JSON.parse(row.acpState); } catch { row.acpState = undefined; }
+  }
+  return row as AgentInfo;
+}
+
 export function getAgent(id: string): AgentInfo | undefined {
-  return stmtGetAgent.get(id) as AgentInfo | undefined;
+  return parseAgentRow(stmtGetAgent.get(id));
 }
 
 export function listAgents(folder: string): AgentInfo[] {
-  return stmtListAgents.all(folder) as AgentInfo[];
+  return (stmtListAgents.all(folder) as any[]).map(r => parseAgentRow(r)!);
 }
 
 export function listWorkspaces(): WorkspaceInfo[] {
@@ -160,6 +185,34 @@ export function getConfigPreferences(agentType: string): Record<string, string> 
   const prefs: Record<string, string> = {};
   for (const r of rows) prefs[r.config_id] = r.value;
   return prefs;
+}
+
+// --- ACP session ID lookup (scans early log entries) ---
+
+const stmtGetEarlyLog = db.prepare(
+  `SELECT payload FROM agent_log WHERE agent_id = ? AND direction = 'out' ORDER BY id LIMIT 10`
+);
+
+export function getAgentSessionId(agentId: string): string | null {
+  const rows = stmtGetEarlyLog.all(agentId) as Array<{ payload: string }>;
+  for (const row of rows) {
+    try {
+      const msg = JSON.parse(row.payload);
+      if (msg.id !== undefined && !msg.method && msg.result?.sessionId) {
+        return msg.result.sessionId;
+      }
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+export function backfillSessionIds(): void {
+  const rows = db.prepare(`SELECT id FROM agents WHERE archived = 0 AND session_id IS NULL`).all() as Array<{ id: string }>;
+  for (const { id } of rows) {
+    const sessionId = getAgentSessionId(id);
+    if (sessionId) stmtSetSessionId.run(sessionId, id);
+  }
+  if (rows.length > 0) console.log(`[db] backfilled sessionId for ${rows.length} agents`);
 }
 
 // --- Terminal tracking ---

@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
 import type { AgentType, AgentInfo, ServerMessage } from '../shared/types.ts';
-import { createAgent as dbCreateAgent, archiveAgent, listAgents, getAgent, appendLog, getHistory, getConfigPreferences } from './db.ts';
+import { createAgent as dbCreateAgent, archiveAgent, listAgents, getAgent, appendLog, getHistory, getConfigPreferences, setAgentSessionId, setAgentAcpState } from './db.ts';
 
 interface LiveAgent {
   id: string;
@@ -98,6 +98,12 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
         // ACP lifecycle: session/new response → store sessionId + apply saved preferences
         if (!agent.acpSessionId && payload.id !== undefined && !payload.method && payload.result?.sessionId) {
           agent.acpSessionId = payload.result.sessionId;
+          setAgentSessionId(id, payload.result.sessionId);
+          setAgentAcpState(id, {
+            modes: payload.result.availableModes || [],
+            currentModeId: payload.result.currentModeId || '',
+            configOptions: payload.result.configOptions || [],
+          });
 
           // Apply saved config preferences for this agent type
           const prefs = getConfigPreferences(agent.agentType);
@@ -108,6 +114,29 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
             appendLog(id, 'in', setReq);
             proc.stdin!.write(JSON.stringify(setReq) + '\n');
             broadcast(agent, { type: 'agent.output', agentId: id, payload: setReq, direction: 'in' });
+          }
+        }
+
+        // Update persisted ACP state on mode/config changes
+        if (payload.method === 'current_mode_update' && payload.params?.modeId) {
+          const info = getAgent(id);
+          if (info?.acpState) {
+            info.acpState.currentModeId = payload.params.modeId;
+            setAgentAcpState(id, info.acpState);
+          }
+        }
+        if (payload.method === 'config_options_update' && payload.params?.configOptions) {
+          const info = getAgent(id);
+          if (info?.acpState) {
+            info.acpState.configOptions = payload.params.configOptions;
+            setAgentAcpState(id, info.acpState);
+          }
+        }
+        if (!payload.method && payload.result?.configOptions) {
+          const info = getAgent(id);
+          if (info?.acpState) {
+            info.acpState.configOptions = payload.result.configOptions;
+            setAgentAcpState(id, info.acpState);
           }
         }
 

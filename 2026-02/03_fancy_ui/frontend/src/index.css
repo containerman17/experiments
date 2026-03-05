@@ -1,6 +1,25 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Safe area for notched phones (iPhone X+) */
+html {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Prevent iOS rubber-banding / overscroll on the body */
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text selection on interactive elements on mobile */
+@media (max-width: 767px) {
+  button, [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 /* Tighter prose spacing for lists and paragraphs */
 .prose :where(ul, ol) {
   margin-top: 0.25em;
@@ -15,11 +34,11 @@
   margin-bottom: 0.35em;
 }
 
-/* Subtle loading gradient bar */
+/* Subtle loading gradient bar — slow gentle glow */
 .loading-bar {
-  background: linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, #3b82f6, transparent);
-  background-size: 200% 100%;
-  animation: loading-shimmer 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent 0%, #3b82f640 30%, #8b5cf680 50%, #3b82f640 70%, transparent 100%);
+  background-size: 300% 100%;
+  animation: loading-shimmer 4s ease-in-out infinite;
 }
 
 @keyframes loading-shimmer {

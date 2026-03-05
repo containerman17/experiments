@@ -1,11 +1,14 @@
 import { WebSocketServer } from 'ws';
 import { handleConnection, setWss } from './ws-handler.ts';
 import { resurrectAndCleanup } from './terminal-manager.ts';
+import { backfillSessionIds } from './db.ts';
 
 process.setMaxListeners(20);
 
 // On startup: resurrect terminals with tabs, kill orphans
 resurrectAndCleanup();
+// Backfill sessionId for agents that were created before the column existed
+backfillSessionIds();
 
 const port = Number(process.env.PORT) || 8080;
 

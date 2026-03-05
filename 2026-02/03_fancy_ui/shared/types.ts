@@ -7,11 +7,19 @@
 
 export type AgentType = 'claude' | 'codex';
 
+export interface AgentAcpState {
+  modes: Array<{ id: string; name: string; description?: string }>;
+  currentModeId: string;
+  configOptions: Array<{ id: string; name: string; type: string; currentValue: string; options: Array<{ name: string; value?: string }> }>;
+}
+
 export interface AgentInfo {
   id: string;
   folder: string;
   agentType: AgentType;
   createdAt: number;
+  sessionId?: string;
+  acpState?: AgentAcpState;
 }
 
 export interface WorkspaceInfo {

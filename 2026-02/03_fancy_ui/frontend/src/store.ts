@@ -4,7 +4,7 @@
 // Individual components parse the ACP payloads they care about.
 
 import { createContext, useContext, type Dispatch } from 'react';
-import type { AgentInfo, WorkspaceInfo, AgentLogEntry, TerminalInfo } from '../../shared/types';
+import type { AgentInfo, WorkspaceInfo, AgentLogEntry, TerminalInfo, TabInfo } from '../../shared/types';
 
 // --- Types ---
 
@@ -22,21 +22,13 @@ export interface AgentState {
   error?: string;
 }
 
-export interface TabDef {
-  kind: 'agent' | 'terminal';
-  id: string;
-  label: string;
-  agentId?: string;     // for agent tabs
-  terminalId?: string;  // set after terminal.created
-}
-
 export interface AppState {
   workspaces: WorkspaceInfo[];
   // Current workspace (derived from URL, only set on workspace page)
   folder: string | null;
   agents: Record<string, AgentState>;
   terminals: TerminalInfo[];
-  tabs: TabDef[];
+  tabs: TabInfo[];
   activeTabId: string | null;
 }
 
@@ -66,10 +58,8 @@ export type Action =
   | { type: 'AGENT_BUSY'; agentId: string; busy: boolean }
   // UI
   | { type: 'SET_FOLDER'; folder: string | null }
-  | { type: 'ADD_TAB'; tab: TabDef }
-  | { type: 'SET_ACTIVE_TAB'; tabId: string }
-  | { type: 'CLOSE_TAB'; tabId: string }
-  | { type: 'SET_TERMINAL_ID'; tabId: string; terminalId: string };
+  // Tab state from backend
+  | { type: 'SET_TABS'; tabs: TabInfo[]; activeTabId: string | null };
 
 // --- Reducer ---
 
@@ -167,27 +157,8 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_FOLDER':
       return { ...state, folder: action.folder };
 
-    case 'ADD_TAB':
-      return { ...state, tabs: [...state.tabs, action.tab], activeTabId: action.tab.id };
-
-    case 'SET_ACTIVE_TAB':
-      return { ...state, activeTabId: action.tabId };
-
-    case 'CLOSE_TAB': {
-      const tabs = state.tabs.filter(t => t.id !== action.tabId);
-      const activeTabId = state.activeTabId === action.tabId
-        ? (tabs.length > 0 ? tabs[tabs.length - 1].id : null)
-        : state.activeTabId;
-      return { ...state, tabs, activeTabId };
-    }
-
-    case 'SET_TERMINAL_ID':
-      return {
-        ...state,
-        tabs: state.tabs.map(t =>
-          t.id === action.tabId ? { ...t, terminalId: action.terminalId } : t
-        ),
-      };
+    case 'SET_TABS':
+      return { ...state, tabs: action.tabs, activeTabId: action.activeTabId };
 
     default:
       return state;

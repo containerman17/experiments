@@ -22,6 +22,13 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
 
+  // Load history on mount if log is empty
+  useEffect(() => {
+    if (agent.log.length === 0) {
+      send({ type: 'agent.history', agentId: agent.info.id, limit: 50 });
+    }
+  }, [agent.info.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Bootstrap ACP: initialize → session/new
   useEffect(() => {
     if (!agent.acpInitialized && !initializedRef.current) {

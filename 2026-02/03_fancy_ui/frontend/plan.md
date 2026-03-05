@@ -117,6 +117,10 @@ Frontend sends raw JSON-RPC via `agent.message`. Receives via `agent.output`.
 - [ ] Agent terminal output inline in tool call cards (once backend intercepts `terminal/*`)
 - [ ] Slash command autocomplete (from `available_commands_update`)
 
+## Soon: Agent Resurrection via session/resume
+
+ACP supports `session/resume {sessionId}` — spawn a fresh process, send `initialize` then `session/resume` instead of `session/new`. The agent picks up where it left off. Session IDs are already logged in SQLite. Close tab = kill process (cheap). Reopen = spawn + resume. Need: list archived agents in NewAgentDialog, let user pick one to resurrect.
+
 ## Later
 
 - [ ] Code viewer (read-only, for reviewing agent output)

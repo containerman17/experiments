@@ -35,7 +35,7 @@ function agentCommand(agentType: AgentType): { cmd: string; args: string[] } {
   }
 }
 
-export function createAgentProcess(ws: WebSocket, folder: string, agentType: AgentType): void {
+export function createAgentProcess(ws: WebSocket, folder: string, agentType: AgentType): string | null {
   const id = `agent_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
   dbCreateAgent(id, folder, agentType);
 
@@ -50,7 +50,7 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
     });
   } catch (err) {
     send(ws, { type: 'error', message: `Failed to spawn ${agentType}: ${err}` });
-    return;
+    return null;
   }
 
   const agent: LiveAgent = {
@@ -101,6 +101,8 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
   // Respond with updated agent list
   const agents = listAgents(folder);
   send(ws, { type: 'agent.list.result', folder, agents });
+
+  return id;
 }
 
 export function sendToAgent(ws: WebSocket, agentId: string, payload: unknown): void {

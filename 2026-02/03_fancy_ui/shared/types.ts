@@ -27,6 +27,14 @@ export interface TerminalInfo {
   createdAt: number;
 }
 
+export interface TabInfo {
+  kind: 'agent' | 'terminal';
+  id: string;
+  label: string;
+  agentId?: string;
+  terminalId?: string;
+}
+
 export interface AgentLogEntry {
   id: number;
   agentId: string;
@@ -49,7 +57,8 @@ export type ClientMessage =
   | { type: 'terminal.attach'; terminalId: string }
   | { type: 'terminal.input'; terminalId: string; data: string }
   | { type: 'terminal.resize'; terminalId: string; cols: number; rows: number }
-  | { type: 'terminal.close'; terminalId: string };
+  | { type: 'terminal.close'; terminalId: string }
+  | { type: 'tabs.update'; folder: string; tabs: TabInfo[]; activeTabId: string | null };
 
 // --- WebSocket Protocol: Server → Client ---
 
@@ -64,4 +73,5 @@ export type ServerMessage =
   | { type: 'terminal.created'; terminalId: string }
   | { type: 'terminal.output'; terminalId: string; data: string }
   | { type: 'terminal.exited'; terminalId: string; exitCode: number }
+  | { type: 'tabs.state'; folder: string; tabs: TabInfo[]; activeTabId: string | null }
   | { type: 'error'; message: string };

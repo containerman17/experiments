@@ -4,7 +4,7 @@
 // Connection status changes via onStatusChange(callback) — for green/red indicator.
 // Server URL stored in localStorage('agent-ui-server'), editable from HomePage.
 
-import type { ClientMessage, ServerMessage } from '../../shared/types';
+import type { ClientMessage, ServerMessage, TabInfo } from '../../shared/types';
 
 type Listener = (msg: ServerMessage) => void;
 type StatusListener = (connected: boolean) => void;
@@ -94,6 +94,10 @@ export function setServerUrl(url: string): void {
   socket?.close();
   // Connect immediately to new URL
   setTimeout(connect, 100);
+}
+
+export function sendTabsUpdate(folder: string, tabs: TabInfo[], activeTabId: string | null): void {
+  send({ type: 'tabs.update', folder, tabs, activeTabId });
 }
 
 // Auto-connect on import

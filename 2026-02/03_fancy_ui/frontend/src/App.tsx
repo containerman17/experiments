@@ -42,6 +42,9 @@ export default function App() {
         case 'terminal.list.result':
           dispatch({ type: 'SET_TERMINALS', folder: msg.folder, terminals: msg.terminals });
           break;
+        case 'tabs.state':
+          dispatch({ type: 'SET_TABS', tabs: msg.tabs, activeTabId: msg.activeTabId });
+          break;
         // Terminal output/exit messages are handled directly by Terminal component
       }
     });

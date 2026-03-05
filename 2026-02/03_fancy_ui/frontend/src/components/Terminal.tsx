@@ -12,11 +12,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { send, subscribe } from '../ws';
-import { useDispatch } from '../store';
 
-export function Terminal({ folder, tabId, terminalId }: { folder: string; tabId: string; terminalId?: string }) {
+export function Terminal({ terminalId }: { terminalId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const dispatch = useDispatch();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -41,36 +39,23 @@ export function Terminal({ folder, tabId, terminalId }: { folder: string; tabId:
     // Fit on next frame
     requestAnimationFrame(() => fitAddon.fit());
 
-    let myTerminalId = terminalId || '';
-
-    if (myTerminalId) {
-      // Attach to existing terminal — backend will replay ring buffer
-      send({ type: 'terminal.attach', terminalId: myTerminalId });
-    } else {
-      // Create new terminal
-      send({ type: 'terminal.create', folder });
-    }
+    // Attach to existing terminal — backend will replay ring buffer
+    send({ type: 'terminal.attach', terminalId });
+    send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
 
     // Handle user input
     term.onData(data => {
-      if (myTerminalId) {
-        send({ type: 'terminal.input', terminalId: myTerminalId, data });
-      }
+      send({ type: 'terminal.input', terminalId, data });
     });
 
     // Subscribe to WS messages
     const unsub = subscribe(msg => {
-      if (msg.type === 'terminal.created' && !myTerminalId) {
-        myTerminalId = msg.terminalId;
-        dispatch({ type: 'SET_TERMINAL_ID', tabId, terminalId: msg.terminalId });
-        // Send initial size
-        send({ type: 'terminal.resize', terminalId: myTerminalId, cols: term.cols, rows: term.rows });
+      if (msg.type === 'terminal.output' && msg.terminalId === terminalId) {
+        const binary = atob(msg.data);
+        const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+        term.write(bytes);
       }
-      if (msg.type === 'terminal.output' && msg.terminalId === myTerminalId) {
-        const decoded = atob(msg.data);
-        term.write(decoded);
-      }
-      if (msg.type === 'terminal.exited' && msg.terminalId === myTerminalId) {
+      if (msg.type === 'terminal.exited' && msg.terminalId === terminalId) {
         term.writeln(`\r\n[Process exited with code ${msg.exitCode}]`);
       }
     });
@@ -78,9 +63,7 @@ export function Terminal({ folder, tabId, terminalId }: { folder: string; tabId:
     // Resize observer
     const ro = new ResizeObserver(() => {
       fitAddon.fit();
-      if (myTerminalId) {
-        send({ type: 'terminal.resize', terminalId: myTerminalId, cols: term.cols, rows: term.rows });
-      }
+      send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
     });
     ro.observe(containerRef.current);
 

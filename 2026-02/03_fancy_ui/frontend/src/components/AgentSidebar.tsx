@@ -9,12 +9,12 @@
 
 import { useMemo } from 'react';
 import type { AgentState } from '../store';
-import { useDispatch } from '../store';
-import { send } from '../ws';
+import { useAppState } from '../store';
+import { send, sendTabsUpdate } from '../ws';
 import { sessionSetModeRequest, sessionSetConfigRequest, type RpcMessage, isResponse, isNotification } from '../acp';
 
 export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => void }) {
-  const dispatch = useDispatch();
+  const { tabs, activeTabId, folder } = useAppState();
   // Extract latest plan, modes, configOptions from ACP log
   const { plan, modes, currentMode, configOptions } = useMemo(() => {
     let plan: any[] = [];
@@ -148,9 +148,12 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
       <div className="mt-auto px-3 py-2 border-t border-zinc-700">
         <button
           onClick={() => {
-            if (!confirm('Delete this agent? This will kill the process and archive it.')) return;
-            send({ type: 'agent.delete', agentId: agent.info.id });
-            dispatch({ type: 'CLOSE_TAB', tabId: `tab-${agent.info.id}` });
+            if (!confirm('Delete this agent? This will kill the process.')) return;
+            if (folder) {
+              const newTabs = tabs.filter(t => !(t.kind === 'agent' && t.agentId === agent.info.id));
+              const newActive = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
+              sendTabsUpdate(folder, newTabs, newActive);
+            }
           }}
           className="w-full px-3 py-1.5 text-xs text-red-400 border border-zinc-600 rounded hover:bg-red-950 hover:border-red-800 transition-colors"
         >

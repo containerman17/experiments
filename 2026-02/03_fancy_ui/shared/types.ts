@@ -5,7 +5,7 @@
 // Backend is a logging tunnel. It does NOT interpret ACP messages.
 // Frontend reads raw ACP JSON-RPC and renders UI from it.
 
-export type AgentType = 'claude' | 'codex';
+export type AgentType = 'claude' | 'codex' | 'gemini';
 
 export interface AgentAcpState {
   modes: Array<{ id: string; name: string; description?: string }>;

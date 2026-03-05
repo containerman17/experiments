@@ -37,6 +37,14 @@ export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agent
       </svg>
     );
   }
+  if (agentType === 'gemini') {
+    // Google Gemini star mark
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="#4285F4">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3l2.5 5.5L20 12l-5.5 1.5L12 19l-2.5-5.5L4 12l5.5-1.5L12 5z" />
+      </svg>
+    );
+  }
   return <span className="text-blue-400">●</span>;
 }
 
@@ -82,7 +90,7 @@ export function TabBar() {
     setEditingTabId(null);
   };
 
-  const addAgent = (agentType: 'claude' | 'codex') => {
+  const addAgent = (agentType: AgentType) => {
     send({ type: 'agent.create', folder, agentType });
     setAgentMenuOpen(false);
   };
@@ -159,9 +167,15 @@ export function TabBar() {
               </button>
               <button
                 onClick={() => addAgent('codex')}
-                className="block w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 rounded-b"
+                className="block w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600"
               >
                 Codex
+              </button>
+              <button
+                onClick={() => addAgent('gemini')}
+                className="block w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 rounded-b"
+              >
+                Gemini
               </button>
             </div>
           )}

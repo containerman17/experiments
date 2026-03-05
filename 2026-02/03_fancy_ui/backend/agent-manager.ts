@@ -15,6 +15,7 @@ interface LiveAgent {
   buffer: string; // partial line buffer for stdout
   acpSessionId?: string; // set after initialize + session/new completes
   nextRpcId: number;
+  pendingSetMode: Map<number, string>; // request ID → modeId for session/set_mode
 }
 
 let nextRpcId = 1;
@@ -40,6 +41,8 @@ function agentCommand(agentType: AgentType): { cmd: string; args: string[] } {
       return { cmd: 'claude-agent-acp', args: [] };
     case 'codex':
       return { cmd: 'codex-acp', args: [] };
+    case 'gemini':
+      return { cmd: 'gemini', args: ['--experimental-acp', '-m', 'gemini-3.1-pro-preview'] };
   }
 }
 
@@ -71,6 +74,7 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
     subscribers: new Set([ws]),
     buffer: '',
     nextRpcId: 1,
+    pendingSetMode: new Map(),
   };
   liveAgents.set(id, agent);
 
@@ -99,21 +103,52 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
         if (!agent.acpSessionId && payload.id !== undefined && !payload.method && payload.result?.sessionId) {
           agent.acpSessionId = payload.result.sessionId;
           setAgentSessionId(id, payload.result.sessionId);
+          // Gemini nests modes under result.modes.{availableModes,currentModeId}
           setAgentAcpState(id, {
-            modes: payload.result.availableModes || [],
-            currentModeId: payload.result.currentModeId || '',
+            modes: payload.result.availableModes || payload.result.modes?.availableModes || [],
+            currentModeId: payload.result.currentModeId || payload.result.modes?.currentModeId || '',
             configOptions: payload.result.configOptions || [],
           });
 
-          // Apply saved config preferences for this agent type
+          // Apply saved preferences for this agent type
           const prefs = getConfigPreferences(agent.agentType);
+
+          // Restore preferred mode if saved and different from default
+          const savedMode = prefs['__mode__'];
+          const currentModeId = payload.result.currentModeId || payload.result.modes?.currentModeId || '';
+          if (savedMode && savedMode !== currentModeId) {
+            const setModeReq = rpcRequest('session/set_mode', {
+              sessionId: payload.result.sessionId, modeId: savedMode,
+            });
+            agent.pendingSetMode.set(setModeReq.id, savedMode);
+            appendLog(id, 'in', setModeReq);
+            proc.stdin!.write(JSON.stringify(setModeReq) + '\n');
+            broadcast(agent, { type: 'agent.output', agentId: id, payload: setModeReq, direction: 'in' });
+          }
+
+          // Restore config option preferences
           for (const [configId, value] of Object.entries(prefs)) {
+            if (configId === '__mode__') continue;
             const setReq = rpcRequest('session/set_config_option', {
               sessionId: payload.result.sessionId, configId, value,
             });
             appendLog(id, 'in', setReq);
             proc.stdin!.write(JSON.stringify(setReq) + '\n');
             broadcast(agent, { type: 'agent.output', agentId: id, payload: setReq, direction: 'in' });
+          }
+        }
+
+        // session/set_mode response — update persisted mode.
+        // Gemini returns empty {} for set_mode, so we correlate via pendingSetMode map.
+        if (!payload.method && payload.id !== undefined) {
+          const modeId = payload.result?.currentModeId || agent.pendingSetMode.get(payload.id);
+          if (modeId) {
+            agent.pendingSetMode.delete(payload.id);
+            const info = getAgent(id);
+            if (info?.acpState) {
+              info.acpState.currentModeId = modeId;
+              setAgentAcpState(id, info.acpState);
+            }
           }
         }
 
@@ -201,6 +236,11 @@ export function sendToAgent(ws: WebSocket, agentId: string, payload: unknown): v
   }
   agent.subscribers.add(ws);
   appendLog(agentId, 'in', payload);
+  // Track session/set_mode requests for matching responses
+  const p = payload as any;
+  if (p.method === 'session/set_mode' && p.id !== undefined && p.params?.modeId) {
+    agent.pendingSetMode.set(p.id, p.params.modeId);
+  }
   // Echo back to all subscribers so frontends see user messages immediately
   broadcast(agent, { type: 'agent.output', agentId, payload, direction: 'in' });
   agent.process.stdin!.write(JSON.stringify(payload) + '\n');

@@ -41,7 +41,7 @@ export function MobileNav() {
     sendTabsUpdate(folder, newTabs, newActive);
   };
 
-  const addAgent = (agentType: 'claude' | 'codex') => {
+  const addAgent = (agentType: 'claude' | 'codex' | 'gemini') => {
     send({ type: 'agent.create', folder, agentType });
   };
 
@@ -131,6 +131,12 @@ export function MobileNav() {
               className="flex-1 px-3 py-2 text-xs text-zinc-200 bg-zinc-700 rounded active:bg-zinc-600 transition-colors"
             >
               + Codex
+            </button>
+            <button
+              onClick={() => addAgent('gemini')}
+              className="flex-1 px-3 py-2 text-xs text-zinc-200 bg-zinc-700 rounded active:bg-zinc-600 transition-colors"
+            >
+              + Gemini
             </button>
           </div>
           <button

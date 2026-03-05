@@ -119,6 +119,8 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       agentId: agent.info.id,
       payload: sessionSetModeRequest(agent.acpSessionId, modeId),
     });
+    // Persist mode preference so new agents of this type start in this mode
+    send({ type: 'config.set_preference', agentType: agent.info.agentType, configId: '__mode__', value: modeId });
     setModeMenuOpen(false);
   };
 
@@ -232,7 +234,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
             }
             if (imageFiles.length > 0) addImageFiles(imageFiles);
           }}
-          placeholder={agent.acpSessionId ? `Message ${agent.info.agentType === 'claude' ? 'Claude' : 'Codex'} Agent...` : 'Waiting for agent...'}
+          placeholder={agent.acpSessionId ? `Message ${agent.info.agentType === 'claude' ? 'Claude' : agent.info.agentType === 'gemini' ? 'Gemini' : 'Codex'} Agent...` : 'Waiting for agent...'}
           disabled={!agent.acpSessionId}
           rows={1}
           className={`w-full bg-transparent text-zinc-100 outline-none resize-none placeholder-zinc-500 disabled:opacity-50 ${
@@ -258,7 +260,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
         <div className="flex items-center gap-1 py-0.5">
           {/* Session ID — left side */}
           <span className="text-[10px] text-zinc-600 truncate flex-1 min-w-0 hidden sm:block" title={agent.acpSessionId || agent.info.id}>
-            {agent.acpSessionId?.slice(0, 8) || ''}
+            {agent.acpSessionId || ''}
           </span>
 
           {/* Right-aligned controls */}
@@ -294,8 +296,8 @@ export function AgentChat({ agent }: { agent: AgentState }) {
               </div>
             )}
 
-            {/* Config options as inline dropdowns */}
-            {configOptions.map((opt: any) => {
+            {/* Config options as inline dropdowns (skip mode category — already shown in mode switcher) */}
+            {configOptions.filter((opt: any) => opt.category !== 'mode').map((opt: any) => {
               const selectedLabel = opt.options?.find((o: any) => (o.value || o.name) === opt.currentValue)?.name || opt.currentValue;
               const isOpen = openConfigId === opt.id;
               return (

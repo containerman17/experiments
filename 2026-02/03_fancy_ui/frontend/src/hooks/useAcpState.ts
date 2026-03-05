@@ -38,14 +38,24 @@ export function useAcpState(agent: AgentState): AcpState {
     let currentMode = persisted?.currentModeId || '';
     let configOptions: AcpConfigOption[] = (persisted?.configOptions || []) as AcpConfigOption[];
 
+    // Track outgoing request IDs to methods/params for matching responses
+    const pendingRequests = new Map<number, { method: string; params?: any }>();
+
     for (const entry of agent.log) {
-      if (entry.direction !== 'out') continue;
       const msg = entry.payload as RpcMessage;
 
+      // Track outgoing requests (direction 'in' = client→agent)
+      if (entry.direction === 'in' && msg.method && msg.id !== undefined) {
+        pendingRequests.set(msg.id, { method: msg.method, params: msg.params });
+      }
+
+      if (entry.direction !== 'out') continue;
+
       // session/new response
+      // Gemini nests modes under result.modes.{availableModes,currentModeId} instead of flat
       if (isResponse(msg) && msg.result?.sessionId) {
-        modes = msg.result.availableModes || [];
-        currentMode = msg.result.currentModeId || '';
+        modes = msg.result.availableModes || msg.result.modes?.availableModes || [];
+        currentMode = msg.result.currentModeId || msg.result.modes?.currentModeId || '';
         configOptions = msg.result.configOptions || [];
       }
 
@@ -67,12 +77,24 @@ export function useAcpState(agent: AgentState): AcpState {
         configOptions = msg.params?.configOptions || configOptions;
       }
 
-      // session/set_config_option response
-      if (isResponse(msg) && msg.result?.configOptions) {
-        configOptions = msg.result.configOptions;
+      // Match responses to their requests by JSON-RPC ID.
+      // Gemini returns empty {} for session/set_mode, so we correlate with the
+      // outgoing request to recover the modeId. Claude includes currentModeId in
+      // the response, which takes priority via the fallback chain.
+      if (isResponse(msg) && msg.id !== undefined) {
+        const req = pendingRequests.get(msg.id);
+
+        if (req?.method === 'session/set_mode' && !msg.error) {
+          currentMode = msg.result?.currentModeId || req.params?.modeId || currentMode;
+        }
+
+        // session/set_config_option response
+        if (msg.result?.configOptions) {
+          configOptions = msg.result.configOptions;
+        }
       }
     }
 
     return { plan, modes, currentMode, configOptions };
-  }, [agent.log]);
+  }, [agent.log, agent.info.acpState]);
 }

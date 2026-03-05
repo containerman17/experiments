@@ -10,6 +10,7 @@ import { useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { send, subscribe } from '../ws';
 
@@ -20,9 +21,10 @@ export function Terminal({ terminalId }: { terminalId: string }) {
     if (!containerRef.current) return;
 
     const term = new XTerm({
+      allowProposedApi: true,
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontFamily: '"JetBrains Mono NF", Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#18181b',
         foreground: '#e4e4e7',
@@ -34,6 +36,9 @@ export function Terminal({ terminalId }: { terminalId: string }) {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
+    term.unicode.activeVersion = '11';
     term.open(containerRef.current);
 
     // Fit on next frame

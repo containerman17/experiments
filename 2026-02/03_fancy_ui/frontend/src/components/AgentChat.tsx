@@ -12,7 +12,7 @@ import { send } from '../ws';
 import {
   sessionPromptRequest, sessionCancelNotification,
   sessionSetModeRequest, sessionSetConfigRequest,
-  type RpcMessage, isResponse, isNotification,
+  type RpcMessage, type ImageAttachment, isResponse, isNotification,
 } from '../acp';
 import { useAcpState } from '../hooks/useAcpState';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -23,10 +23,13 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const [input, setInput] = useState('');
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Array<{ file: File; dataUrl: string; attachment: ImageAttachment }>>([]);
+  const [dragOver, setDragOver] = useState(false);
   const dispatch = useDispatch();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { modes, currentMode, configOptions } = useAcpState(agent);
   const isMobile = useIsMobile();
 
@@ -34,6 +37,24 @@ export function AgentChat({ agent }: { agent: AgentState }) {
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
   };
+
+  const addImageFiles = (files: FileList | File[]) => {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+        setAttachments(prev => [...prev, {
+          file,
+          dataUrl,
+          attachment: { mediaType: file.type, base64 },
+        }]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Extract sessionId from log (backend sends history automatically on connect)
   useEffect(() => {
     if (agent.acpSessionId) return;
@@ -69,14 +90,16 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text || !agent.acpSessionId) return;
+    if ((!text && attachments.length === 0) || !agent.acpSessionId) return;
+    const images = attachments.length > 0 ? attachments.map(a => a.attachment) : undefined;
     send({
       type: 'agent.message',
       agentId: agent.info.id,
-      payload: sessionPromptRequest(agent.acpSessionId, text),
+      payload: sessionPromptRequest(agent.acpSessionId, text || 'What do you see in this image?', images),
     });
     dispatch({ type: 'AGENT_BUSY', agentId: agent.info.id, busy: true });
     setInput('');
+    setAttachments([]);
     if (inputRef.current) { inputRef.current.style.height = 'auto'; }
   };
 
@@ -128,8 +151,30 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   // Accumulate log entries into logical chat messages, grouping consecutive tool calls
   const chatMessages = useMemo(() => groupToolCalls(accumulate(agent.log)), [agent.log]);
 
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const canSend = agent.acpSessionId && (input.trim() || attachments.length > 0);
+
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className={`flex flex-col h-full relative ${dragOver ? 'ring-2 ring-inset ring-blue-500/50' : ''}`}
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+      onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addImageFiles(e.dataTransfer.files); }}
+    >
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center cursor-pointer" onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} alt="" className="max-w-[90%] max-h-[90%] object-contain rounded-lg shadow-2xl" />
+        </div>
+      )}
+
+      {/* Drop overlay */}
+      {dragOver && (
+        <div className="absolute inset-0 z-40 bg-blue-500/10 flex items-center justify-center pointer-events-none">
+          <div className="text-blue-400 text-sm font-medium">Drop image to attach</div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-2 pb-10">
         {agent.error && (
@@ -145,7 +190,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
         )}
 
         {chatMessages.map((msg, i) => (
-          <ChatMessage key={i} msg={msg} isLast={i === chatMessages.length - 1} />
+          <ChatMessage key={i} msg={msg} isLast={i === chatMessages.length - 1} onImageClick={setLightboxSrc} />
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -155,10 +200,38 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
       {/* Input — Zed-style: textarea on top, toolbar below */}
       <div className="shrink-0 px-3 pb-2 pt-1">
+        {/* Image attachment previews */}
+        {attachments.length > 0 && (
+          <div className="flex items-center gap-1.5 py-1 overflow-x-auto">
+            {attachments.map((att, i) => (
+              <div key={i} className="relative group shrink-0">
+                <img src={att.dataUrl} alt="" className="w-8 h-8 rounded object-cover border border-zinc-600" />
+                <button
+                  onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                  className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-zinc-700 text-zinc-300 text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <textarea
           ref={inputRef}
           value={input}
           onChange={e => { setInput(e.target.value); autoResize(e.target); }}
+          onPaste={e => {
+            const items = e.clipboardData.items;
+            const imageFiles: File[] = [];
+            for (const item of items) {
+              if (item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                if (file) imageFiles.push(file);
+              }
+            }
+            if (imageFiles.length > 0) addImageFiles(imageFiles);
+          }}
           placeholder={agent.acpSessionId ? `Message ${agent.info.agentType === 'claude' ? 'Claude' : 'Codex'} Agent...` : 'Waiting for agent...'}
           disabled={!agent.acpSessionId}
           rows={1}
@@ -169,6 +242,16 @@ export function AgentChat({ agent }: { agent: AgentState }) {
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
           }}
+        />
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files) addImageFiles(e.target.files); e.target.value = ''; }}
         />
 
         {/* Toolbar row */}
@@ -248,12 +331,25 @@ export function AgentChat({ agent }: { agent: AgentState }) {
               );
             })}
 
+            {/* Attach image */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`}
+              title="Attach image"
+            >
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="m21 15-5-5L5 21" />
+              </svg>
+            </button>
+
             {agent.busy && (
               <button onClick={handleCancel} className={`flex items-center justify-center rounded-md bg-red-500/20 hover:bg-red-500/40 active:bg-red-500/60 text-red-400 transition-colors cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Stop">
                 <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
               </button>
             )}
-            <button onClick={handleSend} disabled={!agent.acpSessionId || !input.trim()} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors disabled:opacity-20 text-zinc-200 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Send">
+            <button onClick={handleSend} disabled={!canSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors disabled:opacity-20 text-zinc-200 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Send">
               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
             </button>
           </div>
@@ -266,7 +362,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 // --- Accumulate raw log entries into logical chat messages ---
 
 type ChatMsg =
-  | { kind: 'user'; text: string }
+  | { kind: 'user'; text: string; images?: Array<{ mediaType: string; data: string }> }
   | { kind: 'agent-text'; text: string }
   | { kind: 'agent-thought'; text: string }
   | { kind: 'tool-call'; tc: any }
@@ -298,7 +394,11 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
       const text = Array.isArray(prompt)
         ? prompt.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
         : '';
-      if (text) msgs.push({ kind: 'user', text });
+      const images = Array.isArray(prompt)
+        ? prompt.filter((c: any) => c.type === 'image' && c.data)
+            .map((c: any) => ({ mediaType: c.mimeType, data: c.data }))
+        : [];
+      if (text || images.length) msgs.push({ kind: 'user', text, images: images.length ? images : undefined });
       continue;
     }
 
@@ -401,13 +501,23 @@ function groupToolCalls(msgs: ChatMsg[]): ChatMsg[] {
 
 // --- Render a single chat message ---
 
-function ChatMessage({ msg, isLast }: { msg: ChatMsg; isLast: boolean }) {
+function ChatMessage({ msg, isLast, onImageClick }: { msg: ChatMsg; isLast: boolean; onImageClick?: (src: string) => void }) {
   switch (msg.kind) {
     case 'user':
       return (
         <div className="flex justify-end my-3">
-          <div className="max-w-[min(90%,48rem)] bg-blue-600 text-white rounded-lg px-2.5 py-1.5 text-sm whitespace-pre-wrap">
-            {msg.text}
+          <div className="max-w-[min(90%,48rem)] bg-zinc-700 text-zinc-100 rounded-lg px-2.5 py-1.5 text-sm">
+            {msg.images && msg.images.length > 0 && (
+              <div className="flex gap-1 mb-1">
+                {msg.images.map((img, i) => {
+                  const src = `data:${img.mediaType};base64,${img.data}`;
+                  return (
+                    <img key={i} src={src} alt="" className="w-16 h-16 rounded object-cover cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onImageClick?.(src)} />
+                  );
+                })}
+              </div>
+            )}
+            {msg.text && <div className="whitespace-pre-wrap">{msg.text}</div>}
           </div>
         </div>
       );

@@ -38,13 +38,20 @@ export function sessionNewRequest(cwd: string) {
   return rpcRequest('session/new', { cwd, mcpServers: [] });
 }
 
-export function sessionPromptRequest(sessionId: string, text: string) {
-  return rpcRequest('session/prompt', {
-    sessionId,
-    prompt: [
-      { type: 'text', text },
-    ],
-  });
+export interface ImageAttachment {
+  mediaType: string;
+  base64: string;
+}
+
+export function sessionPromptRequest(sessionId: string, text: string, images?: ImageAttachment[]) {
+  const prompt: any[] = [];
+  if (images?.length) {
+    for (const img of images) {
+      prompt.push({ type: 'image', data: img.base64, mimeType: img.mediaType });
+    }
+  }
+  prompt.push({ type: 'text', text });
+  return rpcRequest('session/prompt', { sessionId, prompt });
 }
 
 export function sessionCancelNotification(sessionId: string) {

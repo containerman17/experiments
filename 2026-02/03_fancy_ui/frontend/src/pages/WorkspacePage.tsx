@@ -7,7 +7,6 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { useAppState, useDispatch } from '../store';
 import { send, onStatusChange, isConnected } from '../ws';
 import { AgentChat } from '../components/AgentChat';
-import { AgentSidebar } from '../components/AgentSidebar';
 import { TabBar } from '../components/TabBar';
 import { Terminal } from '../components/Terminal';
 
@@ -40,9 +39,8 @@ export function WorkspacePage({ folder }: { folder: string }) {
   }, [folder]);
 
   const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-  const activeAgent = activeTab?.kind === 'agent' && activeTab.agentId
-    ? state.agents[activeTab.agentId]
-    : null;
+  const activeAgentId = activeTab?.kind === 'agent' ? activeTab.agentId : null;
+  const activeAgent = activeAgentId ? state.agents[activeAgentId] : null;
 
   return (
     <div className="flex flex-col h-screen bg-zinc-900 text-zinc-100 relative">
@@ -50,26 +48,20 @@ export function WorkspacePage({ folder }: { folder: string }) {
       <TabBar />
 
       {/* Main area */}
-      <div className="flex flex-1 min-h-0">
-        {/* Center: content */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {activeTab?.kind === 'agent' && activeAgent && (
-            <div key={activeTab.id} className="flex-1 min-h-0 max-w-4xl mx-auto w-full">
-              <AgentChat agent={activeAgent} />
-            </div>
-          )}
-          {activeTab?.kind === 'terminal' && activeTab.terminalId && (
-            <Terminal key={activeTab.terminalId} terminalId={activeTab.terminalId} />
-          )}
-          {!activeTab && (
-            <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
-              Create an agent or open a terminal to get started.
-            </div>
-          )}
-        </div>
-
-        {/* Right: agent sidebar */}
-        {activeAgent && <AgentSidebar agent={activeAgent} />}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {activeTab?.kind === 'agent' && activeAgent && (
+          <div key={activeTab.id} className="flex-1 min-h-0 w-full">
+            <AgentChat agent={activeAgent} />
+          </div>
+        )}
+        {activeTab?.kind === 'terminal' && activeTab.terminalId && (
+          <Terminal key={activeTab.terminalId} terminalId={activeTab.terminalId} />
+        )}
+        {!activeTab && (
+          <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
+            Create an agent or open a terminal to get started.
+          </div>
+        )}
       </div>
 
       {/* Disconnected overlay */}

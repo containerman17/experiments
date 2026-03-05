@@ -27,7 +27,7 @@ export default function App() {
           dispatch({
             type: 'AGENT_OUTPUT',
             agentId: msg.agentId,
-            entry: { id: Date.now(), agentId: msg.agentId, direction: 'out', payload: msg.payload, timestamp: Date.now() },
+            entry: { id: Date.now(), agentId: msg.agentId, direction: msg.direction || 'out', payload: msg.payload, timestamp: Date.now() },
           });
           break;
         case 'agent.error':

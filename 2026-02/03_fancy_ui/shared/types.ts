@@ -58,14 +58,15 @@ export type ClientMessage =
   | { type: 'terminal.input'; terminalId: string; data: string }
   | { type: 'terminal.resize'; terminalId: string; cols: number; rows: number }
   | { type: 'terminal.close'; terminalId: string }
-  | { type: 'tabs.update'; folder: string; tabs: TabInfo[]; activeTabId: string | null };
+  | { type: 'tabs.update'; folder: string; tabs: TabInfo[]; activeTabId: string | null }
+  | { type: 'config.set_preference'; agentType: AgentType; configId: string; value: string };
 
 // --- WebSocket Protocol: Server → Client ---
 
 export type ServerMessage =
   | { type: 'workspace.list.result'; workspaces: WorkspaceInfo[] }
   | { type: 'agent.list.result'; folder: string; agents: AgentInfo[] }
-  | { type: 'agent.output'; agentId: string; payload: unknown }
+  | { type: 'agent.output'; agentId: string; payload: unknown; direction?: 'in' | 'out' }
   | { type: 'agent.error'; agentId: string; message: string }
   | { type: 'agent.exited'; agentId: string; exitCode: number }
   | { type: 'agent.history.result'; agentId: string; entries: AgentLogEntry[]; hasMore: boolean }

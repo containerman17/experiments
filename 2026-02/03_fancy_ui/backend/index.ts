@@ -1,5 +1,11 @@
 import { WebSocketServer } from 'ws';
 import { handleConnection, setWss } from './ws-handler.ts';
+import { resurrectAndCleanup } from './terminal-manager.ts';
+
+process.setMaxListeners(20);
+
+// On startup: resurrect terminals with tabs, kill orphans
+resurrectAndCleanup();
 
 const port = Number(process.env.PORT) || 8080;
 

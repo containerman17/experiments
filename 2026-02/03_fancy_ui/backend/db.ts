@@ -33,6 +33,25 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_agent_log_agent_ts ON agent_log(agent_id, timestamp);
+
+  CREATE TABLE IF NOT EXISTS config_preferences (
+    agent_type TEXT NOT NULL,
+    config_id TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (agent_type, config_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS tab_state (
+    folder TEXT PRIMARY KEY,
+    tabs TEXT NOT NULL,
+    active_tab_id TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS terminals (
+    id TEXT PRIMARY KEY,
+    folder TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 // --- Prepared statements ---
@@ -72,6 +91,15 @@ const stmtGetLogRecent = db.prepare(
 const stmtGetLogBefore = db.prepare(
   `SELECT id, agent_id AS agentId, direction, payload, timestamp
    FROM agent_log WHERE agent_id = ? AND id < ? ORDER BY id DESC LIMIT ?`
+);
+
+const stmtUpsertPref = db.prepare(
+  `INSERT INTO config_preferences (agent_type, config_id, value) VALUES (?, ?, ?)
+   ON CONFLICT(agent_type, config_id) DO UPDATE SET value = excluded.value`
+);
+
+const stmtGetPrefs = db.prepare(
+  `SELECT config_id, value FROM config_preferences WHERE agent_type = ?`
 );
 
 // --- API ---
@@ -121,6 +149,64 @@ export function getHistory(agentId: string, limit: number, before?: number): { e
   }));
 
   return { entries, hasMore };
+}
+
+export function setConfigPreference(agentType: string, configId: string, value: string): void {
+  stmtUpsertPref.run(agentType, configId, value);
+}
+
+export function getConfigPreferences(agentType: string): Record<string, string> {
+  const rows = stmtGetPrefs.all(agentType) as Array<{ config_id: string; value: string }>;
+  const prefs: Record<string, string> = {};
+  for (const r of rows) prefs[r.config_id] = r.value;
+  return prefs;
+}
+
+// --- Terminal tracking ---
+
+const stmtInsertTerminal = db.prepare(
+  `INSERT INTO terminals (id, folder, created_at) VALUES (?, ?, ?)`
+);
+
+const stmtDeleteTerminal = db.prepare(
+  `DELETE FROM terminals WHERE id = ?`
+);
+
+const stmtListAllTerminals = db.prepare(
+  `SELECT id, folder, created_at AS createdAt FROM terminals`
+);
+
+export function trackTerminal(id: string, folder: string): void {
+  stmtInsertTerminal.run(id, folder, Date.now());
+}
+
+export function untrackTerminal(id: string): void {
+  stmtDeleteTerminal.run(id);
+}
+
+export function listAllTrackedTerminals(): Array<{ id: string; folder: string; createdAt: number }> {
+  return stmtListAllTerminals.all() as Array<{ id: string; folder: string; createdAt: number }>;
+}
+
+// --- Tab state persistence ---
+
+const stmtUpsertTabState = db.prepare(
+  `INSERT INTO tab_state (folder, tabs, active_tab_id) VALUES (?, ?, ?)
+   ON CONFLICT(folder) DO UPDATE SET tabs = excluded.tabs, active_tab_id = excluded.active_tab_id`
+);
+
+const stmtGetTabState = db.prepare(
+  `SELECT tabs, active_tab_id FROM tab_state WHERE folder = ?`
+);
+
+export function saveTabState(folder: string, tabs: unknown[], activeTabId: string | null): void {
+  stmtUpsertTabState.run(folder, JSON.stringify(tabs), activeTabId);
+}
+
+export function loadTabState(folder: string): { tabs: unknown[]; activeTabId: string | null } | null {
+  const row = stmtGetTabState.get(folder) as { tabs: string; active_tab_id: string | null } | undefined;
+  if (!row) return null;
+  return { tabs: JSON.parse(row.tabs), activeTabId: row.active_tab_id };
 }
 
 export default db;

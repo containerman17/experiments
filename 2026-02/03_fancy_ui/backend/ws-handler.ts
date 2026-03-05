@@ -1,7 +1,7 @@
 import type WebSocket from 'ws';
 import type { WebSocketServer } from 'ws';
 import type { ClientMessage, ServerMessage } from '../shared/types.ts';
-import { listWorkspaces } from './db.ts';
+import { listWorkspaces, setConfigPreference } from './db.ts';
 import { createAgentProcess, sendToAgent, deleteAgent, listAgentsInFolder, getAgentHistory, subscribeToAgent, unsubscribeAll } from './agent-manager.ts';
 import { createTerminal, attachTerminal, detachAll, listTerminals, writeToTerminal, resizeTerminal, closeTerminal } from './terminal-manager.ts';
 import { getTabState, setTabState } from './tab-store.ts';
@@ -77,6 +77,13 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       listAgentsInFolder(ws, msg.folder);
       const tabState = getTabState(msg.folder);
       send(ws, { type: 'tabs.state', folder: msg.folder, tabs: tabState.tabs, activeTabId: tabState.activeTabId });
+      // Auto-send history for all agents in this folder
+      for (const tab of tabState.tabs) {
+        if (tab.kind === 'agent' && tab.agentId) {
+          getAgentHistory(ws, tab.agentId, undefined, 500);
+          subscribeToAgent(ws, tab.agentId);
+        }
+      }
       break;
     }
 
@@ -153,6 +160,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       setTabState(msg.folder, msg.tabs, msg.activeTabId);
       broadcastAll({ type: 'tabs.state', folder: msg.folder, tabs: msg.tabs, activeTabId: msg.activeTabId });
+      break;
+    }
+
+    case 'config.set_preference': {
+      setConfigPreference(msg.agentType, msg.configId, msg.value);
       break;
     }
 

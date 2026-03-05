@@ -1,4 +1,31 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Tighter prose spacing for lists and paragraphs */
+.prose :where(ul, ol) {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+.prose :where(li) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.prose :where(p) {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+/* Subtle loading gradient bar */
+.loading-bar {
+  background: linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, #3b82f6, transparent);
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 @font-face {
   font-family: 'JetBrains Mono NF';

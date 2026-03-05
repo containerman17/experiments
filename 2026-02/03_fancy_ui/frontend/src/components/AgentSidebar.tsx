@@ -9,12 +9,10 @@
 
 import { useMemo } from 'react';
 import type { AgentState } from '../store';
-import { useAppState } from '../store';
-import { send, sendTabsUpdate } from '../ws';
+import { send } from '../ws';
 import { sessionSetModeRequest, sessionSetConfigRequest, type RpcMessage, isResponse, isNotification } from '../acp';
 
-export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => void }) {
-  const { tabs, activeTabId, folder } = useAppState();
+export function AgentSidebar({ agent }: { agent: AgentState }) {
   // Extract latest plan, modes, configOptions from ACP log
   const { plan, modes, currentMode, configOptions } = useMemo(() => {
     let plan: any[] = [];
@@ -33,9 +31,12 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
         configOptions = msg.result.configOptions || [];
       }
 
-      // session/update with plan
-      if (isNotification(msg) && msg.method === 'session/update' && msg.params?.plan) {
-        plan = msg.params.plan;
+      // session/update with plan (sessionUpdate discriminator)
+      if (isNotification(msg) && msg.method === 'session/update') {
+        const u = msg.params?.update;
+        if (u?.sessionUpdate === 'plan' && u.entries) {
+          plan = u.entries;
+        }
       }
 
       // current_mode_update
@@ -47,13 +48,18 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
       if (isNotification(msg) && msg.method === 'config_options_update') {
         configOptions = msg.params?.configOptions || configOptions;
       }
+
+      // session/set_config_option response
+      if (isResponse(msg) && msg.result?.configOptions) {
+        configOptions = msg.result.configOptions;
+      }
     }
 
     return { plan, modes, currentMode, configOptions };
   }, [agent.log]);
 
   const handleModeChange = (modeId: string) => {
-    if (!agent.acpSessionId) return;
+    if (!agent.acpSessionId || modeId === currentMode) return;
     send({
       type: 'agent.message',
       agentId: agent.info.id,
@@ -68,6 +74,13 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
       agentId: agent.info.id,
       payload: sessionSetConfigRequest(agent.acpSessionId, optionId, value),
     });
+    // Remember preference for this agent type
+    send({
+      type: 'config.set_preference',
+      agentType: agent.info.agentType,
+      configId: optionId,
+      value,
+    });
   };
 
   return (
@@ -78,6 +91,7 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
         <div className="text-xs space-y-0.5">
           <div><span className="text-zinc-500">Type:</span> <span className="text-zinc-300">{agent.info.agentType}</span></div>
           <div><span className="text-zinc-500">Status:</span> <span className="text-zinc-300">{agent.busy ? 'working...' : 'idle'}</span></div>
+          <div><span className="text-zinc-500">Permissions:</span> <span className="text-zinc-300">auto-grant</span></div>
           {agent.acpSessionId && (
             <div className="text-zinc-500 text-[10px] font-mono truncate" title={agent.acpSessionId}>
               {agent.acpSessionId}
@@ -86,19 +100,25 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
         </div>
       </div>
 
-      {/* Mode */}
+      {/* Mode selector */}
       {modes.length > 0 && (
         <div className="border-b border-zinc-700 px-3 py-2">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Mode</h3>
-          <select
-            value={currentMode}
-            onChange={e => handleModeChange(e.target.value)}
-            className="w-full bg-zinc-700 text-zinc-300 text-xs rounded px-1.5 py-1 border border-zinc-600 outline-none focus:border-blue-500"
-          >
+          <div className="flex flex-wrap gap-1">
             {modes.map((m: any) => (
-              <option key={m.id} value={m.id}>{m.name || m.id}</option>
+              <button
+                key={m.id}
+                onClick={() => handleModeChange(m.id)}
+                className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                  m.id === currentMode
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-200'
+                }`}
+              >
+                {m.name || m.id}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       )}
 
@@ -143,23 +163,6 @@ export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => vo
           </div>
         </div>
       )}
-
-      {/* Delete */}
-      <div className="mt-auto px-3 py-2 border-t border-zinc-700">
-        <button
-          onClick={() => {
-            if (!confirm('Delete this agent? This will kill the process.')) return;
-            if (folder) {
-              const newTabs = tabs.filter(t => !(t.kind === 'agent' && t.agentId === agent.info.id));
-              const newActive = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
-              sendTabsUpdate(folder, newTabs, newActive);
-            }
-          }}
-          className="w-full px-3 py-1.5 text-xs text-red-400 border border-zinc-600 rounded hover:bg-red-950 hover:border-red-800 transition-colors"
-        >
-          Delete Agent
-        </button>
-      </div>
     </div>
   );
 }

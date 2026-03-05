@@ -25,25 +25,25 @@ export function initializeRequest() {
   return rpcRequest('initialize', {
     protocolVersion: 1,
     clientInfo: { name: 'agent-ui', title: 'Agent UI', version: '0.1.0' },
-    capabilities: {
-      readTextFile: false,  // TODO: implement later
-      writeTextFile: false, // TODO: implement later
-      terminal: false,      // TODO: implement later
+    clientCapabilities: {
+      fs: {
+        readTextFile: false,  // TODO: implement later
+        writeTextFile: false, // TODO: implement later
+      },
     },
   });
 }
 
-export function sessionNewRequest(workingDirectory: string) {
-  return rpcRequest('session/new', { workingDirectory });
+export function sessionNewRequest(cwd: string) {
+  return rpcRequest('session/new', { cwd, mcpServers: [] });
 }
 
 export function sessionPromptRequest(sessionId: string, text: string) {
   return rpcRequest('session/prompt', {
     sessionId,
-    message: {
-      role: 'user',
-      content: { type: 'text', text },
-    },
+    prompt: [
+      { type: 'text', text },
+    ],
   });
 }
 
@@ -55,14 +55,15 @@ export function sessionSetModeRequest(sessionId: string, modeId: string) {
   return rpcRequest('session/set_mode', { sessionId, modeId });
 }
 
-export function sessionSetConfigRequest(sessionId: string, configOptionId: string, value: string) {
-  return rpcRequest('session/set_config_option', { sessionId, configOptionId, value });
+export function sessionSetConfigRequest(sessionId: string, configId: string, value: string) {
+  return rpcRequest('session/set_config_option', { sessionId, configId, value });
 }
 
 // --- Auto-grant permission (for now) ---
 
-export function permissionGrantResponse(requestId: number) {
-  return rpcResponse(requestId, { outcome: 'selected', selectedIndex: 0 });
+export function permissionGrantResponse(requestId: number, options?: any[]) {
+  const firstOptionId = options?.[0]?.optionId || '';
+  return rpcResponse(requestId, { outcome: { outcome: 'selected', optionId: firstOptionId } });
 }
 
 // --- Parse incoming JSON-RPC ---

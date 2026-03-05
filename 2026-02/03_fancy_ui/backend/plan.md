@@ -54,12 +54,14 @@ The backend reads agent stdout, and for most messages just logs + broadcasts (tu
 | `terminal.input {terminalId, data}` | write to user PTY |
 | `terminal.resize {terminalId, cols, rows}` | resize user PTY |
 | `terminal.close {terminalId}` | kill user PTY |
+| `tabs.update {folder, tabs, activeTabId}` | set tab state for workspace |
 
 ### Server → Client (backend → frontend)
 
 | Message | Description |
 |---------|-------------|
 | `workspace.list.result` | list of {folder, agentCount} |
+| `tabs.state {folder, tabs, activeTabId}` | full tab state (on connect + on change, broadcast) |
 | `agent.list.result` | agents in folder |
 | `agent.output {agentId, payload}` | raw JSON-RPC from agent, forwarded |
 | `agent.error {agentId, message}` | stderr from agent process |

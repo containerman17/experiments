@@ -32,10 +32,24 @@ The frontend is purely an **observer + optional override**. Agents work independ
 - Server URL editor with green/red connection indicator
 
 ### Workspace (`/<folder-path>`)
-- Left: agent list + terminal list + create buttons
-- Center: active agent chat OR user terminal
-- Right: agent sidebar (plan, modes, config, delete)
-- Tab bar for switching
+
+Tab-centric layout. No permanent left sidebar.
+
+- **Tab bar** (top): all open agents + terminals in one row. Left side: tabs. Right side: [+Agent] [+Terminal] buttons + connection dot (green/red).
+- **[+Agent]** opens a popup (not a tab) — choose claude/codex or resurrect an archived agent. On confirm, spawns agent and opens its tab.
+- **[+Terminal]** creates a new PTY and opens its tab immediately.
+- **Content area**: active tab fills the space. Chat content has max-width (~prose width). Terminals are full-width.
+- **Agent sidebar** (right): plan, modes, config, delete — only visible when an agent tab is active.
+- **Disconnected overlay**: grey semi-transparent overlay over everything when WS is disconnected.
+- **document.title** = folder name (last path segment).
+- Tabs are renameable (double-click label to edit, later).
+- Split view (2-way, slot-based) designed from ground up but single slot first.
+
+### Tab State: Backend-Owned, Multi-Device
+
+Tabs are persisted on the backend (per workspace). The backend is the single source of truth. Frontend on connect receives `tabs.state` with the full tab list + active tab. Any user action (open/close/switch/rename tab) sends `tabs.update` → backend stores + broadcasts `tabs.state` to all connected clients. Last write wins, no conflict resolution needed — only conscious user actions trigger updates, so no circular loops.
+
+This gives real multi-device experience: close laptop lid, open iPad, see the same tabs and active view. Terminals and agent chats are multiplexed — multiple devices see the same live output simultaneously (already works via broadcast).
 
 ## ACP Message Handling
 
@@ -71,7 +85,7 @@ Frontend sends raw JSON-RPC via `agent.message`. Receives via `agent.output`.
 | `store.ts` | React context + reducer |
 | `pages/HomePage.tsx` | Workspace list, folder input, server URL |
 | `pages/WorkspacePage.tsx` | Layout shell |
-| `components/AgentList.tsx` | Agent + terminal list, create buttons |
+| `components/NewAgentDialog.tsx` | Popup: choose agent type or resurrect archived |
 | `components/AgentChat.tsx` | Chat, tool calls, thinking, diffs |
 | `components/AgentSidebar.tsx` | Plan, modes, config, delete |
 | `components/TabBar.tsx` | Tabs (agents + terminals) |
@@ -92,10 +106,15 @@ Frontend sends raw JSON-RPC via `agent.message`. Receives via `agent.output`.
 - [x] Agent error display (stderr forwarding)
 - [x] Build passes, no react-router
 
-## Next
+## Next: Layout Restructure
 
+- [ ] Remove AgentList sidebar — replace with tab bar [+Agent] [+Terminal] buttons
+- [ ] New agent popup (NewAgentDialog) — choose type or resurrect archived
+- [ ] Tab bar: connection dot, all tabs in one row
+- [ ] Grey overlay when disconnected
+- [ ] document.title = folder name
+- [ ] Max-width on chat content, full-width on terminals
 - [ ] Agent terminal output inline in tool call cards (once backend intercepts `terminal/*`)
-- [ ] Bottom panel layout for user terminals (separate from agent chat tabs)
 - [ ] Slash command autocomplete (from `available_commands_update`)
 
 ## Later

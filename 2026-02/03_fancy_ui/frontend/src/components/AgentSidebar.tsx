@@ -9,10 +9,12 @@
 
 import { useMemo } from 'react';
 import type { AgentState } from '../store';
+import { useDispatch } from '../store';
 import { send } from '../ws';
 import { sessionSetModeRequest, sessionSetConfigRequest, type RpcMessage, isResponse, isNotification } from '../acp';
 
-export function AgentSidebar({ agent }: { agent: AgentState }) {
+export function AgentSidebar({ agent }: { agent: AgentState; onDelete?: () => void }) {
+  const dispatch = useDispatch();
   // Extract latest plan, modes, configOptions from ACP log
   const { plan, modes, currentMode, configOptions } = useMemo(() => {
     let plan: any[] = [];
@@ -125,7 +127,7 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
 
       {/* Plan */}
       {plan.length > 0 && (
-        <div className="px-3 py-2">
+        <div className="border-b border-zinc-700 px-3 py-2">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Plan</h3>
           <div className="space-y-1">
             {plan.map((entry: any, i: number) => (
@@ -141,6 +143,20 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
           </div>
         </div>
       )}
+
+      {/* Delete */}
+      <div className="mt-auto px-3 py-2 border-t border-zinc-700">
+        <button
+          onClick={() => {
+            if (!confirm('Delete this agent? This will kill the process and archive it.')) return;
+            send({ type: 'agent.delete', agentId: agent.info.id });
+            dispatch({ type: 'CLOSE_TAB', tabId: `tab-${agent.info.id}` });
+          }}
+          className="w-full px-3 py-1.5 text-xs text-red-400 border border-zinc-600 rounded hover:bg-red-950 hover:border-red-800 transition-colors"
+        >
+          Delete Agent
+        </button>
+      </div>
     </div>
   );
 }

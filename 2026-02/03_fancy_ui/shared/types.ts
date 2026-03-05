@@ -1,0 +1,56 @@
+// ============================================================
+// Shared types for Agent UI — WebSocket protocol
+// ============================================================
+
+// Backend is a logging tunnel. It does NOT interpret ACP messages.
+// Frontend reads raw ACP JSON-RPC and renders UI from it.
+
+export type AgentType = 'claude' | 'codex';
+
+export interface AgentInfo {
+  id: string;
+  folder: string;
+  agentType: AgentType;
+  createdAt: number;
+}
+
+export interface WorkspaceInfo {
+  folder: string;
+  agentCount: number;
+}
+
+export interface AgentLogEntry {
+  id: number;
+  agentId: string;
+  direction: 'in' | 'out'; // in = frontend→agent, out = agent→frontend
+  payload: unknown; // raw JSON-RPC message
+  timestamp: number;
+}
+
+// --- WebSocket Protocol: Client → Server ---
+
+export type ClientMessage =
+  | { type: 'workspace.list' }
+  | { type: 'agent.create'; folder: string; agentType: AgentType }
+  | { type: 'agent.list'; folder: string }
+  | { type: 'agent.delete'; agentId: string }
+  | { type: 'agent.message'; agentId: string; payload: unknown }
+  | { type: 'agent.history'; agentId: string; before?: number; limit?: number }
+  | { type: 'terminal.create'; folder: string }
+  | { type: 'terminal.input'; terminalId: string; data: string }
+  | { type: 'terminal.resize'; terminalId: string; cols: number; rows: number }
+  | { type: 'terminal.close'; terminalId: string };
+
+// --- WebSocket Protocol: Server → Client ---
+
+export type ServerMessage =
+  | { type: 'workspace.list.result'; workspaces: WorkspaceInfo[] }
+  | { type: 'agent.list.result'; folder: string; agents: AgentInfo[] }
+  | { type: 'agent.output'; agentId: string; payload: unknown }
+  | { type: 'agent.error'; agentId: string; message: string }
+  | { type: 'agent.exited'; agentId: string; exitCode: number }
+  | { type: 'agent.history.result'; agentId: string; entries: AgentLogEntry[]; hasMore: boolean }
+  | { type: 'terminal.created'; terminalId: string }
+  | { type: 'terminal.output'; terminalId: string; data: string }
+  | { type: 'terminal.exited'; terminalId: string; exitCode: number }
+  | { type: 'error'; message: string };

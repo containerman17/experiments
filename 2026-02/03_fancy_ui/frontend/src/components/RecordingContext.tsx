@@ -26,7 +26,8 @@ export const useRecording = () => useContext(RecordingCtx);
 
 export function RecordingProvider({ children }: { children: ReactNode }) {
   const [recording, setRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
+  const [transcribingCount, setTranscribingCount] = useState(0);
+  const transcribing = transcribingCount > 0;
   const [audioError, setAudioError] = useState<string | null>(null);
   const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
@@ -36,8 +37,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const conn = useConnection();
   const state = useAppState();
   const dispatch = useDispatch();
-  const transcribingRef = useRef(false);
-  transcribingRef.current = transcribing;
+  const transcribingCountRef = useRef(0);
+  transcribingCountRef.current = transcribingCount;
   const targetAgentIdRef = useRef<string | null>(null);
   targetAgentIdRef.current = targetAgentId;
 
@@ -72,7 +73,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         const reader = new FileReader();
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1];
-          setTranscribing(true);
+          setTranscribingCount(c => c + 1);
           conn.send({ type: 'agent.audio', agentId, data: base64, mimeType: recorder.mimeType });
         };
         reader.readAsDataURL(blob);
@@ -106,8 +107,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   // Listen for transcription results
   useEffect(() => {
     return conn.subscribe((msg: any) => {
-      if (msg.type === 'agent.audio.transcription' && msg.agentId === targetAgentIdRef.current) {
-        setTranscribing(false);
+      if (msg.type === 'agent.audio.transcription') {
+        setTranscribingCount(c => Math.max(0, c - 1));
         setAudioError(null);
         const agentId = msg.agentId;
         const agent = state.agents[agentId];
@@ -119,10 +120,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
           });
           dispatch({ type: 'AGENT_BUSY', agentId, busy: true });
         }
-        setTargetAgentId(null);
       }
-      if (msg.type === 'error' && transcribingRef.current) {
-        setTranscribing(false);
+      if (msg.type === 'error' && transcribingCountRef.current > 0) {
+        setTranscribingCount(c => Math.max(0, c - 1));
         setAudioError(msg.message);
       }
     });

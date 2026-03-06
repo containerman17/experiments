@@ -77,7 +77,7 @@ function AudioVisualizer({ analyser }: { analyser: AnalyserNode }) {
 }
 
 export function RecordingBar({ activeAgentId }: { activeAgentId: string | null | undefined }) {
-  const { recording, transcribing, cancelRecording, stopRecording, audioError, clearAudioError, analyser } = useRecording();
+  const { recording, cancelRecording, stopRecording, audioError, clearAudioError, analyser } = useRecording();
   const [elapsed, setElapsed] = useState(0);
   const startTime = useRef(0);
 
@@ -92,7 +92,7 @@ export function RecordingBar({ activeAgentId }: { activeAgentId: string | null |
     };
   }, [recording]);
 
-  if (!recording && !transcribing && !audioError) return null;
+  if (!recording && !audioError) return null;
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
@@ -130,18 +130,7 @@ export function RecordingBar({ activeAgentId }: { activeAgentId: string | null |
           </button>
         </>
       )}
-      {transcribing && (
-        <>
-          <div className="flex items-center justify-center w-10 h-10 shrink-0">
-            <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current text-blue-400 animate-spin">
-              <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z" opacity="0.25"/>
-              <path d="M12 2a10 10 0 019.95 9h-2.01A8 8 0 0012 4V2z"/>
-            </svg>
-          </div>
-          <span className="text-zinc-200 text-base font-medium pr-3 pl-1">Transcribing...</span>
-        </>
-      )}
-      {audioError && !recording && !transcribing && (
+      {audioError && !recording && (
         <>
           <div className="flex items-center justify-center w-10 h-10 shrink-0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6 text-red-400">

@@ -205,7 +205,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       <div className={`shrink-0 h-px ${agent.busy ? 'loading-bar' : 'bg-zinc-700'}`} />
 
       {/* Input — Zed-style: textarea on top, toolbar below */}
-      {!(recording || transcribing || audioError) && (
+      {!(recording || audioError) && (
       <div className="shrink-0 px-3 pb-2 pt-1">
         {/* Image attachment previews */}
         {attachments.length > 0 && (
@@ -270,6 +270,15 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
         {/* Toolbar row */}
         <div className="flex items-center gap-1 py-0.5">
+          {transcribing && (
+            <div className="flex items-center text-zinc-400 text-xs gap-1.5 px-1 animate-pulse">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current animate-spin">
+                <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z" opacity="0.25"/>
+                <path d="M12 2a10 10 0 019.95 9h-2.01A8 8 0 0012 4V2z"/>
+              </svg>
+              <span>Transcribing...</span>
+            </div>
+          )}
           <span className="flex-1 min-w-0" />
 
           <div className="flex items-center gap-1 shrink-0">
@@ -367,10 +376,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
               <button onClick={() => stopRecording(agent.info.id)} className={`flex items-center justify-center rounded-md bg-red-500/30 hover:bg-red-500/50 text-red-400 animate-pulse transition-colors cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Stop & send">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
               </button>
-            ) : transcribing ? (
-              <div className={`flex items-center justify-center rounded-md text-zinc-400 ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Transcribing...">
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current animate-spin"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z" opacity="0.25"/><path d="M12 2a10 10 0 019.95 9h-2.01A8 8 0 0012 4V2z"/></svg>
-              </div>
             ) : canSend ? (
               <button onClick={handleSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors text-zinc-200 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Send">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>

@@ -1,10 +1,11 @@
 import type WebSocket from 'ws';
 import type { WebSocketServer } from 'ws';
 import type { ClientMessage, ServerMessage } from '../shared/types.ts';
-import { listWorkspaces, setConfigPreference } from './db.ts';
+import { listWorkspaces, setConfigPreference, getAgent, getHistory } from './db.ts';
 import { createAgentProcess, sendToAgent, deleteAgent, listAgentsInFolder, getAgentHistory, subscribeToAgent, unsubscribeAll } from './agent-manager.ts';
 import { createTerminal, attachTerminal, detachAll, listTerminals, writeToTerminal, resizeTerminal, closeTerminal } from './terminal-manager.ts';
 import { getTabState, setTabState } from './tab-store.ts';
+import { transcribeAudio } from './transcribe.ts';
 
 let wss: WebSocketServer | null = null;
 
@@ -39,6 +40,7 @@ export function handleConnection(ws: WebSocket): void {
       sendError(ws, 'Invalid JSON');
       return;
     }
+    console.log(`[ws] ← ${msg.type}`, msg.type === 'agent.audio' ? `(${msg.data?.length} bytes)` : '');
     handleMessage(ws, msg).catch(err => {
       console.error('Handler error:', err);
       sendError(ws, String(err));
@@ -165,6 +167,43 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
     case 'config.set_preference': {
       setConfigPreference(msg.agentType, msg.configId, msg.value);
+      break;
+    }
+
+    case 'agent.audio': {
+      console.log(`[audio] received audio for agent ${msg.agentId}, mimeType=${msg.mimeType}, data length=${msg.data?.length}`);
+      const agentInfo = getAgent(msg.agentId);
+      if (!agentInfo) { sendError(ws, `Agent ${msg.agentId} not found`); break; }
+
+      // TODO: If agent natively supports audio (promptCapabilities.audio), forward as audio content block.
+      // For now, all agents get transcription since no ACP agent supports native audio yet.
+
+      // Build conversation context for better transcription accuracy
+      const history = getHistory(msg.agentId, 20);
+      const contextParts: string[] = [];
+      for (const entry of history.entries) {
+        const p = entry.payload as any;
+        if (p.method === 'session/prompt' && p.params?.prompt) {
+          const text = Array.isArray(p.params.prompt)
+            ? p.params.prompt.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+            : '';
+          if (text) contextParts.push(`User: ${text}`);
+        }
+        if (p.method === 'session/update' && p.params?.update?.sessionUpdate === 'agent_message_chunk') {
+          const text = p.params.update.content?.text;
+          if (text) contextParts.push(`Agent: ${text}`);
+        }
+      }
+      const context = contextParts.slice(-10).join('\n');
+
+      try {
+        console.log(`[audio] calling Gemini transcription...`);
+        const text = await transcribeAudio(msg.data, msg.mimeType, context);
+        console.log(`[audio] transcription result: ${text.slice(0, 100)}`);
+        send(ws, { type: 'agent.audio.transcription' as any, agentId: msg.agentId, text });
+      } catch (err) {
+        sendError(ws, `Transcription failed: ${err}`);
+      }
       break;
     }
 

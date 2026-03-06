@@ -4,11 +4,11 @@
 // User messages are sent via `session/prompt`.
 // The stop button sends `session/cancel`.
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { AgentState } from '../store';
 import type { AgentLogEntry } from '../../../shared/types';
 import { useDispatch } from '../store';
-import { send } from '../ws';
+import { send, subscribe as wsSubscribe } from '../ws';
 import {
   sessionPromptRequest, sessionCancelNotification,
   sessionSetModeRequest, sessionSetConfigRequest,
@@ -25,6 +25,10 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Array<{ file: File; dataUrl: string; attachment: ImageAttachment }>>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const dispatch = useDispatch();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -111,6 +115,68 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       payload: sessionCancelNotification(agent.acpSessionId),
     });
   };
+
+  // --- Voice recording ---
+  const startRecording = useCallback(async () => {
+    setAudioError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: recorder.mimeType });
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          setTranscribing(true);
+          send({ type: 'agent.audio', agentId: agent.info.id, data: base64, mimeType: recorder.mimeType });
+        };
+        reader.readAsDataURL(blob);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+    } catch (err) {
+      console.error('Mic access denied:', err);
+    }
+  }, [agent.info.id]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    setRecording(false);
+  }, []);
+
+  // Listen for transcription results from backend.
+  // Use refs for values that change frequently to avoid re-subscribing (which could miss messages).
+  const transcribingRef = useRef(false);
+  transcribingRef.current = transcribing;
+  const acpSessionRef = useRef(agent.acpSessionId);
+  acpSessionRef.current = agent.acpSessionId;
+
+  useEffect(() => {
+    return wsSubscribe((msg: any) => {
+      if (msg.type === 'agent.audio.transcription' && msg.agentId === agent.info.id) {
+        setTranscribing(false);
+        setAudioError(null);
+        if (msg.text && acpSessionRef.current) {
+          send({
+            type: 'agent.message',
+            agentId: agent.info.id,
+            payload: sessionPromptRequest(acpSessionRef.current, msg.text),
+          });
+          dispatch({ type: 'AGENT_BUSY', agentId: agent.info.id, busy: true });
+        }
+      }
+      if (msg.type === 'error' && transcribingRef.current) {
+        setTranscribing(false);
+        setAudioError(msg.message);
+      }
+    });
+  }, [agent.info.id, dispatch]);
 
   const handleModeChange = (modeId: string) => {
     if (!agent.acpSessionId || modeId === currentMode) return;
@@ -200,6 +266,14 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       {/* Loading indicator */}
       <div className={`shrink-0 h-px ${agent.busy ? 'loading-bar' : 'bg-zinc-700'}`} />
 
+      {/* Audio error banner */}
+      {audioError && (
+        <div className="shrink-0 mx-3 mt-1 px-2 py-1 bg-red-950 border border-red-800 rounded text-red-300 text-xs flex items-center justify-between">
+          <span className="truncate">{audioError}</span>
+          <button onClick={() => setAudioError(null)} className="ml-2 text-red-400 hover:text-red-200 shrink-0">&times;</button>
+        </div>
+      )}
+
       {/* Input — Zed-style: textarea on top, toolbar below */}
       <div className="shrink-0 px-3 pb-2 pt-1">
         {/* Image attachment previews */}
@@ -223,6 +297,18 @@ export function AgentChat({ agent }: { agent: AgentState }) {
           ref={inputRef}
           value={input}
           onChange={e => { setInput(e.target.value); autoResize(e.target); }}
+          onFocus={() => {
+            // HACK: Mobile Safari scrolls the entire page down when the virtual keyboard
+            // opens, pushing the app off-screen. No CSS solution works reliably (position:fixed,
+            // touch-action:none, etc. all break scrolling or input). This brute-force approach
+            // repeatedly scrolls back to top during the keyboard animation. Replace this the
+            // moment a proper solution exists.
+            const scrollTop = () => { window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0; };
+            scrollTop();
+            setTimeout(scrollTop, 100);
+            setTimeout(scrollTop, 300);
+            setTimeout(scrollTop, 500);
+          }}
           onPaste={e => {
             const items = e.clipboardData.items;
             const imageFiles: File[] = [];
@@ -242,7 +328,8 @@ export function AgentChat({ agent }: { agent: AgentState }) {
           }`}
           style={{ maxHeight: '8rem' }}
           onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+            // Desktop: Enter sends, Shift+Enter for newline. Mobile: Enter inserts newline, use send button.
+            if (!isMobile && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
           }}
         />
 
@@ -258,10 +345,8 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
         {/* Toolbar row */}
         <div className="flex items-center gap-1 py-0.5">
-          {/* Session ID — left side */}
-          <span className="text-[10px] text-zinc-600 truncate flex-1 min-w-0 hidden sm:block" title={agent.acpSessionId || agent.info.id}>
-            {agent.acpSessionId || ''}
-          </span>
+          {/* Spacer to push controls right */}
+          <span className="flex-1 min-w-0" />
 
           {/* Right-aligned controls */}
           <div className="flex items-center gap-1 shrink-0">
@@ -276,18 +361,21 @@ export function AgentChat({ agent }: { agent: AgentState }) {
                   {currentModeName || 'Mode'} <span className="text-zinc-600">&#9662;</span>
                 </button>
                 {modeMenuOpen && (
-                  <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[140px]">
+                  <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[220px] max-w-[calc(100vw-1rem)] max-h-[60vh] overflow-y-auto">
                     {modes.map((m: any) => (
                       <button
                         key={m.id}
                         onClick={() => handleModeChange(m.id)}
                         className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
                           m.id === currentMode
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-zinc-600 text-zinc-100'
                             : 'text-zinc-200 hover:bg-zinc-600'
                         }`}
                       >
-                        <div>{m.name || m.id}</div>
+                        <div className="flex items-center justify-between">
+                          <span>{m.name || m.id}</span>
+                          {m.id === currentMode && <span className="text-zinc-400 ml-2">✓</span>}
+                        </div>
                         {m.description && <div className="text-[10px] text-zinc-400 mt-0.5">{m.description}</div>}
                       </button>
                     ))}
@@ -310,20 +398,21 @@ export function AgentChat({ agent }: { agent: AgentState }) {
                     {selectedLabel} <span className="text-zinc-600">&#9662;</span>
                   </button>
                   {isOpen && (
-                    <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[140px]">
+                    <div className="absolute bottom-full right-0 mb-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[220px] max-w-[calc(100vw-1rem)] max-h-[60vh] overflow-y-auto">
                       {opt.options?.map((o: any) => {
                         const val = o.value || o.name;
                         return (
                           <button
                             key={val}
                             onClick={() => { handleConfigChange(opt.id, val); setOpenConfigId(null); }}
-                            className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                            className={`flex items-center justify-between w-full text-left px-3 py-1.5 text-xs transition-colors ${
                               val === opt.currentValue
-                                ? 'bg-blue-600 text-white'
+                                ? 'bg-zinc-600 text-zinc-100'
                                 : 'text-zinc-200 hover:bg-zinc-600'
                             }`}
                           >
                             {o.name}
+                            {val === opt.currentValue && <span className="text-zinc-400 ml-2">✓</span>}
                           </button>
                         );
                       })}
@@ -351,9 +440,24 @@ export function AgentChat({ agent }: { agent: AgentState }) {
                 <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
               </button>
             )}
-            <button onClick={handleSend} disabled={!canSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors disabled:opacity-20 text-zinc-200 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Send">
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
-            </button>
+            {/* Telegram-like toggle: mic when input is empty, send when there's text */}
+            {recording ? (
+              <button onClick={stopRecording} className={`flex items-center justify-center rounded-md bg-red-500/30 hover:bg-red-500/50 text-red-400 animate-pulse transition-colors cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Stop recording">
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+              </button>
+            ) : transcribing ? (
+              <div className={`flex items-center justify-center rounded-md text-zinc-400 ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Transcribing...">
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current animate-spin"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z" opacity="0.25"/><path d="M12 2a10 10 0 019.95 9h-2.01A8 8 0 0012 4V2z"/></svg>
+              </div>
+            ) : canSend ? (
+              <button onClick={handleSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors text-zinc-200 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Send">
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
+              </button>
+            ) : (
+              <button onClick={startRecording} disabled={!agent.acpSessionId || agent.busy} className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-20 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Record voice message">
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0014 0" /><line x1="12" y1="17" x2="12" y2="22" /></svg>
+              </button>
+            )}
           </div>
         </div>
       </div>

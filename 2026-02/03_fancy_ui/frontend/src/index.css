@@ -1,15 +1,17 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Safe area for notched phones (iPhone X+) */
+/* Dark background to prevent white flash */
+html, body {
+  background: #18181b; /* zinc-900 */
+}
+
 html {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Prevent iOS rubber-banding / overscroll on the body */
 body {
   overscroll-behavior: none;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Prevent text selection on interactive elements on mobile */

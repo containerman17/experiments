@@ -3,7 +3,7 @@
 // No left sidebar. Agent sidebar on right only when agent tab is active.
 // Disconnected overlay when WebSocket is not connected.
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useAppState, useDispatch } from '../store';
 import { send, onStatusChange, isConnected } from '../ws';
 import { AgentChat } from '../components/AgentChat';
@@ -11,6 +11,20 @@ import { TabBar } from '../components/TabBar';
 import { MobileNav } from '../components/MobileNav';
 import { Terminal } from '../components/Terminal';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// On mobile Safari, dvh doesn't shrink when the virtual keyboard opens.
+// Use visualViewport API to get the actual visible height.
+function useVisualViewportHeight(): number | null {
+  const [height, setHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setHeight(vv.height);
+    vv.addEventListener('resize', update);
+    return () => vv.removeEventListener('resize', update);
+  }, []);
+  return height;
+}
 
 function useConnectionStatus(): boolean {
   return useSyncExternalStore(
@@ -24,6 +38,7 @@ export function WorkspacePage({ folder }: { folder: string }) {
   const dispatch = useDispatch();
   const connected = useConnectionStatus();
   const isMobile = useIsMobile();
+  const vvHeight = useVisualViewportHeight();
 
   // Set folder in state and fetch agent list (re-fetch on reconnect)
   useEffect(() => {
@@ -46,7 +61,10 @@ export function WorkspacePage({ folder }: { folder: string }) {
   const activeAgent = activeAgentId ? state.agents[activeAgentId] : null;
 
   return (
-    <div className="flex flex-col h-dvh bg-zinc-900 text-zinc-100 relative">
+    <div
+      className="flex flex-col bg-zinc-900 text-zinc-100 relative"
+      style={{ height: vvHeight ? `${vvHeight}px` : '100dvh' }}
+    >
       {/* Navigation: TabBar on desktop, MobileNav on mobile */}
       {isMobile ? <MobileNav /> : <TabBar />}
 

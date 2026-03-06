@@ -108,6 +108,7 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
             modes: payload.result.availableModes || payload.result.modes?.availableModes || [],
             currentModeId: payload.result.currentModeId || payload.result.modes?.currentModeId || '',
             configOptions: payload.result.configOptions || [],
+            promptCapabilities: payload.result.promptCapabilities || undefined,
           });
 
           // Apply saved preferences for this agent type

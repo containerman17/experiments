@@ -113,7 +113,30 @@ export function Terminal({ terminalId }: { terminalId: string }) {
 
     const onTouchEnd = () => { pinchStartDist = 0; };
 
+    // Double-tap on the right half of the terminal → send Tab key
+    let lastTapTime = 0;
+    let lastTapX = 0;
+    const DOUBLE_TAP_MS = 300;
+
+    const onDoubleTapTab = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const now = Date.now();
+      const touch = e.touches[0];
+      const rect = el.getBoundingClientRect();
+      const isRightSide = touch.clientX > rect.left + rect.width / 2;
+
+      if (isRightSide && now - lastTapTime < DOUBLE_TAP_MS && Math.abs(touch.clientX - lastTapX) < 50) {
+        e.preventDefault();
+        send({ type: 'terminal.input', terminalId, data: '\t' });
+        lastTapTime = 0; // reset to avoid triple-tap firing again
+      } else {
+        lastTapTime = now;
+        lastTapX = touch.clientX;
+      }
+    };
+
     const el = containerRef.current!;
+    el.addEventListener('touchstart', onDoubleTapTab, { passive: false });
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
@@ -123,6 +146,7 @@ export function Terminal({ terminalId }: { terminalId: string }) {
       ro.disconnect();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      el.removeEventListener('touchstart', onDoubleTapTab);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);

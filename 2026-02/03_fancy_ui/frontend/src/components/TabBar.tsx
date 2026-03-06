@@ -17,7 +17,12 @@ function useConnectionStatus(): boolean {
 
 export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agentType?: AgentType }) {
   if (kind === 'terminal') {
-    return <span className="text-green-400">■</span>;
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="#4ADE80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+    );
   }
   if (agentType === 'claude') {
     // Anthropic Claude logo mark (simplified)
@@ -75,6 +80,8 @@ export function TabBar() {
   };
 
   const closeTab = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab?.kind === 'agent' && !confirm('Close this agent? The session will be lost.')) return;
     const newTabs = tabs.filter(t => t.id !== tabId);
     const newActive = activeTabId === tabId
       ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
@@ -153,39 +160,40 @@ export function TabBar() {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setAgentMenuOpen(v => !v)}
-            className="px-2 py-1 text-xs text-blue-400 hover:bg-zinc-700 rounded transition-colors"
+            className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-colors"
           >
-            +Agent ▾
+            + New ▾
           </button>
           {agentMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[120px]">
+            <div className="absolute right-0 top-full mt-1 bg-zinc-700 border border-zinc-600 rounded shadow-lg z-50 min-w-[140px]">
               <button
                 onClick={() => addAgent('claude')}
-                className="block w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 rounded-t"
+                className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 rounded-t"
               >
-                Claude
+                <TabIcon kind="agent" agentType="claude" /> Claude
               </button>
               <button
                 onClick={() => addAgent('codex')}
-                className="block w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600"
+                className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600"
               >
-                Codex
+                <TabIcon kind="agent" agentType="codex" /> Codex
               </button>
               <button
                 onClick={() => addAgent('gemini')}
-                className="block w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 rounded-b"
+                className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600"
               >
-                Gemini
+                <TabIcon kind="agent" agentType="gemini" /> Gemini
+              </button>
+              <div className="border-t border-zinc-600" />
+              <button
+                onClick={() => { addTerminal(); setAgentMenuOpen(false); }}
+                className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 rounded-b"
+              >
+                <TabIcon kind="terminal" /> Terminal
               </button>
             </div>
           )}
         </div>
-        <button
-          onClick={addTerminal}
-          className="px-2 py-1 text-xs text-green-400 hover:bg-zinc-700 rounded transition-colors"
-        >
-          +Terminal
-        </button>
         <span
           className={`w-2 h-2 rounded-full ml-1 ${connected ? 'bg-green-500' : 'bg-red-500'}`}
           title={connected ? 'Connected' : 'Disconnected'}

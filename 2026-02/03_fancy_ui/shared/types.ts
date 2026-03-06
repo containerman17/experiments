@@ -11,6 +11,7 @@ export interface AgentAcpState {
   modes: Array<{ id: string; name: string; description?: string }>;
   currentModeId: string;
   configOptions: Array<{ id: string; name: string; type: string; currentValue: string; options: Array<{ name: string; value?: string }> }>;
+  promptCapabilities?: { audio?: boolean };
 }
 
 export interface AgentInfo {
@@ -67,7 +68,8 @@ export type ClientMessage =
   | { type: 'terminal.resize'; terminalId: string; cols: number; rows: number }
   | { type: 'terminal.close'; terminalId: string }
   | { type: 'tabs.update'; folder: string; tabs: TabInfo[]; activeTabId: string | null }
-  | { type: 'config.set_preference'; agentType: AgentType; configId: string; value: string };
+  | { type: 'config.set_preference'; agentType: AgentType; configId: string; value: string }
+  | { type: 'agent.audio'; agentId: string; data: string; mimeType: string }; // base64 audio
 
 // --- WebSocket Protocol: Server → Client ---
 
@@ -83,4 +85,5 @@ export type ServerMessage =
   | { type: 'terminal.output'; terminalId: string; data: string }
   | { type: 'terminal.exited'; terminalId: string; exitCode: number }
   | { type: 'tabs.state'; folder: string; tabs: TabInfo[]; activeTabId: string | null }
+  | { type: 'agent.audio.transcription'; agentId: string; text: string }
   | { type: 'error'; message: string };

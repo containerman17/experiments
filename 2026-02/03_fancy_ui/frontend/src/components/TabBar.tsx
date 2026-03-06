@@ -1,17 +1,17 @@
 // Horizontal tab bar. Always visible. Shows open agent chats and terminal tabs.
 // Click to switch, X to close. Color-coded: blue dot = agent, green square = terminal.
-// Right side: +Agent, +Terminal buttons, connection status dot.
-// Tab mutations are sent to backend via tabs.update; local state updates on tabs.state response.
+// Left side: project name + close icon. Right side: +New menu, connection status dot.
 
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { useAppState } from '../store';
+import { useConnection } from '../App';
 import type { AgentType } from '../../../shared/types';
-import { send, sendTabsUpdate, onStatusChange, isConnected } from '../ws';
 
-function useConnectionStatus(): boolean {
+function useConnectionStatus() {
+  const conn = useConnection();
   return useSyncExternalStore(
-    (cb) => onStatusChange(() => cb()),
-    () => isConnected(),
+    (cb) => conn.onStatusChange(() => cb()),
+    () => conn.isConnected(),
   );
 }
 
@@ -25,7 +25,6 @@ export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agent
     );
   }
   if (agentType === 'claude') {
-    // Anthropic Claude logo mark (simplified)
     return (
       <svg viewBox="0 0 64 64" className="w-3.5 h-3.5 shrink-0">
         <path d="M37.4 17.2L47.8 46.8H56L42.6 10H32.2L37.4 17.2Z" fill="#D4A27F" />
@@ -34,7 +33,6 @@ export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agent
     );
   }
   if (agentType === 'codex') {
-    // OpenAI logo mark (simplified hexagonal knot)
     return (
       <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2.7L3.5 7.5v9.1L12 21.3l8.5-4.8V7.5L12 2.7z" />
@@ -43,7 +41,6 @@ export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agent
     );
   }
   if (agentType === 'gemini') {
-    // Google Gemini star mark
     return (
       <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="#4285F4">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3l2.5 5.5L20 12l-5.5 1.5L12 19l-2.5-5.5L4 12l5.5-1.5L12 5z" />
@@ -53,15 +50,15 @@ export function TabIcon({ kind, agentType }: { kind: 'agent' | 'terminal'; agent
   return <span className="text-blue-400">●</span>;
 }
 
-export function TabBar() {
+export function TabBar({ closeProject }: { closeProject: () => void }) {
   const { tabs, activeTabId, folder, agents } = useAppState();
+  const conn = useConnection();
   const connected = useConnectionStatus();
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
   useEffect(() => {
     if (!agentMenuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -76,7 +73,7 @@ export function TabBar() {
   if (!folder) return null;
 
   const setActive = (tabId: string) => {
-    sendTabsUpdate(folder, tabs, tabId);
+    conn.sendTabsUpdate(folder, tabs, tabId);
   };
 
   const closeTab = (tabId: string) => {
@@ -86,28 +83,39 @@ export function TabBar() {
     const newActive = activeTabId === tabId
       ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
       : activeTabId;
-    sendTabsUpdate(folder, newTabs, newActive);
+    conn.sendTabsUpdate(folder, newTabs, newActive);
   };
 
   const renameTab = (tabId: string, newLabel: string) => {
     const trimmed = newLabel.trim();
     if (!trimmed) { setEditingTabId(null); return; }
     const newTabs = tabs.map(t => t.id === tabId ? { ...t, label: trimmed } : t);
-    sendTabsUpdate(folder, newTabs, activeTabId);
+    conn.sendTabsUpdate(folder, newTabs, activeTabId);
     setEditingTabId(null);
   };
 
   const addAgent = (agentType: AgentType) => {
-    send({ type: 'agent.create', folder, agentType });
+    conn.send({ type: 'agent.create', folder, agentType });
     setAgentMenuOpen(false);
   };
 
   const addTerminal = () => {
-    send({ type: 'terminal.create', folder });
+    conn.send({ type: 'terminal.create', folder });
   };
 
   return (
     <div className="flex items-center bg-zinc-800 border-b border-zinc-700 shrink-0 h-9">
+      {/* Back to projects */}
+      <button
+        onClick={closeProject}
+        className="flex items-center justify-center w-9 h-full text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50 border-r border-zinc-700 shrink-0 transition-colors"
+        title="All projects"
+      >
+        <svg viewBox="0 0 20 20" className="w-4 h-4 fill-current" aria-hidden="true">
+          <path fillRule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
+        </svg>
+      </button>
+
       {/* Tabs */}
       <div className="flex items-center overflow-x-auto min-w-0 flex-1">
         {tabs.map(tab => {

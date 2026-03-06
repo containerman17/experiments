@@ -1,112 +1,116 @@
-// WebSocket singleton for communicating with the Agent UI backend.
-// One connection per page. Auto-reconnects on disconnect.
-// Components subscribe to messages via subscribe(callback).
-// Connection status changes via onStatusChange(callback) — for green/red indicator.
-// Server URL stored in localStorage('agent-ui-server'), editable from HomePage.
+// WebSocket connection manager.
+// createConnection(url) returns an isolated connection object with its own listeners.
+// Each connection auto-reconnects until close() is called.
 
 import type { ClientMessage, ServerMessage, TabInfo } from '../../shared/types';
 
-type Listener = (msg: ServerMessage) => void;
-type StatusListener = (connected: boolean) => void;
-type DisconnectListener = () => void;
+export type Listener = (msg: ServerMessage) => void;
+export type StatusListener = (connected: boolean) => void;
+export type DisconnectListener = () => void;
 
-let socket: WebSocket | null = null;
-let connected = false;
-const listeners = new Set<Listener>();
-const statusListeners = new Set<StatusListener>();
-const disconnectListeners = new Set<DisconnectListener>();
-let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-
-function getServerUrl(): string {
-  return localStorage.getItem('agent-ui-server') || `ws://${location.hostname}:8080`;
+export interface WsConnection {
+  send(msg: ClientMessage): void;
+  subscribe(fn: Listener): () => void;
+  onStatusChange(fn: StatusListener): () => void;
+  onDisconnect(fn: DisconnectListener): () => void;
+  isConnected(): boolean;
+  close(): void;
+  sendTabsUpdate(folder: string, tabs: TabInfo[], activeTabId: string | null): void;
 }
 
-function setConnected(value: boolean): void {
-  if (connected === value) return;
-  connected = value;
-  for (const fn of statusListeners) fn(value);
-}
+export function createConnection(url: string): WsConnection {
+  let socket: WebSocket | null = null;
+  let connected = false;
+  let closed = false;
+  const listeners = new Set<Listener>();
+  const statusListeners = new Set<StatusListener>();
+  const disconnectListeners = new Set<DisconnectListener>();
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
-function connect(): void {
-  const url = getServerUrl();
-  try {
-    socket = new WebSocket(url);
-  } catch {
-    scheduleReconnect();
-    return;
+  function setConnected(value: boolean): void {
+    if (connected === value) return;
+    connected = value;
+    for (const fn of statusListeners) fn(value);
   }
 
-  socket.onopen = () => {
-    setConnected(true);
-  };
-
-  socket.onmessage = (event) => {
+  function connect(): void {
+    if (closed) return;
     try {
-      const msg = JSON.parse(event.data) as ServerMessage;
-      for (const fn of listeners) fn(msg);
-    } catch { /* ignore malformed */ }
-  };
+      socket = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
 
-  socket.onclose = () => {
-    setConnected(false);
-    socket = null;
-    for (const fn of disconnectListeners) fn();
-    scheduleReconnect();
-  };
+    socket.onopen = () => {
+      if (closed) { socket?.close(); return; }
+      setConnected(true);
+    };
 
-  socket.onerror = () => {
-    socket?.close();
-  };
-}
+    socket.onmessage = (event) => {
+      if (closed) return;
+      try {
+        const msg = JSON.parse(event.data) as ServerMessage;
+        for (const fn of listeners) fn(msg);
+      } catch { /* ignore malformed */ }
+    };
 
-function scheduleReconnect(): void {
-  clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(connect, 2000);
-}
+    socket.onclose = () => {
+      setConnected(false);
+      socket = null;
+      for (const fn of disconnectListeners) fn();
+      scheduleReconnect();
+    };
 
-export function send(msg: ClientMessage): void {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(msg));
+    socket.onerror = () => {
+      socket?.close();
+    };
   }
-}
 
-export function subscribe(fn: Listener): () => void {
-  listeners.add(fn);
-  return () => { listeners.delete(fn); };
-}
+  function scheduleReconnect(): void {
+    if (closed) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, 2000);
+  }
 
-export function onStatusChange(fn: StatusListener): () => void {
-  statusListeners.add(fn);
-  // Fire immediately with current state
-  fn(connected);
-  return () => { statusListeners.delete(fn); };
-}
+  function send(msg: ClientMessage): void {
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(msg));
+    }
+  }
 
-export function onDisconnect(fn: DisconnectListener): () => void {
-  disconnectListeners.add(fn);
-  return () => { disconnectListeners.delete(fn); };
-}
+  function close(): void {
+    closed = true;
+    clearTimeout(reconnectTimer);
+    socket?.close();
+    socket = null;
+    listeners.clear();
+    statusListeners.clear();
+    disconnectListeners.clear();
+  }
 
-export function isConnected(): boolean {
-  return connected;
-}
+  // Start connecting
+  connect();
 
-export function getUrl(): string {
-  return getServerUrl();
+  return {
+    send,
+    subscribe(fn: Listener) {
+      listeners.add(fn);
+      return () => { listeners.delete(fn); };
+    },
+    onStatusChange(fn: StatusListener) {
+      statusListeners.add(fn);
+      fn(connected);
+      return () => { statusListeners.delete(fn); };
+    },
+    onDisconnect(fn: DisconnectListener) {
+      disconnectListeners.add(fn);
+      return () => { disconnectListeners.delete(fn); };
+    },
+    isConnected: () => connected,
+    close,
+    sendTabsUpdate(folder: string, tabs: TabInfo[], activeTabId: string | null) {
+      send({ type: 'tabs.update', folder, tabs, activeTabId });
+    },
+  };
 }
-
-export function setServerUrl(url: string): void {
-  localStorage.setItem('agent-ui-server', url);
-  // Close current connection — reconnect will pick up new URL
-  clearTimeout(reconnectTimer);
-  socket?.close();
-  // Connect immediately to new URL
-  setTimeout(connect, 100);
-}
-
-export function sendTabsUpdate(folder: string, tabs: TabInfo[], activeTabId: string | null): void {
-  send({ type: 'tabs.update', folder, tabs, activeTabId });
-}
-
-// Auto-connect on import
-connect();

@@ -1,19 +1,17 @@
 // Right sidebar for the active agent.
 // Parses the agent's ACP log to extract and display:
-//   - Plan entries (from the latest session/update with plan data)
-//   - Available modes (from session/new response or current_mode_update)
-//   - Config options (from session/new response or config_options_update)
-//   - Agent info (type, session ID, status)
+//   - Plan entries, modes, config options, agent info
 // Mode changes send `session/set_mode` via ACP.
 // Config changes send `session/set_config_option` via ACP.
 
 import { useMemo } from 'react';
 import type { AgentState } from '../store';
-import { send } from '../ws';
+import { useConnection } from '../App';
 import { sessionSetModeRequest, sessionSetConfigRequest, type RpcMessage, isResponse, isNotification } from '../acp';
 
 export function AgentSidebar({ agent }: { agent: AgentState }) {
-  // Extract latest plan, modes, configOptions from ACP log
+  const conn = useConnection();
+
   const { plan, modes, currentMode, configOptions } = useMemo(() => {
     let plan: any[] = [];
     let modes: any[] = [];
@@ -24,14 +22,12 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
       if (entry.direction !== 'out') continue;
       const msg = entry.payload as RpcMessage;
 
-      // session/new response
       if (isResponse(msg) && msg.result?.sessionId) {
         modes = msg.result.availableModes || [];
         currentMode = msg.result.currentModeId || '';
         configOptions = msg.result.configOptions || [];
       }
 
-      // session/update with plan (sessionUpdate discriminator)
       if (isNotification(msg) && msg.method === 'session/update') {
         const u = msg.params?.update;
         if (u?.sessionUpdate === 'plan' && u.entries) {
@@ -39,17 +35,14 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
         }
       }
 
-      // current_mode_update
       if (isNotification(msg) && msg.method === 'current_mode_update') {
         currentMode = msg.params?.modeId || currentMode;
       }
 
-      // config_options_update
       if (isNotification(msg) && msg.method === 'config_options_update') {
         configOptions = msg.params?.configOptions || configOptions;
       }
 
-      // session/set_config_option response
       if (isResponse(msg) && msg.result?.configOptions) {
         configOptions = msg.result.configOptions;
       }
@@ -60,7 +53,7 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
 
   const handleModeChange = (modeId: string) => {
     if (!agent.acpSessionId || modeId === currentMode) return;
-    send({
+    conn.send({
       type: 'agent.message',
       agentId: agent.info.id,
       payload: sessionSetModeRequest(agent.acpSessionId, modeId),
@@ -69,13 +62,12 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
 
   const handleConfigChange = (optionId: string, value: string) => {
     if (!agent.acpSessionId) return;
-    send({
+    conn.send({
       type: 'agent.message',
       agentId: agent.info.id,
       payload: sessionSetConfigRequest(agent.acpSessionId, optionId, value),
     });
-    // Remember preference for this agent type
-    send({
+    conn.send({
       type: 'config.set_preference',
       agentType: agent.info.agentType,
       configId: optionId,
@@ -85,7 +77,6 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
 
   return (
     <div className="w-[220px] bg-zinc-800 border-l border-zinc-700 shrink-0 flex flex-col overflow-y-auto text-sm">
-      {/* Agent info */}
       <div className="border-b border-zinc-700 px-3 py-2">
         <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Agent</h3>
         <div className="text-xs space-y-0.5">
@@ -100,7 +91,6 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
         </div>
       </div>
 
-      {/* Mode selector */}
       {modes.length > 0 && (
         <div className="border-b border-zinc-700 px-3 py-2">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Mode</h3>
@@ -122,7 +112,6 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
         </div>
       )}
 
-      {/* Config options */}
       {configOptions.length > 0 && (
         <div className="border-b border-zinc-700 px-3 py-2">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Options</h3>
@@ -145,7 +134,6 @@ export function AgentSidebar({ agent }: { agent: AgentState }) {
         </div>
       )}
 
-      {/* Plan */}
       {plan.length > 0 && (
         <div className="border-b border-zinc-700 px-3 py-2">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Plan</h3>

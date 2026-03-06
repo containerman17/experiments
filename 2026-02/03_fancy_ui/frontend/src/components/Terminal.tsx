@@ -1,9 +1,6 @@
 // Full xterm.js terminal connected to a PTY on the backend via WebSocket.
-// Supports two modes:
-//   1. Create new: sends `terminal.create`, then auto-attaches on `terminal.created` response
-//   2. Attach existing: sends `terminal.attach` with known terminalId (replays ring buffer)
+// Attaches to existing terminal via `terminal.attach` (replays ring buffer).
 // User input → `terminal.input`, backend output → `terminal.output` (base64).
-// Handles resize via ResizeObserver + FitAddon.
 // Does NOT send `terminal.close` on unmount — terminals are persistent.
 
 import { useEffect, useRef } from 'react';
@@ -12,13 +9,15 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
-import { send, subscribe } from '../ws';
+import { useConnection } from '../App';
 
 export function Terminal({ terminalId }: { terminalId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const connRef = useRef(useConnection());
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const conn = connRef.current;
 
     const term = new XTerm({
       allowProposedApi: true,
@@ -41,20 +40,16 @@ export function Terminal({ terminalId }: { terminalId: string }) {
     term.unicode.activeVersion = '11';
     term.open(containerRef.current);
 
-    // Fit on next frame
     requestAnimationFrame(() => fitAddon.fit());
 
-    // Attach to existing terminal — backend will replay ring buffer
-    send({ type: 'terminal.attach', terminalId });
-    send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
+    conn.send({ type: 'terminal.attach', terminalId });
+    conn.send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
 
-    // Handle user input
     term.onData(data => {
-      send({ type: 'terminal.input', terminalId, data });
+      conn.send({ type: 'terminal.input', terminalId, data });
     });
 
-    // Subscribe to WS messages
-    const unsub = subscribe(msg => {
+    const unsub = conn.subscribe(msg => {
       if (msg.type === 'terminal.output' && msg.terminalId === terminalId) {
         const binary = atob(msg.data);
         const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
@@ -65,23 +60,20 @@ export function Terminal({ terminalId }: { terminalId: string }) {
       }
     });
 
-    // Resize observer
     const ro = new ResizeObserver(() => {
       fitAddon.fit();
-      send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
+      conn.send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
     });
     ro.observe(containerRef.current);
 
-    // Re-fit on focus/visibility change (e.g. switching devices via tunnel)
     const onFocus = () => {
       if (document.hidden) return;
       fitAddon.fit();
-      send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
+      conn.send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
     };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
 
-    // Pinch-to-zoom: adjust font size on two-finger pinch
     const MIN_FONT = 6;
     const MAX_FONT = 28;
     let pinchStartDist = 0;
@@ -98,7 +90,7 @@ export function Terminal({ terminalId }: { terminalId: string }) {
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2 || pinchStartDist === 0) return;
-      e.preventDefault(); // prevent page zoom
+      e.preventDefault();
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.hypot(dx, dy);
@@ -107,13 +99,12 @@ export function Terminal({ terminalId }: { terminalId: string }) {
       if (newSize !== term.options.fontSize) {
         term.options.fontSize = newSize;
         fitAddon.fit();
-        send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
+        conn.send({ type: 'terminal.resize', terminalId, cols: term.cols, rows: term.rows });
       }
     };
 
     const onTouchEnd = () => { pinchStartDist = 0; };
 
-    // Double-tap on the right half of the terminal → send Tab key
     let lastTapTime = 0;
     let lastTapX = 0;
     const DOUBLE_TAP_MS = 300;
@@ -127,8 +118,8 @@ export function Terminal({ terminalId }: { terminalId: string }) {
 
       if (isRightSide && now - lastTapTime < DOUBLE_TAP_MS && Math.abs(touch.clientX - lastTapX) < 50) {
         e.preventDefault();
-        send({ type: 'terminal.input', terminalId, data: '\t' });
-        lastTapTime = 0; // reset to avoid triple-tap firing again
+        conn.send({ type: 'terminal.input', terminalId, data: '\t' });
+        lastTapTime = 0;
       } else {
         lastTapTime = now;
         lastTapX = touch.clientX;
@@ -151,7 +142,6 @@ export function Terminal({ terminalId }: { terminalId: string }) {
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
       term.dispose();
-      // Don't close the terminal — it's persistent. Just detach by unsubscribing.
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally run once
 

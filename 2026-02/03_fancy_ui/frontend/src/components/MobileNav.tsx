@@ -4,15 +4,15 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useAppState } from '../store';
-import { send, sendTabsUpdate } from '../ws';
+import { useConnection } from '../App';
 import { TabIcon } from './TabBar';
 
-export function MobileNav() {
+export function MobileNav({ closeProject }: { closeProject: () => void }) {
   const { tabs, activeTabId, folder, agents } = useAppState();
+  const conn = useConnection();
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
-  // Close drawer on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -29,7 +29,7 @@ export function MobileNav() {
   const activeTab = tabs.find(t => t.id === activeTabId);
 
   const setActive = (tabId: string) => {
-    sendTabsUpdate(folder, tabs, tabId);
+    conn.sendTabsUpdate(folder, tabs, tabId);
     setOpen(false);
   };
 
@@ -40,15 +40,15 @@ export function MobileNav() {
     const newActive = activeTabId === tabId
       ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
       : activeTabId;
-    sendTabsUpdate(folder, newTabs, newActive);
+    conn.sendTabsUpdate(folder, newTabs, newActive);
   };
 
   const addAgent = (agentType: 'claude' | 'codex' | 'gemini') => {
-    send({ type: 'agent.create', folder, agentType });
+    conn.send({ type: 'agent.create', folder, agentType });
   };
 
   const addTerminal = () => {
-    send({ type: 'terminal.create', folder });
+    conn.send({ type: 'terminal.create', folder });
   };
 
   return (
@@ -119,7 +119,7 @@ export function MobileNav() {
           })}
         </div>
 
-        {/* Add buttons */}
+        {/* Add buttons + Close Project */}
         <div className="border-t border-zinc-700 p-3 flex flex-col gap-2">
           <div className="flex gap-2">
             <button
@@ -146,6 +146,15 @@ export function MobileNav() {
             className="w-full px-3 py-2 text-xs text-green-400 bg-zinc-700 rounded active:bg-zinc-600 transition-colors"
           >
             + Terminal
+          </button>
+          <button
+            onClick={() => { setOpen(false); closeProject(); }}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-zinc-400 bg-zinc-700 rounded active:bg-zinc-600 transition-colors border border-zinc-600"
+          >
+            <svg viewBox="0 0 20 20" className="w-3.5 h-3.5 fill-current" aria-hidden="true">
+              <path fillRule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
+            </svg>
+            All Projects
           </button>
         </div>
       </div>

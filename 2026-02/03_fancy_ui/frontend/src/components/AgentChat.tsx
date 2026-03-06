@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { AgentState } from '../store';
 import type { AgentLogEntry } from '../../../shared/types';
 import { useDispatch } from '../store';
-import { send, subscribe as wsSubscribe } from '../ws';
+import { useConnection } from '../App';
 import {
   sessionPromptRequest, sessionCancelNotification,
   sessionSetModeRequest, sessionSetConfigRequest,
@@ -30,6 +30,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const [audioError, setAudioError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const dispatch = useDispatch();
+  const conn = useConnection();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
@@ -96,7 +97,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
     const text = input.trim();
     if ((!text && attachments.length === 0) || !agent.acpSessionId) return;
     const images = attachments.length > 0 ? attachments.map(a => a.attachment) : undefined;
-    send({
+    conn.send({
       type: 'agent.message',
       agentId: agent.info.id,
       payload: sessionPromptRequest(agent.acpSessionId, text || 'What do you see in this image?', images),
@@ -109,7 +110,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
   const handleCancel = () => {
     if (!agent.acpSessionId) return;
-    send({
+    conn.send({
       type: 'agent.message',
       agentId: agent.info.id,
       payload: sessionCancelNotification(agent.acpSessionId),
@@ -131,7 +132,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1];
           setTranscribing(true);
-          send({ type: 'agent.audio', agentId: agent.info.id, data: base64, mimeType: recorder.mimeType });
+          conn.send({ type: 'agent.audio', agentId: agent.info.id, data: base64, mimeType: recorder.mimeType });
         };
         reader.readAsDataURL(blob);
       };
@@ -141,7 +142,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
     } catch (err) {
       console.error('Mic access denied:', err);
     }
-  }, [agent.info.id]);
+  }, [agent.info.id, conn]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') {
@@ -151,19 +152,18 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   }, []);
 
   // Listen for transcription results from backend.
-  // Use refs for values that change frequently to avoid re-subscribing (which could miss messages).
   const transcribingRef = useRef(false);
   transcribingRef.current = transcribing;
   const acpSessionRef = useRef(agent.acpSessionId);
   acpSessionRef.current = agent.acpSessionId;
 
   useEffect(() => {
-    return wsSubscribe((msg: any) => {
+    return conn.subscribe((msg: any) => {
       if (msg.type === 'agent.audio.transcription' && msg.agentId === agent.info.id) {
         setTranscribing(false);
         setAudioError(null);
         if (msg.text && acpSessionRef.current) {
-          send({
+          conn.send({
             type: 'agent.message',
             agentId: agent.info.id,
             payload: sessionPromptRequest(acpSessionRef.current, msg.text),
@@ -176,28 +176,27 @@ export function AgentChat({ agent }: { agent: AgentState }) {
         setAudioError(msg.message);
       }
     });
-  }, [agent.info.id, dispatch]);
+  }, [agent.info.id, dispatch, conn]);
 
   const handleModeChange = (modeId: string) => {
     if (!agent.acpSessionId || modeId === currentMode) return;
-    send({
+    conn.send({
       type: 'agent.message',
       agentId: agent.info.id,
       payload: sessionSetModeRequest(agent.acpSessionId, modeId),
     });
-    // Persist mode preference so new agents of this type start in this mode
-    send({ type: 'config.set_preference', agentType: agent.info.agentType, configId: '__mode__', value: modeId });
+    conn.send({ type: 'config.set_preference', agentType: agent.info.agentType, configId: '__mode__', value: modeId });
     setModeMenuOpen(false);
   };
 
   const handleConfigChange = (configId: string, value: string) => {
     if (!agent.acpSessionId) return;
-    send({
+    conn.send({
       type: 'agent.message',
       agentId: agent.info.id,
       payload: sessionSetConfigRequest(agent.acpSessionId, configId, value),
     });
-    send({ type: 'config.set_preference', agentType: agent.info.agentType, configId, value });
+    conn.send({ type: 'config.set_preference', agentType: agent.info.agentType, configId, value });
   };
 
   // Close dropdowns on outside click
@@ -216,7 +215,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
   const currentModeName = modes.find(m => m.id === currentMode)?.name || currentMode;
 
-  // Accumulate log entries into logical chat messages, grouping consecutive tool calls
   const chatMessages = useMemo(() => groupToolCalls(accumulate(agent.log)), [agent.log]);
 
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -298,11 +296,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
           value={input}
           onChange={e => { setInput(e.target.value); autoResize(e.target); }}
           onFocus={() => {
-            // HACK: Mobile Safari scrolls the entire page down when the virtual keyboard
-            // opens, pushing the app off-screen. No CSS solution works reliably (position:fixed,
-            // touch-action:none, etc. all break scrolling or input). This brute-force approach
-            // repeatedly scrolls back to top during the keyboard animation. Replace this the
-            // moment a proper solution exists.
             const scrollTop = () => { window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0; };
             scrollTop();
             setTimeout(scrollTop, 100);
@@ -328,7 +321,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
           }`}
           style={{ maxHeight: '8rem' }}
           onKeyDown={e => {
-            // Desktop: Enter sends, Shift+Enter for newline. Mobile: Enter inserts newline, use send button.
             if (!isMobile && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
           }}
         />
@@ -345,10 +337,8 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
         {/* Toolbar row */}
         <div className="flex items-center gap-1 py-0.5">
-          {/* Spacer to push controls right */}
           <span className="flex-1 min-w-0" />
 
-          {/* Right-aligned controls */}
           <div className="flex items-center gap-1 shrink-0">
             {/* Mode switcher */}
             {modes.length > 0 && (
@@ -384,7 +374,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
               </div>
             )}
 
-            {/* Config options as inline dropdowns (skip mode category — already shown in mode switcher) */}
+            {/* Config options */}
             {configOptions.filter((opt: any) => opt.category !== 'mode').map((opt: any) => {
               const selectedLabel = opt.options?.find((o: any) => (o.value || o.name) === opt.currentValue)?.name || opt.currentValue;
               const isOpen = openConfigId === opt.id;
@@ -440,7 +430,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
                 <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
               </button>
             )}
-            {/* Telegram-like toggle: mic when input is empty, send when there's text */}
             {recording ? (
               <button onClick={stopRecording} className={`flex items-center justify-center rounded-md bg-red-500/30 hover:bg-red-500/50 text-red-400 animate-pulse transition-colors cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Stop recording">
                 <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
@@ -492,7 +481,6 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
   for (const entry of log) {
     const msg = entry.payload as RpcMessage;
 
-    // User prompt
     if (entry.direction === 'in' && msg.method === 'session/prompt') {
       flushText();
       flushThought();
@@ -508,7 +496,6 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
       continue;
     }
 
-    // session/update notification
     if (entry.direction === 'out' && isNotification(msg) && msg.method === 'session/update') {
       const u = msg.params?.update;
       if (!u) continue;
@@ -531,7 +518,6 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
           msgs.push({ kind: 'tool-call', tc: u });
           break;
         case 'tool_call_update':
-          // Update the last tool call if it matches
           for (let i = msgs.length - 1; i >= 0; i--) {
             if (msgs[i].kind === 'tool-call' && (msgs[i] as any).tc.toolCallId === u.toolCallId) {
               (msgs[i] as any).tc = { ...(msgs[i] as any).tc, status: u.status };
@@ -549,12 +535,10 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
           flushThought();
           msgs.push({ kind: 'mode-change', modeId: u.modeId, modeName: u.modeName });
           break;
-        // available_commands_update, usage_update — skip
       }
       continue;
     }
 
-    // current_mode_update notification (top-level, not inside session/update)
     if (entry.direction === 'out' && isNotification(msg) && msg.method === 'current_mode_update') {
       flushText();
       flushThought();
@@ -562,7 +546,6 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
       continue;
     }
 
-    // session/prompt response — just flush pending text
     if (entry.direction === 'out' && isResponse(msg) && msg.result?.stopReason) {
       flushText();
       flushThought();
@@ -570,14 +553,11 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
     }
   }
 
-  // Flush any remaining
   flushText();
   flushThought();
 
   return msgs;
 }
-
-// --- Group consecutive tool calls into collapsible groups ---
 
 function groupToolCalls(msgs: ChatMsg[]): ChatMsg[] {
   const result: ChatMsg[] = [];
@@ -702,7 +682,6 @@ function ToolCallCard({ tc }: { tc: any }) {
         ))}
       </div>
 
-      {/* Diff content */}
       {tc.content?.filter((c: any) => c.type === 'diff').map((d: any, i: number) => (
         <DiffBlock key={i} diff={d} />
       ))}

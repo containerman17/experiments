@@ -20,6 +20,7 @@ function useVisualViewportHeight(): number | null {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
+    setHeight(vv.height);
     const update = () => setHeight(vv.height);
     vv.addEventListener('resize', update);
     return () => vv.removeEventListener('resize', update);
@@ -71,9 +72,8 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
       {isMobile ? <MobileNav closeProject={closeProject} /> : <TabBar closeProject={closeProject} />}
 
       <div className="flex-1 min-h-0 flex flex-col relative">
-        <RecordingBar activeAgentId={activeAgentId} />
         {activeTab?.kind === 'agent' && activeAgent && (
-          <div key={activeTab.id} className="flex-1 min-h-0 w-full">
+          <div key={activeTab.id} className="flex-1 min-h-0 w-full flex flex-col">
             <AgentChat agent={activeAgent} />
           </div>
         )}
@@ -85,6 +85,7 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
             Create an agent or open a terminal to get started.
           </div>
         )}
+        <RecordingBar activeAgentId={activeAgentId} />
       </div>
 
       {!connected && (

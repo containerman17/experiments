@@ -47,15 +47,15 @@ export interface LastScreen {
 
 export function saveLastScreen(screen: LastScreen | null): void {
   if (screen) {
-    localStorage.setItem(LAST_SCREEN_KEY, JSON.stringify(screen));
+    sessionStorage.setItem(LAST_SCREEN_KEY, JSON.stringify(screen));
   } else {
-    localStorage.removeItem(LAST_SCREEN_KEY);
+    sessionStorage.removeItem(LAST_SCREEN_KEY);
   }
 }
 
 export function loadLastScreen(): LastScreen | null {
   try {
-    const raw = localStorage.getItem(LAST_SCREEN_KEY);
+    const raw = sessionStorage.getItem(LAST_SCREEN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed.backendUrl && parsed.folder) return parsed as LastScreen;

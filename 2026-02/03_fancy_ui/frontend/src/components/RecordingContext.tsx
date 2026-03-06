@@ -14,6 +14,7 @@ interface RecordingState {
   audioError: string | null;
   /** Agent ID that will receive the transcription */
   targetAgentId: string | null;
+  analyser: AnalyserNode | null;
   startRecording: () => void;
   stopRecording: (agentId: string) => void;
   cancelRecording: () => void;
@@ -28,7 +29,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [transcribing, setTranscribing] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const cancelledRef = useRef(false);
   const conn = useConnection();
   const state = useAppState();
@@ -46,9 +49,22 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
       const recorder = new MediaRecorder(stream, { mimeType });
       const chunks: Blob[] = [];
+      
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyserNode = audioCtx.createAnalyser();
+      analyserNode.fftSize = 64;
+      source.connect(analyserNode);
+      audioContextRef.current = audioCtx;
+      setAnalyser(analyserNode);
+
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
+        if (audioContextRef.current?.state !== 'closed') {
+          audioContextRef.current?.close().catch(() => {});
+        }
+        setAnalyser(null);
         if (cancelledRef.current) return; // discard
         const agentId = targetAgentIdRef.current;
         if (!agentId) return;
@@ -114,7 +130,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
   return (
     <RecordingCtx.Provider value={{
-      recording, transcribing, audioError, targetAgentId,
+      recording, transcribing, audioError, targetAgentId, analyser,
       startRecording, stopRecording, cancelRecording,
       clearAudioError: () => setAudioError(null),
     }}>

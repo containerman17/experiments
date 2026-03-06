@@ -26,7 +26,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Array<{ file: File; dataUrl: string; attachment: ImageAttachment }>>([]);
   const [dragOver, setDragOver] = useState(false);
-  const { recording, transcribing, startRecording, stopRecording, cancelRecording } = useRecording();
+  const { recording, transcribing, startRecording, stopRecording, audioError } = useRecording();
   const dispatch = useDispatch();
   const conn = useConnection();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -205,6 +205,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       <div className={`shrink-0 h-px ${agent.busy ? 'loading-bar' : 'bg-zinc-700'}`} />
 
       {/* Input — Zed-style: textarea on top, toolbar below */}
+      {!(recording || transcribing || audioError) && (
       <div className="shrink-0 px-3 pb-2 pt-1">
         {/* Image attachment previews */}
         {attachments.length > 0 && (
@@ -382,6 +383,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

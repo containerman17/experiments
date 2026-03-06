@@ -79,3 +79,12 @@ body {
   font-style: italic;
   font-display: swap;
 }
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.2s ease-out forwards;
+}

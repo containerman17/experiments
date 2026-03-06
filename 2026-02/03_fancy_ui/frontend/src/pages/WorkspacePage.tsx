@@ -12,6 +12,8 @@ import { TabBar } from '../components/TabBar';
 import { MobileNav } from '../components/MobileNav';
 import { Terminal } from '../components/Terminal';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { RecordingProvider } from '../components/RecordingContext';
+import { RecordingBar } from '../components/RecordingBar';
 
 function useVisualViewportHeight(): number | null {
   const [height, setHeight] = useState<number | null>(null);
@@ -61,13 +63,15 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
   const activeAgent = activeAgentId ? state.agents[activeAgentId] : null;
 
   return (
+    <RecordingProvider>
     <div
       className="flex flex-col bg-zinc-900 text-zinc-100 relative"
       style={{ height: vvHeight ? `${vvHeight}px` : '100dvh' }}
     >
       {isMobile ? <MobileNav closeProject={closeProject} /> : <TabBar closeProject={closeProject} />}
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col relative">
+        <RecordingBar activeAgentId={activeAgentId} />
         {activeTab?.kind === 'agent' && activeAgent && (
           <div key={activeTab.id} className="flex-1 min-h-0 w-full">
             <AgentChat agent={activeAgent} />
@@ -95,5 +99,6 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
         </div>
       )}
     </div>
+    </RecordingProvider>
   );
 }

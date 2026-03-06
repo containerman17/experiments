@@ -4,7 +4,7 @@
 // User messages are sent via `session/prompt`.
 // The stop button sends `session/cancel`.
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { AgentState } from '../store';
 import type { AgentLogEntry } from '../../../shared/types';
 import { useDispatch } from '../store';
@@ -16,6 +16,7 @@ import {
 } from '../acp';
 import { useAcpState } from '../hooks/useAcpState';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useRecording } from './RecordingContext';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -25,10 +26,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Array<{ file: File; dataUrl: string; attachment: ImageAttachment }>>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const { recording, transcribing, startRecording, stopRecording, cancelRecording } = useRecording();
   const dispatch = useDispatch();
   const conn = useConnection();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -88,9 +86,12 @@ export function AgentChat({ agent }: { agent: AgentState }) {
     }
   }, [agent.log.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll
+  // Auto-scroll — instant on mount, smooth for new messages
+  const mountedRef = useRef(false);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const behavior = mountedRef.current ? 'smooth' : 'instant';
+    mountedRef.current = true;
+    messagesEndRef.current?.scrollIntoView({ behavior });
   }, [agent.log.length]);
 
   const handleSend = () => {
@@ -116,67 +117,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
       payload: sessionCancelNotification(agent.acpSessionId),
     });
   };
-
-  // --- Voice recording ---
-  const startRecording = useCallback(async () => {
-    setAudioError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(chunks, { type: recorder.mimeType });
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          setTranscribing(true);
-          conn.send({ type: 'agent.audio', agentId: agent.info.id, data: base64, mimeType: recorder.mimeType });
-        };
-        reader.readAsDataURL(blob);
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
-    } catch (err) {
-      console.error('Mic access denied:', err);
-    }
-  }, [agent.info.id, conn]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-    setRecording(false);
-  }, []);
-
-  // Listen for transcription results from backend.
-  const transcribingRef = useRef(false);
-  transcribingRef.current = transcribing;
-  const acpSessionRef = useRef(agent.acpSessionId);
-  acpSessionRef.current = agent.acpSessionId;
-
-  useEffect(() => {
-    return conn.subscribe((msg: any) => {
-      if (msg.type === 'agent.audio.transcription' && msg.agentId === agent.info.id) {
-        setTranscribing(false);
-        setAudioError(null);
-        if (msg.text && acpSessionRef.current) {
-          conn.send({
-            type: 'agent.message',
-            agentId: agent.info.id,
-            payload: sessionPromptRequest(acpSessionRef.current, msg.text),
-          });
-          dispatch({ type: 'AGENT_BUSY', agentId: agent.info.id, busy: true });
-        }
-      }
-      if (msg.type === 'error' && transcribingRef.current) {
-        setTranscribing(false);
-        setAudioError(msg.message);
-      }
-    });
-  }, [agent.info.id, dispatch, conn]);
 
   const handleModeChange = (modeId: string) => {
     if (!agent.acpSessionId || modeId === currentMode) return;
@@ -263,14 +203,6 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
       {/* Loading indicator */}
       <div className={`shrink-0 h-px ${agent.busy ? 'loading-bar' : 'bg-zinc-700'}`} />
-
-      {/* Audio error banner */}
-      {audioError && (
-        <div className="shrink-0 mx-3 mt-1 px-2 py-1 bg-red-950 border border-red-800 rounded text-red-300 text-xs flex items-center justify-between">
-          <span className="truncate">{audioError}</span>
-          <button onClick={() => setAudioError(null)} className="ml-2 text-red-400 hover:text-red-200 shrink-0">&times;</button>
-        </div>
-      )}
 
       {/* Input — Zed-style: textarea on top, toolbar below */}
       <div className="shrink-0 px-3 pb-2 pt-1">
@@ -431,20 +363,20 @@ export function AgentChat({ agent }: { agent: AgentState }) {
               </button>
             )}
             {recording ? (
-              <button onClick={stopRecording} className={`flex items-center justify-center rounded-md bg-red-500/30 hover:bg-red-500/50 text-red-400 animate-pulse transition-colors cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Stop recording">
-                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+              <button onClick={() => stopRecording(agent.info.id)} className={`flex items-center justify-center rounded-md bg-red-500/30 hover:bg-red-500/50 text-red-400 animate-pulse transition-colors cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Stop & send">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
               </button>
             ) : transcribing ? (
-              <div className={`flex items-center justify-center rounded-md text-zinc-400 ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Transcribing...">
-                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current animate-spin"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z" opacity="0.25"/><path d="M12 2a10 10 0 019.95 9h-2.01A8 8 0 0012 4V2z"/></svg>
+              <div className={`flex items-center justify-center rounded-md text-zinc-400 ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Transcribing...">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current animate-spin"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z" opacity="0.25"/><path d="M12 2a10 10 0 019.95 9h-2.01A8 8 0 0012 4V2z"/></svg>
               </div>
             ) : canSend ? (
-              <button onClick={handleSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors text-zinc-200 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Send">
-                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
+              <button onClick={handleSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors text-zinc-200 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Send">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
               </button>
             ) : (
-              <button onClick={startRecording} disabled={!agent.acpSessionId || agent.busy} className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-20 cursor-pointer ${isMobile ? 'w-8 h-7' : 'w-7 h-6'}`} title="Record voice message">
-                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0014 0" /><line x1="12" y1="17" x2="12" y2="22" /></svg>
+              <button onClick={startRecording} disabled={!agent.acpSessionId || agent.busy || recording} className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-20 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Record voice message">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0014 0" /><line x1="12" y1="17" x2="12" y2="22" /></svg>
               </button>
             )}
           </div>

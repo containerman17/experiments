@@ -115,7 +115,11 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!a) return state;
       return {
         ...state,
-        agents: { ...state.agents, [action.agentId]: { ...a, busy: false } },
+        agents: { ...state.agents, [action.agentId]: {
+          ...a,
+          busy: false,
+          error: `Agent process exited (code ${action.exitCode})`,
+        } },
       };
     }
 

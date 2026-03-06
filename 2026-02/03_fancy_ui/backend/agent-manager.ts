@@ -1,5 +1,6 @@
 // Agent manager: spawn ACP processes, pipe stdio, log everything to SQLite.
 // The backend does NOT interpret ACP messages — it's a logging tunnel.
+// Dead agents are auto-revived on message send using session/load (if supported) or session/new.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -10,12 +11,17 @@ import { createAgent as dbCreateAgent, archiveAgent, listAgents, getAgent, appen
 interface LiveAgent {
   id: string;
   agentType: AgentType;
+  folder: string;
   process: ChildProcess;
   subscribers: Set<WebSocket>;
   buffer: string; // partial line buffer for stdout
-  acpSessionId?: string; // set after initialize + session/new completes
+  acpSessionId?: string; // set after initialize + session/new|load completes
+  loadSession?: boolean; // from initialize response — can we resume sessions?
   nextRpcId: number;
   pendingSetMode: Map<number, string>; // request ID → modeId for session/set_mode
+  // When reviving, queue messages to send after session is ready
+  pendingMessages: Array<{ ws: WebSocket; payload: unknown }>;
+  reviving: boolean;
 }
 
 let nextRpcId = 1;
@@ -46,37 +52,24 @@ function agentCommand(agentType: AgentType): { cmd: string; args: string[] } {
   }
 }
 
-export function createAgentProcess(ws: WebSocket, folder: string, agentType: AgentType): string | null {
-  const id = `agent_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
-  dbCreateAgent(id, folder, agentType);
+// Spawn an agent process and wire up stdio handling.
+// If `existingSessionId` is provided, uses session/load instead of session/new after initialize.
+function spawnAndWire(
+  agent: LiveAgent,
+  existingSessionId?: string,
+): ChildProcess {
+  const { cmd, args } = agentCommand(agent.agentType);
+  const proc = spawn(cmd, args, {
+    cwd: agent.folder,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      ...(agent.agentType === 'claude' ? { CLAUDECODE: '' } : {}),
+    },
+  });
 
-  const { cmd, args } = agentCommand(agentType);
-
-  let proc: ChildProcess;
-  try {
-    proc = spawn(cmd, args, {
-      cwd: folder,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        ...(agentType === 'claude' ? { CLAUDECODE: '' } : {}),
-      },
-    });
-  } catch (err) {
-    send(ws, { type: 'error', message: `Failed to spawn ${agentType}: ${err}` });
-    return null;
-  }
-
-  const agent: LiveAgent = {
-    id,
-    agentType,
-    process: proc,
-    subscribers: new Set([ws]),
-    buffer: '',
-    nextRpcId: 1,
-    pendingSetMode: new Map(),
-  };
-  liveAgents.set(id, agent);
+  const id = agent.id;
+  const folder = agent.folder;
 
   // Read newline-delimited JSON-RPC from stdout
   proc.stdout!.on('data', (chunk: Buffer) => {
@@ -91,15 +84,30 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
         appendLog(id, 'out', payload);
         broadcast(agent, { type: 'agent.output', agentId: id, payload });
 
-        // ACP lifecycle: initialize response → send session/new
+        // ACP lifecycle: initialize response → capture loadSession, then send session/new or session/load
         if (!agent.acpSessionId && payload.id !== undefined && !payload.method && payload.result?.protocolVersion) {
-          const sessionNew = rpcRequest('session/new', { cwd: folder, mcpServers: [] });
-          appendLog(id, 'in', sessionNew);
-          proc.stdin!.write(JSON.stringify(sessionNew) + '\n');
-          broadcast(agent, { type: 'agent.output', agentId: id, payload: sessionNew, direction: 'in' });
+          // Capture loadSession capability from initialize response
+          agent.loadSession = !!payload.result.capabilities?.loadSession;
+
+          if (existingSessionId && agent.loadSession) {
+            // Resume existing session
+            console.log(`[agent ${id}] resuming session ${existingSessionId} via session/load`);
+            const sessionLoad = rpcRequest('session/load', {
+              sessionId: existingSessionId, cwd: folder, mcpServers: [],
+            });
+            appendLog(id, 'in', sessionLoad);
+            proc.stdin!.write(JSON.stringify(sessionLoad) + '\n');
+            broadcast(agent, { type: 'agent.output', agentId: id, payload: sessionLoad, direction: 'in' });
+          } else {
+            // New session
+            const sessionNew = rpcRequest('session/new', { cwd: folder, mcpServers: [] });
+            appendLog(id, 'in', sessionNew);
+            proc.stdin!.write(JSON.stringify(sessionNew) + '\n');
+            broadcast(agent, { type: 'agent.output', agentId: id, payload: sessionNew, direction: 'in' });
+          }
         }
 
-        // ACP lifecycle: session/new response → store sessionId + apply saved preferences
+        // ACP lifecycle: session/new or session/load response → store sessionId + apply saved preferences
         if (!agent.acpSessionId && payload.id !== undefined && !payload.method && payload.result?.sessionId) {
           agent.acpSessionId = payload.result.sessionId;
           setAgentSessionId(id, payload.result.sessionId);
@@ -109,6 +117,7 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
             currentModeId: payload.result.currentModeId || payload.result.modes?.currentModeId || '',
             configOptions: payload.result.configOptions || [],
             promptCapabilities: payload.result.promptCapabilities || undefined,
+            loadSession: agent.loadSession,
           });
 
           // Apply saved preferences for this agent type
@@ -137,6 +146,24 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
             proc.stdin!.write(JSON.stringify(setReq) + '\n');
             broadcast(agent, { type: 'agent.output', agentId: id, payload: setReq, direction: 'in' });
           }
+
+          // Flush any messages queued during revive
+          if (agent.pendingMessages.length > 0) {
+            console.log(`[agent ${id}] session ready, flushing ${agent.pendingMessages.length} queued message(s)`);
+            for (const { ws, payload: queuedPayload } of agent.pendingMessages) {
+              // Rewrite sessionId in queued prompts to use the new session
+              const p = queuedPayload as any;
+              if (p.params?.sessionId) {
+                p.params.sessionId = payload.result.sessionId;
+              }
+              agent.subscribers.add(ws);
+              appendLog(id, 'in', queuedPayload);
+              broadcast(agent, { type: 'agent.output', agentId: id, payload: queuedPayload, direction: 'in' });
+              proc.stdin!.write(JSON.stringify(queuedPayload) + '\n');
+            }
+            agent.pendingMessages = [];
+          }
+          agent.reviving = false;
         }
 
         // session/set_mode response — update persisted mode.
@@ -203,6 +230,7 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
   });
 
   proc.on('exit', (code) => {
+    console.log(`[agent ${id}] process exited (code ${code})`);
     liveAgents.delete(id);
     broadcast(agent, { type: 'agent.exited', agentId: id, exitCode: code ?? 1 });
   });
@@ -222,6 +250,68 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
   appendLog(id, 'in', initReq);
   proc.stdin!.write(JSON.stringify(initReq) + '\n');
 
+  return proc;
+}
+
+// Revive a dead agent — respawn the process and resume or create a new session.
+function reviveAgent(ws: WebSocket, agentId: string): LiveAgent | null {
+  const info = getAgent(agentId);
+  if (!info) return null;
+
+  console.log(`[agent ${agentId}] reviving (loadSession=${info.acpState?.loadSession}, sessionId=${info.sessionId})`);
+
+  const agent: LiveAgent = {
+    id: agentId,
+    agentType: info.agentType,
+    folder: info.folder,
+    process: null as any, // will be set by spawnAndWire
+    subscribers: new Set([ws]),
+    buffer: '',
+    nextRpcId: 1,
+    pendingSetMode: new Map(),
+    pendingMessages: [],
+    reviving: true,
+  };
+
+  try {
+    const existingSessionId = info.acpState?.loadSession && info.sessionId ? info.sessionId : undefined;
+    agent.process = spawnAndWire(agent, existingSessionId);
+  } catch (err) {
+    console.error(`[agent ${agentId}] failed to revive:`, err);
+    send(ws, { type: 'agent.error', agentId, message: `Failed to revive agent: ${err}` });
+    return null;
+  }
+
+  liveAgents.set(agentId, agent);
+  return agent;
+}
+
+export function createAgentProcess(ws: WebSocket, folder: string, agentType: AgentType): string | null {
+  const id = `agent_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  dbCreateAgent(id, folder, agentType);
+
+  const agent: LiveAgent = {
+    id,
+    agentType,
+    folder,
+    process: null as any,
+    subscribers: new Set([ws]),
+    buffer: '',
+    nextRpcId: 1,
+    pendingSetMode: new Map(),
+    pendingMessages: [],
+    reviving: false,
+  };
+
+  try {
+    agent.process = spawnAndWire(agent);
+  } catch (err) {
+    send(ws, { type: 'error', message: `Failed to spawn ${agentType}: ${err}` });
+    return null;
+  }
+
+  liveAgents.set(id, agent);
+
   // Respond with updated agent list
   const agents = listAgents(folder);
   send(ws, { type: 'agent.list.result', folder, agents });
@@ -230,15 +320,35 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
 }
 
 export function sendToAgent(ws: WebSocket, agentId: string, payload: unknown): void {
-  const agent = liveAgents.get(agentId);
+  let agent = liveAgents.get(agentId);
+
+  // Auto-revive dead agents
   if (!agent) {
-    send(ws, { type: 'error', message: `Agent ${agentId} not running` });
+    console.log(`[agent ${agentId}] not running — attempting auto-revive`);
+    agent = reviveAgent(ws, agentId);
+    if (!agent) {
+      send(ws, { type: 'agent.error', agentId, message: 'Agent process not running and could not be revived.' });
+      return;
+    }
+  }
+
+  agent.subscribers.add(ws);
+
+  // If still initializing (reviving), queue the message for delivery after session is ready
+  if (!agent.acpSessionId) {
+    console.log(`[agent ${agentId}] session not ready, queuing message`);
+    agent.pendingMessages.push({ ws, payload });
     return;
   }
-  agent.subscribers.add(ws);
-  appendLog(agentId, 'in', payload);
-  // Track session/set_mode requests for matching responses
+
+  // Rewrite sessionId to the current session (frontend may have stale ID after revive)
   const p = payload as any;
+  if (p.params?.sessionId && agent.acpSessionId && p.params.sessionId !== agent.acpSessionId) {
+    console.log(`[agent ${agentId}] rewriting stale sessionId ${p.params.sessionId} → ${agent.acpSessionId}`);
+    p.params.sessionId = agent.acpSessionId;
+  }
+  console.log(`[agent ${agentId}] → stdin: ${p?.method || 'response'}`);
+  appendLog(agentId, 'in', payload);
   if (p.method === 'session/set_mode' && p.id !== undefined && p.params?.modeId) {
     agent.pendingSetMode.set(p.id, p.params.modeId);
   }

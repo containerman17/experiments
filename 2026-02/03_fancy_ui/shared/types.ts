@@ -12,6 +12,7 @@ export interface AgentAcpState {
   currentModeId: string;
   configOptions: Array<{ id: string; name: string; type: string; currentValue: string; options: Array<{ name: string; value?: string }> }>;
   promptCapabilities?: { audio?: boolean };
+  loadSession?: boolean;
 }
 
 export interface AgentInfo {

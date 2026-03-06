@@ -58,6 +58,8 @@ export function MainScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
           }));
         }
       });
+
+      conn.start();
     }
 
     return () => {

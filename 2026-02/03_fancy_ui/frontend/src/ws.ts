@@ -9,6 +9,8 @@ export type StatusListener = (connected: boolean) => void;
 export type DisconnectListener = () => void;
 
 export interface WsConnection {
+  /** Call after setting up subscribers. Connection does NOT auto-connect. */
+  start(): void;
   send(msg: ClientMessage): void;
   subscribe(fn: Listener): () => void;
   onStatusChange(fn: StatusListener): () => void;
@@ -22,6 +24,7 @@ export function createConnection(url: string): WsConnection {
   let socket: WebSocket | null = null;
   let connected = false;
   let closed = false;
+  let started = false;
   const listeners = new Set<Listener>();
   const statusListeners = new Set<StatusListener>();
   const disconnectListeners = new Set<DisconnectListener>();
@@ -89,10 +92,10 @@ export function createConnection(url: string): WsConnection {
     disconnectListeners.clear();
   }
 
-  // Start connecting
-  connect();
+  // Don't auto-connect — caller must call start() after setting up subscribers
 
   return {
+    start() { if (!started) { started = true; connect(); } },
     send,
     subscribe(fn: Listener) {
       listeners.add(fn);

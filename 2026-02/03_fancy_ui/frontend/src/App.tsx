@@ -1,10 +1,14 @@
 // Root component. State-based navigation (no URL routing).
 // 'home' screen shows all backends + workspaces.
 // 'workspace' screen connects to one backend and shows the workspace view.
+//
+// Connection lifecycle is entirely managed in a single useEffect keyed on screen.
+// No render-phase side effects, no refs, no microtasks.
 
-import { useReducer, useEffect, useRef, useState, createContext, useContext } from 'react';
+import { useReducer, useEffect, useState, createContext, useContext } from 'react';
 import { StateCtx, DispatchCtx, initialState, reducer } from './store';
 import { createConnection, type WsConnection } from './ws';
+import { loadLastScreen, saveLastScreen } from './backends';
 import { MainScreen } from './pages/MainScreen';
 import { WorkspacePage } from './pages/WorkspacePage';
 import type { ServerMessage } from '../../shared/types';
@@ -22,64 +26,44 @@ export function useConnection(): WsConnection {
   return conn;
 }
 
-// Key for connection identity — changes when we enter a new workspace
-function screenKey(s: Screen): string {
-  return s.kind === 'home' ? '' : `${s.backendUrl}::${s.folder}`;
-}
-
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [screen, setScreen] = useState<Screen>({ kind: 'home' });
-
-  // Connection is managed via ref to survive StrictMode double-invoke.
-  // We track which screenKey the connection belongs to.
-  const connRef = useRef<{ key: string; conn: WsConnection } | null>(null);
+  const [screen, setScreenRaw] = useState<Screen>(() => {
+    const last = loadLastScreen();
+    if (last) return { kind: 'workspace', ...last };
+    return { kind: 'home' };
+  });
   const [conn, setConn] = useState<WsConnection | null>(null);
 
-  const key = screenKey(screen);
-
-  // Create/destroy connection synchronously when screen changes
-  // Using a ref + state combo: ref for identity, state for rendering
-  if (screen.kind === 'workspace') {
-    if (!connRef.current || connRef.current.key !== key) {
-      // Close old connection if any
-      connRef.current?.conn.close();
-      const connection = createConnection(screen.backendUrl);
-      connRef.current = { key, conn: connection };
-      // setConn will trigger re-render with the connection available
-      if (conn !== connection) {
-        // Can't call setState during render in strict sense, but we need it
-        // for the context. Use a microtask to avoid React warnings.
-        queueMicrotask(() => setConn(connection));
-      }
+  const setScreen = (s: Screen) => {
+    if (s.kind === 'workspace') {
+      saveLastScreen({ backendId: s.backendId, backendUrl: s.backendUrl, folder: s.folder });
+    } else {
+      saveLastScreen(null);
     }
-  } else {
-    if (connRef.current) {
-      connRef.current.conn.close();
-      connRef.current = null;
-      if (conn !== null) {
-        queueMicrotask(() => setConn(null));
-      }
-    }
-  }
+    setScreenRaw(s);
+  };
 
-  // Subscribe to messages and manage cleanup
+  // Single effect manages the entire connection lifecycle.
+  // Creates connection, subscribes, starts, and cleans up on screen change.
   useEffect(() => {
-    const entry = connRef.current;
-    if (!entry || entry.key !== key) return;
-    const connection = entry.conn;
+    if (screen.kind !== 'workspace') {
+      // On home screen, no connection needed
+      setConn(null);
+      dispatch({ type: 'CLEAR_ALL' });
+      return;
+    }
 
-    // Ensure state is in sync (handles StrictMode re-runs)
-    setConn(connection);
     dispatch({ type: 'CLEAR_ALL' });
 
+    const connection = createConnection(screen.backendUrl);
+    setConn(connection);
+
     const unsubDisconnect = connection.onDisconnect(() => {
-      if (connRef.current?.conn !== connection) return;
       dispatch({ type: 'CLEAR_ALL' });
     });
 
     const unsubMessages = connection.subscribe((msg: ServerMessage) => {
-      if (connRef.current?.conn !== connection) return;
       switch (msg.type) {
         case 'workspace.list.result':
           dispatch({ type: 'SET_WORKSPACES', workspaces: msg.workspaces });
@@ -112,34 +96,30 @@ export default function App() {
       }
     });
 
+    // All subscribers set up — now connect
+    connection.start();
+
     return () => {
       unsubDisconnect();
       unsubMessages();
-      // Don't close connection here — StrictMode would kill it.
-      // Connection is closed when screen changes (above).
+      connection.close();
+      setConn(null);
     };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Close connection on unmount
-  useEffect(() => {
-    return () => {
-      connRef.current?.conn.close();
-      connRef.current = null;
-    };
-  }, []);
-
-  // Resolve the connection for rendering — use ref directly for synchronous access
-  const activeConn = connRef.current?.key === key ? connRef.current.conn : null;
+  }, [screen.kind === 'workspace' ? `${screen.backendUrl}::${screen.folder}` : '']);
 
   return (
     <StateCtx.Provider value={state}>
       <DispatchCtx.Provider value={dispatch}>
-        <ConnectionCtx.Provider value={activeConn}>
+        <ConnectionCtx.Provider value={conn}>
           {screen.kind === 'home' ? (
             <MainScreen setScreen={setScreen} />
-          ) : activeConn ? (
+          ) : conn ? (
             <WorkspacePage folder={screen.folder} setScreen={setScreen} />
-          ) : null}
+          ) : (
+            <div className="h-dvh bg-zinc-900 flex items-center justify-center">
+              <div className="text-zinc-400 text-lg">Connecting...</div>
+            </div>
+          )}
         </ConnectionCtx.Provider>
       </DispatchCtx.Provider>
     </StateCtx.Provider>

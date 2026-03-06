@@ -84,8 +84,14 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
       </div>
 
       {!connected && (
-        <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center z-50 gap-4">
           <div className="text-zinc-400 text-lg font-medium">Reconnecting...</div>
+          <button
+            onClick={closeProject}
+            className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+          >
+            All Projects
+          </button>
         </div>
       )}
     </div>

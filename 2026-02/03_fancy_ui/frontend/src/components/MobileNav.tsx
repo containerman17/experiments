@@ -36,6 +36,7 @@ export function MobileNav({ closeProject }: { closeProject: () => void }) {
   const closeTab = (tabId: string) => {
     const tab = tabs.find(t => t.id === tabId);
     if (tab?.kind === 'agent' && !confirm('Close this agent? The session will be lost.')) return;
+    if (tab?.kind === 'terminal' && !confirm('Close this terminal?')) return;
     const newTabs = tabs.filter(t => t.id !== tabId);
     const newActive = activeTabId === tabId
       ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)

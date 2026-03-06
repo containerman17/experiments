@@ -35,3 +35,32 @@ export function removeBackend(id: string): void {
   const backends = loadBackends().filter(b => b.id !== id);
   saveBackends(backends);
 }
+
+// Persist last-opened project so page refresh re-opens it
+const LAST_SCREEN_KEY = 'agent-ui-last-screen';
+
+export interface LastScreen {
+  backendId: string;
+  backendUrl: string;
+  folder: string;
+}
+
+export function saveLastScreen(screen: LastScreen | null): void {
+  if (screen) {
+    localStorage.setItem(LAST_SCREEN_KEY, JSON.stringify(screen));
+  } else {
+    localStorage.removeItem(LAST_SCREEN_KEY);
+  }
+}
+
+export function loadLastScreen(): LastScreen | null {
+  try {
+    const raw = localStorage.getItem(LAST_SCREEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed.backendUrl && parsed.folder) return parsed as LastScreen;
+    return null;
+  } catch {
+    return null;
+  }
+}

@@ -64,6 +64,7 @@ type ReplayTxResult struct {
 	LogsDiffReason   string `json:"logs_diff_reason,omitempty"`
 	LogCompareError  string `json:"log_compare_error,omitempty"`
 	ExecutionError   string `json:"execution_error,omitempty"`
+	FailureClass     string `json:"failure_class,omitempty"`
 	ParentStateBlock uint64 `json:"parent_state_block"`
 	Profile          string `json:"profile"`
 }
@@ -86,6 +87,12 @@ type blockReplayResult struct {
 	gasIncreaseCount   int
 	gasIncreaseSum     int64
 	logsChanged        int
+	replayFailOOG      int
+	replayFailRevert   int
+	replayFailOther    int
+	newRevertOOG       int
+	newRevertRevert    int
+	newRevertOther     int
 	blockGasLimitAtTx  int
 	blockedTxs         int
 	rpcCalls           int64
@@ -106,7 +113,8 @@ type replayRunConfig struct {
 type contractStats struct {
 	total         int
 	unchanged     int
-	statusChanged int
+	reverts       int
+	oog           int
 	logsChanged   int
 	precompileTxs int
 }
@@ -224,6 +232,12 @@ func main() {
 	var totalStatusChanged int
 	var totalLogsChanged int
 	var totalPrecompileTxs int
+	var totalReplayFailOOG int
+	var totalReplayFailRevert int
+	var totalReplayFailOther int
+	var totalNewRevertOOG int
+	var totalNewRevertRevert int
+	var totalNewRevertOther int
 	byContract := make(map[string]*contractStats)
 
 	for res := range resultsCh {
@@ -243,6 +257,12 @@ func main() {
 			totalStatusChanged += orderedRes.statusChanged
 			totalLogsChanged += orderedRes.logsChanged
 			totalPrecompileTxs += orderedRes.skippedUnsupported
+			totalReplayFailOOG += orderedRes.replayFailOOG
+			totalReplayFailRevert += orderedRes.replayFailRevert
+			totalReplayFailOther += orderedRes.replayFailOther
+			totalNewRevertOOG += orderedRes.newRevertOOG
+			totalNewRevertRevert += orderedRes.newRevertRevert
+			totalNewRevertOther += orderedRes.newRevertOther
 
 			aggregateContractStats(byContract, orderedRes.rows)
 			doneBlocks++
@@ -252,6 +272,12 @@ func main() {
 					totalStatusChanged,
 					totalLogsChanged,
 					totalPrecompileTxs,
+					totalReplayFailOOG,
+					totalReplayFailRevert,
+					totalReplayFailOther,
+					totalNewRevertOOG,
+					totalNewRevertRevert,
+					totalNewRevertOther,
 					from,
 					to,
 					doneBlocks,
@@ -282,6 +308,12 @@ func main() {
 			totalStatusChanged,
 			totalLogsChanged,
 			totalPrecompileTxs,
+			totalReplayFailOOG,
+			totalReplayFailRevert,
+			totalReplayFailOther,
+			totalNewRevertOOG,
+			totalNewRevertRevert,
+			totalNewRevertOther,
 			from,
 			to,
 			doneBlocks,
@@ -470,6 +502,10 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 			ParentStateBlock: parentBlock,
 			Profile:          cfg.profile,
 		}
+		if execResult.Err != nil {
+			row.ExecutionError = execResult.Err.Error()
+			row.FailureClass = classifyFailure(execResult.Err)
+		}
 		if logsCompareErr != nil {
 			row.LogCompareError = logsCompareErr.Error()
 			fatalf("block %d tx %d (%s) log compare error: %v", blockNum, i, tx.Hash().Hex(), logsCompareErr)
@@ -484,6 +520,17 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 			continue
 		}
 
+		if replayStatus == 0 {
+			switch row.FailureClass {
+			case "oog":
+				res.replayFailOOG++
+			case "revert":
+				res.replayFailRevert++
+			default:
+				res.replayFailOther++
+			}
+		}
+
 		res.compared++
 		res.gasDeltaSum += gasDelta
 		if gasDelta > 0 {
@@ -494,6 +541,14 @@ func replayOneBlock(blockNum uint64, cfg replayRunConfig) blockReplayResult {
 			res.statusChanged++
 			if canonStatus == 1 && replayStatus == 0 {
 				res.successToRevert++
+				switch row.FailureClass {
+				case "oog":
+					res.newRevertOOG++
+				case "revert":
+					res.newRevertRevert++
+				default:
+					res.newRevertOther++
+				}
 			} else if canonStatus == 0 && replayStatus == 1 {
 				res.revertToSuccess++
 			}
@@ -700,7 +755,11 @@ func aggregateContractStats(byContract map[string]*contractStats, rows []ReplayT
 		}
 		switch {
 		case row.StatusChanged:
-			s.statusChanged++
+			if row.CanonStatus == 1 && row.ReplayStatus == 0 && row.FailureClass == "oog" {
+				s.oog++
+			} else {
+				s.reverts++
+			}
 		case row.LogsChanged:
 			s.logsChanged++
 		default:
@@ -714,6 +773,12 @@ func renderDashboard(
 	statusChanged int,
 	logsChanged int,
 	precompileTxs int,
+	replayFailOOG int,
+	replayFailRevert int,
+	replayFailOther int,
+	newRevertOOG int,
+	newRevertRevert int,
+	newRevertOther int,
 	from uint64,
 	to uint64,
 	doneBlocks int,
@@ -728,11 +793,13 @@ func renderDashboard(
 	type row struct {
 		contract           string
 		total              int
-		statusChanged      int
+		reverts            int
+		oog                int
 		logsChanged        int
 		affected           int
 		ignoredPrecompiles int
-		statusPct          float64
+		revertsPct         float64
+		oogPct             float64
 		logsPct            float64
 		affectedPct        float64
 	}
@@ -742,18 +809,20 @@ func renderDashboard(
 		if st.total == 0 {
 			continue
 		}
-		affected := st.statusChanged + st.logsChanged
+		affected := st.reverts + st.oog + st.logsChanged
 		if affected == 0 {
 			continue
 		}
 		rows = append(rows, row{
 			contract:           contract,
 			total:              st.total,
-			statusChanged:      st.statusChanged,
+			reverts:            st.reverts,
+			oog:                st.oog,
 			logsChanged:        st.logsChanged,
 			affected:           affected,
 			ignoredPrecompiles: st.precompileTxs,
-			statusPct:          pct(st.statusChanged, st.total),
+			revertsPct:         pct(st.reverts, st.total),
+			oogPct:             pct(st.oog, st.total),
 			logsPct:            (float64(st.logsChanged) * 100.0) / float64(st.total),
 			affectedPct:        pct(affected, st.total),
 		})
@@ -763,8 +832,11 @@ func renderDashboard(
 		if rows[i].affected != rows[j].affected {
 			return rows[i].affected > rows[j].affected
 		}
-		if rows[i].statusChanged != rows[j].statusChanged {
-			return rows[i].statusChanged > rows[j].statusChanged
+		if (rows[i].reverts + rows[i].oog) != (rows[j].reverts + rows[j].oog) {
+			return (rows[i].reverts + rows[i].oog) > (rows[j].reverts + rows[j].oog)
+		}
+		if rows[i].reverts != rows[j].reverts {
+			return rows[i].reverts > rows[j].reverts
 		}
 		if rows[i].logsChanged != rows[j].logsChanged {
 			return rows[i].logsChanged > rows[j].logsChanged
@@ -779,7 +851,9 @@ func renderDashboard(
 		rows = rows[:20]
 	}
 
-	affected := statusChanged + logsChanged
+	totalOOG := newRevertOOG
+	totalReverts := statusChanged - totalOOG
+	affected := totalReverts + totalOOG + logsChanged
 	lastBlock := "<none>"
 	if doneBlocks > 0 {
 		lastBlock = fmt.Sprintf("%d", from+uint64(doneBlocks)-1)
@@ -818,46 +892,67 @@ func renderDashboard(
 	fmt.Fprintf(os.Stderr, "Block rate: %.2f blk/s | ETA: %s\n", blockRate, eta)
 	fmt.Fprintf(os.Stderr, "Elapsed: %s\n", elapsed.Round(time.Second))
 	fmt.Fprintf(os.Stderr, "Transactions analyzed: %d\n", analyzed)
-	fmt.Fprintf(os.Stderr, "Transactions changed status: %d (%.2f%%)\n", statusChanged, pct(statusChanged, analyzed))
+	fmt.Fprintf(os.Stderr, "Transactions reverts: %d (%.2f%%)\n", totalReverts, pct(totalReverts, analyzed))
+	fmt.Fprintf(os.Stderr, "Transactions OOG: %d (%.2f%%)\n", totalOOG, pct(totalOOG, analyzed))
 	fmt.Fprintf(os.Stderr, "Transactions changed logs: %d (%.2f%%)\n", logsChanged, pct(logsChanged, analyzed))
 	fmt.Fprintf(os.Stderr, "Transactions affected total: %d (%.2f%%)\n", affected, pct(affected, analyzed))
 	fmt.Fprintf(os.Stderr, "Ignored (precompiles): %d\n", precompileTxs)
+	fmt.Fprintf(os.Stderr, "Replay failure classes (all failed replays): oog=%d revert=%d other=%d\n", replayFailOOG, replayFailRevert, replayFailOther)
+	fmt.Fprintf(os.Stderr, "New reverts vs canonical: oog=%d revert=%d other=%d\n", newRevertOOG, newRevertRevert, newRevertOther)
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "All contracts total")
-	fmt.Fprintln(os.Stderr, "contract                                    analyzed   ignored  statusΔ  logsΔ  affected  status%  logs%  affected%")
+	fmt.Fprintln(os.Stderr, "contract                                    analyzed   ignored  reverts   oog  logsΔ  affected  revert%   oog%  logs%  affected%")
 	fmt.Fprintf(
 		os.Stderr,
-		"%-42s %9d %8d %8d %7d %10d %8.2f %6.2f %9.2f\n",
+		"%-42s %9d %8d %8d %5d %7d %10d %8.2f %6.2f %6.2f %9.2f\n",
 		"TOTAL",
 		analyzed,
 		precompileTxs,
-		statusChanged,
+		totalReverts,
+		totalOOG,
 		logsChanged,
 		affected,
-		pct(statusChanged, analyzed),
+		pct(totalReverts, analyzed),
+		pct(totalOOG, analyzed),
 		pct(logsChanged, analyzed),
 		pct(affected, analyzed),
 	)
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Top 20 contracts by affected txs (absolute count, statusΔ + logsΔ)")
-	fmt.Fprintln(os.Stderr, "contract                                    analyzed   ignored  statusΔ  logsΔ  affected  status%  logs%  affected%")
+	fmt.Fprintln(os.Stderr, "Top 20 contracts by affected txs (absolute count, reverts + oog + logsΔ)")
+	fmt.Fprintln(os.Stderr, "contract                                    analyzed   ignored  reverts   oog  logsΔ  affected  revert%   oog%  logs%  affected%")
 	if len(rows) == 0 {
 		fmt.Fprintln(os.Stderr, "(no affected contracts yet)")
 	}
 	for _, r := range rows {
 		fmt.Fprintf(
 			os.Stderr,
-			"%-42s %9d %8d %8d %7d %10d %8.2f %6.2f %9.2f\n",
+			"%-42s %9d %8d %8d %5d %7d %10d %8.2f %6.2f %6.2f %9.2f\n",
 			r.contract,
 			r.total,
 			r.ignoredPrecompiles,
-			r.statusChanged,
+			r.reverts,
+			r.oog,
 			r.logsChanged,
 			r.affected,
-			r.statusPct,
+			r.revertsPct,
+			r.oogPct,
 			r.logsPct,
 			r.affectedPct,
 		)
+	}
+}
+
+func classifyFailure(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, vm.ErrOutOfGas), errors.Is(err, vm.ErrCodeStoreOutOfGas):
+		return "oog"
+	case errors.Is(err, vm.ErrExecutionReverted):
+		return "revert"
+	default:
+		return "other"
 	}
 }
 

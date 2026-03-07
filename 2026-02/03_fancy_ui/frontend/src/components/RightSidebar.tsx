@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { useAppState, useDispatch } from '../store';
+import { useAppState } from '../store';
 import { useConnection } from '../App';
 import { TabIcon } from './TabBar';
 
@@ -13,17 +13,20 @@ function useConnectionStatus() {
 
 export function RightSidebar() {
   const state = useAppState();
-  const dispatch = useDispatch();
   const conn = useConnection();
   const connected = useConnectionStatus();
 
   const terminalTabs = state.tabs.filter(t => t.kind === 'terminal');
 
   const toggleTerminal = (terminalId: string) => {
+    if (!state.folder) return;
     if (state.uiOpenTerminalId === terminalId) {
-      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: null });
+      // Closing terminal — go back to the active agent tab
+      const agentTab = state.tabs.find(t => t.kind === 'agent' && t.agentId === state.uiActiveAgentId);
+      conn.sendTabsUpdate(state.folder, state.tabs, agentTab?.id ?? null);
     } else {
-      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId });
+      const tab = terminalTabs.find(t => t.terminalId === terminalId);
+      if (tab) conn.sendTabsUpdate(state.folder, state.tabs, tab.id);
     }
   };
 

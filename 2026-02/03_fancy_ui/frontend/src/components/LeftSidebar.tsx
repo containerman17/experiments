@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAppState, useDispatch } from '../store';
+import { useAppState } from '../store';
 import { useConnection } from '../App';
 import type { AgentType } from '../../../shared/types';
 import { TabIcon } from './TabBar';
 
 export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
   const state = useAppState();
-  const dispatch = useDispatch();
   const conn = useConnection();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -25,7 +24,10 @@ export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
   }, [agentMenuOpen]);
 
   const setActive = (agentId: string) => {
-    dispatch({ type: 'SET_UI_ACTIVE_AGENT', agentId });
+    const tab = agentTabs.find(t => t.agentId === agentId);
+    if (tab && state.folder) {
+      conn.sendTabsUpdate(state.folder, state.tabs, tab.id);
+    }
   };
 
   const addAgent = (agentType: AgentType) => {

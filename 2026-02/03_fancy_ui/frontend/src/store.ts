@@ -200,8 +200,16 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_UI_OPEN_TERMINAL':
       return { ...state, uiOpenTerminalId: action.terminalId };
 
-    case 'SET_TABS':
-      return { ...state, tabs: action.tabs, activeTabId: action.activeTabId };
+    case 'SET_TABS': {
+      const activeTab = action.tabs.find(t => t.id === action.activeTabId);
+      return {
+        ...state,
+        tabs: action.tabs,
+        activeTabId: action.activeTabId,
+        uiActiveAgentId: activeTab?.kind === 'agent' ? (activeTab.agentId ?? state.uiActiveAgentId) : state.uiActiveAgentId,
+        uiOpenTerminalId: activeTab?.kind === 'terminal' ? (activeTab.terminalId ?? null) : null,
+      };
+    }
 
     case 'CLEAR_ALL':
       return { ...initialState, folder: state.folder };

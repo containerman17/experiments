@@ -3,13 +3,12 @@
 // Hidden on desktop (md+), visible on mobile only.
 
 import { useState, useRef, useEffect } from 'react';
-import { useAppState, useDispatch } from '../store';
+import { useAppState } from '../store';
 import { useConnection } from '../App';
 import { TabIcon } from './TabBar';
 
 export function MobileNav({ closeProject }: { closeProject: () => void }) {
   const { tabs, folder, agents, uiActiveAgentId, uiOpenTerminalId } = useAppState();
-  const dispatch = useDispatch();
   const conn = useConnection();
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -33,12 +32,8 @@ export function MobileNav({ closeProject }: { closeProject: () => void }) {
   );
 
   const setActive = (tab: any) => {
-    if (tab.kind === 'agent' && tab.agentId) {
-      dispatch({ type: 'SET_UI_ACTIVE_AGENT', agentId: tab.agentId });
-      // When explicitly navigating to an agent on mobile, close the terminal overlay
-      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: null });
-    } else if (tab.kind === 'terminal' && tab.terminalId) {
-      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: tab.terminalId });
+    if (folder) {
+      conn.sendTabsUpdate(folder, tabs, tab.id);
     }
     setOpen(false);
   };

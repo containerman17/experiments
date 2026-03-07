@@ -45,13 +45,9 @@ export function DiffStream({ agent }: { agent: AgentState }) {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-4 py-4 flex flex-col gap-6">
+    <div className="h-full overflow-y-auto py-4 flex flex-col gap-6">
       {diffs.map((tc, i) => (
         <div key={`${tc.toolCallId}-${i}`} className="flex flex-col gap-2">
-          <div className="text-xs text-zinc-400 font-mono flex items-center gap-2">
-            <span className="text-blue-400">⚡</span>
-            {tc.title || 'Applying changes'}
-          </div>
           {tc.diffs.map((diff: any, j: number) => (
             <DiffBlock key={j} diff={diff} />
           ))}
@@ -86,21 +82,35 @@ function DiffBlock({ diff }: { diff: any }) {
     for (let j = i; j <= ne; j++) lines.push({ text: '+' + newLines[j], type: 'add' });
     lines.push(...suffixLines);
 
+    // Trim context lines to at most CONTEXT_LINES before/after the changed region
+    const CONTEXT_LINES = 3;
+    const firstChanged = lines.findIndex(l => l.type !== 'context');
+    const lastChanged = lines.length - 1 - [...lines].reverse().findIndex(l => l.type !== 'context');
+    if (firstChanged > CONTEXT_LINES || (lines.length - 1 - lastChanged) > CONTEXT_LINES) {
+      const start = Math.max(0, firstChanged - CONTEXT_LINES);
+      const end = Math.min(lines.length, lastChanged + CONTEXT_LINES + 1);
+      const trimmed = lines.slice(start, end);
+      if (start > 0) trimmed.unshift({ text: ' ···', type: 'context' });
+      if (end < lines.length) trimmed.push({ text: ' ···', type: 'context' });
+      lines.length = 0;
+      lines.push(...trimmed);
+    }
+
     return (
-      <div className="rounded overflow-hidden text-[11px] font-mono border border-zinc-700 bg-zinc-900">
+      <div className="text-[11px] font-mono">
         {diff.path && (
-          <div className="px-3 py-1.5 bg-zinc-800 text-zinc-300 font-semibold border-b border-zinc-700">
+          <div className="px-4 py-2 text-zinc-300 font-semibold border-y border-zinc-800/50 bg-zinc-900/30">
             {diff.path}
           </div>
         )}
-        <div className="overflow-x-auto p-2">
+        <div className="overflow-x-auto py-2">
           {lines.map((line, i) => {
             let bg = '';
             let color = 'text-zinc-400';
             if (line.type === 'add') { bg = 'bg-green-950/40'; color = 'text-green-400'; }
             else if (line.type === 'remove') { bg = 'bg-red-950/40'; color = 'text-red-400'; }
             return (
-              <div key={i} className={`px-2 min-w-max ${bg}`}>
+              <div key={i} className={`px-4 min-w-max ${bg}`}>
                 <span className={`${color} whitespace-pre`}>{line.text}</span>
               </div>
             );
@@ -116,13 +126,13 @@ function DiffBlock({ diff }: { diff: any }) {
   const lines = patch.split('\n');
 
   return (
-    <div className="rounded overflow-hidden text-[11px] font-mono border border-zinc-700 bg-zinc-900">
+    <div className="text-[11px] font-mono">
       {diff.path && (
-        <div className="px-3 py-1.5 bg-zinc-800 text-zinc-300 font-semibold border-b border-zinc-700">
+        <div className="px-4 py-2 text-zinc-300 font-semibold border-y border-zinc-800/50 bg-zinc-900/30">
           {diff.path}
         </div>
       )}
-      <div className="overflow-x-auto p-2">
+      <div className="overflow-x-auto py-2">
         {lines.map((line: string, i: number) => {
           let bg = '';
           let color = 'text-zinc-400';
@@ -131,7 +141,7 @@ function DiffBlock({ diff }: { diff: any }) {
           else if (line.startsWith('@@')) { color = 'text-blue-400'; }
           
           return (
-            <div key={i} className={`px-2 min-w-max ${bg}`}>
+            <div key={i} className={`px-4 min-w-max ${bg}`}>
               <span className={`${color} whitespace-pre`}>{line}</span>
             </div>
           );

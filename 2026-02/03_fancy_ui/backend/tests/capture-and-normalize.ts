@@ -92,6 +92,57 @@ const CODEX_TOOL_CALL_UPDATE = sessionUpdate({
 
 // ── Gemini: permission request (not a session/update), then tool_call_update ──
 
+// Full file content as Gemini actually sends (entire file, not just changed region)
+const GEMINI_FULL_OLD = `// Simple calculator app
+import { readFileSync } from 'fs';
+
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+function subtract(a: number, b: number): number {
+  return a - b;
+}
+
+function multiply(a: number, b: number): number {
+  return a * b;
+}
+
+function divide(a: number, b: number): number {
+  return a / b;
+}
+`;
+
+const GEMINI_FULL_NEW = `// Simple calculator app
+import { readFileSync } from 'fs';
+
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+function subtract(a: number, b: number): number {
+  return a - b;
+}
+
+function multiply(a: number, b: number): number {
+  return a * b;
+}
+
+function divide(a: number, b: number): number {
+  if (b === 0) {
+    throw new Error("Cannot divide by zero");
+  }
+  return a / b;
+}
+
+function modulo(a: number, b: number): number {
+  if (b === 0) {
+    throw new Error("Cannot modulo by zero");
+  }
+  return a % b;
+}
+`;
+
 // The permission request — this is NOT a session/update, it's session/request_permission.
 // extractDiffs intentionally skips this to avoid duplicates.
 const GEMINI_PERMISSION_REQUEST = {
@@ -113,8 +164,8 @@ const GEMINI_PERMISSION_REQUEST = {
         {
           type: 'diff',
           path: 'app.ts',
-          oldText: 'function divide(a: number, b: number): number {\n  return a / b;\n}\n',
-          newText: 'function divide(a: number, b: number): number {\n  if (b === 0) {\n    throw new Error("Cannot divide by zero");\n  }\n  return a / b;\n}\n\nfunction modulo(a: number, b: number): number {\n  if (b === 0) {\n    throw new Error("Cannot modulo by zero");\n  }\n  return a % b;\n}\n',
+          oldText: GEMINI_FULL_OLD,
+          newText: GEMINI_FULL_NEW,
           _meta: { kind: 'modify' },
         },
       ],
@@ -135,7 +186,7 @@ const GEMINI_TOOL_CALL = sessionUpdate({
   locations: [{ path: '/tmp/acp-test-gemini/app.ts' }],
 });
 
-// Gemini tool_call_update after permission granted
+// Gemini tool_call_update after permission granted (full file content)
 const GEMINI_TOOL_CALL_UPDATE = sessionUpdate({
   sessionUpdate: 'tool_call_update',
   toolCallId: 'replace-1772804148587',
@@ -144,8 +195,8 @@ const GEMINI_TOOL_CALL_UPDATE = sessionUpdate({
     {
       type: 'diff',
       path: 'app.ts',
-      oldText: 'function divide(a: number, b: number): number {\n  return a / b;\n}\n',
-      newText: 'function divide(a: number, b: number): number {\n  if (b === 0) {\n    throw new Error("Cannot divide by zero");\n  }\n  return a / b;\n}\n\nfunction modulo(a: number, b: number): number {\n  if (b === 0) {\n    throw new Error("Cannot modulo by zero");\n  }\n  return a % b;\n}\n',
+      oldText: GEMINI_FULL_OLD,
+      newText: GEMINI_FULL_NEW,
       _meta: { kind: 'modify' },
     },
   ],

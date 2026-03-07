@@ -21,7 +21,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 export function AgentChat({ agent }: { agent: AgentState }) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => sessionStorage.getItem(`chat-input-${agent.info.id}`) || '');
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Array<{ file: File; dataUrl: string; attachment: ImageAttachment }>>([]);
@@ -35,6 +35,10 @@ export function AgentChat({ agent }: { agent: AgentState }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { modes, currentMode, configOptions } = useAcpState(agent);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    sessionStorage.setItem(`chat-input-${agent.info.id}`, input);
+  }, [input, agent.info.id]);
 
   const autoResize = (el: HTMLTextAreaElement) => {
     el.style.height = 'auto';
@@ -105,6 +109,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
     });
     dispatch({ type: 'AGENT_BUSY', agentId: agent.info.id, busy: true });
     setInput('');
+    sessionStorage.removeItem(`chat-input-${agent.info.id}`);
     setAttachments([]);
     if (inputRef.current) { inputRef.current.style.height = 'auto'; }
   };
@@ -196,7 +201,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
         )}
 
         {chatMessages.map((msg, i) => (
-          <ChatMessage key={i} msg={msg} isLast={i === chatMessages.length - 1} onImageClick={setLightboxSrc} />
+          <ChatMessage key={i} msg={msg} onImageClick={setLightboxSrc} />
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -459,7 +464,8 @@ function accumulate(log: AgentLogEntry[]): ChatMsg[] {
         case 'tool_call_update':
           for (let i = msgs.length - 1; i >= 0; i--) {
             if (msgs[i].kind === 'tool-call' && (msgs[i] as any).tc.toolCallId === u.toolCallId) {
-              (msgs[i] as any).tc = { ...(msgs[i] as any).tc, status: u.status };
+              // Backend normalizer sends fully merged fields — merge everything
+              (msgs[i] as any).tc = { ...(msgs[i] as any).tc, ...u };
               break;
             }
           }
@@ -526,7 +532,7 @@ function groupToolCalls(msgs: ChatMsg[]): ChatMsg[] {
 
 // --- Render a single chat message ---
 
-function ChatMessage({ msg, isLast, onImageClick }: { msg: ChatMsg; isLast: boolean; onImageClick?: (src: string) => void }) {
+function ChatMessage({ msg, onImageClick }: { msg: ChatMsg; onImageClick?: (src: string) => void }) {
   switch (msg.kind) {
     case 'user':
       return (
@@ -620,10 +626,6 @@ function ToolCallCard({ tc }: { tc: any }) {
           </span>
         ))}
       </div>
-
-      {tc.content?.filter((c: any) => c.type === 'diff').map((d: any, i: number) => (
-        <DiffBlock key={i} diff={d} />
-      ))}
     </div>
   );
 }
@@ -665,35 +667,6 @@ function PlanCard({ entries }: { entries: any[] }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function DiffBlock({ diff }: { diff: any }) {
-  const patch = diff.patch || diff.after || '';
-  if (!patch) return null;
-
-  const lines = patch.split('\n').slice(0, 30);
-
-  return (
-    <div className="ml-2 rounded overflow-hidden text-[11px] font-mono">
-      {diff.path && (
-        <div className="px-2 py-0.5 bg-zinc-800 text-zinc-500 text-[10px]">{diff.path}</div>
-      )}
-      <div className="overflow-x-auto max-h-48">
-        {lines.map((line: string, i: number) => {
-          let bg = '';
-          let color = 'text-zinc-400';
-          if (line.startsWith('+')) { bg = 'bg-green-950'; color = 'text-green-300'; }
-          else if (line.startsWith('-')) { bg = 'bg-red-950'; color = 'text-red-300'; }
-          else if (line.startsWith('@@')) { color = 'text-blue-400'; }
-          return (
-            <div key={i} className={`px-2 ${bg}`}>
-              <span className={`${color} whitespace-pre`}>{line}</span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

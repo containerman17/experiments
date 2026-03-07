@@ -381,13 +381,14 @@ export function AgentChat({ agent }: { agent: AgentState }) {
               <button onClick={() => stopRecording(agent.info.id)} className={`flex items-center justify-center rounded-md bg-red-500/30 hover:bg-red-500/50 text-red-400 animate-pulse transition-colors cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Stop & send">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
               </button>
-            ) : canSend ? (
-              <button onClick={handleSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors text-zinc-200 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Send">
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
-              </button>
             ) : (
               <button onClick={startRecording} disabled={!agent.acpSessionId || recording} className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-20 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Record voice message">
                 <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0014 0" /><line x1="12" y1="17" x2="12" y2="22" /></svg>
+              </button>
+            )}
+            {canSend && (
+              <button onClick={handleSend} className={`flex items-center justify-center rounded-md bg-zinc-600 hover:bg-zinc-500 active:bg-zinc-400 transition-colors text-zinc-200 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Send">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
               </button>
             )}
           </div>

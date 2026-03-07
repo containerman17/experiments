@@ -142,7 +142,7 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
                     ✕
                   </button>
                 </div>
-                <div className="flex-1 min-h-0 relative p-1">
+                <div className="flex-1 min-h-0 relative p-1 flex flex-col">
                   <Terminal key={state.uiOpenTerminalId} terminalId={state.uiOpenTerminalId} />
                 </div>
               </div>

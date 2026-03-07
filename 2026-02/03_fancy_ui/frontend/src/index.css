@@ -4,8 +4,6 @@
 /* Dark background to prevent white flash */
 html, body {
   background: #18181b; /* zinc-900 */
-  height: 100%;
-  overflow: hidden;
 }
 
 html {
@@ -14,8 +12,6 @@ html {
 
 body {
   overscroll-behavior: none;
-  position: fixed;
-  width: 100%;
 }
 
 /* Prevent text selection on interactive elements on mobile */

@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
 import type { AgentType, AgentInfo, ServerMessage } from '../shared/types.ts';
 import { createAgent as dbCreateAgent, archiveAgent, listAgents, getAgent, appendLog, getHistory, getConfigPreferences, setAgentSessionId, setAgentAcpState } from './db.ts';
+import { ToolCallNormalizer } from './tool-call-normalizer.ts';
 
 interface LiveAgent {
   id: string;
@@ -19,6 +20,7 @@ interface LiveAgent {
   loadSession?: boolean; // from initialize response — can we resume sessions?
   nextRpcId: number;
   pendingSetMode: Map<number, string>; // request ID → modeId for session/set_mode
+  toolCallNormalizer: ToolCallNormalizer; // merges tool_call + tool_call_update
   // When reviving, queue messages to send after session is ready
   pendingMessages: Array<{ ws: WebSocket; payload: unknown }>;
   reviving: boolean;
@@ -81,8 +83,18 @@ function spawnAndWire(
       if (!line) continue;
       try {
         const payload = JSON.parse(line);
-        appendLog(id, 'out', payload);
-        broadcast(agent, { type: 'agent.output', agentId: id, payload });
+        appendLog(id, 'out', payload); // SQLite always gets raw
+
+        // Normalize tool_call messages before broadcasting to frontends
+        const normalized = agent.toolCallNormalizer.process(payload);
+        if (normalized) {
+          // Replace the update inside the session/update envelope with the merged version
+          const normalizedPayload = JSON.parse(JSON.stringify(payload));
+          (normalizedPayload as any).params.update = normalized;
+          broadcast(agent, { type: 'agent.output', agentId: id, payload: normalizedPayload });
+        } else {
+          broadcast(agent, { type: 'agent.output', agentId: id, payload });
+        }
 
         // ACP lifecycle: initialize response → capture loadSession, then send session/new or session/load
         if (!agent.acpSessionId && payload.id !== undefined && !payload.method && payload.result?.protocolVersion) {
@@ -269,6 +281,7 @@ function reviveAgent(ws: WebSocket, agentId: string): LiveAgent | null {
     buffer: '',
     nextRpcId: 1,
     pendingSetMode: new Map(),
+    toolCallNormalizer: new ToolCallNormalizer(),
     pendingMessages: [],
     reviving: true,
   };
@@ -299,6 +312,7 @@ export function createAgentProcess(ws: WebSocket, folder: string, agentType: Age
     buffer: '',
     nextRpcId: 1,
     pendingSetMode: new Map(),
+    toolCallNormalizer: new ToolCallNormalizer(),
     pendingMessages: [],
     reviving: false,
   };
@@ -382,7 +396,19 @@ export function listAgentsInFolder(ws: WebSocket, folder: string): void {
 
 export function getAgentHistory(ws: WebSocket, agentId: string, before?: number, limit = 50): void {
   const result = getHistory(agentId, limit, before);
-  send(ws, { type: 'agent.history.result', agentId, entries: result.entries, hasMore: result.hasMore });
+
+  // Normalize tool call messages in history replay (same merge as live stream)
+  const normalizer = new ToolCallNormalizer();
+  const normalizedEntries = result.entries.map((entry: any) => {
+    if (entry.direction !== 'out') return entry;
+    const normalized = normalizer.process(entry.payload);
+    if (!normalized) return entry;
+    const normalizedPayload = JSON.parse(JSON.stringify(entry.payload));
+    normalizedPayload.params.update = normalized;
+    return { ...entry, payload: normalizedPayload };
+  });
+
+  send(ws, { type: 'agent.history.result', agentId, entries: normalizedEntries, hasMore: result.hasMore });
 }
 
 export function subscribeToAgent(ws: WebSocket, agentId: string): void {

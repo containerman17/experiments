@@ -30,6 +30,8 @@ export interface AppState {
   terminals: TerminalInfo[];
   tabs: TabInfo[];
   activeTabId: string | null;
+  uiActiveAgentId: string | null;
+  uiOpenTerminalId: string | null;
 }
 
 export const initialState: AppState = {
@@ -39,6 +41,8 @@ export const initialState: AppState = {
   terminals: [],
   tabs: [],
   activeTabId: null,
+  uiActiveAgentId: null,
+  uiOpenTerminalId: null,
 };
 
 // --- Actions ---
@@ -58,6 +62,8 @@ export type Action =
   | { type: 'AGENT_BUSY'; agentId: string; busy: boolean }
   // UI
   | { type: 'SET_FOLDER'; folder: string | null }
+  | { type: 'SET_UI_ACTIVE_AGENT'; agentId: string | null }
+  | { type: 'SET_UI_OPEN_TERMINAL'; terminalId: string | null }
   // Tab state from backend
   | { type: 'SET_TABS'; tabs: TabInfo[]; activeTabId: string | null }
   // Clear all data on disconnect (will be re-fetched on reconnect)
@@ -86,7 +92,12 @@ export function reducer(state: AppState, action: Action): AppState {
           ? { ...existing, info, ...(acpSessionId && { acpSessionId }) }
           : { info, acpInitialized: false, log: [], hasMoreHistory: false, busy: false, ...(acpSessionId && { acpSessionId }) };
       }
-      return { ...state, agents };
+      // Default to first agent if none is active
+      let uiActiveAgentId = state.uiActiveAgentId;
+      if (!uiActiveAgentId && action.agents.length > 0) {
+         uiActiveAgentId = action.agents[0].id;
+      }
+      return { ...state, agents, uiActiveAgentId };
     }
 
     case 'SET_TERMINALS':
@@ -182,6 +193,12 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_FOLDER':
       return { ...state, folder: action.folder };
+
+    case 'SET_UI_ACTIVE_AGENT':
+      return { ...state, uiActiveAgentId: action.agentId };
+
+    case 'SET_UI_OPEN_TERMINAL':
+      return { ...state, uiOpenTerminalId: action.terminalId };
 
     case 'SET_TABS':
       return { ...state, tabs: action.tabs, activeTabId: action.activeTabId };

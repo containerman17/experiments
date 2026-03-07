@@ -3,12 +3,13 @@
 // Hidden on desktop (md+), visible on mobile only.
 
 import { useState, useRef, useEffect } from 'react';
-import { useAppState } from '../store';
+import { useAppState, useDispatch } from '../store';
 import { useConnection } from '../App';
 import { TabIcon } from './TabBar';
 
 export function MobileNav({ closeProject }: { closeProject: () => void }) {
-  const { tabs, activeTabId, folder, agents } = useAppState();
+  const { tabs, folder, agents, uiActiveAgentId, uiOpenTerminalId } = useAppState();
+  const dispatch = useDispatch();
   const conn = useConnection();
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -26,10 +27,19 @@ export function MobileNav({ closeProject }: { closeProject: () => void }) {
 
   if (!folder) return null;
 
-  const activeTab = tabs.find(t => t.id === activeTabId);
+  const activeTab = tabs.find(t => 
+    (t.kind === 'agent' && t.agentId === uiActiveAgentId) || 
+    (t.kind === 'terminal' && t.terminalId === uiOpenTerminalId)
+  );
 
-  const setActive = (tabId: string) => {
-    conn.sendTabsUpdate(folder, tabs, tabId);
+  const setActive = (tab: any) => {
+    if (tab.kind === 'agent' && tab.agentId) {
+      dispatch({ type: 'SET_UI_ACTIVE_AGENT', agentId: tab.agentId });
+      // When explicitly navigating to an agent on mobile, close the terminal overlay
+      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: null });
+    } else if (tab.kind === 'terminal' && tab.terminalId) {
+      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: tab.terminalId });
+    }
     setOpen(false);
   };
 
@@ -38,10 +48,7 @@ export function MobileNav({ closeProject }: { closeProject: () => void }) {
     if (tab?.kind === 'agent' && !confirm('Close this agent? The session will be lost.')) return;
     if (tab?.kind === 'terminal' && !confirm('Close this terminal?')) return;
     const newTabs = tabs.filter(t => t.id !== tabId);
-    const newActive = activeTabId === tabId
-      ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
-      : activeTabId;
-    conn.sendTabsUpdate(folder, newTabs, newActive);
+    conn.sendTabsUpdate(folder, newTabs, null);
   };
 
   const addAgent = (agentType: 'claude' | 'codex' | 'gemini') => {
@@ -95,23 +102,48 @@ export function MobileNav({ closeProject }: { closeProject: () => void }) {
 
         {/* Tab list */}
         <div className="flex-1 overflow-y-auto py-2">
-          {tabs.map(tab => {
-            const isActive = tab.id === activeTabId;
+          <div className="px-4 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Agents</div>
+          {tabs.filter(t => t.kind === 'agent').map(tab => {
+            const isActive = tab.agentId === uiActiveAgentId && uiOpenTerminalId === null;
             const agentType = tab.agentId ? agents[tab.agentId]?.info.agentType : undefined;
 
             return (
               <div
                 key={tab.id}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
-                  isActive ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 active:bg-zinc-750'
+                className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isActive ? 'bg-zinc-700 text-zinc-100 border-l-2 border-blue-500' : 'text-zinc-400 active:bg-zinc-750 border-l-2 border-transparent'
                 }`}
-                onClick={() => setActive(tab.id)}
+                onClick={() => setActive(tab)}
               >
-                <TabIcon kind={tab.kind} agentType={agentType} />
+                <TabIcon kind="agent" agentType={agentType} />
                 <span className="flex-1 truncate">{tab.label}</span>
                 <button
                   onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
-                  className="text-zinc-500 hover:text-zinc-300 px-1"
+                  className="text-zinc-500 hover:text-zinc-300 px-2 py-1 -mr-2"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+
+          <div className="px-4 mt-4 mb-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Terminals</div>
+          {tabs.filter(t => t.kind === 'terminal').map(tab => {
+            const isActive = tab.terminalId === uiOpenTerminalId;
+
+            return (
+              <div
+                key={tab.id}
+                className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isActive ? 'bg-zinc-700 text-zinc-100 border-l-2 border-green-500' : 'text-zinc-400 active:bg-zinc-750 border-l-2 border-transparent'
+                }`}
+                onClick={() => setActive(tab)}
+              >
+                <TabIcon kind="terminal" />
+                <span className="flex-1 truncate">{tab.label}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                  className="text-zinc-500 hover:text-zinc-300 px-2 py-1 -mr-2"
                 >
                   ×
                 </button>

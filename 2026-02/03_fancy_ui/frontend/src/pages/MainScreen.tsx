@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { BackendEntry } from '../backends';
-import { loadBackends, saveBackends, addBackend, removeBackend } from '../backends';
+import { loadBackends, addBackend, removeBackend } from '../backends';
 import { createConnection, type WsConnection } from '../ws';
 import type { WorkspaceInfo } from '../../../shared/types';
 import type { Screen } from '../App';

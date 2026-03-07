@@ -1,8 +1,10 @@
 import { useMemo, useEffect, useRef } from 'react';
-import type { AgentState } from '../store';
+import { useAppState, type AgentState } from '../store';
 import { type RpcMessage, isNotification } from '../acp';
 
 export function DiffStream({ agent }: { agent: AgentState }) {
+  const state = useAppState();
+  const folder = state.folder || '';
   const diffsEndRef = useRef<HTMLDivElement>(null);
 
   const diffs = useMemo(() => {
@@ -49,7 +51,7 @@ export function DiffStream({ agent }: { agent: AgentState }) {
       {diffs.map((tc, i) => (
         <div key={`${tc.toolCallId}-${i}`} className="flex flex-col gap-2">
           {tc.diffs.map((diff: any, j: number) => (
-            <DiffBlock key={j} diff={diff} />
+            <DiffBlock key={j} diff={diff} folder={folder} />
           ))}
         </div>
       ))}
@@ -58,7 +60,9 @@ export function DiffStream({ agent }: { agent: AgentState }) {
   );
 }
 
-function DiffBlock({ diff }: { diff: any }) {
+function DiffBlock({ diff, folder }: { diff: any; folder: string }) {
+  const displayPath = diff.path ? diff.path.replace(folder + '/', '') : '';
+
   // Normalized content has oldText/newText — generate a simple inline diff
   // oldText can be null for new files (Write tool)
   if (diff.newText != null) {
@@ -98,9 +102,9 @@ function DiffBlock({ diff }: { diff: any }) {
 
     return (
       <div className="text-[11px] font-mono">
-        {diff.path && (
-          <div className="px-4 py-2 text-zinc-300 font-semibold border-y border-zinc-800/50 bg-zinc-900/30">
-            {diff.path}
+        {displayPath && (
+          <div className="px-4 py-2 text-zinc-200 font-semibold border-y border-zinc-700 bg-zinc-800 flex items-center gap-2">
+            📄 {displayPath}
           </div>
         )}
         <div className="overflow-x-auto py-2">
@@ -127,9 +131,9 @@ function DiffBlock({ diff }: { diff: any }) {
 
   return (
     <div className="text-[11px] font-mono">
-      {diff.path && (
-        <div className="px-4 py-2 text-zinc-300 font-semibold border-y border-zinc-800/50 bg-zinc-900/30">
-          {diff.path}
+      {displayPath && (
+        <div className="px-4 py-2 text-zinc-200 font-semibold border-y border-zinc-700 bg-zinc-800 flex items-center gap-2">
+          📄 {displayPath}
         </div>
       )}
       <div className="overflow-x-auto py-2">

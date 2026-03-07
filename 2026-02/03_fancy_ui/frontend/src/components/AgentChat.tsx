@@ -167,7 +167,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
 
   return (
     <div
-      className={`flex flex-col h-full relative ${dragOver ? 'ring-2 ring-inset ring-blue-500/50' : ''}`}
+      className={`flex flex-col flex-1 min-h-0 relative ${dragOver ? 'ring-2 ring-inset ring-blue-500/50' : ''}`}
       onDragOver={e => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
       onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addImageFiles(e.dataTransfer.files); }}
@@ -386,7 +386,7 @@ export function AgentChat({ agent }: { agent: AgentState }) {
                 <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
               </button>
             ) : (
-              <button onClick={startRecording} disabled={!agent.acpSessionId || agent.busy || recording} className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-20 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Record voice message">
+              <button onClick={startRecording} disabled={!agent.acpSessionId || recording} className={`flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-20 cursor-pointer ${isMobile ? 'w-10 h-10' : 'w-9 h-8'}`} title="Record voice message">
                 <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0014 0" /><line x1="12" y1="17" x2="12" y2="22" /></svg>
               </button>
             )}

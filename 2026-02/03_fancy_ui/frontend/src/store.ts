@@ -92,10 +92,13 @@ export function reducer(state: AppState, action: Action): AppState {
           ? { ...existing, info, ...(acpSessionId && { acpSessionId }) }
           : { info, acpInitialized: false, log: [], hasMoreHistory: false, busy: false, ...(acpSessionId && { acpSessionId }) };
       }
-      // Default to first agent if none is active
+      // Default to the first available agent when the active one no longer exists.
       let uiActiveAgentId = state.uiActiveAgentId;
+      if (uiActiveAgentId && !action.agents.find(a => a.id === uiActiveAgentId)) {
+        uiActiveAgentId = null;
+      }
       if (!uiActiveAgentId && action.agents.length > 0) {
-         uiActiveAgentId = action.agents[0].id;
+        uiActiveAgentId = action.agents[0].id;
       }
       return { ...state, agents, uiActiveAgentId };
     }
@@ -202,11 +205,18 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_TABS': {
       const activeTab = action.tabs.find(t => t.id === action.activeTabId);
+      const availableAgentIds = action.tabs
+        .filter((tab): tab is TabInfo & { kind: 'agent'; agentId: string } => tab.kind === 'agent' && !!tab.agentId)
+        .map(tab => tab.agentId);
+      const fallbackAgentId = availableAgentIds.includes(state.uiActiveAgentId ?? '')
+        ? state.uiActiveAgentId
+        : (availableAgentIds[0] ?? null);
+
       return {
         ...state,
         tabs: action.tabs,
         activeTabId: action.activeTabId,
-        uiActiveAgentId: activeTab?.kind === 'agent' ? (activeTab.agentId ?? state.uiActiveAgentId) : state.uiActiveAgentId,
+        uiActiveAgentId: activeTab?.kind === 'agent' ? (activeTab.agentId ?? fallbackAgentId) : fallbackAgentId,
         uiOpenTerminalId: activeTab?.kind === 'terminal' ? (activeTab.terminalId ?? null) : null,
       };
     }

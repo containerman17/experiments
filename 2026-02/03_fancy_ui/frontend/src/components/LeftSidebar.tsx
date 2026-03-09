@@ -30,6 +30,20 @@ export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
     }
   };
 
+  const closeAgentTab = (tabId: string) => {
+    if (!state.folder) return;
+    const tab = agentTabs.find(t => t.id === tabId);
+    if (!tab?.agentId) return;
+    if (!confirm('Close this agent? The session will be lost.')) return;
+
+    const newTabs = state.tabs.filter(t => t.id !== tabId);
+    const nextActiveTabId = state.activeTabId === tabId
+      ? (newTabs.find(t => t.kind === 'agent')?.id ?? newTabs[newTabs.length - 1]?.id ?? null)
+      : state.activeTabId;
+
+    conn.sendTabsUpdate(state.folder, newTabs, nextActiveTabId);
+  };
+
   const addAgent = (agentType: AgentType) => {
     if (state.folder) {
       conn.send({ type: 'agent.create', folder: state.folder, agentType });
@@ -55,16 +69,31 @@ export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
           const agentType = tab.agentId ? state.agents[tab.agentId]?.info.agentType : undefined;
 
           return (
-            <button
+            <div
               key={tab.id}
-              onClick={() => tab.agentId && setActive(tab.agentId)}
-              className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors relative ${
-                isActive ? 'bg-zinc-800 border-l-2 border-blue-500 rounded-l-none w-full ml-1' : 'bg-transparent hover:bg-zinc-800'
-              }`}
-              title={tab.label}
+              className={`group relative ${isActive ? 'w-full pl-1' : 'w-10'}`}
             >
-              <TabIcon kind="agent" agentType={agentType} />
-            </button>
+              <button
+                onClick={() => tab.agentId && setActive(tab.agentId)}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors relative ${
+                  isActive ? 'bg-zinc-800 border-l-2 border-blue-500 rounded-l-none w-full' : 'bg-transparent hover:bg-zinc-800'
+                }`}
+                title={tab.label}
+              >
+                <TabIcon kind="agent" agentType={agentType} />
+              </button>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  closeAgentTab(tab.id);
+                }}
+                className="absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-500 hover:text-zinc-200 hover:border-zinc-500 opacity-0 group-hover:opacity-100 transition-all"
+                title="Close agent"
+                aria-label={`Close ${tab.label}`}
+              >
+                <span className="block -mt-px text-[10px] leading-none">×</span>
+              </button>
+            </div>
           );
         })}
       </div>

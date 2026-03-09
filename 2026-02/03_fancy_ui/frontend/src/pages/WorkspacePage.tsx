@@ -63,6 +63,32 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
 
   const activeAgentId = state.uiActiveAgentId;
   const activeAgent = activeAgentId ? state.agents[activeAgentId] : null;
+  const openTerminalTab = state.uiOpenTerminalId
+    ? state.tabs.find(tab => tab.kind === 'terminal' && tab.terminalId === state.uiOpenTerminalId) ?? null
+    : null;
+
+  const minimizeTerminal = () => {
+    if (!state.folder) {
+      dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: null });
+      return;
+    }
+
+    const agentTab = state.tabs.find(tab => tab.kind === 'agent' && tab.agentId === state.uiActiveAgentId);
+    conn.sendTabsUpdate(state.folder, state.tabs, agentTab?.id ?? null);
+  };
+
+  const deleteTerminal = () => {
+    if (!state.folder || !openTerminalTab?.terminalId) return;
+    if (!confirm('Delete this terminal?')) return;
+
+    const newTabs = state.tabs.filter(tab => tab.id !== openTerminalTab.id);
+    const fallbackAgentTab = newTabs.find(tab => tab.kind === 'agent' && tab.agentId === state.uiActiveAgentId);
+    const nextActiveTabId = state.activeTabId === openTerminalTab.id
+      ? (fallbackAgentTab?.id ?? newTabs[newTabs.length - 1]?.id ?? null)
+      : state.activeTabId;
+
+    conn.sendTabsUpdate(state.folder, newTabs, nextActiveTabId);
+  };
 
   return (
     <RecordingProvider>
@@ -133,14 +159,36 @@ export function WorkspacePage({ folder, setScreen }: { folder: string; setScreen
                 <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-xs text-zinc-300 font-mono font-semibold">Terminal Session</span>
+                    <span className="text-xs text-zinc-300 font-mono font-semibold">
+                      {openTerminalTab?.label ?? 'Terminal Session'}
+                    </span>
                   </div>
-                  <button 
-                    onClick={() => dispatch({ type: 'SET_UI_OPEN_TERMINAL', terminalId: null })}
-                    className="text-zinc-500 hover:text-zinc-300 p-1 transition-colors"
-                  >
-                    ✕
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={minimizeTerminal}
+                      className="text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 p-1.5 rounded transition-colors"
+                      title="Minimize terminal"
+                      aria-label="Minimize terminal"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2" strokeLinecap="round">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={deleteTerminal}
+                      className="text-zinc-500 hover:text-red-300 hover:bg-red-500/10 p-1.5 rounded transition-colors"
+                      title="Delete terminal"
+                      aria-label="Delete terminal"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="M19 6l-1 14H6L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <div className="flex-1 min-h-0 relative p-1 flex flex-col">
                   <Terminal key={state.uiOpenTerminalId} terminalId={state.uiOpenTerminalId} />

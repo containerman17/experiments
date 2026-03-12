@@ -242,15 +242,28 @@ async function listSessionsViaAcp(cwd?: string): Promise<acp.SessionInfo[]> {
     }
 }
 
+// Download a Telegram file as a Buffer
+async function downloadTelegramFile(filePath: string): Promise<Buffer> {
+    const url = `https://api.telegram.org/file/bot${cfg.token}/${filePath}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Failed to download file: ${resp.status}`);
+    return Buffer.from(await resp.arrayBuffer());
+}
+
 // Send message to agent via ACP
 async function sendToAgent(
     sessionId: string,
     cwd: string,
-    text: string,
+    prompt: acp.ContentBlock[],
     chatId: number,
     bot: Bot,
 ) {
-    addMessage(sessionId, "User", text);
+    // Extract text summary for message history
+    const textSummary = prompt
+        .filter((b): b is acp.ContentBlock & { type: "text" } => b.type === "text")
+        .map(b => b.text)
+        .join(" ") || "(image)";
+    addMessage(sessionId, "User", textSummary);
 
     console.log(`Spawning ACP agent in ${cwd} for session ${sessionId.slice(0, 8)}...`);
 
@@ -285,7 +298,7 @@ async function sendToAgent(
         // Send prompt
         const result = await connection.prompt({
             sessionId,
-            prompt: [{ type: "text", text }],
+            prompt,
         });
 
         stopTyping();
@@ -484,7 +497,7 @@ bot.on("message:voice", async (ctx) => {
             return;
         }
 
-        await sendToAgent(sessionId, cwd, transcription, ctx.chat.id, bot);
+        await sendToAgent(sessionId, cwd, [{ type: "text", text: transcription }], ctx.chat.id, bot);
     } catch (err) {
         console.error("Voice error:", err);
         await ctx.reply(`Voice error: ${err instanceof Error ? err.message : String(err)}`);
@@ -505,7 +518,89 @@ bot.on("message:text", async (ctx) => {
         return;
     }
 
-    await sendToAgent(activeSessionId, activeSessionCwd, text, ctx.chat.id, bot);
+    await sendToAgent(activeSessionId, activeSessionCwd, [{ type: "text", text }], ctx.chat.id, bot);
+});
+
+// Photo messages (with optional caption)
+bot.on("message:photo", async (ctx) => {
+    if (!activeSessionId || !activeSessionCwd) {
+        await ctx.reply("No active session. Use /resume to pick one.");
+        return;
+    }
+    if (responding) {
+        await ctx.reply("Agent is still responding. Please wait.");
+        return;
+    }
+
+    try {
+        // Get the largest photo (last in array)
+        const photos = ctx.message.photo;
+        const largest = photos[photos.length - 1]!;
+        const file = await ctx.api.getFile(largest.file_id);
+        const imageData = await downloadTelegramFile(file.file_path!);
+
+        const prompt: acp.ContentBlock[] = [];
+
+        // Add caption as text if present
+        const caption = ctx.message.caption?.trim();
+        if (caption) {
+            prompt.push({ type: "text", text: caption });
+        } else {
+            prompt.push({ type: "text", text: "Here's an image:" });
+        }
+
+        // Add image
+        prompt.push({
+            type: "image",
+            data: imageData.toString("base64"),
+            mimeType: "image/jpeg",
+        });
+
+        await sendToAgent(activeSessionId, activeSessionCwd, prompt, ctx.chat.id, bot);
+    } catch (err) {
+        console.error("Photo error:", err);
+        await ctx.reply(`Photo error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+});
+
+// Document images (uncompressed photos sent as files)
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+bot.on("message:document", async (ctx) => {
+    const doc = ctx.message.document;
+    if (!doc.mime_type || !IMAGE_MIME_TYPES.has(doc.mime_type)) return;
+
+    if (!activeSessionId || !activeSessionCwd) {
+        await ctx.reply("No active session. Use /resume to pick one.");
+        return;
+    }
+    if (responding) {
+        await ctx.reply("Agent is still responding. Please wait.");
+        return;
+    }
+
+    try {
+        const file = await ctx.api.getFile(doc.file_id);
+        const imageData = await downloadTelegramFile(file.file_path!);
+
+        const prompt: acp.ContentBlock[] = [];
+        const caption = ctx.message.caption?.trim();
+        if (caption) {
+            prompt.push({ type: "text", text: caption });
+        } else {
+            prompt.push({ type: "text", text: "Here's an image:" });
+        }
+        prompt.push({
+            type: "image",
+            data: imageData.toString("base64"),
+            mimeType: doc.mime_type,
+        });
+
+        await sendToAgent(activeSessionId, activeSessionCwd, prompt, ctx.chat.id, bot);
+    } catch (err) {
+        console.error("Document image error:", err);
+        await ctx.reply(`Image error: ${err instanceof Error ? err.message : String(err)}`);
+    }
 });
 
 bot.catch((err) => console.error("Bot error:", err));

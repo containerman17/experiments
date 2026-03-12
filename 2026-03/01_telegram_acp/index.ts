@@ -2,11 +2,9 @@ import { Bot, InlineKeyboard } from "grammy";
 import { Writable, Readable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import yaml from "js-yaml";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
-import { createReadStream } from "node:fs";
 
 // --- Config ---
 
@@ -16,6 +14,7 @@ interface Config {
     gemini_model?: string;
     user_id: number;
     agent_bin: string;
+    active_session?: { id: string; cwd: string };
 }
 
 const configIdx = process.argv.indexOf("--config");
@@ -28,9 +27,9 @@ cfg.gemini_model = cfg.gemini_model || "gemini-3.1-pro-preview";
 
 if (!cfg.token) { console.error("No 'token' in config."); process.exit(1); }
 if (!cfg.user_id) { console.error("No 'user_id' in config."); process.exit(1); }
+if (!cfg.agent_bin) { console.error("No 'agent_bin' in config."); process.exit(1); }
 
 const HOME = process.env.HOME || "/root";
-if (!cfg.agent_bin) { console.error("No 'agent_bin' in config."); process.exit(1); }
 const AGENT_BIN = cfg.agent_bin;
 const MAX_LAST_MESSAGES = 6;
 const BOT_COMMANDS = [
@@ -38,92 +37,7 @@ const BOT_COMMANDS = [
     { command: "new", description: "Create a new ACP session for a directory" },
 ] as const;
 
-// --- Session history from disk ---
-
-function sessionFilePath(sessionId: string, cwd: string): string | null {
-    const projectDir = cwd.replace(/\//g, "-");
-    const base = join(HOME, ".claude", "projects", projectDir);
-    const file = join(base, `${sessionId}.jsonl`);
-    if (existsSync(file)) return file;
-    return null;
-}
-
-async function getLastAssistantMessage(sessionId: string, cwd: string): Promise<string | null> {
-    const file = sessionFilePath(sessionId, cwd);
-    if (!file) return null;
-
-    // Read file backwards — find last assistant message with text
-    const content = readFileSync(file, "utf-8");
-    const lines = content.trimEnd().split("\n");
-    for (let i = lines.length - 1; i >= 0; i--) {
-        try {
-            const msg = JSON.parse(lines[i]!);
-            if (msg.type === "assistant") {
-                const blocks = msg.message?.content || [];
-                const texts = blocks
-                    .filter((b: any) => b.type === "text")
-                    .map((b: any) => b.text);
-                if (texts.length) return texts.join("\n").slice(0, 500);
-            }
-        } catch {}
-    }
-    return null;
-}
-
-// --- Runtime state ---
-
-let activeSessionId: string | null = null;
-let activeSessionCwd: string | null = null;
-let activeChild: ChildProcess | null = null;
-let activeConnection: acp.ClientSideConnection | null = null;
-let responding = false;
-let typingInterval: ReturnType<typeof setInterval> | null = null;
-let turnStart = 0;
-// In-memory message history for voice context and recap
-const sessionMessages = new Map<string, string[]>();
-// Callback data lookup (Telegram limits callback_data to 64 bytes)
-const callbackDataMap = new Map<string, { sessionId: string; cwd: string; title?: string }>();
-
-// --- Gemini voice transcription ---
-
-async function transcribeVoice(oggData: Buffer, context: string): Promise<string> {
-    const contextHint = context
-        ? `\n\nRecent conversation for context (use this to disambiguate technical terms):\n${context}`
-        : "";
-
-    const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${cfg.gemini_model}:generateContent?key=${cfg.gemini_api_key}`,
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: AbortSignal.timeout(60000),
-            body: JSON.stringify({
-                system_instruction: {
-                    parts: [{
-                        text: "You are a transcription service for a software engineering conversation. The speaker is discussing code, programming, and technical topics. Preserve technical terms, function names, variable names, CLI commands, and programming jargon accurately. Output ONLY the transcription, nothing else.",
-                    }],
-                },
-                generationConfig: { thinkingConfig: { thinkingLevel: "low" } },
-                contents: [{
-                    parts: [
-                        { text: `Transcribe this voice message:${contextHint}` },
-                        { inlineData: { mimeType: "audio/ogg", data: oggData.toString("base64") } },
-                    ],
-                }],
-            }),
-        },
-    );
-
-    if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`Gemini API error ${resp.status}: ${err}`);
-    }
-
-    const json = (await resp.json()) as any;
-    return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(empty transcription)";
-}
-
-// --- Markdown to Telegram HTML ---
+// --- Utilities ---
 
 function escapeHtml(text: string): string {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -172,6 +86,104 @@ function splitMessage(text: string, max = 4096): string[] {
     return chunks;
 }
 
+function shortCwd(cwd: string): string {
+    return cwd.startsWith(HOME) ? "~" + cwd.slice(HOME.length) : cwd;
+}
+
+// --- Session history from disk ---
+
+function getLastAssistantMessage(sessionId: string, cwd: string): string | null {
+    const projectDir = cwd.replace(/\//g, "-");
+    const file = join(HOME, ".claude", "projects", projectDir, `${sessionId}.jsonl`);
+    if (!existsSync(file)) return null;
+
+    const content = readFileSync(file, "utf-8");
+    const lines = content.trimEnd().split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+            const msg = JSON.parse(lines[i]!);
+            if (msg.type === "assistant") {
+                const texts = (msg.message?.content || [])
+                    .filter((b: any) => b.type === "text")
+                    .map((b: any) => b.text);
+                if (texts.length) return texts.join("\n").slice(0, 500);
+            }
+        } catch {}
+    }
+    return null;
+}
+
+// --- Runtime state ---
+
+let activeSessionId: string | null = cfg.active_session?.id || null;
+let activeSessionCwd: string | null = cfg.active_session?.cwd || null;
+if (activeSessionId) console.log(`Restored session ${activeSessionId.slice(0, 8)} in ${activeSessionCwd}`);
+
+let activeChild: ChildProcess | null = null;
+let activeConnection: acp.ClientSideConnection | null = null;
+let sessionResumed = false; // whether we've resumed on the current connection
+
+let typingInterval: ReturnType<typeof setInterval> | null = null;
+let typingCount = 0;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+const IDLE_TIMEOUT = 60_000; // 1 minute
+const sessionMessages = new Map<string, string[]>();
+const callbackDataMap = new Map<string, { sessionId: string; cwd: string; title?: string }>();
+
+// --- Persist active session ---
+
+function saveActiveSession() {
+    const raw = readFileSync(CONFIG_PATH, "utf-8");
+    const config = yaml.load(raw) as Record<string, any>;
+    if (activeSessionId && activeSessionCwd) {
+        config.active_session = { id: activeSessionId, cwd: activeSessionCwd };
+    } else {
+        delete config.active_session;
+    }
+    writeFileSync(CONFIG_PATH, yaml.dump(config));
+}
+
+// --- Gemini voice transcription ---
+
+async function transcribeVoice(oggData: Buffer, context: string): Promise<string> {
+    const contextHint = context
+        ? `\n\nRecent conversation for context (use this to disambiguate technical terms):\n${context}`
+        : "";
+
+    const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${cfg.gemini_model}:generateContent?key=${cfg.gemini_api_key}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(60000),
+            body: JSON.stringify({
+                system_instruction: {
+                    parts: [{
+                        text: "You are a transcription service for a software engineering conversation. The speaker is discussing code, programming, and technical topics. Preserve technical terms, function names, variable names, CLI commands, and programming jargon accurately. Output ONLY the transcription, nothing else.",
+                    }],
+                },
+                generationConfig: { thinkingConfig: { thinkingLevel: "low" } },
+                contents: [{
+                    parts: [
+                        { text: `Transcribe this voice message:${contextHint}` },
+                        { inlineData: { mimeType: "audio/ogg", data: oggData.toString("base64") } },
+                    ],
+                }],
+            }),
+        },
+    );
+
+    if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`Gemini API error ${resp.status}: ${err}`);
+    }
+
+    const json = (await resp.json()) as any;
+    return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(empty transcription)";
+}
+
+// --- Telegram helpers ---
+
 async function sendTelegram(chatId: number, response: string, bot: Bot) {
     const html = markdownToTelegramHtml(response);
     for (const chunk of splitMessage(html)) {
@@ -183,30 +195,18 @@ async function sendTelegram(chatId: number, response: string, bot: Bot) {
     }
 }
 
-async function syncTelegramCommands(bot: Bot) {
-    const current = await bot.api.getMyCommands();
-    const expected = BOT_COMMANDS.map(({ command, description }) => ({ command, description }));
-    const matches =
-        current.length === expected.length &&
-        current.every((cmd, index) => cmd.command === expected[index]!.command && cmd.description === expected[index]!.description);
-
-    if (matches) return;
-
-    await bot.api.setMyCommands(expected);
-    console.log(`Updated Telegram bot commands: ${expected.map(cmd => `/${cmd.command}`).join(", ")}`);
-}
-
-// --- Process & ACP management ---
-
-function makeClaudeEnv() {
-    const env = { ...process.env };
-    delete env.CLAUDECODE;
-    delete env.CLAUDE_CODE_SSE_PORT;
-    delete env.CLAUDE_CODE_ENTRYPOINT;
-    return env;
+async function sendHtml(chatId: number, html: string, bot: Bot) {
+    for (const chunk of splitMessage(html)) {
+        try {
+            await bot.api.sendMessage(chatId, chunk, { parse_mode: "HTML", disable_notification: true });
+        } catch {
+            await bot.api.sendMessage(chatId, chunk, { disable_notification: true });
+        }
+    }
 }
 
 function startTyping(chatId: number, bot: Bot) {
+    typingCount++;
     if (typingInterval) return;
     bot.api.sendChatAction(chatId, "typing").catch(() => {});
     typingInterval = setInterval(() => {
@@ -215,17 +215,41 @@ function startTyping(chatId: number, bot: Bot) {
 }
 
 function stopTyping() {
-    if (typingInterval) { clearInterval(typingInterval); typingInterval = null; }
+    typingCount = Math.max(0, typingCount - 1);
+    if (typingCount === 0 && typingInterval) {
+        clearInterval(typingInterval);
+        typingInterval = null;
+    }
 }
 
-function killProcess() {
-    stopTyping();
-    activeConnection = null;
-    if (activeChild) {
-        try { activeChild.kill(); } catch {}
-        activeChild = null;
-    }
-    responding = false;
+async function syncTelegramCommands(bot: Bot) {
+    const current = await bot.api.getMyCommands();
+    const expected = BOT_COMMANDS.map(({ command, description }) => ({ command, description }));
+    const matches =
+        current.length === expected.length &&
+        current.every((cmd, index) => cmd.command === expected[index]!.command && cmd.description === expected[index]!.description);
+    if (matches) return;
+    await bot.api.setMyCommands(expected);
+    console.log(`Updated Telegram bot commands: ${expected.map(cmd => `/${cmd.command}`).join(", ")}`);
+}
+
+async function downloadTelegramFile(filePath: string): Promise<Buffer> {
+    const url = `https://api.telegram.org/file/bot${cfg.token}/${filePath}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Failed to download file: ${resp.status}`);
+    return Buffer.from(await resp.arrayBuffer());
+}
+
+// --- ACP connection management ---
+// We keep a persistent connection to the agent process. It stays alive across
+// multiple prompts so we can fire messages concurrently.
+
+function makeClaudeEnv() {
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+    delete env.CLAUDE_CODE_SSE_PORT;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    return env;
 }
 
 function addMessage(sessionId: string, role: "User" | "Assistant", text: string) {
@@ -242,8 +266,41 @@ function getSessionContext(sessionId: string): string {
     return context.length > 5000 ? context.slice(-5000) : context;
 }
 
-// Spawn Claude as ACP agent and return connection
-async function spawnAcpAgent(cwd: string): Promise<{ child: ChildProcess; connection: acp.ClientSideConnection }> {
+function killAgent() {
+    typingCount = 0;
+    stopTyping();
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    activeConnection = null;
+    sessionResumed = false;
+    if (activeChild) {
+        console.log("Killing agent process");
+        try { activeChild.kill(); } catch {}
+        activeChild = null;
+    }
+}
+
+function resetIdleTimer() {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        if (activeChild) {
+            console.log("Idle timeout — killing agent process");
+            killAgent();
+        }
+    }, IDLE_TIMEOUT);
+}
+
+// Ensure we have a live connection + resumed session. Reuses existing if alive.
+async function ensureConnection(sessionId: string, cwd: string, bot: Bot, chatId: number): Promise<acp.ClientSideConnection> {
+    // Reuse existing connection if it matches and is alive
+    if (activeConnection && activeChild && !activeChild.killed && sessionResumed) {
+        return activeConnection;
+    }
+
+    // Kill stale connection
+    killAgent();
+
+    console.log(`Spawning ${AGENT_BIN} in ${cwd} for session ${sessionId.slice(0, 8)}...`);
+
     const child = spawn(AGENT_BIN, [], {
         cwd,
         env: makeClaudeEnv(),
@@ -255,16 +312,22 @@ async function spawnAcpAgent(cwd: string): Promise<{ child: ChildProcess; connec
         if (text) console.error(`stderr: ${text.slice(0, 500)}`);
     });
 
+    child.on("exit", (code) => {
+        console.log(`ACP agent exited (code ${code})`);
+        if (activeChild === child) {
+            activeChild = null;
+            activeConnection = null;
+            sessionResumed = false;
+        }
+    });
+
     const input = Writable.toWeb(child.stdin! as any);
     const output = Readable.toWeb(child.stdout! as any) as ReadableStream<Uint8Array>;
     const stream = acp.ndJsonStream(input, output);
 
-    let sessionUpdateHandler: ((params: acp.SessionNotification) => Promise<void>) | null = null;
-
     const client: acp.Client = {
         async requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
-            // Auto-approve everything (dangerously-skip-permissions equivalent)
-            const allowOption = params.options.find(o => o.kind === "allow_all" || o.kind === "allow");
+            const allowOption = params.options.find(o => (o.kind as string) === "allow_all" || (o.kind as string) === "allow");
             return {
                 outcome: {
                     outcome: "selected",
@@ -273,7 +336,10 @@ async function spawnAcpAgent(cwd: string): Promise<{ child: ChildProcess; connec
             };
         },
         async sessionUpdate(params: acp.SessionNotification): Promise<void> {
-            if (sessionUpdateHandler) await sessionUpdateHandler(params);
+            // Handled per-prompt via the onSessionUpdate callback below
+            if ((connection as any)._onSessionUpdate) {
+                await (connection as any)._onSessionUpdate(params);
+            }
         },
         async writeTextFile(): Promise<acp.WriteTextFileResponse> { return {}; },
         async readTextFile(): Promise<acp.ReadTextFileResponse> { return { content: "" }; },
@@ -281,43 +347,23 @@ async function spawnAcpAgent(cwd: string): Promise<{ child: ChildProcess; connec
 
     const connection = new acp.ClientSideConnection((_agent) => client, stream);
 
-    // Initialize
     await connection.initialize({
         protocolVersion: acp.PROTOCOL_VERSION,
         clientCapabilities: {},
     });
 
-    // Expose a way to set the session update handler
-    (connection as any)._setSessionUpdateHandler = (handler: typeof sessionUpdateHandler) => {
-        sessionUpdateHandler = handler;
-    };
+    await connection.unstable_resumeSession({ sessionId, cwd });
 
-    return { child, connection };
+    activeChild = child;
+    activeConnection = connection;
+    sessionResumed = true;
+    resetIdleTimer();
+
+    return connection;
 }
 
-// List sessions via ACP session/list
-async function listSessionsViaAcp(cwd?: string): Promise<acp.SessionInfo[]> {
-    // Spawn a temporary agent just to list sessions
-    const listCwd = cwd || HOME;
-    const { child, connection } = await spawnAcpAgent(listCwd);
-
-    try {
-        const result = await connection.listSessions({ cwd: cwd || undefined });
-        return result.sessions || [];
-    } finally {
-        try { child.kill(); } catch {}
-    }
-}
-
-// Download a Telegram file as a Buffer
-async function downloadTelegramFile(filePath: string): Promise<Buffer> {
-    const url = `https://api.telegram.org/file/bot${cfg.token}/${filePath}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Failed to download file: ${resp.status}`);
-    return Buffer.from(await resp.arrayBuffer());
-}
-
-// Send message to agent via ACP
+// Send a prompt to the agent. Can be called concurrently — each call gets its
+// own text accumulator and sends its own response to Telegram when done.
 async function sendToAgent(
     sessionId: string,
     cwd: string,
@@ -325,98 +371,117 @@ async function sendToAgent(
     chatId: number,
     bot: Bot,
 ) {
-    // Extract text summary for message history
     const textSummary = prompt
         .filter((b): b is acp.ContentBlock & { type: "text" } => b.type === "text")
         .map(b => b.text)
         .join(" ") || "(image)";
     addMessage(sessionId, "User", textSummary);
 
-    console.log(`Spawning ${AGENT_BIN} in ${cwd} for session ${sessionId.slice(0, 8)}...`);
-
-    const { child, connection } = await spawnAcpAgent(cwd);
-    activeChild = child;
-    activeConnection = connection;
-
-    // Set up session update handler to collect text
-    const textChunks: string[] = [];
-    let currentMessageText = "";
-
-    (connection as any)._setSessionUpdateHandler(async (params: acp.SessionNotification) => {
-        const update = params.update;
-        if (update.sessionUpdate === "agent_message_chunk") {
-            if (update.content.type === "text") {
-                currentMessageText += update.content.text;
-            }
-        }
-    });
-
-    responding = true;
-    turnStart = Date.now();
     startTyping(chatId, bot);
+    const turnStart = Date.now();
 
     try {
-        // Resume session
-        await connection.unstable_resumeSession({
-            sessionId,
-            cwd,
-        });
+        const connection = await ensureConnection(sessionId, cwd, bot, chatId);
 
-        // Send prompt
-        const result = await connection.prompt({
-            sessionId,
-            prompt,
-        });
+        // Collect text chunks for this specific prompt
+        let responseText = "";
+        const prevHandler = (connection as any)._onSessionUpdate;
+        (connection as any)._onSessionUpdate = async (params: acp.SessionNotification) => {
+            const update = params.update;
+            if (update.sessionUpdate === "agent_message_chunk") {
+                if (update.content.type === "text") {
+                    responseText += update.content.text;
+                }
+            }
+            // Chain to previous handler (for concurrent prompts)
+            if (prevHandler) await prevHandler(params);
+        };
+
+        const result = await connection.prompt({ sessionId, prompt });
+
+        // Restore previous handler
+        (connection as any)._onSessionUpdate = prevHandler;
 
         stopTyping();
-        responding = false;
 
-        // Send collected text to Telegram
-        if (currentMessageText.trim()) {
-            await sendTelegram(chatId, currentMessageText.trim(), bot);
-            addMessage(sessionId, "Assistant", currentMessageText.trim());
+        if (responseText.trim()) {
+            await sendTelegram(chatId, responseText.trim(), bot);
+            addMessage(sessionId, "Assistant", responseText.trim());
         }
 
-        // Done message
         const elapsed = ((Date.now() - turnStart) / 1000).toFixed(1);
         let doneMsg = `Done (${elapsed}s) | ${result.stopReason}`;
-        // Usage info if available
         const usage = (result as any).usage;
         if (usage) {
             const used = (usage.inputTokens || 0) + (usage.outputTokens || 0);
-            if (used > 0) {
-                doneMsg += ` | ${(used / 1000).toFixed(1)}k tokens`;
-            }
+            if (used > 0) doneMsg += ` | ${(used / 1000).toFixed(1)}k tokens`;
         }
         await bot.api.sendMessage(chatId, doneMsg);
+        resetIdleTimer();
     } catch (err) {
         stopTyping();
-        responding = false;
         console.error("ACP prompt error:", err);
+        // If connection died, clear it so next message respawns
+        killAgent();
         await bot.api.sendMessage(chatId, `Error: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-        killProcess();
-        activeSessionId = null;
-        activeSessionCwd = null;
     }
+}
 
-    // Handle exit
-    child.on("exit", (code) => {
-        console.log(`ACP agent exited (code ${code})`);
+// --- Temporary ACP connection (for listing/creating sessions) ---
+
+async function withTempAgent<T>(cwd: string, fn: (connection: acp.ClientSideConnection) => Promise<T>): Promise<T> {
+    const child = spawn(AGENT_BIN, [], {
+        cwd,
+        env: makeClaudeEnv(),
+        stdio: ["pipe", "pipe", "pipe"],
     });
+    child.stderr!.on("data", (chunk: Buffer) => {
+        const text = chunk.toString().trim();
+        if (text) console.error(`stderr: ${text.slice(0, 500)}`);
+    });
+
+    const input = Writable.toWeb(child.stdin! as any);
+    const output = Readable.toWeb(child.stdout! as any) as ReadableStream<Uint8Array>;
+    const stream = acp.ndJsonStream(input, output);
+
+    const client: acp.Client = {
+        async requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+            return { outcome: { outcome: "selected", optionId: params.options[0]!.optionId } };
+        },
+        async sessionUpdate(): Promise<void> {},
+        async writeTextFile(): Promise<acp.WriteTextFileResponse> { return {}; },
+        async readTextFile(): Promise<acp.ReadTextFileResponse> { return { content: "" }; },
+    };
+
+    const connection = new acp.ClientSideConnection((_agent) => client, stream);
+    await connection.initialize({ protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {} });
+
+    try {
+        return await fn(connection);
+    } finally {
+        try { child.kill(); } catch {}
+    }
 }
 
 // --- Cleanup ---
 
-process.on("SIGINT", () => { killProcess(); process.exit(0); });
-process.on("SIGTERM", () => { killProcess(); process.exit(0); });
-process.on("exit", () => killProcess());
+process.on("SIGINT", () => { killAgent(); process.exit(0); });
+process.on("SIGTERM", () => { killAgent(); process.exit(0); });
+process.on("exit", () => killAgent());
 
 // --- Bot ---
 
 const bot = new Bot(cfg.token);
 
-// Auth gate: single user only
+// Log incoming messages
+bot.use((ctx, next) => {
+    const text = ctx.message?.text || ctx.message?.caption || ctx.callbackQuery?.data || "";
+    const type = ctx.message?.voice ? "voice" : ctx.message?.photo ? "photo" : ctx.message?.document ? "doc" : ctx.callbackQuery ? "callback" : "text";
+    if (text || type !== "text") console.log(`← [${type}] ${text.slice(0, 200)}`);
+    return next();
+});
+
+// Auth gate
 bot.use((ctx, next) => {
     if (ctx.from?.id !== cfg.user_id) {
         console.log(`Rejected user ${ctx.from?.id} (authorized: ${cfg.user_id})`);
@@ -425,29 +490,24 @@ bot.use((ctx, next) => {
     return next();
 });
 
-// /resume — list sessions via ACP, show as inline buttons
+// /resume — list sessions, show as inline buttons grouped by folder
 bot.command("resume", async (ctx) => {
     try {
-        await ctx.reply("Loading sessions...");
-        const sessions = await listSessionsViaAcp();
+        startTyping(ctx.chat.id, bot);
+        const sessions = await withTempAgent(HOME, (conn) => conn.listSessions({}));
+        stopTyping();
 
-        if (sessions.length === 0) {
-            await ctx.reply("No sessions found. Use /new <directory> to create one.");
-            return;
-        }
-
-        // Sort by updatedAt descending, take last 15
-        const sorted = sessions
+        const sorted = (sessions.sessions || [])
             .filter(s => s.updatedAt)
             .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
             .slice(0, 15);
 
         if (sorted.length === 0) {
-            await ctx.reply("No sessions with timestamps found.");
+            await ctx.reply("No sessions found. Use /new <directory> to create one.");
             return;
         }
 
-        // Group by cwd, preserving order of most recent session per group
+        // Group by cwd
         const groups = new Map<string, typeof sorted>();
         for (const s of sorted) {
             let group = groups.get(s.cwd);
@@ -455,21 +515,16 @@ bot.command("resume", async (ctx) => {
             group.push(s);
         }
 
-        // Build description and buttons
         const lines: string[] = [];
         const keyboard = new InlineKeyboard();
         let idx = 0;
 
         for (const [cwd, items] of groups) {
-            const shortCwd = cwd.startsWith(HOME) ? "~" + cwd.slice(HOME.length) : cwd;
-            lines.push(`\n📂 <b>${escapeHtml(shortCwd)}</b>`);
-
+            lines.push(`\n📂 <b>${escapeHtml(shortCwd(cwd))}</b>`);
             for (const s of items) {
                 idx++;
                 const title = s.title || "(untitled)";
-                const ago = timeAgo(s.updatedAt!);
-                lines.push(`  ${idx}. ${escapeHtml(title)} · ${ago}`);
-
+                lines.push(`  ${idx}. ${escapeHtml(title)} · ${timeAgo(s.updatedAt!)}`);
                 const cbKey = `r:${idx}`;
                 callbackDataMap.set(cbKey, { sessionId: s.sessionId, cwd: s.cwd, title: s.title });
                 keyboard.text(String(idx), cbKey);
@@ -478,58 +533,50 @@ bot.command("resume", async (ctx) => {
             keyboard.row();
         }
 
-        const listText = markdownToTelegramHtml(lines.join("\n"));
-        const listChunks = splitMessage(listText);
-        // Send all chunks except last as plain messages
-        for (let i = 0; i < listChunks.length - 1; i++) {
-            await bot.api.sendMessage(ctx.chat!.id, listChunks[i]!, { parse_mode: "HTML" });
+        const listHtml = lines.join("\n");
+        const chunks = splitMessage(listHtml);
+        for (let i = 0; i < chunks.length - 1; i++) {
+            await bot.api.sendMessage(ctx.chat!.id, chunks[i]!, { parse_mode: "HTML" });
         }
-        // Last chunk gets the keyboard
-        await bot.api.sendMessage(ctx.chat!.id, listChunks[listChunks.length - 1]! + "\n\nPick a session:", { parse_mode: "HTML", reply_markup: keyboard });
+        await bot.api.sendMessage(ctx.chat!.id, chunks[chunks.length - 1]! + "\n\nPick a session:", { parse_mode: "HTML", reply_markup: keyboard });
     } catch (err) {
+        stopTyping();
         console.error("List sessions error:", err);
         await ctx.reply(`Error listing sessions: ${err instanceof Error ? err.message : String(err)}`);
     }
 });
 
-// Handle inline button press for /resume
+// Handle resume button press
 bot.callbackQuery(/^r:.+$/, async (ctx) => {
-    const cbKey = ctx.callbackQuery.data;
-    const entry = callbackDataMap.get(cbKey);
+    const entry = callbackDataMap.get(ctx.callbackQuery.data);
     if (!entry) { await ctx.answerCallbackQuery({ text: "Session expired, use /resume again" }); return; }
     const { sessionId, cwd, title } = entry;
 
+    // Kill old connection if switching sessions
+    if (activeSessionId !== sessionId) killAgent();
+
     activeSessionId = sessionId;
     activeSessionCwd = cwd;
+    saveActiveSession();
 
-    const shortCwd = cwd.startsWith(HOME) ? "~" + cwd.slice(HOME.length) : cwd;
     const displayTitle = title || cwd.split("/").filter(Boolean).pop() || cwd;
     await ctx.answerCallbackQuery({ text: `Resumed: ${displayTitle}`.slice(0, 200) });
 
-    let text = `✅ <b>${escapeHtml(displayTitle)}</b>\n<code>${escapeHtml(shortCwd)}</code>`;
-
-    // Show last assistant message from disk
-    const lastMsg = await getLastAssistantMessage(sessionId, cwd);
+    let html = `✅ <b>${escapeHtml(displayTitle)}</b>\n<code>${escapeHtml(shortCwd(cwd))}</code>`;
+    const lastMsg = getLastAssistantMessage(sessionId, cwd);
     if (lastMsg) {
-        text += `\n\n<i>Last message:</i>\n${markdownToTelegramHtml(lastMsg)}`;
+        html += `\n\n<i>Last message:</i>\n${markdownToTelegramHtml(lastMsg)}`;
     }
 
-    // editMessageText has 4096 limit; if too long, delete original and send as split messages
-    if (text.length <= 4096) {
-        await ctx.editMessageText(text, { parse_mode: "HTML" });
+    if (html.length <= 4096) {
+        await ctx.editMessageText(html, { parse_mode: "HTML" });
     } else {
         try { await ctx.deleteMessage(); } catch {}
-        for (const chunk of splitMessage(text)) {
-            try {
-                await bot.api.sendMessage(ctx.chat!.id, chunk, { parse_mode: "HTML" });
-            } catch {
-                await bot.api.sendMessage(ctx.chat!.id, chunk);
-            }
-        }
+        await sendHtml(ctx.chat!.id, html, bot);
     }
 });
 
-// /new <directory> — create a new session via ACP
+// /new <directory>
 bot.command("new", async (ctx) => {
     let dir = ctx.match?.trim() || "";
     if (!dir) { await ctx.reply("Usage: /new <directory>"); return; }
@@ -545,17 +592,17 @@ bot.command("new", async (ctx) => {
         return;
     }
 
-    killProcess();
+    killAgent();
+    startTyping(ctx.chat.id, bot);
 
     try {
-        const { child, connection } = await spawnAcpAgent(dir);
-        const sessionResult = await connection.newSession({ cwd: dir, mcpServers: [] });
+        const sessionResult = await withTempAgent(dir, (conn) => conn.newSession({ cwd: dir, mcpServers: [] }));
         const sessionId = sessionResult.sessionId;
-
-        try { child.kill(); } catch {}
 
         activeSessionId = sessionId;
         activeSessionCwd = dir;
+        saveActiveSession();
+        stopTyping();
 
         const name = dir.split("/").filter(Boolean).pop() || "unnamed";
         await ctx.reply(
@@ -563,19 +610,16 @@ bot.command("new", async (ctx) => {
             { parse_mode: "HTML" },
         );
     } catch (err) {
+        stopTyping();
         console.error("New session error:", err);
         await ctx.reply(`Error creating session: ${err instanceof Error ? err.message : String(err)}`);
     }
 });
 
-// Voice messages
+// Voice messages — transcribe immediately, then send to agent
 bot.on("message:voice", async (ctx) => {
     if (!activeSessionId || !activeSessionCwd) {
         await ctx.reply("No active session. Use /resume to pick one.");
-        return;
-    }
-    if (responding) {
-        await ctx.reply("Agent is still responding. Please wait.");
         return;
     }
 
@@ -583,6 +627,7 @@ bot.on("message:voice", async (ctx) => {
     const cwd = activeSessionCwd;
 
     try {
+        startTyping(ctx.chat.id, bot);
         const file = await ctx.getFile();
         const fileUrl = `https://api.telegram.org/file/bot${cfg.token}/${file.file_path}`;
         const resp = await fetch(fileUrl);
@@ -594,16 +639,16 @@ bot.on("message:voice", async (ctx) => {
         const transcription = await transcribeVoice(oggData, context);
         const voiceSec = ((Date.now() - voiceStart) / 1000).toFixed(1);
         console.log(`Transcribed (${voiceSec}s): ${transcription.slice(0, 200)}`);
+        stopTyping();
 
         await ctx.reply(`Voice (${voiceSec}s): ${transcription}`);
 
-        if (activeSessionId !== sessionId) {
-            await ctx.reply("Session changed during transcription. Message not sent.");
-            return;
-        }
+        if (!activeSessionId || !activeSessionCwd) return;
 
-        await sendToAgent(sessionId, cwd, [{ type: "text", text: transcription }], ctx.chat.id, bot);
+        // Fire and forget — don't await so we can handle the next message immediately
+        sendToAgent(sessionId, cwd, [{ type: "text", text: transcription }], ctx.chat.id, bot);
     } catch (err) {
+        stopTyping();
         console.error("Voice error:", err);
         await ctx.reply(`Voice error: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -618,57 +663,37 @@ bot.on("message:text", async (ctx) => {
         await ctx.reply("No active session. Use /resume to pick one.");
         return;
     }
-    if (responding) {
-        await ctx.reply("Agent is still responding. Please wait.");
-        return;
-    }
 
-    await sendToAgent(activeSessionId, activeSessionCwd, [{ type: "text", text }], ctx.chat.id, bot);
+    // Fire and forget
+    sendToAgent(activeSessionId, activeSessionCwd, [{ type: "text", text }], ctx.chat.id, bot);
 });
 
-// Photo messages (with optional caption)
+// Photo messages
 bot.on("message:photo", async (ctx) => {
     if (!activeSessionId || !activeSessionCwd) {
         await ctx.reply("No active session. Use /resume to pick one.");
         return;
     }
-    if (responding) {
-        await ctx.reply("Agent is still responding. Please wait.");
-        return;
-    }
 
     try {
-        // Get the largest photo (last in array)
         const photos = ctx.message.photo;
         const largest = photos[photos.length - 1]!;
         const file = await ctx.api.getFile(largest.file_id);
         const imageData = await downloadTelegramFile(file.file_path!);
 
         const prompt: acp.ContentBlock[] = [];
-
-        // Add caption as text if present
         const caption = ctx.message.caption?.trim();
-        if (caption) {
-            prompt.push({ type: "text", text: caption });
-        } else {
-            prompt.push({ type: "text", text: "Here's an image:" });
-        }
+        prompt.push({ type: "text", text: caption || "Here's an image:" });
+        prompt.push({ type: "image", data: imageData.toString("base64"), mimeType: "image/jpeg" });
 
-        // Add image
-        prompt.push({
-            type: "image",
-            data: imageData.toString("base64"),
-            mimeType: "image/jpeg",
-        });
-
-        await sendToAgent(activeSessionId, activeSessionCwd, prompt, ctx.chat.id, bot);
+        sendToAgent(activeSessionId, activeSessionCwd, prompt, ctx.chat.id, bot);
     } catch (err) {
         console.error("Photo error:", err);
         await ctx.reply(`Photo error: ${err instanceof Error ? err.message : String(err)}`);
     }
 });
 
-// Document images (uncompressed photos sent as files)
+// Document images
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
 bot.on("message:document", async (ctx) => {
@@ -679,10 +704,6 @@ bot.on("message:document", async (ctx) => {
         await ctx.reply("No active session. Use /resume to pick one.");
         return;
     }
-    if (responding) {
-        await ctx.reply("Agent is still responding. Please wait.");
-        return;
-    }
 
     try {
         const file = await ctx.api.getFile(doc.file_id);
@@ -690,18 +711,10 @@ bot.on("message:document", async (ctx) => {
 
         const prompt: acp.ContentBlock[] = [];
         const caption = ctx.message.caption?.trim();
-        if (caption) {
-            prompt.push({ type: "text", text: caption });
-        } else {
-            prompt.push({ type: "text", text: "Here's an image:" });
-        }
-        prompt.push({
-            type: "image",
-            data: imageData.toString("base64"),
-            mimeType: doc.mime_type,
-        });
+        prompt.push({ type: "text", text: caption || "Here's an image:" });
+        prompt.push({ type: "image", data: imageData.toString("base64"), mimeType: doc.mime_type });
 
-        await sendToAgent(activeSessionId, activeSessionCwd, prompt, ctx.chat.id, bot);
+        sendToAgent(activeSessionId, activeSessionCwd, prompt, ctx.chat.id, bot);
     } catch (err) {
         console.error("Document image error:", err);
         await ctx.reply(`Image error: ${err instanceof Error ? err.message : String(err)}`);
@@ -709,6 +722,14 @@ bot.on("message:document", async (ctx) => {
 });
 
 bot.catch((err) => console.error("Bot error:", err));
+
+// Log outgoing messages
+bot.api.config.use(async (prev, method, payload, signal) => {
+    if (method === "sendMessage" && (payload as any)?.text) {
+        console.log(`→ [${method}] ${String((payload as any).text).slice(0, 200)}`);
+    }
+    return prev(method, payload, signal);
+});
 
 await syncTelegramCommands(bot);
 await bot.start();

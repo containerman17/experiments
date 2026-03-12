@@ -1,16 +1,13 @@
 {
   "name": "01_telegram_acp",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run index.ts"
+    "start": "node index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/js-yaml": "^4.0.9"
-  },
-  "peerDependencies": {
+    "@types/node": "^22",
+    "@types/js-yaml": "^4.0.9",
     "typescript": "^5"
   },
   "dependencies": {

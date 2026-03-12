@@ -2,6 +2,11 @@ import { Bot, InlineKeyboard } from "grammy";
 import { Writable, Readable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import yaml from "js-yaml";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { createReadStream } from "node:fs";
 
 // --- Config ---
 
@@ -10,7 +15,7 @@ interface Config {
     gemini_api_key: string;
     gemini_model?: string;
     user_id: number;
-    claude_bin?: string;
+    agent_bin: string;
 }
 
 const configIdx = process.argv.indexOf("--config");
@@ -18,27 +23,66 @@ const CONFIG_PATH: string =
     configIdx !== -1 && process.argv[configIdx + 1]
         ? process.argv[configIdx + 1]!
         : "config.yaml";
-const cfg = yaml.load(await Bun.file(CONFIG_PATH).text()) as Config;
+const cfg = yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Config;
 cfg.gemini_model = cfg.gemini_model || "gemini-3.1-pro-preview";
 
 if (!cfg.token) { console.error("No 'token' in config."); process.exit(1); }
 if (!cfg.user_id) { console.error("No 'user_id' in config."); process.exit(1); }
 
 const HOME = process.env.HOME || "/root";
-const CLAUDE_BIN = cfg.claude_bin || `${HOME}/.local/bin/claude`;
+if (!cfg.agent_bin) { console.error("No 'agent_bin' in config."); process.exit(1); }
+const AGENT_BIN = cfg.agent_bin;
 const MAX_LAST_MESSAGES = 6;
+const BOT_COMMANDS = [
+    { command: "resume", description: "List recent ACP sessions and resume one" },
+    { command: "new", description: "Create a new ACP session for a directory" },
+] as const;
+
+// --- Session history from disk ---
+
+function sessionFilePath(sessionId: string, cwd: string): string | null {
+    const projectDir = cwd.replace(/\//g, "-");
+    const base = join(HOME, ".claude", "projects", projectDir);
+    const file = join(base, `${sessionId}.jsonl`);
+    if (existsSync(file)) return file;
+    return null;
+}
+
+async function getLastAssistantMessage(sessionId: string, cwd: string): Promise<string | null> {
+    const file = sessionFilePath(sessionId, cwd);
+    if (!file) return null;
+
+    // Read file backwards — find last assistant message with text
+    const content = readFileSync(file, "utf-8");
+    const lines = content.trimEnd().split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+            const msg = JSON.parse(lines[i]!);
+            if (msg.type === "assistant") {
+                const blocks = msg.message?.content || [];
+                const texts = blocks
+                    .filter((b: any) => b.type === "text")
+                    .map((b: any) => b.text);
+                if (texts.length) return texts.join("\n").slice(0, 500);
+            }
+        } catch {}
+    }
+    return null;
+}
 
 // --- Runtime state ---
 
 let activeSessionId: string | null = null;
 let activeSessionCwd: string | null = null;
-let activeChild: ReturnType<typeof Bun.spawn> | null = null;
+let activeChild: ChildProcess | null = null;
 let activeConnection: acp.ClientSideConnection | null = null;
 let responding = false;
 let typingInterval: ReturnType<typeof setInterval> | null = null;
 let turnStart = 0;
 // In-memory message history for voice context and recap
 const sessionMessages = new Map<string, string[]>();
+// Callback data lookup (Telegram limits callback_data to 64 bytes)
+const callbackDataMap = new Map<string, { sessionId: string; cwd: string; title?: string }>();
 
 // --- Gemini voice transcription ---
 
@@ -102,6 +146,17 @@ function markdownToTelegramHtml(md: string): string {
     return out;
 }
 
+function timeAgo(iso: string): string {
+    const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (sec < 60) return "just now";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const days = Math.floor(hr / 24);
+    return `${days}d ago`;
+}
+
 function splitMessage(text: string, max = 4096): string[] {
     if (text.length <= max) return [text];
     const chunks: string[] = [];
@@ -126,6 +181,19 @@ async function sendTelegram(chatId: number, response: string, bot: Bot) {
             await bot.api.sendMessage(chatId, chunk, { disable_notification: true });
         }
     }
+}
+
+async function syncTelegramCommands(bot: Bot) {
+    const current = await bot.api.getMyCommands();
+    const expected = BOT_COMMANDS.map(({ command, description }) => ({ command, description }));
+    const matches =
+        current.length === expected.length &&
+        current.every((cmd, index) => cmd.command === expected[index]!.command && cmd.description === expected[index]!.description);
+
+    if (matches) return;
+
+    await bot.api.setMyCommands(expected);
+    console.log(`Updated Telegram bot commands: ${expected.map(cmd => `/${cmd.command}`).join(", ")}`);
 }
 
 // --- Process & ACP management ---
@@ -175,17 +243,16 @@ function getSessionContext(sessionId: string): string {
 }
 
 // Spawn Claude as ACP agent and return connection
-async function spawnAcpAgent(cwd: string): Promise<{ child: ReturnType<typeof Bun.spawn>; connection: acp.ClientSideConnection }> {
-    const child = Bun.spawn([CLAUDE_BIN], {
+async function spawnAcpAgent(cwd: string): Promise<{ child: ChildProcess; connection: acp.ClientSideConnection }> {
+    const child = spawn(AGENT_BIN, [], {
         cwd,
         env: makeClaudeEnv(),
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
+        stdio: ["pipe", "pipe", "pipe"],
     });
 
-    new Response(child.stderr).text().then((stderr) => {
-        if (stderr.trim()) console.error(`stderr: ${stderr.slice(0, 500)}`);
+    child.stderr!.on("data", (chunk: Buffer) => {
+        const text = chunk.toString().trim();
+        if (text) console.error(`stderr: ${text.slice(0, 500)}`);
     });
 
     const input = Writable.toWeb(child.stdin! as any);
@@ -265,7 +332,7 @@ async function sendToAgent(
         .join(" ") || "(image)";
     addMessage(sessionId, "User", textSummary);
 
-    console.log(`Spawning ACP agent in ${cwd} for session ${sessionId.slice(0, 8)}...`);
+    console.log(`Spawning ${AGENT_BIN} in ${cwd} for session ${sessionId.slice(0, 8)}...`);
 
     const { child, connection } = await spawnAcpAgent(cwd);
     activeChild = child;
@@ -334,8 +401,8 @@ async function sendToAgent(
     }
 
     // Handle exit
-    child.exited.then((code) => {
-        console.log(`Claude process exited (code ${code})`);
+    child.on("exit", (code) => {
+        console.log(`ACP agent exited (code ${code})`);
     });
 }
 
@@ -369,28 +436,56 @@ bot.command("resume", async (ctx) => {
             return;
         }
 
-        // Sort by updatedAt descending, take last 5
+        // Sort by updatedAt descending, take last 15
         const sorted = sessions
             .filter(s => s.updatedAt)
             .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
-            .slice(0, 5);
+            .slice(0, 15);
 
         if (sorted.length === 0) {
             await ctx.reply("No sessions with timestamps found.");
             return;
         }
 
-        const keyboard = new InlineKeyboard();
+        // Group by cwd, preserving order of most recent session per group
+        const groups = new Map<string, typeof sorted>();
         for (const s of sorted) {
-            const dirName = s.cwd.split("/").filter(Boolean).pop() || s.cwd;
-            const title = s.title || dirName;
-            const shortId = s.sessionId.slice(0, 8);
-            const label = `${title} (${shortId}...)`;
-            // Encode sessionId:cwd in callback data
-            keyboard.text(label, `resume:${s.sessionId}:${s.cwd}`).row();
+            let group = groups.get(s.cwd);
+            if (!group) { group = []; groups.set(s.cwd, group); }
+            group.push(s);
         }
 
-        await ctx.reply("Pick a session to resume:", { reply_markup: keyboard });
+        // Build description and buttons
+        const lines: string[] = [];
+        const keyboard = new InlineKeyboard();
+        let idx = 0;
+
+        for (const [cwd, items] of groups) {
+            const shortCwd = cwd.startsWith(HOME) ? "~" + cwd.slice(HOME.length) : cwd;
+            lines.push(`\n📂 <b>${escapeHtml(shortCwd)}</b>`);
+
+            for (const s of items) {
+                idx++;
+                const title = s.title || "(untitled)";
+                const ago = timeAgo(s.updatedAt!);
+                lines.push(`  ${idx}. ${escapeHtml(title)} · ${ago}`);
+
+                const cbKey = `r:${idx}`;
+                callbackDataMap.set(cbKey, { sessionId: s.sessionId, cwd: s.cwd, title: s.title });
+                keyboard.text(String(idx), cbKey);
+            }
+            lines.push("");
+            keyboard.row();
+        }
+
+        const listText = markdownToTelegramHtml(lines.join("\n"));
+        const listChunks = splitMessage(listText);
+        // Send all chunks except last as plain messages
+        for (let i = 0; i < listChunks.length - 1; i++) {
+            await bot.api.sendMessage(ctx.chat!.id, listChunks[i]!, { parse_mode: "HTML" });
+        }
+        // Last chunk gets the keyboard
+        await bot.api.sendMessage(ctx.chat!.id, listChunks[listChunks.length - 1]! + "\n\nPick a session:", { parse_mode: "HTML", reply_markup: keyboard });
     } catch (err) {
         console.error("List sessions error:", err);
         await ctx.reply(`Error listing sessions: ${err instanceof Error ? err.message : String(err)}`);
@@ -398,29 +493,39 @@ bot.command("resume", async (ctx) => {
 });
 
 // Handle inline button press for /resume
-bot.callbackQuery(/^resume:([^:]+):(.+)$/, async (ctx) => {
-    const sessionId = ctx.match![1]!;
-    const cwd = ctx.match![2]!;
+bot.callbackQuery(/^r:.+$/, async (ctx) => {
+    const cbKey = ctx.callbackQuery.data;
+    const entry = callbackDataMap.get(cbKey);
+    if (!entry) { await ctx.answerCallbackQuery({ text: "Session expired, use /resume again" }); return; }
+    const { sessionId, cwd, title } = entry;
 
     activeSessionId = sessionId;
     activeSessionCwd = cwd;
 
-    const dirName = cwd.split("/").filter(Boolean).pop() || cwd;
-    await ctx.answerCallbackQuery({ text: `Resumed: ${dirName}` });
+    const shortCwd = cwd.startsWith(HOME) ? "~" + cwd.slice(HOME.length) : cwd;
+    const displayTitle = title || cwd.split("/").filter(Boolean).pop() || cwd;
+    await ctx.answerCallbackQuery({ text: `Resumed: ${displayTitle}`.slice(0, 200) });
 
-    // Show recap from in-memory messages
-    const msgs = sessionMessages.get(sessionId);
-    if (msgs?.length) {
-        const recap = msgs.slice(-3).map(m => `> ${m}`).join("\n\n");
-        await ctx.editMessageText(
-            `Resumed <b>${escapeHtml(dirName)}</b> in <code>${escapeHtml(cwd)}</code>\n\n${markdownToTelegramHtml(recap)}`,
-            { parse_mode: "HTML" },
-        );
+    let text = `✅ <b>${escapeHtml(displayTitle)}</b>\n<code>${escapeHtml(shortCwd)}</code>`;
+
+    // Show last assistant message from disk
+    const lastMsg = await getLastAssistantMessage(sessionId, cwd);
+    if (lastMsg) {
+        text += `\n\n<i>Last message:</i>\n${markdownToTelegramHtml(lastMsg)}`;
+    }
+
+    // editMessageText has 4096 limit; if too long, delete original and send as split messages
+    if (text.length <= 4096) {
+        await ctx.editMessageText(text, { parse_mode: "HTML" });
     } else {
-        await ctx.editMessageText(
-            `Resumed <b>${escapeHtml(dirName)}</b> in <code>${escapeHtml(cwd)}</code>\n\nNo recent messages in memory.`,
-            { parse_mode: "HTML" },
-        );
+        try { await ctx.deleteMessage(); } catch {}
+        for (const chunk of splitMessage(text)) {
+            try {
+                await bot.api.sendMessage(ctx.chat!.id, chunk, { parse_mode: "HTML" });
+            } catch {
+                await bot.api.sendMessage(ctx.chat!.id, chunk);
+            }
+        }
     }
 });
 
@@ -604,5 +709,7 @@ bot.on("message:document", async (ctx) => {
 });
 
 bot.catch((err) => console.error("Bot error:", err));
-bot.start();
+
+await syncTelegramCommands(bot);
+await bot.start();
 console.log("Telegram ACP bot started (single-user mode)");

@@ -1,0 +1,14 @@
+import { query } from "@anthropic-ai/claude-agent-sdk";
+
+for await (const message of query({
+    prompt: "Which folder am I in?",
+    options: { allowedTools: ["Read", "Glob", "Grep"] },
+})) {
+    // Handle query results
+    if (message.type === "result") {
+        const { session_id: sessionId } = message;
+        if (message.subtype === "success") {
+            console.log(message.result);
+        }
+    }
+}

@@ -52,7 +52,7 @@ export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
   };
 
   return (
-    <div className="w-14 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-2 shrink-0 z-10">
+    <div className="w-14 overflow-visible bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-2 shrink-0 z-10">
       <button
         onClick={closeProject}
         className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg mb-4 transition-colors"
@@ -71,7 +71,7 @@ export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
           return (
             <div
               key={tab.id}
-              className={`group relative ${isActive ? 'w-full pl-1' : 'w-10'}`}
+              className={`group relative overflow-visible ${isActive ? 'w-full pl-1 pr-1' : 'w-10'}`}
             >
               <button
                 onClick={() => tab.agentId && setActive(tab.agentId)}
@@ -87,11 +87,11 @@ export function LeftSidebar({ closeProject }: { closeProject: () => void }) {
                   e.stopPropagation();
                   closeAgentTab(tab.id);
                 }}
-                className="absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-500 hover:text-zinc-200 hover:border-zinc-500 opacity-0 group-hover:opacity-100 transition-all"
+                className="absolute top-0.5 right-0.5 z-10 flex h-5 w-5 translate-x-1/4 -translate-y-1/4 items-center justify-center rounded-full border border-red-500/40 bg-zinc-950 text-red-300 shadow-sm opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 hover:border-red-400 hover:bg-red-500/20 hover:text-red-200 transition-all"
                 title="Close agent"
                 aria-label={`Close ${tab.label}`}
               >
-                <span className="block -mt-px text-[10px] leading-none">×</span>
+                <span className="block -mt-px text-[11px] leading-none">×</span>
               </button>
             </div>
           );

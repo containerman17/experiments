@@ -583,6 +583,18 @@ async function readClaudeOutput(
                         }
 
                         textMessages.length = 0;
+                    } else if (ev.type === "rate_limit_event") {
+                        if (ev.rate_limit_info?.isUsingOverage && state.ctx) {
+                            await state.ctx.reply("⚠️ Using overage capacity", { disable_notification: true }).catch(() => {});
+                        }
+                    } else if (ev.type === "user") {
+                        // User message echo — ignore
+                    } else if (ev.type !== "system" && ev.type !== "assistant") {
+                        // Unhandled event type — show preview in chat
+                        if (state.ctx) {
+                            const preview = line.slice(0, 200);
+                            await state.ctx.reply(`Unhandled: ${preview}`, { disable_notification: true }).catch(() => {});
+                        }
                     }
                 } catch {}
             }

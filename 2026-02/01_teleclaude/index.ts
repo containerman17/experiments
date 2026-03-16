@@ -704,7 +704,7 @@ bot.command("new", async (ctx) => {
     const chatId = ctx.chat.id;
     const groupCfg = cfg.groups[String(chatId)];
     if (!groupCfg) {
-        await ctx.reply("Not configured. Add this chat ID to config.yaml first.");
+        await ctx.reply("Not configured. Use /resume to pick a session first.");
         return;
     }
 
@@ -817,7 +817,7 @@ bot.callbackQuery(/^resume:(\d+)$/, async (ctx) => {
                 if (block.type === "text" && block.text?.trim()) {
                     const prefix = msg.type === "user" ? "You" : "Claude";
                     await sendHtml(ctx, `<b>${prefix}:</b>`);
-                    await sendResponse(ctx, block.text.trim().slice(0, 500));
+                    await sendResponse(ctx, block.text.trim());
                 }
             }
         }
@@ -843,7 +843,7 @@ bot.on("message:voice", async (ctx) => {
     const chatId = ctx.chat.id;
     const state = getState(chatId);
     if (!state) {
-        await ctx.reply("Not configured. Add this chat ID to config.yaml first.");
+        await ctx.reply("Not configured. Use /resume to pick a session first.");
         return;
     }
 
@@ -939,7 +939,7 @@ bot.on("message:text", (ctx) => {
     const chatId = ctx.chat.id;
     const state = getState(chatId);
     if (!state) {
-        ctx.reply("Not configured. Add this chat ID to config.yaml first.").catch(() => {});
+        ctx.reply(`Not configured. Use /resume to pick a session for this chat (ID: <code>${chatId}</code>).`, { parse_mode: "HTML" }).catch(() => {});
         return;
     }
 

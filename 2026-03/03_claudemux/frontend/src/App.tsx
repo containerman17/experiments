@@ -22,6 +22,7 @@ function emojiHash(name: string): string {
 const NEW_TAB = '__new__';
 const STORAGE_KEY = 'claudemux_url';
 const MIC_KEY = 'claudemux_mic';
+const TAB_KEY = 'claudemux_tab';
 
 function getSavedUrl(): string {
   return localStorage.getItem(STORAGE_KEY) || '';
@@ -85,11 +86,10 @@ function ConnectScreen({ onConnected }: { onConnected: (conn: Connection, url: s
   const [status, setStatus] = useState<'idle' | 'connecting' | 'failed'>('idle');
   const connRef = useRef<Connection | null>(null);
 
-  // Auto-connect if URL came from query params
+  // Auto-connect if URL available (from query params or saved)
   const autoConnect = useRef(false);
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('token') && url && !autoConnect.current) {
+    if (url && !autoConnect.current) {
       autoConnect.current = true;
       handleConnect();
     }
@@ -127,6 +127,12 @@ function ConnectScreen({ onConnected }: { onConnected: (conn: Connection, url: s
     conn.start();
   }
 
+  function handleCancel() {
+    connRef.current?.close();
+    connRef.current = null;
+    setStatus('idle');
+  }
+
   return (
     <div className="h-full flex items-center justify-center p-6">
       <div className="w-full max-w-md flex flex-col gap-4">
@@ -137,16 +143,26 @@ function ConnectScreen({ onConnected }: { onConnected: (conn: Connection, url: s
           onChange={e => { setUrl(e.target.value); setStatus('idle'); }}
           onKeyDown={e => { if (e.key === 'Enter') handleConnect(); }}
           placeholder="ws://localhost:7938?token=..."
-          className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
+          disabled={status === 'connecting'}
+          className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 disabled:opacity-50"
           autoFocus
         />
-        <button
-          onClick={handleConnect}
-          disabled={status === 'connecting' || !url.trim()}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded px-3 py-2 text-sm transition-colors"
-        >
-          {status === 'connecting' ? 'Connecting...' : 'Connect'}
-        </button>
+        {status === 'connecting' ? (
+          <button
+            onClick={handleCancel}
+            className="w-full bg-zinc-600 hover:bg-zinc-500 text-white rounded px-3 py-2 text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            onClick={handleConnect}
+            disabled={!url.trim()}
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded px-3 py-2 text-sm transition-colors"
+          >
+            Connect
+          </button>
+        )}
         {status === 'failed' && (
           <p className="text-red-400 text-sm text-center">Connection failed. Check the URL and try again.</p>
         )}
@@ -183,7 +199,11 @@ function NewSessionPanel() {
 function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: string; onDisconnect: () => void }) {
   const [connected, setConnected] = useState(true);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [activeSession, setActiveSession] = useState<string>(NEW_TAB);
+  const [activeSession, setActiveSessionRaw] = useState<string>(() => localStorage.getItem(TAB_KEY) || NEW_TAB);
+  const setActiveSession = useCallback((s: string) => {
+    setActiveSessionRaw(s);
+    localStorage.setItem(TAB_KEY, s);
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [extraKeys, setExtraKeys] = useState(false);
@@ -192,10 +212,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const isTerminalActive = activeSession !== NEW_TAB && sessions.some(s => s.name === activeSession);
 
   useEffect(() => {
-    const unStatus = conn.onStatus((c) => {
-      setConnected(c);
-      if (!c) onDisconnect();
-    });
+    const unStatus = conn.onStatus(setConnected);
     const unMsg = conn.subscribe(msg => {
       if (msg.type === 'sessions.list') {
         setSessions(msg.sessions);
@@ -245,13 +262,20 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     }
   }, [activeSession, isTerminalActive]);
 
-  if (!connected) {
-    return <div className="h-full flex items-center justify-center text-zinc-500">Reconnecting...</div>;
-  }
+  // Re-request session list on reconnect
+  useEffect(() => {
+    if (connected) conn.send({ type: 'sessions.list' });
+  }, [connected, conn]);
 
   const toastEl = toast && (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-600 text-white px-4 py-2 rounded shadow-lg text-sm max-w-sm truncate">
       {toast}
+    </div>
+  );
+
+  const reconnectingEl = !connected && (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-amber-600 text-white px-4 py-2 rounded shadow-lg text-sm animate-pulse">
+      Reconnecting...
     </div>
   );
 
@@ -283,9 +307,10 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             activeSession === s.name
               ? 'bg-zinc-700 text-zinc-100'
               : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
-          }`}
+          } ${s.idle ? 'font-bold' : ''}`}
         >
           <span>{emojiHash(s.name)}</span>
+          {s.idle && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
           {s.name}
         </button>
       ))}
@@ -320,6 +345,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     return (
       <div className="h-full flex relative">
         {toastEl}
+        {reconnectingEl}
         <div className="w-72 shrink-0 bg-zinc-800 border-r border-zinc-700 flex flex-col">
           <div className="px-3 py-2 text-xs text-zinc-500 uppercase tracking-wider">Sessions</div>
           <div className="flex-1 overflow-y-auto">{sessionItems()}</div>
@@ -342,6 +368,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   return (
     <div className="h-full flex flex-col relative">
       {toastEl}
+      {reconnectingEl}
       {/* Top bar */}
       <div className="shrink-0 bg-zinc-800 border-b border-zinc-700 flex items-center px-3 py-2 gap-2">
         <button onClick={() => setMenuOpen(!menuOpen)} className="p-1 rounded hover:bg-zinc-700 text-zinc-400">
@@ -385,8 +412,12 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
               <button onClick={() => sendKey('\x02')} className="toolbar-btn text-xs" title="Ctrl-B">^B</button>
               <button onClick={() => { sendKey('\x02'); setTimeout(() => sendKey('\x02'), 50); }} className="toolbar-btn text-xs" title="Ctrl-B Ctrl-B">^B^B</button>
               <button onClick={() => sendKey('\x0f')} className="toolbar-btn text-xs" title="Ctrl-O">^O</button>
-              <button onClick={() => sendKey('\x7f')} className="toolbar-btn text-xs" title="Backspace">⌫</button>
+              <button onClick={() => sendKey('\x1b')} className="toolbar-btn text-xs" title="Escape">Esc</button>
               <button onClick={() => sendKey('\r')} className="toolbar-btn text-xs !bg-blue-600 !text-white" title="Enter">↵</button>
+              <button onClick={() => {
+                const el = document.querySelector(`[data-session="${activeSession}"]`);
+                if (el) el.dispatchEvent(new CustomEvent('copy-screen'));
+              }} className="toolbar-btn text-xs" title="Copy screen">Sel</button>
             </div>
           )}
           {/* Main row: voice | spacer | extra toggle | keyboard */}
@@ -434,7 +465,10 @@ export function App() {
     <MainView
       conn={state.conn}
       wsUrl={state.url}
-      onDisconnect={() => setState(null)}
+      onDisconnect={() => {
+        state.conn.close();
+        setState(null);
+      }}
     />
   );
 }

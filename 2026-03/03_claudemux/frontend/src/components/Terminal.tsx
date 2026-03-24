@@ -2,7 +2,7 @@
 // Attaches on mount, replays ring buffer, streams output.
 // Does NOT close the tmux session on unmount — sessions are persistent.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -17,6 +17,8 @@ interface Props {
 
 export function Terminal({ session, conn }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [screenText, setScreenText] = useState<string | null>(null);
+  const termRef = useRef<XTerm | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -24,7 +26,7 @@ export function Terminal({ session, conn }: Props) {
     const term = new XTerm({
       allowProposedApi: true,
       cursorBlink: true,
-      scrollback: 10000,
+      scrollback: 0, // tmux owns scrollback
       fontSize: 13,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
@@ -42,6 +44,7 @@ export function Terminal({ session, conn }: Props) {
     term.loadAddon(unicode11);
     term.unicode.activeVersion = '11';
     term.open(containerRef.current);
+    termRef.current = term;
 
     requestAnimationFrame(() => fitAddon.fit());
 
@@ -53,6 +56,18 @@ export function Terminal({ session, conn }: Props) {
     };
     containerRef.current.addEventListener('refit', onRefit);
 
+    const onCopyScreen = () => {
+      const buf = term.buffer.active;
+      const lines: string[] = [];
+      for (let i = 0; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        if (line) lines.push(line.translateToString(true));
+      }
+      while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+      setScreenText(lines.join('\n'));
+    };
+    containerRef.current.addEventListener('copy-screen', onCopyScreen);
+
     conn.send({ type: 'terminal.attach', session });
     conn.send({ type: 'terminal.resize', session, cols: term.cols, rows: term.rows });
 
@@ -60,9 +75,20 @@ export function Terminal({ session, conn }: Props) {
       conn.send({ type: 'terminal.input', session, data });
     });
 
+    // OSC 52 clipboard: \x1b]52;c;<base64>\x07 or \x1b]52;c;<base64>\x1b\\
+    const osc52Re = /\x1b\]52;[a-z]*;([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)/g;
+
     const unsub = conn.subscribe(msg => {
       if (msg.type === 'terminal.output' && msg.session === session) {
         const binary = atob(msg.data);
+        // Check for OSC 52 clipboard sequences
+        const text = new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
+        for (const match of text.matchAll(osc52Re)) {
+          try {
+            const clipText = atob(match[1]);
+            navigator.clipboard.writeText(clipText).catch(() => {});
+          } catch { /* ignore */ }
+        }
         const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
         term.write(bytes);
       }
@@ -113,59 +139,39 @@ export function Terminal({ session, conn }: Props) {
       }
     };
 
-    const onTouchEnd = () => { pinchStartDist = 0; };
+    const onTouchEnd = () => { pinchStartDist = 0; scrolling = false; };
 
-    // Single-finger scroll with inertia
+    // Single-finger scroll → tmux mouse wheel events
     let scrollY = 0;
-    let scrollVelocity = 0;
-    let scrollLastTime = 0;
+    let scrollAccum = 0;
     let scrolling = false;
-    let inertiaRaf = 0;
-    const LINE_HEIGHT = Math.round((term.options.fontSize || 13) * 1.2);
+    const THRESHOLD = 40; // pixels per scroll line
 
     const onScrollStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
-      cancelAnimationFrame(inertiaRaf);
       scrollY = e.touches[0].clientY;
-      scrollVelocity = 0;
-      scrollLastTime = Date.now();
+      scrollAccum = 0;
       scrolling = true;
     };
 
     const onScrollMove = (e: TouchEvent) => {
       if (!scrolling || e.touches.length !== 1 || pinchStartDist !== 0) return;
       const y = e.touches[0].clientY;
-      const dy = scrollY - y;
-      const now = Date.now();
-      const dt = now - scrollLastTime;
-      if (dt > 0) scrollVelocity = dy / dt; // px/ms
-      scrollLastTime = now;
+      scrollAccum += scrollY - y;
       scrollY = y;
 
-      const lines = Math.round(dy / LINE_HEIGHT);
+      const lines = Math.trunc(scrollAccum / THRESHOLD);
       if (lines !== 0) {
-        term.scrollLines(lines);
-        scrollY += (lines * LINE_HEIGHT - dy); // correct remainder
+        const btn = lines > 0 ? 65 : 64;
+        const n = Math.abs(lines);
+        for (let i = 0; i < n; i++) {
+          conn.send({ type: 'terminal.input', session, data: `\x1b[<${btn};1;1M` });
+        }
+        scrollAccum -= lines * THRESHOLD;
       }
     };
 
-    const onScrollEnd = () => {
-      if (!scrolling) return;
-      scrolling = false;
-
-      // Inertia: decay velocity over time
-      const friction = 0.95;
-      let v = scrollVelocity * 16; // convert px/ms to px/frame (~16ms)
-
-      const tick = () => {
-        v *= friction;
-        if (Math.abs(v) < 0.5) return;
-        const lines = Math.round(v / LINE_HEIGHT);
-        if (lines !== 0) term.scrollLines(lines);
-        inertiaRaf = requestAnimationFrame(tick);
-      };
-      inertiaRaf = requestAnimationFrame(tick);
-    };
+    const onScrollEnd = () => { scrolling = false; };
 
     // Double-tap right side → Tab key
     let lastTapTime = 0, lastTapX = 0;
@@ -199,7 +205,6 @@ export function Terminal({ session, conn }: Props) {
       conn.send({ type: 'terminal.detach', session });
       unsub();
       ro.disconnect();
-      cancelAnimationFrame(inertiaRaf);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
       el.removeEventListener('touchstart', onDoubleTapTab);
@@ -210,9 +215,28 @@ export function Terminal({ session, conn }: Props) {
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchend', onScrollEnd);
       el.removeEventListener('refit', onRefit);
+      el.removeEventListener('copy-screen', onCopyScreen);
       term.dispose();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={containerRef} className="h-full" data-session={session} />;
+  return (
+    <div className="h-full relative">
+      <div ref={containerRef} className="h-full" data-session={session} />
+      {screenText !== null && (
+        <div
+          className="absolute inset-0 z-20 bg-zinc-900/95 overflow-auto p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setScreenText(null); }}
+        >
+          <button
+            onClick={() => setScreenText(null)}
+            className="fixed top-2 right-2 z-30 bg-zinc-700 text-zinc-300 rounded px-3 py-1 text-sm hover:bg-zinc-600"
+          >
+            Close
+          </button>
+          <pre className="text-xs text-zinc-200 font-mono whitespace-pre-wrap select-text">{screenText}</pre>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -7,6 +7,7 @@ export interface SessionInfo {
   width: number;
   height: number;
   attached: boolean;  // whether tmux shows it as attached
+  idle: boolean;      // no output in last 5s
 }
 
 // --- Client → Server ---

@@ -273,7 +273,7 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
         )}
         {!previewLoading && preview && (
           <div className="h-full overflow-auto">
-            <pre className="min-w-full p-4 text-[13px] leading-6 text-zinc-200">
+            <pre className="w-full p-4 text-[13px] leading-6 text-zinc-200 whitespace-pre-wrap break-words">
               <code className="hljs" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </pre>
           </div>

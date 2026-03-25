@@ -318,8 +318,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           <NewSessionPanel />
         </div>
       )}
-      {activeSession === FILES_TAB && (
-        <div className="absolute inset-0 z-10">
+      <div className={`absolute inset-0 z-10 ${activeSession === FILES_TAB ? '' : 'invisible'}`}>
           <FileExplorer conn={conn} onSessionCreated={() => {
             // Switch to the new session once it appears in the next sessions.list broadcast
             const unsub = conn.subscribe(msg => {
@@ -329,8 +328,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
               }
             });
           }} />
-        </div>
-      )}
+      </div>
       {sessions.map(s => (
         <div
           key={s.name}

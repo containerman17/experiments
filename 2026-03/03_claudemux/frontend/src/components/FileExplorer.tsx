@@ -1,11 +1,50 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import hljs from 'highlight.js/lib/core';
+import bash from 'highlight.js/lib/languages/bash';
+import c from 'highlight.js/lib/languages/c';
+import cpp from 'highlight.js/lib/languages/cpp';
+import css from 'highlight.js/lib/languages/css';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import go from 'highlight.js/lib/languages/go';
+import ini from 'highlight.js/lib/languages/ini';
+import java from 'highlight.js/lib/languages/java';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import makefile from 'highlight.js/lib/languages/makefile';
+import markdown from 'highlight.js/lib/languages/markdown';
+import plaintext from 'highlight.js/lib/languages/plaintext';
+import python from 'highlight.js/lib/languages/python';
+import rust from 'highlight.js/lib/languages/rust';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
 import type { Connection } from '../ws';
-import type { FileEntry } from '../types';
+import type { FileEntry, FilePreview } from '../types';
 
 interface Props {
   conn: Connection;
   onSessionCreated?: () => void;
 }
+
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('c', c);
+hljs.registerLanguage('cpp', cpp);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('go', go);
+hljs.registerLanguage('ini', ini);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('makefile', makefile);
+hljs.registerLanguage('markdown', markdown);
+hljs.registerLanguage('plaintext', plaintext);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('rust', rust);
+hljs.registerLanguage('toml', ini);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('yaml', yaml);
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -17,10 +56,11 @@ function formatSize(bytes: number): string {
 export function FileExplorer({ conn, onSessionCreated }: Props) {
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [sessionDirs, setSessionDirs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<FilePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     const unsub = conn.subscribe(msg => {
@@ -30,12 +70,15 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
         setLoading(false);
         setError(null);
       }
-      if (msg.type === 'files.sessionDirs') {
-        setSessionDirs(msg.dirs);
-      }
       if (msg.type === 'files.error') {
         setError(msg.message);
         setLoading(false);
+        setPreviewLoading(false);
+      }
+      if (msg.type === 'files.preview') {
+        setPreview(msg);
+        setPreviewLoading(false);
+        setError(null);
       }
     });
 
@@ -48,6 +91,8 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
   const navigate = useCallback((path: string) => {
     setLoading(true);
     setError(null);
+    setPreview(null);
+    setPreviewLoading(false);
     conn.send({ type: 'files.list', path });
   }, [conn]);
 
@@ -79,8 +124,25 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
     }).catch(() => {});
   }, []);
 
+  const handlePreview = useCallback((filePath: string) => {
+    setPreview(null);
+    setPreviewLoading(true);
+    setError(null);
+    conn.send({ type: 'files.preview', path: filePath });
+  }, [conn]);
+
+  const previewHtml = useMemo(() => {
+    if (!preview) return '';
+    try {
+      return hljs.highlight(preview.content, { language: preview.language, ignoreIllegals: true }).value;
+    } catch {
+      return hljs.highlightAuto(preview.content).value;
+    }
+  }, [preview]);
+
   // Breadcrumbs
   const breadcrumbs = currentPath ? currentPath.split('/').filter(Boolean) : [];
+  const previewName = preview?.path.split('/').pop() || null;
 
   // Initial "jump to" view
   if (!currentPath) {
@@ -104,15 +166,27 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
       <div className="shrink-0 border-b border-zinc-700 px-3 py-2 flex flex-col gap-2">
         {/* Breadcrumb row */}
         <div className="flex items-center gap-1 overflow-x-auto text-sm">
-          <button
-            onClick={goUp}
-            className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
-            title="Go up"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
+          {preview ? (
+            <button
+              onClick={() => setPreview(null)}
+              className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+              title="Back to file list"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={goUp}
+              className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+              title="Go up"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={() => navigate('/')}
             className="shrink-0 text-zinc-400 hover:text-zinc-200 px-1 transition-colors"
@@ -130,39 +204,57 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
               {i < breadcrumbs.length - 1 && <span className="text-zinc-600">/</span>}
             </span>
           ))}
+          {previewName && (
+            <>
+              <span className="text-zinc-600">/</span>
+              <span className="text-zinc-200 px-1 shrink-0">{previewName}</span>
+              <button
+                onClick={() => handleCopyPath(preview.path)}
+                className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-200 transition-colors"
+                title="Copy file path"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <rect x="9" y="9" width="11" height="11" rx="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleMkdir}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-zinc-800 border border-zinc-600 rounded hover:border-zinc-400 hover:text-zinc-100 transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-              <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-            </svg>
-            New Folder
-          </button>
-          <button
-            onClick={handleCreateSession}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-              <path strokeLinecap="round" d="M4 17l6-6-6-6M12 19h8" />
-            </svg>
-            New Session Here
-          </button>
-          <button
-            onClick={() => handleCopyPath(currentPath!)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-zinc-800 border border-zinc-600 rounded hover:border-zinc-400 hover:text-zinc-100 transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
-            Copy Path
-          </button>
-        </div>
+        {!preview && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleMkdir}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-zinc-800 border border-zinc-600 rounded hover:border-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+              New Folder
+            </button>
+            <button
+              onClick={handleCreateSession}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" d="M4 17l6-6-6-6M12 19h8" />
+              </svg>
+              New Session Here
+            </button>
+            <button
+              onClick={() => handleCopyPath(currentPath!)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-zinc-800 border border-zinc-600 rounded hover:border-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+              Copy Path
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Error */}
@@ -172,55 +264,38 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
         </div>
       )}
 
-      {/* Jump-to section */}
-      {sessionDirs.length > 0 && (
-        <div className="shrink-0 border-b border-zinc-700 px-3 py-2">
-          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Jump to</div>
-          <div className="flex flex-wrap gap-1">
-            <button
-              onClick={() => navigate('/home/claude')}
-              className="px-3 py-1.5 text-xs bg-zinc-800 border border-zinc-600 rounded hover:border-zinc-400 hover:text-zinc-100 transition-colors"
-            >
-              ~ Home
-            </button>
-            {sessionDirs.map(dir => (
-              <button
-                key={dir}
-                onClick={() => navigate(dir)}
-                className={`px-3 py-1.5 text-xs bg-zinc-800 border rounded transition-colors truncate max-w-[200px] ${
-                  dir === currentPath
-                    ? 'border-blue-500 text-blue-400'
-                    : 'border-zinc-600 hover:border-zinc-400 hover:text-zinc-100'
-                }`}
-                title={dir}
-              >
-                {dir.split('/').slice(-2).join('/')}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* File list */}
       <div className="flex-1 overflow-y-auto">
-        {loading && (
+        {previewLoading && (
+          <div className="flex items-center justify-center py-8 text-zinc-500">
+            <span className="animate-pulse">Loading preview...</span>
+          </div>
+        )}
+        {!previewLoading && preview && (
+          <div className="h-full overflow-auto">
+            <pre className="min-w-full p-4 text-[13px] leading-6 text-zinc-200">
+              <code className="hljs" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </pre>
+          </div>
+        )}
+        {!previewLoading && !preview && loading && (
           <div className="flex items-center justify-center py-8 text-zinc-500">
             <span className="animate-pulse">Loading...</span>
           </div>
         )}
-        {!loading && entries.length === 0 && (
+        {!previewLoading && !preview && !loading && entries.length === 0 && (
           <div className="flex items-center justify-center py-8 text-zinc-500 text-sm">
             Empty directory
           </div>
         )}
-        {!loading && entries.map(entry => (
+        {!previewLoading && !preview && !loading && entries.map(entry => (
           <button
             key={entry.name}
             onClick={() => {
               if (entry.isDir) {
                 navigate(`${currentPath === '/' ? '' : currentPath}/${entry.name}`);
               } else {
-                handleCopyPath(`${currentPath === '/' ? '' : currentPath}/${entry.name}`);
+                handlePreview(`${currentPath === '/' ? '' : currentPath}/${entry.name}`);
               }
             }}
             className="w-full text-left px-3 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors border-b border-zinc-800/50 cursor-pointer"

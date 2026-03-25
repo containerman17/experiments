@@ -12,3 +12,46 @@ html, body {
 .toolbar-btn {
   @apply w-10 h-10 rounded-lg bg-zinc-700 hover:bg-zinc-600 flex items-center justify-center text-zinc-300 transition-colors active:bg-zinc-500;
 }
+
+.hljs {
+  display: block;
+  background: transparent;
+  color: #e4e4e7;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #71717a;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type {
+  color: #f472b6;
+}
+
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #86efac;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: #fbbf24;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_ {
+  color: #60a5fa;
+}
+
+.hljs-variable,
+.hljs-property,
+.hljs-params {
+  color: #e4e4e7;
+}

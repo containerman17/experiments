@@ -103,6 +103,13 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
       break;
     }
 
+    case 'files.preview': {
+      fm.previewFile(msg.path)
+        .then(preview => send(ws, { type: 'files.preview', ...preview }))
+        .catch(err => send(ws, { type: 'files.error', message: String(err) }));
+      break;
+    }
+
     case 'files.mkdir': {
       const dirPath = msg.path;
       fm.createDir(dirPath)

@@ -22,6 +22,15 @@ export interface FileEntry {
   size: number;
 }
 
+export interface FilePreview {
+  path: string;
+  content: string;
+  language: string;
+  truncated: boolean;
+  lineCount: number;
+  byteCount: number;
+}
+
 // --- Client → Server ---
 
 export type ClientMessage =
@@ -37,6 +46,7 @@ export type ClientMessage =
   | { type: 'tunnels.create'; port: number }
   | { type: 'tunnels.delete'; port: number }
   | { type: 'files.list'; path: string }
+  | { type: 'files.preview'; path: string }
   | { type: 'files.mkdir'; path: string }
   | { type: 'files.createSession'; path: string }
   | { type: 'files.upload'; session: string; name: string; data: string }; // data is base64
@@ -51,6 +61,7 @@ export type ServerMessage =
   | { type: 'voice.error'; message: string }
   | { type: 'tunnels.list'; tunnels: TunnelInfo[] }
   | { type: 'files.list'; path: string; entries: FileEntry[] }
+  | ({ type: 'files.preview' } & FilePreview)
   | { type: 'files.sessionDirs'; dirs: string[] }
   | { type: 'files.uploaded'; session: string; path: string }
   | { type: 'files.error'; message: string }

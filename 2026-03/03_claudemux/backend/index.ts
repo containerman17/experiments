@@ -8,6 +8,8 @@ import { WebSocketServer } from 'ws';
 import type WebSocket from 'ws';
 import type { ClientMessage, ServerMessage } from '../frontend/src/types.ts';
 import * as tm from './terminal-manager.ts';
+import * as tun from './tunnel-manager.ts';
+import * as fm from './file-manager.ts';
 import { transcribe } from './voice.ts';
 
 const port = Number(process.env.PORT) || 7938;
@@ -18,6 +20,16 @@ const MAX_PAYLOAD = 20 * 1024 * 1024;
 function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
+
+function broadcastTunnels(): void {
+  const msg: ServerMessage = { type: 'tunnels.list', tunnels: tun.listTunnels() };
+  for (const ws of wss.clients) {
+    send(ws as WebSocket, msg);
+  }
+}
+
+// Broadcast tunnel changes to all clients
+tun.onTunnelChange(broadcastTunnels);
 
 function handleMessage(ws: WebSocket, msg: ClientMessage): void {
   switch (msg.type) {
@@ -36,6 +48,7 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
       break;
 
     case 'terminal.input':
+      if (msg.data.length > 20) console.log(`[ws] terminal.input for "${msg.session}", ${msg.data.length} chars`);
       tm.write(msg.session, msg.data);
       break;
 
@@ -56,8 +69,76 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
       const context = tm.getContext(msg.session);
       const session = msg.session;
       transcribe(msg.audio, msg.mimeType, context)
-        .then(text => send(ws, { type: 'voice.result', session, text }))
+        .then(text => {
+          console.log(`[voice] inserting into "${session}": ${text.slice(0, 50)}...`);
+          tm.write(session, text);
+          tm.sendKeys(session, 'Enter');
+          send(ws, { type: 'voice.result', session, text });
+        })
         .catch(err => { console.error(`[voice] error:`, err); send(ws, { type: 'voice.error', message: String(err) }); });
+      break;
+    }
+
+    case 'tunnels.list':
+      send(ws, { type: 'tunnels.list', tunnels: tun.listTunnels() });
+      break;
+
+    case 'tunnels.create':
+      tun.createTunnel(msg.port);
+      // Response comes via broadcastTunnels when state changes
+      break;
+
+    case 'tunnels.delete':
+      tun.deleteTunnel(msg.port);
+      break;
+
+    case 'files.list': {
+      const dirPath = msg.path;
+      fm.listDir(dirPath)
+        .then(entries => {
+          send(ws, { type: 'files.list', path: dirPath, entries });
+          send(ws, { type: 'files.sessionDirs', dirs: fm.getSessionDirs() });
+        })
+        .catch(err => send(ws, { type: 'files.error', message: String(err) }));
+      break;
+    }
+
+    case 'files.mkdir': {
+      const dirPath = msg.path;
+      fm.createDir(dirPath)
+        .then(() => fm.listDir(dirPath.replace(/\/[^/]+$/, '') || '/'))
+        .then(entries => {
+          const parent = dirPath.replace(/\/[^/]+$/, '') || '/';
+          send(ws, { type: 'files.list', path: parent, entries });
+        })
+        .catch(err => send(ws, { type: 'files.error', message: String(err) }));
+      break;
+    }
+
+    case 'files.createSession': {
+      try {
+        fm.createSession(msg.path);
+        // Wait a moment for tmux to register the session, then broadcast
+        setTimeout(() => {
+          const sessions = tm.listSessions();
+          const sessionMsg: ServerMessage = { type: 'sessions.list', sessions };
+          for (const client of wss.clients) {
+            send(client as WebSocket, sessionMsg);
+          }
+        }, 500);
+      } catch (err) {
+        send(ws, { type: 'files.error', message: String(err) });
+      }
+      break;
+    }
+
+    case 'files.upload': {
+      fm.uploadFile(msg.name, msg.data)
+        .then(path => {
+          console.log(`[files] uploaded: ${path}`);
+          send(ws, { type: 'files.uploaded', path });
+        })
+        .catch(err => send(ws, { type: 'files.error', message: String(err) }));
       break;
     }
   }
@@ -104,7 +185,7 @@ setInterval(() => {
   }
 }, 10_000);
 
-// --- Cloudflare tunnel ---
+// --- Cloudflare tunnel for the backend itself ---
 const tunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], {
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -127,6 +208,7 @@ tunnel.on('error', (err) => {
 
 process.on('SIGINT', () => {
   tunnel.kill();
+  tun.closeAllTunnels();
   tm.closeAll();
   wss.close();
   process.exit(0);
@@ -134,4 +216,5 @@ process.on('SIGINT', () => {
 
 process.on('exit', () => {
   tunnel.kill();
+  tun.closeAllTunnels();
 });

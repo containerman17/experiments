@@ -18,6 +18,7 @@ interface Props {
 export function Terminal({ session, conn }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [screenText, setScreenText] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const termRef = useRef<XTerm | null>(null);
 
   useEffect(() => {
@@ -71,9 +72,40 @@ export function Terminal({ session, conn }: Props) {
     conn.send({ type: 'terminal.attach', session });
     conn.send({ type: 'terminal.resize', session, cols: term.cols, rows: term.rows });
 
+    // Re-attach on reconnect — clear and let ring buffer replay
+    const unStatus = conn.onStatus((c) => {
+      if (c) {
+        term.clear();
+        conn.send({ type: 'terminal.attach', session });
+        conn.send({ type: 'terminal.resize', session, cols: term.cols, rows: term.rows });
+      }
+    });
+
     term.onData(data => {
       conn.send({ type: 'terminal.input', session, data });
     });
+
+    // Paste image from clipboard → upload and insert path
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) return;
+          const ext = file.type.split('/')[1] || 'png';
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            conn.send({ type: 'files.upload', name: `screenshot.${ext}`, data: base64 });
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      }
+    };
+    document.addEventListener('paste', onPaste);
 
     // OSC 52 clipboard: \x1b]52;c;<base64>\x07 or \x1b]52;c;<base64>\x1b\\
     const osc52Re = /\x1b\]52;[a-z]*;([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)/g;
@@ -94,6 +126,10 @@ export function Terminal({ session, conn }: Props) {
       }
       if (msg.type === 'terminal.exited' && msg.session === session) {
         term.writeln('\r\n[Session ended]');
+      }
+      if (msg.type === 'files.uploaded') {
+        // Paste the uploaded file path into the terminal
+        conn.send({ type: 'terminal.input', session, data: msg.path });
       }
     });
 
@@ -204,6 +240,8 @@ export function Terminal({ session, conn }: Props) {
     return () => {
       conn.send({ type: 'terminal.detach', session });
       unsub();
+      unStatus();
+      document.removeEventListener('paste', onPaste);
       ro.disconnect();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
@@ -220,9 +258,32 @@ export function Terminal({ session, conn }: Props) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1];
+      conn.send({ type: 'files.upload', name: file.name, data: base64 });
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
-    <div className="h-full relative">
+    <div
+      className="h-full relative"
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
       <div ref={containerRef} className="h-full" data-session={session} />
+      {dragOver && (
+        <div className="absolute inset-0 z-20 bg-blue-600/20 border-2 border-dashed border-blue-400 flex items-center justify-center pointer-events-none">
+          <span className="text-blue-300 text-lg">Drop file to paste path</span>
+        </div>
+      )}
       {screenText !== null && (
         <div
           className="absolute inset-0 z-20 bg-zinc-900/95 overflow-auto p-4"

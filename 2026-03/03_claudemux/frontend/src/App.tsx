@@ -3,10 +3,11 @@
 // Mobile: full-screen terminal + hamburger menu + bottom toolbar (voice, arrows, enter, keyboard).
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { SessionInfo } from './types';
+import type { SessionInfo, TunnelInfo } from './types';
 import randomName from '@scaleway/random-name';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
+import { FileExplorer } from './components/FileExplorer';
 import { VoiceButton } from './components/VoiceButton';
 import { useIsMobile } from './hooks/useIsMobile';
 
@@ -20,6 +21,7 @@ function emojiHash(name: string): string {
 }
 
 const NEW_TAB = '__new__';
+const FILES_TAB = '__files__';
 const STORAGE_KEY = 'claudemux_url';
 const MIC_KEY = 'claudemux_mic';
 const TAB_KEY = 'claudemux_tab';
@@ -73,7 +75,7 @@ function MicSelector() {
   );
 }
 
-function ConnectScreen({ onConnected }: { onConnected: (conn: Connection, url: string) => void }) {
+function ConnectScreen({ onConnected, autoConnect: shouldAutoConnect = true }: { onConnected: (conn: Connection, url: string) => void; autoConnect?: boolean }) {
   const [url, setUrl] = useState(() => {
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
@@ -86,10 +88,10 @@ function ConnectScreen({ onConnected }: { onConnected: (conn: Connection, url: s
   const [status, setStatus] = useState<'idle' | 'connecting' | 'failed'>('idle');
   const connRef = useRef<Connection | null>(null);
 
-  // Auto-connect if URL available (from query params or saved)
+  // Auto-connect if URL available (from query params or saved) and not manually disconnected
   const autoConnect = useRef(false);
   useEffect(() => {
-    if (url && !autoConnect.current) {
+    if (url && !autoConnect.current && shouldAutoConnect) {
       autoConnect.current = true;
       handleConnect();
     }
@@ -204,12 +206,14 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     setActiveSessionRaw(s);
     localStorage.setItem(TAB_KEY, s);
   }, []);
+  const [tunnels, setTunnels] = useState<TunnelInfo[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [extraKeys, setExtraKeys] = useState(false);
+  const [newTunnelPort, setNewTunnelPort] = useState('');
   const isMobile = useIsMobile();
 
-  const isTerminalActive = activeSession !== NEW_TAB && sessions.some(s => s.name === activeSession);
+  const isTerminalActive = activeSession !== NEW_TAB && activeSession !== FILES_TAB && sessions.some(s => s.name === activeSession);
 
   useEffect(() => {
     const unStatus = conn.onStatus(setConnected);
@@ -218,25 +222,28 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         setSessions(msg.sessions);
       }
       if (msg.type === 'voice.result') {
-        conn.send({ type: 'terminal.input', session: msg.session, data: msg.text });
-        conn.send({ type: 'terminal.sendkeys', session: msg.session, keys: 'Enter' });
+        // Server already inserted the text into the terminal
       }
       if (msg.type === 'voice.error') {
         console.error('Voice error:', msg.message);
         setToast(msg.message);
         setTimeout(() => setToast(null), 5000);
       }
+      if (msg.type === 'tunnels.list') {
+        setTunnels(msg.tunnels);
+      }
     });
     conn.send({ type: 'sessions.list' });
+    conn.send({ type: 'tunnels.list' });
     return () => { unStatus(); unMsg(); };
   }, [conn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If active session disappeared, fall back
   useEffect(() => {
-    if (activeSession !== NEW_TAB && sessions.length > 0 && !sessions.find(s => s.name === activeSession)) {
+    if (activeSession !== NEW_TAB && activeSession !== FILES_TAB && sessions.length > 0 && !sessions.find(s => s.name === activeSession)) {
       setActiveSession(sessions[0].name);
     }
-    if (activeSession !== NEW_TAB && sessions.length === 0) {
+    if (activeSession !== NEW_TAB && activeSession !== FILES_TAB && sessions.length === 0) {
       setActiveSession(NEW_TAB);
     }
   }, [sessions, activeSession]);
@@ -264,7 +271,10 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
   // Re-request session list on reconnect
   useEffect(() => {
-    if (connected) conn.send({ type: 'sessions.list' });
+    if (connected) {
+      conn.send({ type: 'sessions.list' });
+      conn.send({ type: 'tunnels.list' });
+    }
   }, [connected, conn]);
 
   const toastEl = toast && (
@@ -284,6 +294,19 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
       {activeSession === NEW_TAB && (
         <div className="absolute inset-0 z-10">
           <NewSessionPanel />
+        </div>
+      )}
+      {activeSession === FILES_TAB && (
+        <div className="absolute inset-0 z-10">
+          <FileExplorer conn={conn} onSessionCreated={() => {
+            // Switch to the new session once it appears in the next sessions.list broadcast
+            const unsub = conn.subscribe(msg => {
+              if (msg.type === 'sessions.list' && msg.sessions.length > 0) {
+                unsub();
+                setActiveSession(msg.sessions[msg.sessions.length - 1].name);
+              }
+            });
+          }} />
         </div>
       )}
       {sessions.map(s => (
@@ -307,10 +330,9 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             activeSession === s.name
               ? 'bg-zinc-700 text-zinc-100'
               : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
-          } ${s.idle ? 'font-bold' : ''}`}
+          }`}
         >
           <span>{emojiHash(s.name)}</span>
-          {s.idle && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
           {s.name}
         </button>
       ))}
@@ -330,6 +352,67 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     </>
   );
 
+  const filesSection = (onClick?: () => void) => (
+    <div className="border-t border-zinc-700 mt-2">
+      <div className="px-3 py-2 text-xs text-zinc-500 uppercase tracking-wider">Files</div>
+      <button
+        onClick={() => { setActiveSession(FILES_TAB); onClick?.(); }}
+        className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 cursor-pointer ${
+          activeSession === FILES_TAB
+            ? 'bg-zinc-700 text-zinc-100'
+            : 'text-zinc-500 hover:bg-zinc-700/50 hover:text-zinc-300'
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+          <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+        </svg>
+        Open File Explorer
+      </button>
+    </div>
+  );
+
+  const tunnelItems = (
+    <div className="px-3 py-2 flex flex-col gap-1">
+      <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Tunnels</div>
+      {tunnels.map(t => (
+        <div key={t.port} className="flex items-center gap-1 text-xs">
+          <span className="text-zinc-400 shrink-0">:{t.port}</span>
+          {t.status === 'starting' && <span className="text-amber-400 animate-pulse truncate">starting...</span>}
+          {t.status === 'running' && t.url && (
+            <a href={t.url} target="_blank" rel="noopener" className="text-blue-400 hover:text-blue-300 truncate">{t.url.replace('https://', '')}</a>
+          )}
+          {t.status === 'error' && <span className="text-red-400 truncate">{t.error || 'error'}</span>}
+          <button
+            onClick={() => conn.send({ type: 'tunnels.delete', port: t.port })}
+            className="ml-auto shrink-0 text-zinc-500 hover:text-zinc-300"
+            title="Delete tunnel"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+              <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      ))}
+      <form className="flex gap-1 mt-1" onSubmit={e => {
+        e.preventDefault();
+        const p = parseInt(newTunnelPort, 10);
+        if (p > 0 && p < 65536) {
+          conn.send({ type: 'tunnels.create', port: p });
+          setNewTunnelPort('');
+        }
+      }}>
+        <input
+          type="number"
+          value={newTunnelPort}
+          onChange={e => setNewTunnelPort(e.target.value)}
+          placeholder="port"
+          className="w-20 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
+        />
+        <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 border border-zinc-600 rounded hover:border-zinc-400">Add</button>
+      </form>
+    </div>
+  );
+
   const disconnectBtn = (
     <button
       onClick={() => { conn.close(); onDisconnect(); }}
@@ -346,18 +429,22 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
       <div className="h-full flex relative">
         {toastEl}
         {reconnectingEl}
-        <div className="w-72 shrink-0 bg-zinc-800 border-r border-zinc-700 flex flex-col">
+        <div className="w-72 shrink-0 bg-zinc-800 border-r border-zinc-700 flex flex-col relative">
           <div className="px-3 py-2 text-xs text-zinc-500 uppercase tracking-wider">Sessions</div>
-          <div className="flex-1 overflow-y-auto">{sessionItems()}</div>
-          {isTerminalActive && (
-            <div className="px-3 py-2 border-t border-zinc-700">
-              <VoiceButton conn={conn} session={activeSession} isMobile={false} />
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto">
+            {sessionItems()}
+            {filesSection()}
+            <div className="border-t border-zinc-700 mt-2">{tunnelItems}</div>
+          </div>
           <div className="border-t border-zinc-700 flex flex-col items-center py-1 gap-0.5">
             {disconnectBtn}
             <span className="text-[10px] text-zinc-600">{new Date(__BUILD_TIME__).toLocaleString()}</span>
           </div>
+          {isTerminalActive && (
+            <div className="absolute bottom-12 -right-5 z-20 bg-zinc-800 rounded-full p-1 shadow-lg border border-zinc-700">
+              <VoiceButton conn={conn} session={activeSession} isMobile={false} />
+            </div>
+          )}
         </div>
         {terminalArea}
       </div>
@@ -377,7 +464,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           </svg>
         </button>
         <span className="text-sm text-zinc-300 truncate flex-1">
-          {activeSession === NEW_TAB ? 'New Session' : `${emojiHash(activeSession)} ${activeSession}`}
+          {activeSession === NEW_TAB ? 'New Session' : activeSession === FILES_TAB ? 'File Explorer' : `${emojiHash(activeSession)} ${activeSession}`}
         </span>
       </div>
 
@@ -386,7 +473,11 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         <div className="absolute inset-0 z-50 flex" onClick={() => setMenuOpen(false)}>
           <div className="w-64 bg-zinc-800 border-r border-zinc-700 h-full flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="px-3 py-3 text-xs text-zinc-500 uppercase tracking-wider border-b border-zinc-700">Sessions</div>
-            <div className="flex-1 overflow-y-auto">{sessionItems(() => setMenuOpen(false))}</div>
+            <div className="flex-1 overflow-y-auto">
+              {sessionItems(() => setMenuOpen(false))}
+              {filesSection(() => setMenuOpen(false))}
+              <div className="border-t border-zinc-700 mt-2">{tunnelItems}</div>
+            </div>
             <div className="border-t border-zinc-700 flex flex-col items-center py-2 gap-0.5">
               {disconnectBtn}
               <span className="text-[10px] text-zinc-600">{new Date(__BUILD_TIME__).toLocaleString()}</span>
@@ -403,22 +494,58 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         <div className="shrink-0 bg-zinc-800 border-t border-zinc-700">
           {/* Extra keys row (toggleable) */}
           {extraKeys && (
-            <div className="px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700 overflow-x-auto">
-              <button onClick={() => sendKey('\x1b[A')} className="toolbar-btn text-xs" title="Up">↑</button>
-              <button onClick={() => sendKey('\x1b[B')} className="toolbar-btn text-xs" title="Down">↓</button>
-              <button onClick={() => sendKey('\x1b[D')} className="toolbar-btn text-xs" title="Left">←</button>
-              <button onClick={() => sendKey('\x1b[C')} className="toolbar-btn text-xs" title="Right">→</button>
-              <button onClick={() => sendKey('\x03')} className="toolbar-btn text-xs" title="Ctrl-C">^C</button>
-              <button onClick={() => sendKey('\x02')} className="toolbar-btn text-xs" title="Ctrl-B">^B</button>
-              <button onClick={() => { sendKey('\x02'); setTimeout(() => sendKey('\x02'), 50); }} className="toolbar-btn text-xs" title="Ctrl-B Ctrl-B">^B^B</button>
-              <button onClick={() => sendKey('\x0f')} className="toolbar-btn text-xs" title="Ctrl-O">^O</button>
-              <button onClick={() => sendKey('\x1b')} className="toolbar-btn text-xs" title="Escape">Esc</button>
-              <button onClick={() => sendKey('\r')} className="toolbar-btn text-xs !bg-blue-600 !text-white" title="Enter">↵</button>
-              <button onClick={() => {
-                const el = document.querySelector(`[data-session="${activeSession}"]`);
-                if (el) el.dispatchEvent(new CustomEvent('copy-screen'));
-              }} className="toolbar-btn text-xs" title="Copy screen">Sel</button>
-            </div>
+            <>
+              {/* Row 1: navigation + common */}
+              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700">
+                <button onClick={() => sendKey('\x1b[A')} className="toolbar-btn text-xs" title="Up">↑</button>
+                <button onClick={() => sendKey('\x1b[B')} className="toolbar-btn text-xs" title="Down">↓</button>
+                <button onClick={() => sendKey('\x1b[D')} className="toolbar-btn text-xs" title="Left">←</button>
+                <button onClick={() => sendKey('\x1b[C')} className="toolbar-btn text-xs" title="Right">→</button>
+                <button onClick={() => sendKey('\r')} className="toolbar-btn text-xs !bg-blue-600 !text-white" title="Enter">↵</button>
+                <button onClick={async () => {
+                  try {
+                    const items = await navigator.clipboard.read();
+                    for (const item of items) {
+                      // Check for image first
+                      const imageType = item.types.find(t => t.startsWith('image/'));
+                      if (imageType) {
+                        const blob = await item.getType(imageType);
+                        const ext = imageType.split('/')[1] || 'png';
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const base64 = (reader.result as string).split(',')[1];
+                          conn.send({ type: 'files.upload', name: `screenshot.${ext}`, data: base64 });
+                        };
+                        reader.readAsDataURL(blob);
+                        return;
+                      }
+                      // Fall back to text
+                      if (item.types.includes('text/plain')) {
+                        const blob = await item.getType('text/plain');
+                        const text = await blob.text();
+                        if (text) sendKey(text);
+                        return;
+                      }
+                    }
+                  } catch {
+                    // Fallback for browsers that don't support clipboard.read()
+                    navigator.clipboard.readText().then(text => { if (text) sendKey(text); }).catch(() => {});
+                  }
+                }} className="toolbar-btn text-xs" title="Paste">Paste</button>
+                <button onClick={() => {
+                  const el = document.querySelector(`[data-session="${activeSession}"]`);
+                  if (el) el.dispatchEvent(new CustomEvent('copy-screen'));
+                }} className="toolbar-btn text-xs" title="Copy screen">Sel</button>
+              </div>
+              {/* Row 2: special keys */}
+              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700">
+                <button onClick={() => sendKey('\x03')} className="toolbar-btn text-xs" title="Ctrl-C">^C</button>
+                <button onClick={() => sendKey('\x02')} className="toolbar-btn text-xs" title="Ctrl-B">^B</button>
+                <button onClick={() => { sendKey('\x02'); setTimeout(() => sendKey('\x02'), 50); }} className="toolbar-btn text-xs" title="Ctrl-B Ctrl-B">^B^B</button>
+                <button onClick={() => sendKey('\x0f')} className="toolbar-btn text-xs" title="Ctrl-O">^O</button>
+                <button onClick={() => sendKey('\x1b')} className="toolbar-btn text-xs" title="Escape">Esc</button>
+              </div>
+            </>
           )}
           {/* Main row: voice | spacer | extra toggle | keyboard */}
           <div className="px-2 py-2 flex items-center gap-1">
@@ -456,9 +583,10 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
 export function App() {
   const [state, setState] = useState<{ conn: Connection; url: string } | null>(null);
+  const [manualDisconnect, setManualDisconnect] = useState(false);
 
   if (!state) {
-    return <ConnectScreen onConnected={(conn, url) => setState({ conn, url })} />;
+    return <ConnectScreen autoConnect={!manualDisconnect} onConnected={(conn, url) => { setManualDisconnect(false); setState({ conn, url }); }} />;
   }
 
   return (
@@ -467,6 +595,7 @@ export function App() {
       wsUrl={state.url}
       onDisconnect={() => {
         state.conn.close();
+        setManualDisconnect(true);
         setState(null);
       }}
     />

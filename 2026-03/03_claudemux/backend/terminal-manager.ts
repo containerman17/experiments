@@ -26,7 +26,6 @@ interface LiveSession {
   cols: number;
   rows: number;
   exited: boolean;
-  lastOutput: number; // Date.now() of last output
 }
 
 const sessions = new Map<string, LiveSession>();
@@ -68,7 +67,6 @@ function wireUp(session: LiveSession, suppress = false): void {
     const filtered = data.replace(DA_RESPONSE_RE, '');
     if (!filtered) return;
     const b64 = Buffer.from(filtered, 'utf-8').toString('base64');
-    session.lastOutput = Date.now();
     pushToRingBuffer(session, b64);
     broadcast(session, { type: 'terminal.output', session: session.name, data: b64 });
   });
@@ -111,18 +109,14 @@ export function listSessions(): SessionInfo[] {
       `${TMUX} list-sessions -F '#{session_name}\t#{session_created}\t#{window_width}\t#{window_height}\t#{session_attached}' 2>/dev/null`
     ).toString().trim();
     if (!output) return [];
-    const now = Date.now();
     return output.split('\n').map(line => {
       const [name, created, width, height, attached] = line.split('\t');
-      const live = sessions.get(name);
-      const idle = live ? (now - live.lastOutput) > 5000 : true;
       return {
         name,
         created: parseInt(created, 10),
         width: parseInt(width, 10),
         height: parseInt(height, 10),
         attached: attached !== '0',
-        idle,
       };
     });
   } catch {
@@ -158,7 +152,6 @@ function ensureLive(name: string): LiveSession | null {
     cols,
     rows,
     exited: false,
-    lastOutput: Date.now(),
   };
 
   // Capture current pane content for ring buffer

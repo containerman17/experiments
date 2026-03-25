@@ -1,5 +1,5 @@
 // ClaudeMux shared types — WebSocket protocol
-// Server is a pure tmux-to-websocket bridge + voice transcription relay.
+// Server is a pure tmux-to-websocket bridge + voice transcription relay + tunnel manager.
 
 export interface SessionInfo {
   name: string;       // tmux session name
@@ -7,7 +7,19 @@ export interface SessionInfo {
   width: number;
   height: number;
   attached: boolean;  // whether tmux shows it as attached
-  idle: boolean;      // no output in last 5s
+}
+
+export interface TunnelInfo {
+  port: number;
+  url: string | null;  // null while starting
+  status: 'starting' | 'running' | 'error';
+  error?: string;
+}
+
+export interface FileEntry {
+  name: string;
+  isDir: boolean;
+  size: number;
 }
 
 // --- Client → Server ---
@@ -20,7 +32,14 @@ export type ClientMessage =
   | { type: 'terminal.resize'; session: string; cols: number; rows: number }
   | { type: 'terminal.sendkeys'; session: string; keys: string }
   | { type: 'terminal.scroll'; session: string; lines: number }
-  | { type: 'voice.transcribe'; session: string; audio: string; mimeType: string };
+  | { type: 'voice.transcribe'; session: string; audio: string; mimeType: string }
+  | { type: 'tunnels.list' }
+  | { type: 'tunnels.create'; port: number }
+  | { type: 'tunnels.delete'; port: number }
+  | { type: 'files.list'; path: string }
+  | { type: 'files.mkdir'; path: string }
+  | { type: 'files.createSession'; path: string }
+  | { type: 'files.upload'; name: string; data: string }; // data is base64
 
 // --- Server → Client ---
 
@@ -30,4 +49,9 @@ export type ServerMessage =
   | { type: 'terminal.exited'; session: string }
   | { type: 'voice.result'; session: string; text: string }
   | { type: 'voice.error'; message: string }
+  | { type: 'tunnels.list'; tunnels: TunnelInfo[] }
+  | { type: 'files.list'; path: string; entries: FileEntry[] }
+  | { type: 'files.sessionDirs'; dirs: string[] }
+  | { type: 'files.uploaded'; path: string }
+  | { type: 'files.error'; message: string }
   | { type: 'error'; message: string };

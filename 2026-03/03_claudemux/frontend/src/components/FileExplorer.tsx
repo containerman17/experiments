@@ -292,10 +292,11 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
           <button
             key={entry.name}
             onClick={() => {
+              const entryPath = `${currentPath === '/' ? '' : currentPath}/${entry.name}`;
               if (entry.isDir) {
-                navigate(`${currentPath === '/' ? '' : currentPath}/${entry.name}`);
+                navigate(entryPath);
               } else {
-                handlePreview(`${currentPath === '/' ? '' : currentPath}/${entry.name}`);
+                handlePreview(entryPath);
               }
             }}
             className="w-full text-left px-3 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors border-b border-zinc-800/50 cursor-pointer"
@@ -324,6 +325,20 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const entryPath = `${currentPath === '/' ? '' : currentPath}/${entry.name}`;
+                handleCopyPath(entryPath);
+              }}
+              className="shrink-0 p-1 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
+              title="Copy path"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+            </button>
           </button>
         ))}
       </div>

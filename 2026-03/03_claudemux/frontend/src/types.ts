@@ -39,7 +39,7 @@ export type ClientMessage =
   | { type: 'files.list'; path: string }
   | { type: 'files.mkdir'; path: string }
   | { type: 'files.createSession'; path: string }
-  | { type: 'files.upload'; name: string; data: string }; // data is base64
+  | { type: 'files.upload'; session: string; name: string; data: string }; // data is base64
 
 // --- Server → Client ---
 
@@ -52,6 +52,6 @@ export type ServerMessage =
   | { type: 'tunnels.list'; tunnels: TunnelInfo[] }
   | { type: 'files.list'; path: string; entries: FileEntry[] }
   | { type: 'files.sessionDirs'; dirs: string[] }
-  | { type: 'files.uploaded'; path: string }
+  | { type: 'files.uploaded'; session: string; path: string }
   | { type: 'files.error'; message: string }
   | { type: 'error'; message: string };

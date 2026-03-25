@@ -5,6 +5,10 @@ html, body, #root {
   margin: 0;
 }
 
+html, body {
+  font-family: Menlo, Monaco, "Courier New", monospace;
+}
+
 .toolbar-btn {
   @apply w-10 h-10 rounded-lg bg-zinc-700 hover:bg-zinc-600 flex items-center justify-center text-zinc-300 transition-colors active:bg-zinc-500;
 }

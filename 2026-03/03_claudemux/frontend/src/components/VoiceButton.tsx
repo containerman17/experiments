@@ -79,23 +79,53 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
 
   if (recording) {
     return (
-      <div className="flex items-center gap-1">
-        <button onClick={cancelRecording} className="toolbar-btn text-zinc-400" title="Cancel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-        <button
-          onClick={stopRecording}
-          className={`${isMobile ? 'h-12 px-4' : 'h-8 px-3'} rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center gap-2 animate-pulse`}
-          title="Stop & Send"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 shrink-0">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-          <span className="text-xs font-mono text-white">{Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}</span>
-        </button>
-        {micLabel && <span className="text-[10px] text-zinc-500 truncate max-w-[100px]">{micLabel}</span>}
+      <div className={isMobile ? 'flex items-center gap-1' : 'flex flex-col items-start gap-1 w-full'}>
+        <div className={`flex items-center ${isMobile ? 'gap-1' : 'w-full justify-between gap-3'}`}>
+          {!isMobile && (
+            <div className="flex items-center gap-2 min-w-0 text-zinc-300">
+              <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+              <span className="text-xs font-mono text-zinc-200">
+                {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={cancelRecording}
+            className={isMobile ? 'toolbar-btn text-zinc-400 cursor-pointer' : 'text-blue-400 hover:text-blue-300 transition-colors cursor-pointer text-sm'}
+            title="Cancel recording"
+          >
+            {isMobile ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              'Cancel'
+            )}
+          </button>
+          <button
+            onClick={stopRecording}
+            className={isMobile
+              ? 'h-12 px-4 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center gap-2 animate-pulse cursor-pointer'
+              : 'h-8 px-3 border border-blue-500/40 bg-transparent text-blue-300 hover:bg-blue-500/10 flex items-center justify-center transition-colors cursor-pointer shrink-0'}
+            title="Send recording"
+          >
+            {isMobile ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 shrink-0">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+                <span className="text-xs font-mono text-white">{Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}</span>
+              </>
+            ) : (
+              <span className="text-[11px] uppercase tracking-wide text-blue-200">Send</span>
+            )}
+          </button>
+        </div>
+        {micLabel && (
+          <span className={isMobile ? 'text-[10px] text-zinc-500 truncate max-w-[100px]' : 'text-[10px] text-zinc-600 truncate w-full'}>
+            {micLabel}
+          </span>
+        )}
       </div>
     );
   }
@@ -104,7 +134,9 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
     <div className="flex items-center gap-1">
       <button
         onClick={startRecording}
-        className={`${isMobile ? 'w-12 h-12' : 'w-8 h-8'} rounded-full bg-zinc-700 hover:bg-zinc-600 flex items-center justify-center transition-colors`}
+        className={isMobile
+          ? 'w-12 h-12 rounded-full bg-zinc-700 hover:bg-zinc-600 flex items-center justify-center transition-colors cursor-pointer'
+          : 'w-9 h-9 border border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300 flex items-center justify-center transition-colors cursor-pointer'}
         title="Voice input"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={isMobile ? 'w-6 h-6' : 'w-4 h-4'}>

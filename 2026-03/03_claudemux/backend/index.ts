@@ -133,10 +133,11 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
     }
 
     case 'files.upload': {
+      const uploadSession = msg.session;
       fm.uploadFile(msg.name, msg.data)
         .then(path => {
           console.log(`[files] uploaded: ${path}`);
-          send(ws, { type: 'files.uploaded', path });
+          send(ws, { type: 'files.uploaded', session: uploadSession, path });
         })
         .catch(err => send(ws, { type: 'files.error', message: String(err) }));
       break;

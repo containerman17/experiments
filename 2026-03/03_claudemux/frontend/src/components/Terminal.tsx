@@ -98,7 +98,7 @@ export function Terminal({ session, conn }: Props) {
           const reader = new FileReader();
           reader.onload = () => {
             const base64 = (reader.result as string).split(',')[1];
-            conn.send({ type: 'files.upload', name: `screenshot.${ext}`, data: base64 });
+            conn.send({ type: 'files.upload', session, name: `screenshot.${ext}`, data: base64 });
           };
           reader.readAsDataURL(file);
           return;
@@ -127,8 +127,7 @@ export function Terminal({ session, conn }: Props) {
       if (msg.type === 'terminal.exited' && msg.session === session) {
         term.writeln('\r\n[Session ended]');
       }
-      if (msg.type === 'files.uploaded') {
-        // Paste the uploaded file path into the terminal
+      if (msg.type === 'files.uploaded' && msg.session === session) {
         conn.send({ type: 'terminal.input', session, data: msg.path });
       }
     });
@@ -266,7 +265,7 @@ export function Terminal({ session, conn }: Props) {
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(',')[1];
-      conn.send({ type: 'files.upload', name: file.name, data: base64 });
+      conn.send({ type: 'files.upload', session, name: file.name, data: base64 });
     };
     reader.readAsDataURL(file);
   };

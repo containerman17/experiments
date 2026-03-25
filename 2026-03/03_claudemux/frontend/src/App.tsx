@@ -509,7 +509,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
       {/* Slide-over menu */}
       {menuOpen && (
         <div className="absolute inset-0 z-50 flex" onClick={() => setMenuOpen(false)}>
-          <div className="w-64 bg-zinc-800 border-r border-zinc-700 h-full flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="w-[90vw] max-w-[28rem] bg-zinc-800 border-r border-zinc-700 h-full flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="px-3 py-3 text-xs text-zinc-500 uppercase tracking-wider border-b border-zinc-700">Sessions</div>
             <div className="flex-1 overflow-y-auto">
               {sessionItems(() => setMenuOpen(false))}

@@ -41,6 +41,11 @@ function setSharedVoiceState(next: Partial<VoiceState>): void {
   for (const listener of voiceStateListeners) listener(sharedVoiceState);
 }
 
+function setVoiceError(message: string): void {
+  console.error(`[voice] ${message}`);
+  setSharedVoiceState({ error: message });
+}
+
 function getVocabularyTerms(): string[] {
   return (localStorage.getItem(DEEPGRAM_VOCAB_KEY) || '')
     .split(',')
@@ -160,7 +165,7 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
 
     setSharedVoiceState({ error: null });
     if (!apiKey) {
-      setSharedVoiceState({ error: 'Set Deepgram API key in Settings' });
+      setVoiceError('Set Deepgram API key in Settings');
       return;
     }
 
@@ -188,7 +193,7 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
       socket.onopen = () => {
         const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!AudioCtx) {
-          setSharedVoiceState({ error: 'AudioContext unavailable' });
+          setVoiceError('AudioContext unavailable');
           teardownRecording();
           setSharedVoiceState({ recording: false, startedAt: null });
           return;
@@ -233,25 +238,29 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
             replaceTypedPreview(conn, currentSession, interimTranscript);
           }
         } catch {
-          setSharedVoiceState({ error: 'Deepgram response parse error' });
+          setVoiceError('Deepgram response parse error');
         }
       };
 
       socket.onerror = () => {
-        setSharedVoiceState({ error: 'Deepgram connection failed' });
+        setVoiceError('Deepgram connection failed');
         sharedTypedPreview = '';
         sharedTypedPreviewSession = null;
         teardownRecording();
         setSharedVoiceState({ recording: false, startedAt: null });
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        if (!event.wasClean) {
+          setVoiceError(`Deepgram closed: ${event.code}${event.reason ? ` ${event.reason}` : ''}`);
+        }
         sharedTypedPreviewSession = null;
         teardownRecording();
         setSharedVoiceState({ recording: false, startedAt: null });
       };
-    } catch {
-      setSharedVoiceState({ error: 'Mic access denied' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mic access denied';
+      setVoiceError(`Mic error: ${message}`);
       teardownRecording();
     }
   }, [conn]);
@@ -272,7 +281,7 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
   }, []);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 min-w-0">
       <button
         onClick={voiceState.recording ? stopRecording : startRecording}
         className={isMobile
@@ -298,7 +307,7 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
           {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
         </span>
       )}
-      {voiceState.error && <span className="text-red-400 text-xs max-w-[140px] truncate">{voiceState.error}</span>}
+      {voiceState.error && <span className="text-red-400 text-xs max-w-[180px] truncate">{voiceState.error}</span>}
     </div>
   );
 }

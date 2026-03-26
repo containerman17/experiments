@@ -11,29 +11,58 @@ interface Props {
   isMobile: boolean;
 }
 
+interface VoiceState {
+  recording: boolean;
+  startedAt: number | null;
+  micLabel: string;
+  error: string | null;
+}
+
+const voiceStateListeners = new Set<(state: VoiceState) => void>();
+let sharedVoiceState: VoiceState = {
+  recording: false,
+  startedAt: null,
+  micLabel: '',
+  error: null,
+};
+let sharedRecorder: MediaRecorder | null = null;
+let sharedStream: MediaStream | null = null;
+
+function setSharedVoiceState(next: Partial<VoiceState>): void {
+  sharedVoiceState = { ...sharedVoiceState, ...next };
+  for (const listener of voiceStateListeners) listener(sharedVoiceState);
+}
+
 export function VoiceButton({ conn, session, isMobile }: Props) {
-  const [recording, setRecording] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceState>(sharedVoiceState);
   const [elapsed, setElapsed] = useState(0);
-  const [micLabel, setMicLabel] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const latestSessionRef = useRef(session);
 
   useEffect(() => {
-    if (!recording) { setElapsed(0); return; }
-    const start = Date.now();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    latestSessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    const listener = (state: VoiceState) => setVoiceState(state);
+    voiceStateListeners.add(listener);
+    listener(sharedVoiceState);
+    return () => { voiceStateListeners.delete(listener); };
+  }, []);
+
+  useEffect(() => {
+    if (!voiceState.recording || !voiceState.startedAt) { setElapsed(0); return; }
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - voiceState.startedAt!) / 1000)), 1000);
     return () => clearInterval(id);
-  }, [recording]);
+  }, [voiceState.recording, voiceState.startedAt]);
 
   const startRecording = useCallback(async () => {
-    setError(null);
+    setSharedVoiceState({ error: null });
     try {
       const micId = localStorage.getItem('claudemux_mic');
       const audioConstraints: MediaTrackConstraints = micId ? { deviceId: { exact: micId } } : {};
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-      streamRef.current = stream;
-      setMicLabel(stream.getAudioTracks()[0]?.label || '');
+      sharedStream = stream;
+      setSharedVoiceState({ micLabel: stream.getAudioTracks()[0]?.label || '' });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
       const recorder = new MediaRecorder(stream, { mimeType });
       const chunks: Blob[] = [];
@@ -41,43 +70,46 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
-        if (!session) return;
+        sharedRecorder = null;
+        sharedStream = null;
+        setSharedVoiceState({ recording: false, startedAt: null });
+        if (!latestSessionRef.current) return;
         const blob = new Blob(chunks, { type: recorder.mimeType });
         const reader = new FileReader();
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1];
-          conn.send({ type: 'voice.transcribe', session, audio: base64, mimeType: recorder.mimeType });
+          conn.send({ type: 'voice.transcribe', session: latestSessionRef.current!, audio: base64, mimeType: recorder.mimeType });
         };
         reader.readAsDataURL(blob);
       };
 
-      recorderRef.current = recorder;
+      sharedRecorder = recorder;
       recorder.start();
-      setRecording(true);
+      setSharedVoiceState({ recording: true, startedAt: Date.now() });
     } catch {
-      setError('Mic access denied');
+      setSharedVoiceState({ error: 'Mic access denied' });
     }
-  }, [conn, session]);
+  }, [conn]);
 
   const stopRecording = useCallback(() => {
-    if (recorderRef.current?.state === 'recording') {
-      recorderRef.current.stop();
+    if (sharedRecorder?.state === 'recording') {
+      sharedRecorder.stop();
     }
-    setRecording(false);
   }, []);
 
   const cancelRecording = useCallback(() => {
-    if (recorderRef.current) {
-      recorderRef.current.ondataavailable = null;
-      recorderRef.current.onstop = null;
-      if (recorderRef.current.state === 'recording') recorderRef.current.stop();
-      recorderRef.current = null;
+    if (sharedRecorder) {
+      sharedRecorder.ondataavailable = null;
+      sharedRecorder.onstop = null;
+      if (sharedRecorder.state === 'recording') sharedRecorder.stop();
+      sharedRecorder = null;
     }
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    setRecording(false);
+    sharedStream?.getTracks().forEach(t => t.stop());
+    sharedStream = null;
+    setSharedVoiceState({ recording: false, startedAt: null });
   }, []);
 
-  if (recording) {
+  if (voiceState.recording) {
     return (
       <div className={isMobile ? 'flex items-center gap-1' : 'flex flex-col items-start gap-1 w-full'}>
         <div className={`flex items-center ${isMobile ? 'gap-1' : 'w-full justify-between gap-3'}`}>
@@ -121,9 +153,9 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
             )}
           </button>
         </div>
-        {micLabel && (
+        {voiceState.micLabel && (
           <span className={isMobile ? 'text-[10px] text-zinc-500 truncate max-w-[100px]' : 'text-[10px] text-zinc-600 truncate w-full'}>
-            {micLabel}
+            {voiceState.micLabel}
           </span>
         )}
       </div>
@@ -146,7 +178,7 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
           <line x1="8" y1="23" x2="16" y2="23" />
         </svg>
       </button>
-      {error && <span className="text-red-400 text-xs">{error}</span>}
+      {voiceState.error && <span className="text-red-400 text-xs">{voiceState.error}</span>}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 // Desktop: left sidebar for session list + big terminal.
 // Mobile: full-screen terminal + hamburger menu + bottom toolbar (voice, arrows, enter, keyboard).
 
-import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import type { SessionInfo, TunnelInfo } from './types';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
@@ -306,11 +306,6 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     if (isTerminalActive) conn.send({ type: 'terminal.input', session: activeSession, data });
   }, [activeSession, isTerminalActive, conn]);
 
-  const focusTerminal = useCallback(() => {
-    const textarea = document.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
-    textarea?.focus();
-  }, []);
-
   const refreshTerminal = useCallback(() => {
     if (!isTerminalActive) return;
     // Find the active terminal container and dispatch refit event
@@ -349,20 +344,22 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
   useEffect(() => {
     if (!isResizing || isMobile) return;
-    const handleMouseMove = (event: MouseEvent) => {
+    const handlePointerMove = (event: PointerEvent) => {
       if (!resizeStateRef.current) return;
       const nextWidth = resizeStateRef.current.startWidth + (event.clientX - resizeStateRef.current.startX);
       setSidebarWidth(clampSidebarWidth(nextWidth));
     };
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       resizeStateRef.current = null;
       setIsResizing(false);
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [isResizing, isMobile]);
 
@@ -423,7 +420,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     setRenameValue('');
   }, [cancelSessionRename, renameValue]);
 
-  const startSidebarResize = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+  const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (isMobile) return;
     resizeStateRef.current = { startX: event.clientX, startWidth: sidebarWidth };
     setIsResizing(true);
@@ -586,6 +583,79 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     </button>
   );
 
+  const extraKeyRows = (buttonClass: string, rowClass: string) => (
+    <>
+      <div className={rowClass}>
+        <button onClick={() => sendKey('\x1b[A')} className={`${buttonClass} text-xs`} title="Up">↑</button>
+        <button onClick={() => sendKey('\x1b[B')} className={`${buttonClass} text-xs`} title="Down">↓</button>
+        <button onClick={() => sendKey('\x1b[D')} className={`${buttonClass} text-xs`} title="Left">←</button>
+        <button onClick={() => sendKey('\x1b[C')} className={`${buttonClass} text-xs`} title="Right">→</button>
+        <button onClick={() => sendKey('\r')} className={`${buttonClass} text-xs !bg-blue-600 !text-white`} title="Enter">↵</button>
+        <button onClick={() => sendKey('\x1b[Z')} className={`${buttonClass} text-xs`} title="Shift-Tab">S-Tab</button>
+        <button onClick={async () => {
+          try {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+              const imageType = item.types.find(t => t.startsWith('image/'));
+              if (imageType) {
+                const blob = await item.getType(imageType);
+                const ext = imageType.split('/')[1] || 'png';
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const base64 = (reader.result as string).split(',')[1];
+                  conn.send({ type: 'files.upload', session: activeSession, name: `screenshot.${ext}`, data: base64 });
+                };
+                reader.readAsDataURL(blob);
+                return;
+              }
+              if (item.types.includes('text/plain')) {
+                const blob = await item.getType('text/plain');
+                const text = await blob.text();
+                if (text) sendKey(text);
+                return;
+              }
+            }
+          } catch {
+            navigator.clipboard.readText().then(text => { if (text) sendKey(text); }).catch(() => {});
+          }
+        }} className={`${buttonClass} text-xs`} title="Paste">Paste</button>
+        <button onClick={() => {
+          const el = document.querySelector(`[data-session="${activeSession}"]`);
+          if (el) el.dispatchEvent(new CustomEvent('copy-screen'));
+        }} className={`${buttonClass} text-xs`} title="Copy screen">Sel</button>
+      </div>
+      <div className={rowClass}>
+        <button onClick={() => sendKey('\x03')} className={`${buttonClass} text-xs`} title="Ctrl-C">^C</button>
+        <button onClick={() => sendKey('\x02')} className={`${buttonClass} text-xs`} title="Ctrl-B">^B</button>
+        <button onClick={() => { sendKey('\x02'); setTimeout(() => sendKey('\x02'), 50); }} className={`${buttonClass} text-xs`} title="Ctrl-B Ctrl-B">^B^B</button>
+        <button onClick={() => sendKey('\x0f')} className={`${buttonClass} text-xs`} title="Ctrl-O">^O</button>
+        <button onClick={() => sendKey('\x1b')} className={`${buttonClass} text-xs`} title="Escape">Esc</button>
+      </div>
+    </>
+  );
+
+  const mainControlsRow = (buttonClass: string, rowClass: string, voiceIsMobile: boolean) => (
+    <div className={rowClass}>
+      <VoiceButton conn={conn} session={activeSession} isMobile={voiceIsMobile} />
+      <div className="flex-1" />
+      <button onClick={refreshTerminal} className={buttonClass} title="Refresh & scroll down">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+          <path strokeLinecap="round" d="M20.49 9A9 9 0 005.64 5.64L4 9m16 6l-1.64 3.36A9 9 0 014.51 15" />
+        </svg>
+      </button>
+      <button
+        onClick={() => setExtraKeys(!extraKeys)}
+        className={`${buttonClass} ${extraKeys ? '!bg-zinc-600' : ''}`}
+        title="Extra keys"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+          <path strokeLinecap="round" d="M8 6h.01M12 6h.01M16 6h.01M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+        </svg>
+      </button>
+    </div>
+  );
+
   // --- Desktop layout ---
   if (!isMobile) {
     return (
@@ -606,18 +676,9 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             </div>
             <div className="border-t border-zinc-700 py-1">
               {isTerminalActive && (
-                <div className="px-4 py-2 flex justify-end items-center gap-2 border-b border-zinc-700">
-                  <button
-                    onClick={refreshTerminal}
-                    className="w-9 h-9 border border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300 flex items-center justify-center transition-colors cursor-pointer"
-                    title="Refresh terminal"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 11a8 8 0 10-2.34 5.66" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 4v7h-7" />
-                    </svg>
-                  </button>
-                  <VoiceButton conn={conn} session={activeSession} isMobile={false} />
+                <div className="border-b border-zinc-700">
+                  {extraKeys && extraKeyRows('toolbar-btn', 'px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700')}
+                  {mainControlsRow('toolbar-btn', 'px-2 py-2 flex items-center gap-1', true)}
                 </div>
               )}
               {disconnectBtn}
@@ -625,8 +686,8 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             </div>
           </div>
           <div
-            onMouseDown={startSidebarResize}
-            className="w-2 shrink-0 cursor-col-resize hover:bg-zinc-700/40 active:bg-zinc-600/50 transition-colors"
+            onPointerDown={startSidebarResize}
+            className="w-2 shrink-0 cursor-col-resize hover:bg-zinc-700/40 active:bg-zinc-600/50 transition-colors touch-none"
             title="Resize sidebar"
           />
           <div className="flex-1 min-w-0 h-full flex relative pl-1">
@@ -697,88 +758,8 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
       {/* Bottom toolbar — only when a terminal is active */}
       {isTerminalActive && (
         <div className="shrink-0 bg-zinc-800 border-t border-zinc-700">
-          {/* Extra keys row (toggleable) */}
-          {extraKeys && (
-            <>
-              {/* Row 1: navigation + common */}
-              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700">
-                <button onClick={() => sendKey('\x1b[A')} className="toolbar-btn text-xs" title="Up">↑</button>
-                <button onClick={() => sendKey('\x1b[B')} className="toolbar-btn text-xs" title="Down">↓</button>
-                <button onClick={() => sendKey('\x1b[D')} className="toolbar-btn text-xs" title="Left">←</button>
-                <button onClick={() => sendKey('\x1b[C')} className="toolbar-btn text-xs" title="Right">→</button>
-                <button onClick={() => sendKey('\r')} className="toolbar-btn text-xs !bg-blue-600 !text-white" title="Enter">↵</button>
-                <button onClick={() => sendKey('\x1b[Z')} className="toolbar-btn text-xs" title="Shift-Tab">S-Tab</button>
-                <button onClick={async () => {
-                  try {
-                    const items = await navigator.clipboard.read();
-                    for (const item of items) {
-                      // Check for image first
-                      const imageType = item.types.find(t => t.startsWith('image/'));
-                      if (imageType) {
-                        const blob = await item.getType(imageType);
-                        const ext = imageType.split('/')[1] || 'png';
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          const base64 = (reader.result as string).split(',')[1];
-                          conn.send({ type: 'files.upload', session: activeSession, name: `screenshot.${ext}`, data: base64 });
-                        };
-                        reader.readAsDataURL(blob);
-                        return;
-                      }
-                      // Fall back to text
-                      if (item.types.includes('text/plain')) {
-                        const blob = await item.getType('text/plain');
-                        const text = await blob.text();
-                        if (text) sendKey(text);
-                        return;
-                      }
-                    }
-                  } catch {
-                    // Fallback for browsers that don't support clipboard.read()
-                    navigator.clipboard.readText().then(text => { if (text) sendKey(text); }).catch(() => {});
-                  }
-                }} className="toolbar-btn text-xs" title="Paste">Paste</button>
-                <button onClick={() => {
-                  const el = document.querySelector(`[data-session="${activeSession}"]`);
-                  if (el) el.dispatchEvent(new CustomEvent('copy-screen'));
-                }} className="toolbar-btn text-xs" title="Copy screen">Sel</button>
-              </div>
-              {/* Row 2: special keys */}
-              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700">
-                <button onClick={() => sendKey('\x03')} className="toolbar-btn text-xs" title="Ctrl-C">^C</button>
-                <button onClick={() => sendKey('\x02')} className="toolbar-btn text-xs" title="Ctrl-B">^B</button>
-                <button onClick={() => { sendKey('\x02'); setTimeout(() => sendKey('\x02'), 50); }} className="toolbar-btn text-xs" title="Ctrl-B Ctrl-B">^B^B</button>
-                <button onClick={() => sendKey('\x0f')} className="toolbar-btn text-xs" title="Ctrl-O">^O</button>
-                <button onClick={() => sendKey('\x1b')} className="toolbar-btn text-xs" title="Escape">Esc</button>
-              </div>
-            </>
-          )}
-          {/* Main row: voice | spacer | extra toggle | keyboard */}
-          <div className="px-2 py-2 flex items-center gap-1">
-            <VoiceButton conn={conn} session={activeSession} isMobile={true} />
-            <div className="flex-1" />
-            <button onClick={refreshTerminal} className="toolbar-btn" title="Refresh & scroll down">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
-                <path strokeLinecap="round" d="M20.49 9A9 9 0 005.64 5.64L4 9m16 6l-1.64 3.36A9 9 0 014.51 15" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setExtraKeys(!extraKeys)}
-              className={`toolbar-btn ${extraKeys ? '!bg-zinc-600' : ''}`}
-              title="Extra keys"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-                <path strokeLinecap="round" d="M8 6h.01M12 6h.01M16 6h.01M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
-              </svg>
-            </button>
-            <button onClick={focusTerminal} className="toolbar-btn" title="Keyboard">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-                <rect x="2" y="6" width="20" height="12" rx="2" />
-                <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
-              </svg>
-            </button>
-          </div>
+          {extraKeys && extraKeyRows('toolbar-btn', 'px-2 py-1.5 flex items-center gap-1 border-b border-zinc-700')}
+          {mainControlsRow('toolbar-btn', 'px-2 py-2 flex items-center gap-1', true)}
         </div>
       )}
     </div>

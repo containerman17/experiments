@@ -707,6 +707,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
                 <button onClick={() => sendKey('\x1b[D')} className="toolbar-btn text-xs" title="Left">←</button>
                 <button onClick={() => sendKey('\x1b[C')} className="toolbar-btn text-xs" title="Right">→</button>
                 <button onClick={() => sendKey('\r')} className="toolbar-btn text-xs !bg-blue-600 !text-white" title="Enter">↵</button>
+                <button onClick={() => sendKey('\x1b[Z')} className="toolbar-btn text-xs" title="Shift-Tab">S-Tab</button>
                 <button onClick={async () => {
                   try {
                     const items = await navigator.clipboard.read();

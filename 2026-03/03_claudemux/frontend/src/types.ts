@@ -3,6 +3,7 @@
 
 export interface SessionInfo {
   name: string;       // tmux session name
+  path: string;       // working directory for the session
   created: number;    // unix timestamp
   width: number;
   height: number;
@@ -55,6 +56,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: 'sessions.list'; sessions: SessionInfo[] }
+  | { type: 'files.sessionCreated'; session: string; path: string }
   | { type: 'terminal.output'; session: string; data: string }  // base64
   | { type: 'terminal.exited'; session: string }
   | { type: 'voice.result'; session: string; text: string }

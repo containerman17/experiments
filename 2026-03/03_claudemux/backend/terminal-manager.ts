@@ -106,13 +106,14 @@ function tmuxSessionExists(name: string): boolean {
 export function listSessions(): SessionInfo[] {
   try {
     const output = execSync(
-      `${TMUX} list-sessions -F '#{session_name}\t#{session_created}\t#{window_width}\t#{window_height}\t#{session_attached}' 2>/dev/null`
+      `${TMUX} list-sessions -F '#{session_name}\t#{session_path}\t#{session_created}\t#{window_width}\t#{window_height}\t#{session_attached}' 2>/dev/null`
     ).toString().trim();
     if (!output) return [];
     return output.split('\n').map(line => {
-      const [name, created, width, height, attached] = line.split('\t');
+      const [name, path, created, width, height, attached] = line.split('\t');
       return {
         name,
+        path,
         created: parseInt(created, 10),
         width: parseInt(width, 10),
         height: parseInt(height, 10),

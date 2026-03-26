@@ -4,7 +4,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { SessionInfo, TunnelInfo } from './types';
-import randomName from '@scaleway/random-name';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
 import { FileExplorer } from './components/FileExplorer';
@@ -26,22 +25,29 @@ function sessionFolderLabel(name: string): string {
   return parts.slice(0, -2).join('-') || name;
 }
 
+function folderNameFromPath(path: string): string {
+  const trimmed = path.replace(/\/+$/, '');
+  if (!trimmed || trimmed === '/') return '/';
+  return trimmed.split('/').pop() || trimmed;
+}
+
 function trimFromLeft(text: string, maxChars = 28): string {
   if (text.length <= maxChars) return text;
   return `...${text.slice(-(maxChars - 3))}`;
 }
 
-function groupSessionsByFolder(sessions: SessionInfo[]): Array<{ folder: string; sessions: SessionInfo[] }> {
-  const groups = new Map<string, SessionInfo[]>();
+function groupSessionsByFolder(sessions: SessionInfo[]): Array<{ key: string; folder: string; path: string; sessions: SessionInfo[] }> {
+  const groups = new Map<string, { key: string; folder: string; path: string; sessions: SessionInfo[] }>();
   for (const session of sessions) {
-    const folder = sessionFolderLabel(session.name);
-    if (!groups.has(folder)) groups.set(folder, []);
-    groups.get(folder)!.push(session);
+    const path = session.path || sessionFolderLabel(session.name);
+    const key = path;
+    const folder = session.path ? folderNameFromPath(session.path) : sessionFolderLabel(session.name);
+    if (!groups.has(key)) groups.set(key, { key, folder, path, sessions: [] });
+    groups.get(key)!.sessions.push(session);
   }
-  return Array.from(groups.entries()).map(([folder, groupedSessions]) => ({ folder, sessions: groupedSessions }));
+  return Array.from(groups.values());
 }
 
-const NEW_TAB = '__new__';
 const FILES_TAB = '__files__';
 const STORAGE_KEY = 'claudemux_url';
 const MIC_KEY = 'claudemux_mic';
@@ -195,34 +201,11 @@ function ConnectScreen({ onConnected, autoConnect: shouldAutoConnect = true }: {
   );
 }
 
-// --- New Session Panel ---
-
-function NewSessionPanel() {
-  const suffix = useMemo(() => randomName(), []);
-  const cmd = `tmux -L claudemux new-session -s "$(basename $PWD)-${suffix}"`;
-  return (
-    <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-4 p-8 text-center">
-      <p className="text-lg">New Session</p>
-      <p className="text-sm">Create a tmux session:</p>
-      <code
-        className="bg-zinc-800 px-4 py-2 rounded text-zinc-300 text-sm select-all cursor-pointer block"
-        onClick={() => { navigator.clipboard.writeText(cmd); }}
-      >
-        {cmd}
-      </code>
-      <p className="text-xs text-zinc-600 max-w-sm">
-        Click to copy. It will appear here automatically.
-      </p>
-    </div>
-  );
-}
-
-// --- Main App ---
-
 function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: string; onDisconnect: () => void }) {
   const [connected, setConnected] = useState(true);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [activeSession, setActiveSessionRaw] = useState<string>(() => localStorage.getItem(TAB_KEY) || NEW_TAB);
+  const [activeSession, setActiveSessionRaw] = useState<string>(() => localStorage.getItem(TAB_KEY) || FILES_TAB);
+  const previousSessionsRef = useRef<SessionInfo[] | null>(null);
   const setActiveSession = useCallback((s: string) => {
     setActiveSessionRaw(s);
     localStorage.setItem(TAB_KEY, s);
@@ -235,12 +218,21 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const isMobile = useIsMobile();
   const sessionGroups = useMemo(() => groupSessionsByFolder(sessions), [sessions]);
 
-  const isTerminalActive = activeSession !== NEW_TAB && activeSession !== FILES_TAB && sessions.some(s => s.name === activeSession);
+  const isTerminalActive = activeSession !== FILES_TAB && sessions.some(s => s.name === activeSession);
 
   useEffect(() => {
     const unStatus = conn.onStatus(setConnected);
     const unMsg = conn.subscribe(msg => {
       if (msg.type === 'sessions.list') {
+        const previousSessions = previousSessionsRef.current;
+        if (previousSessions && previousSessions.length > 0) {
+          const previousNames = new Set(previousSessions.map(session => session.name));
+          const addedSessions = msg.sessions.filter(session => !previousNames.has(session.name));
+          if (addedSessions.length > 0) {
+            setActiveSession(addedSessions[addedSessions.length - 1].name);
+          }
+        }
+        previousSessionsRef.current = msg.sessions;
         setSessions(msg.sessions);
       }
       if (msg.type === 'voice.result') {
@@ -258,17 +250,22 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     conn.send({ type: 'sessions.list' });
     conn.send({ type: 'tunnels.list' });
     return () => { unStatus(); unMsg(); };
-  }, [conn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conn, setActiveSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If active session disappeared, fall back
   useEffect(() => {
-    if (activeSession !== NEW_TAB && activeSession !== FILES_TAB && sessions.length > 0 && !sessions.find(s => s.name === activeSession)) {
+    if (activeSession !== FILES_TAB && sessions.length > 0 && !sessions.find(s => s.name === activeSession)) {
       setActiveSession(sessions[0].name);
     }
-    if (activeSession !== NEW_TAB && activeSession !== FILES_TAB && sessions.length === 0) {
-      setActiveSession(NEW_TAB);
+    if (activeSession !== FILES_TAB && sessions.length === 0) {
+      setActiveSession(FILES_TAB);
     }
   }, [sessions, activeSession]);
+
+  const createSessionInPath = useCallback((path: string) => {
+    if (!path) return;
+    conn.send({ type: 'files.createSession', path });
+  }, [conn]);
 
   const sendKey = useCallback((data: string) => {
     if (isTerminalActive) conn.send({ type: 'terminal.input', session: activeSession, data });
@@ -313,21 +310,8 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
   const terminalArea = (
     <div className="flex-1 min-h-0 min-w-0 relative">
-      {activeSession === NEW_TAB && (
-        <div className="absolute inset-0 z-10">
-          <NewSessionPanel />
-        </div>
-      )}
       <div className={`absolute inset-0 z-10 ${activeSession === FILES_TAB ? '' : 'invisible'}`}>
-          <FileExplorer conn={conn} onSessionCreated={() => {
-            // Switch to the new session once it appears in the next sessions.list broadcast
-            const unsub = conn.subscribe(msg => {
-              if (msg.type === 'sessions.list' && msg.sessions.length > 0) {
-                unsub();
-                setActiveSession(msg.sessions[msg.sessions.length - 1].name);
-              }
-            });
-          }} />
+          <FileExplorer conn={conn} />
       </div>
       {sessions.map(s => (
         <div
@@ -343,9 +327,21 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const sessionItems = (onClick?: () => void) => (
     <>
       {sessionGroups.map(group => (
-        <div key={group.folder} className="border-b border-zinc-800 last:border-b-0">
-          <div className="px-4 pt-3 pb-1 text-[11px] text-zinc-600 uppercase tracking-wider">
-            {trimFromLeft(group.folder, 30)}
+        <div key={group.key} className="border-b border-zinc-800 last:border-b-0">
+          <div className="px-4 pt-3 pb-1 flex items-center justify-between gap-2">
+            <div className="min-w-0 text-[11px] text-zinc-600 uppercase tracking-wider">
+              {trimFromLeft(group.folder, 30)}
+            </div>
+            <button
+              onClick={() => createSessionInPath(group.path)}
+              className="shrink-0 p-1 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+              title={`New terminal in ${group.path}`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7.5A1.5 1.5 0 015.5 6h13A1.5 1.5 0 0120 7.5v9A1.5 1.5 0 0118.5 18h-13A1.5 1.5 0 014 16.5v-9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 10.5l2 2-2 2M12.5 14.5h4" />
+              </svg>
+            </button>
           </div>
           {group.sessions.map(s => (
             <button
@@ -365,9 +361,9 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         </div>
       ))}
       <button
-        onClick={() => { setActiveSession(NEW_TAB); onClick?.(); }}
+        onClick={() => { setActiveSession(FILES_TAB); onClick?.(); }}
         className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 ${
-          activeSession === NEW_TAB
+          activeSession === FILES_TAB
             ? 'bg-zinc-800 text-zinc-100'
             : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
         }`}
@@ -375,28 +371,9 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
           <path strokeLinecap="round" d="M12 5v14M5 12h14" />
         </svg>
-        New Session
-      </button>
-    </>
-  );
-
-  const filesSection = (onClick?: () => void) => (
-    <div className="border-t border-zinc-700">
-      <div className="px-4 py-2 text-xs text-zinc-500 uppercase tracking-wider">Files</div>
-      <button
-        onClick={() => { setActiveSession(FILES_TAB); onClick?.(); }}
-        className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 cursor-pointer ${
-          activeSession === FILES_TAB
-            ? 'bg-zinc-800 text-zinc-100'
-            : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
-        }`}
-      >
-        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-          <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-        </svg>
         Open File Explorer
       </button>
-    </div>
+    </>
   );
 
   const tunnelItems = (
@@ -468,12 +445,21 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             <div className="px-4 py-3 text-xs text-zinc-500 uppercase tracking-[0.18em] border-b border-zinc-700">Sessions</div>
             <div className="flex-1 overflow-y-auto">
               {sessionItems()}
-              {filesSection()}
               <div className="border-t border-zinc-700">{tunnelItems}</div>
             </div>
             <div className="border-t border-zinc-700 py-1">
               {isTerminalActive && (
-                <div className="px-4 py-2 flex justify-end border-b border-zinc-800">
+                <div className="px-4 py-2 flex justify-end items-center gap-2 border-b border-zinc-800">
+                  <button
+                    onClick={refreshTerminal}
+                    className="w-9 h-9 border border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300 flex items-center justify-center transition-colors cursor-pointer"
+                    title="Refresh terminal"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 11a8 8 0 10-2.34 5.66" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 4v7h-7" />
+                    </svg>
+                  </button>
                   <VoiceButton conn={conn} session={activeSession} isMobile={false} />
                 </div>
               )}
@@ -502,7 +488,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           </svg>
         </button>
         <span className="text-sm text-zinc-300 truncate flex-1">
-          {activeSession === NEW_TAB ? 'New Session' : activeSession === FILES_TAB ? 'File Explorer' : `${emojiHash(activeSession)} ${trimFromLeft(sessionFolderLabel(activeSession), 32)}`}
+          {activeSession === FILES_TAB ? 'File Explorer' : `${emojiHash(activeSession)} ${trimFromLeft(sessionFolderLabel(activeSession), 32)}`}
         </span>
       </div>
 
@@ -513,7 +499,6 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             <div className="px-3 py-3 text-xs text-zinc-500 uppercase tracking-wider border-b border-zinc-700">Sessions</div>
             <div className="flex-1 overflow-y-auto">
               {sessionItems(() => setMenuOpen(false))}
-              {filesSection(() => setMenuOpen(false))}
               <div className="border-t border-zinc-700 mt-2">{tunnelItems}</div>
             </div>
             <div className="border-t border-zinc-700 flex flex-col items-center py-2 gap-0.5">

@@ -124,7 +124,8 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
 
     case 'files.createSession': {
       try {
-        fm.createSession(msg.path);
+        const session = fm.createSession(msg.path);
+        send(ws, { type: 'files.sessionCreated', session, path: msg.path });
         // Wait a moment for tmux to register the session, then broadcast
         setTimeout(() => {
           const sessions = tm.listSessions();

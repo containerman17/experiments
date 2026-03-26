@@ -289,9 +289,21 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
           </div>
         )}
         {!previewLoading && !preview && !loading && entries.map(entry => (
-          <button
+          <div
             key={entry.name}
+            role="button"
+            tabIndex={0}
             onClick={() => {
+              const entryPath = `${currentPath === '/' ? '' : currentPath}/${entry.name}`;
+              if (entry.isDir) {
+                navigate(entryPath);
+              } else {
+                handlePreview(entryPath);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
               const entryPath = `${currentPath === '/' ? '' : currentPath}/${entry.name}`;
               if (entry.isDir) {
                 navigate(entryPath);
@@ -339,7 +351,7 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
               </svg>
             </button>
-          </button>
+          </div>
         ))}
       </div>
     </div>

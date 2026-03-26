@@ -54,6 +54,8 @@ const MIC_KEY = 'claudemux_mic';
 const TAB_KEY = 'claudemux_tab';
 const SIDEBAR_WIDTH_KEY = 'claudemux_sidebar_width';
 const SESSION_ALIASES_KEY = 'claudemux_session_aliases';
+const DEEPGRAM_API_KEY_KEY = 'claudemux_deepgram_api_key';
+const DEEPGRAM_VOCAB_KEY = 'claudemux_deepgram_vocabulary';
 const DEFAULT_SIDEBAR_WIDTH = 288;
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 420;
@@ -104,7 +106,16 @@ function MicSelector() {
 
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-xs text-zinc-500">Microphone</label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs text-zinc-500">Microphone</label>
+        <button
+          type="button"
+          onClick={loadDevices}
+          className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+        >
+          Refresh
+        </button>
+      </div>
       {!loaded ? (
         <button
           onClick={loadDevices}
@@ -125,6 +136,64 @@ function MicSelector() {
         </select>
       )}
     </div>
+  );
+}
+
+function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boolean; defaultOpen?: boolean }) {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(DEEPGRAM_API_KEY_KEY) || '');
+  const [vocabulary, setVocabulary] = useState(() => localStorage.getItem(DEEPGRAM_VOCAB_KEY) || '');
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(DEEPGRAM_API_KEY_KEY, apiKey);
+  }, [apiKey]);
+
+  useEffect(() => {
+    localStorage.setItem(DEEPGRAM_VOCAB_KEY, vocabulary);
+  }, [vocabulary]);
+
+  const closeSettings = useCallback(() => {
+    detailsRef.current?.removeAttribute('open');
+  }, []);
+
+  return (
+    <details ref={detailsRef} className="px-4 py-2 border-t border-zinc-700" open={defaultOpen}>
+      <summary className={`cursor-pointer list-none text-zinc-500 uppercase tracking-[0.18em] ${compact ? 'text-[13px]' : 'text-xs'}`}>
+        Settings
+      </summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
+          <label className="text-xs text-zinc-500">Deepgram API Key</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="dg_xxx"
+            className={`w-full bg-zinc-900 border border-zinc-600 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 ${compact ? 'px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}
+          />
+        </div>
+        <MicSelector />
+        <div className="flex flex-col gap-2">
+          <label className="text-xs text-zinc-500">Custom Vocabulary</label>
+          <textarea
+            value={vocabulary}
+            onChange={e => setVocabulary(e.target.value)}
+            placeholder="claudemux, tmux, codex, deepgram"
+            className={`w-full min-h-[80px] resize-y bg-zinc-900 border border-zinc-600 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 ${compact ? 'px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}
+          />
+          <span className="text-[11px] text-zinc-600">Comma-separated. Sent to Deepgram as keyterms.</span>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={closeSettings}
+            className={`${compact ? 'px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'} text-zinc-300 hover:text-zinc-100 border border-zinc-600 rounded hover:border-zinc-400 transition-colors cursor-pointer`}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -221,7 +290,7 @@ function ConnectScreen({ onConnected, autoConnect: shouldAutoConnect = true }: {
         {status === 'failed' && (
           <p className="text-red-400 text-sm text-center">Connection failed. Check the URL and try again.</p>
         )}
-        <MicSelector />
+        <VoiceSettings defaultOpen />
       </div>
     </div>
   );
@@ -590,7 +659,6 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         <button onClick={() => sendKey('\x1b[B')} className={`${buttonClass} text-xs`} title="Down">↓</button>
         <button onClick={() => sendKey('\x1b[D')} className={`${buttonClass} text-xs`} title="Left">←</button>
         <button onClick={() => sendKey('\x1b[C')} className={`${buttonClass} text-xs`} title="Right">→</button>
-        <button onClick={() => sendKey('\r')} className={`${buttonClass} text-xs !bg-blue-600 !text-white`} title="Enter">↵</button>
         <button onClick={() => sendKey('\x1b[Z')} className={`${buttonClass} text-xs`} title="Shift-Tab">S-Tab</button>
         <button onClick={async () => {
           try {
@@ -638,6 +706,13 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     <div className={rowClass}>
       <VoiceButton conn={conn} session={activeSession} isMobile={voiceIsMobile} />
       <div className="flex-1" />
+      <button
+        onClick={() => sendKey('\r')}
+        className={`${buttonClass} !bg-blue-600 !text-white cursor-pointer`}
+        title="Enter"
+      >
+        <span className={isMobile ? 'text-base font-mono leading-none' : 'text-sm font-mono leading-none'}>↵</span>
+      </button>
       <button onClick={refreshTerminal} className={buttonClass} title="Refresh & scroll down">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
@@ -681,6 +756,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
                   {mainControlsRow('toolbar-btn', 'px-2 py-2 flex items-center gap-1', true)}
                 </div>
               )}
+              <VoiceSettings />
               {disconnectBtn}
               <div className="px-4 pb-1 text-[10px] text-zinc-600">{new Date(__BUILD_TIME__).toLocaleString()}</div>
             </div>
@@ -743,6 +819,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             <div className="flex-1 overflow-y-auto">
               {sessionItems(() => setMenuOpen(false))}
               <div className="border-t border-zinc-700 mt-2">{tunnelItems}</div>
+              <VoiceSettings compact />
             </div>
             <div className="border-t border-zinc-700 flex flex-col items-center py-2 gap-0.5">
               {disconnectBtn}

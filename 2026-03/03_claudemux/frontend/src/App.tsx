@@ -142,6 +142,7 @@ function MicSelector() {
 function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boolean; defaultOpen?: boolean }) {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(DEEPGRAM_API_KEY_KEY) || '');
   const [vocabulary, setVocabulary] = useState(() => localStorage.getItem(DEEPGRAM_VOCAB_KEY) || '');
+  const [showApiKey, setShowApiKey] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
@@ -164,13 +165,22 @@ function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boo
       <div className="mt-3 flex flex-col gap-3">
         <div className="flex flex-col gap-2">
           <label className="text-xs text-zinc-500">Deepgram API Key</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="dg_xxx"
-            className={`w-full bg-zinc-900 border border-zinc-600 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 ${compact ? 'px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="dg_xxx"
+              className={`min-w-0 flex-1 bg-zinc-900 border border-zinc-600 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 ${compact ? 'px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(value => !value)}
+              className={`${compact ? 'px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'} border border-zinc-600 rounded text-zinc-300 hover:text-zinc-100 hover:border-zinc-400 transition-colors cursor-pointer shrink-0`}
+            >
+              {showApiKey ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
         <MicSelector />
         <div className="flex flex-col gap-2">
@@ -311,6 +321,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [extraKeys, setExtraKeys] = useState(false);
+  const [ctrlMode, setCtrlMode] = useState(false);
   const [newTunnelPort, setNewTunnelPort] = useState('');
   const [explorerPath, setExplorerPath] = useState('/home/claude');
   const [sidebarWidth, setSidebarWidth] = useState(() => getSavedSidebarWidth());
@@ -454,7 +465,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           key={s.name}
           className={`absolute inset-0 ${activeSession === s.name ? '' : 'invisible'}`}
         >
-          <Terminal session={s.name} conn={conn} />
+          <Terminal session={s.name} conn={conn} ctrlMode={ctrlMode} onCtrlConsumed={() => setCtrlMode(false)} />
         </div>
       ))}
     </div>
@@ -693,6 +704,13 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         }} className={`${buttonClass} text-xs`} title="Copy screen">Sel</button>
       </div>
       <div className={rowClass}>
+        <button
+          onClick={() => setCtrlMode(value => !value)}
+          className={`${buttonClass} text-xs ${ctrlMode ? '!bg-blue-600 !text-white' : ''}`}
+          title="Control modifier"
+        >
+          Ctrl
+        </button>
         <button onClick={() => sendKey('\x03')} className={`${buttonClass} text-xs`} title="Ctrl-C">^C</button>
         <button onClick={() => sendKey('\x02')} className={`${buttonClass} text-xs`} title="Ctrl-B">^B</button>
         <button onClick={() => { sendKey('\x02'); setTimeout(() => sendKey('\x02'), 50); }} className={`${buttonClass} text-xs`} title="Ctrl-B Ctrl-B">^B^B</button>
@@ -704,7 +722,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
   const mainControlsRow = (buttonClass: string, rowClass: string, voiceIsMobile: boolean) => (
     <div className={rowClass}>
-      <VoiceButton conn={conn} session={activeSession} isMobile={voiceIsMobile} />
+      <VoiceButton conn={conn} session={isTerminalActive ? activeSession : null} isMobile={voiceIsMobile} />
       <div className="flex-1" />
       <button
         onClick={() => sendKey('\r')}

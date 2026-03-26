@@ -13,13 +13,41 @@ import type { Connection } from '../ws';
 interface Props {
   session: string;
   conn: Connection;
+  ctrlMode: boolean;
+  onCtrlConsumed: () => void;
 }
 
-export function Terminal({ session, conn }: Props) {
+function toControlCharacter(data: string): string | null {
+  if (data.length !== 1) return null;
+  const char = data.toUpperCase();
+  if (char >= 'A' && char <= 'Z') return String.fromCharCode(char.charCodeAt(0) - 64);
+  if (char === ' ') return '\x00';
+  const specialMap: Record<string, string> = {
+    '@': '\x00',
+    '[': '\x1b',
+    '\\': '\x1c',
+    ']': '\x1d',
+    '^': '\x1e',
+    '_': '\x1f',
+  };
+  return specialMap[char] ?? null;
+}
+
+export function Terminal({ session, conn, ctrlMode, onCtrlConsumed }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [screenText, setScreenText] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const termRef = useRef<XTerm | null>(null);
+  const ctrlModeRef = useRef(ctrlMode);
+  const onCtrlConsumedRef = useRef(onCtrlConsumed);
+
+  useEffect(() => {
+    ctrlModeRef.current = ctrlMode;
+  }, [ctrlMode]);
+
+  useEffect(() => {
+    onCtrlConsumedRef.current = onCtrlConsumed;
+  }, [onCtrlConsumed]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -82,6 +110,14 @@ export function Terminal({ session, conn }: Props) {
     });
 
     term.onData(data => {
+      if (ctrlModeRef.current) {
+        const modified = toControlCharacter(data);
+        if (modified) {
+          conn.send({ type: 'terminal.input', session, data: modified });
+          onCtrlConsumedRef.current();
+          return;
+        }
+      }
       conn.send({ type: 'terminal.input', session, data });
     });
 

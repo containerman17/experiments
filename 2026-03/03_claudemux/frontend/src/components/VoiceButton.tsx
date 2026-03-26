@@ -79,7 +79,7 @@ function clearTypedPreview(conn: Connection): void {
 
 function replaceTypedPreview(conn: Connection, session: string, nextText: string): void {
   if (sharedTypedPreviewSession && sharedTypedPreviewSession !== session) {
-    clearTypedPreview(conn);
+    sharedTypedPreview = '';
   }
   sharedTypedPreviewSession = session;
   if (sharedTypedPreview) {
@@ -157,21 +157,14 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
 
   const startRecording = useCallback(async () => {
     const apiKey = localStorage.getItem(DEEPGRAM_API_KEY_KEY)?.trim();
-    const targetSession = latestSessionRef.current;
 
     setSharedVoiceState({ error: null });
     if (!apiKey) {
       setSharedVoiceState({ error: 'Set Deepgram API key in Settings' });
       return;
     }
-    if (!targetSession) {
-      setSharedVoiceState({ error: 'No active session' });
-      return;
-    }
 
     try {
-      clearTypedPreview(conn);
-      sharedTypedPreviewSession = targetSession;
       const micId = localStorage.getItem(MIC_KEY);
       const audioConstraints: MediaTrackConstraints = micId ? { deviceId: { exact: micId } } : {};
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
@@ -227,14 +220,17 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
           const transcript = data.channel?.alternatives?.[0]?.transcript ?? '';
           if (!transcript) return;
 
+          const currentSession = latestSessionRef.current;
+          if (!currentSession) return;
+
           if (data.is_final) {
             const finalTranscript = normalizeFinalTranscript(transcript);
             if (!finalTranscript) return;
-            replaceTypedPreview(conn, targetSession, finalTranscript);
+            replaceTypedPreview(conn, currentSession, finalTranscript);
             sharedTypedPreview = '';
           } else {
             const interimTranscript = normalizeInterimTranscript(transcript);
-            replaceTypedPreview(conn, targetSession, interimTranscript);
+            replaceTypedPreview(conn, currentSession, interimTranscript);
           }
         } catch {
           setSharedVoiceState({ error: 'Deepgram response parse error' });
@@ -256,8 +252,6 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
       };
     } catch {
       setSharedVoiceState({ error: 'Mic access denied' });
-      clearTypedPreview(conn);
-      sharedTypedPreviewSession = null;
       teardownRecording();
     }
   }, [conn]);

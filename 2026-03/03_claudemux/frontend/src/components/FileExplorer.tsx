@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import hljs from 'highlight.js/lib/core';
 import bash from 'highlight.js/lib/languages/bash';
 import c from 'highlight.js/lib/languages/c';
@@ -62,6 +62,7 @@ export function FileExplorer({ conn, onSessionCreated, initialPath }: Props) {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const lastInitialPathRef = useRef<string | undefined>(initialPath);
 
   useEffect(() => {
     const unsub = conn.subscribe(msg => {
@@ -98,9 +99,10 @@ export function FileExplorer({ conn, onSessionCreated, initialPath }: Props) {
   }, [conn]);
 
   useEffect(() => {
-    if (!initialPath || !currentPath || initialPath === currentPath) return;
+    if (!initialPath || initialPath === lastInitialPathRef.current) return;
+    lastInitialPathRef.current = initialPath;
     navigate(initialPath);
-  }, [currentPath, initialPath, navigate]);
+  }, [initialPath, navigate]);
 
   const goUp = useCallback(() => {
     if (!currentPath || currentPath === '/') return;

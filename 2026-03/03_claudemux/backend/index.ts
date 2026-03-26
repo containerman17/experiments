@@ -72,7 +72,9 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
         .then(text => {
           console.log(`[voice] inserting into "${session}": ${text.slice(0, 50)}...`);
           tm.write(session, text);
-          tm.sendKeys(session, 'Enter');
+          setTimeout(() => {
+            tm.sendKeys(session, 'Enter');
+          }, 150);
           send(ws, { type: 'voice.result', session, text });
         })
         .catch(err => { console.error(`[voice] error:`, err); send(ws, { type: 'voice.error', message: String(err) }); });

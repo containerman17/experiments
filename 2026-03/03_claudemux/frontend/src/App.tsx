@@ -2,7 +2,7 @@
 // Desktop: left sidebar for session list + big terminal.
 // Mobile: full-screen terminal + hamburger menu + bottom toolbar (voice, arrows, enter, keyboard).
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionInfo, TunnelInfo } from './types';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
@@ -52,9 +52,35 @@ const FILES_TAB = '__files__';
 const STORAGE_KEY = 'claudemux_url';
 const MIC_KEY = 'claudemux_mic';
 const TAB_KEY = 'claudemux_tab';
+const SIDEBAR_WIDTH_KEY = 'claudemux_sidebar_width';
+const SESSION_ALIASES_KEY = 'claudemux_session_aliases';
+const DEFAULT_SIDEBAR_WIDTH = 288;
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 420;
+const MIN_SESSION_ALIAS_LENGTH = 3;
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width));
+}
 
 function getSavedUrl(): string {
   return localStorage.getItem(STORAGE_KEY) || '';
+}
+
+function getSavedSidebarWidth(): number {
+  const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '', 10);
+  return Number.isFinite(saved) ? clampSidebarWidth(saved) : DEFAULT_SIDEBAR_WIDTH;
+}
+
+function getSavedSessionAliases(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SESSION_ALIASES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 // --- Connect Screen ---
@@ -206,6 +232,8 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [activeSession, setActiveSessionRaw] = useState<string>(() => localStorage.getItem(TAB_KEY) || FILES_TAB);
   const previousSessionsRef = useRef<SessionInfo[] | null>(null);
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const setActiveSession = useCallback((s: string) => {
     setActiveSessionRaw(s);
     localStorage.setItem(TAB_KEY, s);
@@ -215,8 +243,15 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const [toast, setToast] = useState<string | null>(null);
   const [extraKeys, setExtraKeys] = useState(false);
   const [newTunnelPort, setNewTunnelPort] = useState('');
+  const [explorerPath, setExplorerPath] = useState('/home/claude');
+  const [sidebarWidth, setSidebarWidth] = useState(() => getSavedSidebarWidth());
+  const [isResizing, setIsResizing] = useState(false);
+  const [sessionAliases, setSessionAliases] = useState<Record<string, string>>(() => getSavedSessionAliases());
+  const [renamingSession, setRenamingSession] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const isMobile = useIsMobile();
   const sessionGroups = useMemo(() => groupSessionsByFolder(sessions), [sessions]);
+  const getSessionDisplayName = useCallback((name: string) => sessionAliases[name]?.trim() || name, [sessionAliases]);
 
   const isTerminalActive = activeSession !== FILES_TAB && sessions.some(s => s.name === activeSession);
 
@@ -296,6 +331,41 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     }
   }, [connected, conn]);
 
+  useEffect(() => {
+    localStorage.setItem(SESSION_ALIASES_KEY, JSON.stringify(sessionAliases));
+  }, [sessionAliases]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    }
+  }, [sidebarWidth, isMobile]);
+
+  useEffect(() => {
+    if (!renamingSession) return;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renamingSession]);
+
+  useEffect(() => {
+    if (!isResizing || isMobile) return;
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!resizeStateRef.current) return;
+      const nextWidth = resizeStateRef.current.startWidth + (event.clientX - resizeStateRef.current.startX);
+      setSidebarWidth(clampSidebarWidth(nextWidth));
+    };
+    const handleMouseUp = () => {
+      resizeStateRef.current = null;
+      setIsResizing(false);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, isMobile]);
+
   const toastEl = toast && (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-600 text-white px-4 py-2 rounded shadow-lg text-sm max-w-sm truncate">
       {toast}
@@ -311,7 +381,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const terminalArea = (
     <div className="flex-1 min-h-0 min-w-0 relative">
       <div className={`absolute inset-0 z-10 ${activeSession === FILES_TAB ? '' : 'invisible'}`}>
-          <FileExplorer conn={conn} />
+          <FileExplorer conn={conn} initialPath={explorerPath} />
       </div>
       {sessions.map(s => (
         <div
@@ -324,6 +394,41 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     </div>
   );
 
+  const beginSessionRename = useCallback((sessionName: string) => {
+    setRenamingSession(sessionName);
+    setRenameValue(getSessionDisplayName(sessionName));
+  }, [getSessionDisplayName]);
+
+  const cancelSessionRename = useCallback(() => {
+    setRenamingSession(null);
+    setRenameValue('');
+  }, []);
+
+  const saveSessionRename = useCallback((sessionName: string) => {
+    const trimmed = renameValue.trim();
+    if (trimmed.length < MIN_SESSION_ALIAS_LENGTH) {
+      cancelSessionRename();
+      return;
+    }
+    setSessionAliases(prev => {
+      const next = { ...prev };
+      if (trimmed === sessionName) {
+        delete next[sessionName];
+      } else {
+        next[sessionName] = trimmed;
+      }
+      return next;
+    });
+    setRenamingSession(current => current === sessionName ? null : current);
+    setRenameValue('');
+  }, [cancelSessionRename, renameValue]);
+
+  const startSidebarResize = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (isMobile) return;
+    resizeStateRef.current = { startX: event.clientX, startWidth: sidebarWidth };
+    setIsResizing(true);
+  }, [isMobile, sidebarWidth]);
+
   const sessionItems = (onClick?: () => void) => (
     <>
       {sessionGroups.map(group => (
@@ -333,8 +438,18 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
               {trimFromLeft(group.folder, 30)}
             </div>
             <button
+              onClick={() => { setExplorerPath(group.path); setActiveSession(FILES_TAB); onClick?.(); }}
+              className="shrink-0 p-1 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
+              title={`Open ${group.path} in file explorer`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 7.5A2.25 2.25 0 016 5.25h4.19a2.25 2.25 0 011.59.66l.81.84h5.41a2.25 2.25 0 012.25 2.25v7.5A2.25 2.25 0 0118 18.75H6A2.25 2.25 0 013.75 16.5v-9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 12h7.5" />
+              </svg>
+            </button>
+            <button
               onClick={() => createSessionInPath(group.path)}
-              className="shrink-0 p-1 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+              className="shrink-0 p-1 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
               title={`New terminal in ${group.path}`}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
@@ -344,9 +459,23 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             </button>
           </div>
           {group.sessions.map(s => (
-            <button
+            <div
               key={s.name}
+              role="button"
+              tabIndex={0}
               onClick={() => { setActiveSession(s.name); onClick?.(); }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                beginSessionRename(s.name);
+              }}
+              onKeyDown={(e) => {
+                if (renamingSession === s.name) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActiveSession(s.name);
+                  onClick?.();
+                }
+              }}
               title={s.name}
               className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 cursor-pointer ${
                 activeSession === s.name
@@ -355,24 +484,47 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
               }`}
             >
               <span>{emojiHash(s.name)}</span>
-              <span className="min-w-0 overflow-hidden whitespace-nowrap">{trimFromLeft(s.name, 32)}</span>
-            </button>
+              {renamingSession === s.name ? (
+                <input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  minLength={MIN_SESSION_ALIAS_LENGTH}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  onDoubleClick={e => e.stopPropagation()}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') saveSessionRename(s.name);
+                    if (e.key === 'Escape') cancelSessionRename();
+                  }}
+                  onBlur={() => saveSessionRename(s.name)}
+                  className="min-w-0 flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400"
+                />
+              ) : (
+                <span className="min-w-0 overflow-hidden whitespace-nowrap">{trimFromLeft(getSessionDisplayName(s.name), 32)}</span>
+              )}
+            </div>
           ))}
         </div>
       ))}
-      <button
-        onClick={() => { setActiveSession(FILES_TAB); onClick?.(); }}
-        className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 ${
-          activeSession === FILES_TAB
-            ? 'bg-zinc-800 text-zinc-100'
-            : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
-        }`}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-          <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-        </svg>
-        Open File Explorer
-      </button>
+      <div className="border-t border-zinc-700 mt-2 pt-2">
+        <div className="px-4 pb-1 text-[11px] text-zinc-600 uppercase tracking-wider">
+          Files
+        </div>
+        <button
+          onClick={() => { setActiveSession(FILES_TAB); onClick?.(); }}
+          className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 ${
+            activeSession === FILES_TAB
+              ? 'bg-zinc-800 text-zinc-100'
+              : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
+          } cursor-pointer`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+            <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+          </svg>
+          Open File Explorer
+        </button>
+      </div>
     </>
   );
 
@@ -432,15 +584,15 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   if (!isMobile) {
     return (
       <div
-        className="h-full relative p-3"
+        className={`h-full relative p-3 ${isResizing ? 'select-none cursor-col-resize' : ''}`}
         style={{ backgroundColor: 'rgb(24, 24, 27)', fontFamily: 'Menlo, Monaco, \"Courier New\", monospace' }}
       >
         {toastEl}
         {reconnectingEl}
         <div className="h-full flex">
           <div
-            className="w-72 shrink-0 flex flex-col border-r border-zinc-700"
-            style={{ backgroundColor: 'rgb(24, 24, 27)' }}
+            className="shrink-0 flex flex-col border-r border-zinc-700"
+            style={{ width: sidebarWidth, backgroundColor: 'rgb(24, 24, 27)' }}
           >
             <div className="px-4 py-3 text-xs text-zinc-500 uppercase tracking-[0.18em] border-b border-zinc-700">Sessions</div>
             <div className="flex-1 overflow-y-auto">
@@ -467,6 +619,11 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
               <div className="px-4 pb-1 text-[10px] text-zinc-600">{new Date(__BUILD_TIME__).toLocaleString()}</div>
             </div>
           </div>
+          <div
+            onMouseDown={startSidebarResize}
+            className="w-2 shrink-0 cursor-col-resize hover:bg-zinc-700/40 active:bg-zinc-600/50 transition-colors"
+            title="Resize sidebar"
+          />
           <div className="flex-1 min-w-0 h-full flex relative pl-1">
             {terminalArea}
           </div>
@@ -488,7 +645,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           </svg>
         </button>
         <span className="text-sm text-zinc-300 truncate flex-1">
-          {activeSession === FILES_TAB ? 'File Explorer' : `${emojiHash(activeSession)} ${trimFromLeft(sessionFolderLabel(activeSession), 32)}`}
+          {activeSession === FILES_TAB ? 'File Explorer' : `${emojiHash(activeSession)} ${trimFromLeft(getSessionDisplayName(activeSession), 32)}`}
         </span>
       </div>
 

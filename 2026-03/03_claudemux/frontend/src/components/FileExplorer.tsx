@@ -24,6 +24,7 @@ import type { FileEntry, FilePreview } from '../types';
 interface Props {
   conn: Connection;
   onSessionCreated?: () => void;
+  initialPath?: string;
 }
 
 hljs.registerLanguage('bash', bash);
@@ -53,7 +54,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export function FileExplorer({ conn, onSessionCreated }: Props) {
+export function FileExplorer({ conn, onSessionCreated, initialPath }: Props) {
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -83,10 +84,10 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
     });
 
     // Request session dirs on mount by listing home
-    conn.send({ type: 'files.list', path: '/home/claude' });
+    conn.send({ type: 'files.list', path: initialPath || '/home/claude' });
 
     return unsub;
-  }, [conn]);
+  }, [conn, initialPath]);
 
   const navigate = useCallback((path: string) => {
     setLoading(true);
@@ -95,6 +96,11 @@ export function FileExplorer({ conn, onSessionCreated }: Props) {
     setPreviewLoading(false);
     conn.send({ type: 'files.list', path });
   }, [conn]);
+
+  useEffect(() => {
+    if (!initialPath || !currentPath || initialPath === currentPath) return;
+    navigate(initialPath);
+  }, [currentPath, initialPath, navigate]);
 
   const goUp = useCallback(() => {
     if (!currentPath || currentPath === '/') return;

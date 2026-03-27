@@ -1,6 +1,6 @@
 // Voice input button.
-// Records audio in the browser, streams it to Deepgram in real time,
-// and types finalized phrases into the active tmux session from the frontend.
+// Records audio via MediaRecorder, then sends the full clip to the backend
+// for Gemini-based transcription with terminal context.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Connection } from '../ws';
@@ -13,28 +13,30 @@ interface Props {
 
 interface VoiceState {
   recording: boolean;
+  sending: boolean;
   startedAt: number | null;
   micLabel: string;
   error: string | null;
+  audioLevel: number;
 }
 
 const MIC_KEY = 'claudemux_mic';
-const DEEPGRAM_API_KEY_KEY = 'claudemux_deepgram_api_key';
-const DEEPGRAM_VOCAB_KEY = 'claudemux_deepgram_vocabulary';
+const AUTO_SEND_KEY = 'claudemux_voice_auto_send';
 
 const voiceStateListeners = new Set<(state: VoiceState) => void>();
 let sharedVoiceState: VoiceState = {
   recording: false,
+  sending: false,
   startedAt: null,
   micLabel: '',
   error: null,
+  audioLevel: 0,
 };
 let sharedStream: MediaStream | null = null;
-let sharedSocket: WebSocket | null = null;
-let sharedAudioContext: AudioContext | null = null;
-let sharedProcessor: ScriptProcessorNode | null = null;
-let sharedTypedPreview = '';
-let sharedTypedPreviewSession: string | null = null;
+let sharedRecorder: MediaRecorder | null = null;
+let sharedAnalyser: AnalyserNode | null = null;
+let sharedAudioCtx: AudioContext | null = null;
+let sharedLevelRaf: number | null = null;
 
 function setSharedVoiceState(next: Partial<VoiceState>): void {
   sharedVoiceState = { ...sharedVoiceState, ...next };
@@ -46,102 +48,86 @@ function setVoiceError(message: string): void {
   setSharedVoiceState({ error: message });
 }
 
-function getVocabularyTerms(): string[] {
-  return (localStorage.getItem(DEEPGRAM_VOCAB_KEY) || '')
-    .split(',')
-    .map(term => term.trim())
-    .filter(Boolean);
-}
-
-function float32ToInt16(float32Array: Float32Array): Int16Array {
-  const int16Array = new Int16Array(float32Array.length);
-  for (let index = 0; index < float32Array.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, float32Array[index]));
-    int16Array[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-  }
-  return int16Array;
-}
-
-function normalizeInterimTranscript(text: string): string {
-  return text.replace(/\s+$/, '');
-}
-
-function normalizeFinalTranscript(text: string): string {
-  const compact = text.replace(/\s+$/, '');
-  if (!compact) return '';
-  return /[\s([{/"'-]$/.test(compact) ? compact : `${compact} `;
-}
-
-function clearTypedPreview(conn: Connection): void {
-  if (!sharedTypedPreview || !sharedTypedPreviewSession) return;
-  conn.send({
-    type: 'terminal.input',
-    session: sharedTypedPreviewSession,
-    data: '\x7f'.repeat(sharedTypedPreview.length),
-  });
-  sharedTypedPreview = '';
-}
-
-function replaceTypedPreview(conn: Connection, session: string, nextText: string): void {
-  if (sharedTypedPreviewSession && sharedTypedPreviewSession !== session) {
-    sharedTypedPreview = '';
-  }
-  sharedTypedPreviewSession = session;
-  if (sharedTypedPreview) {
-    conn.send({ type: 'terminal.input', session, data: '\x7f'.repeat(sharedTypedPreview.length) });
-  }
-  if (nextText) {
-    conn.send({ type: 'terminal.input', session, data: nextText });
-  }
-  sharedTypedPreview = nextText;
-}
-
 function teardownRecording(): void {
-  if (sharedProcessor) {
-    sharedProcessor.disconnect();
-    sharedProcessor.onaudioprocess = null;
-    sharedProcessor = null;
+  if (sharedLevelRaf !== null) {
+    cancelAnimationFrame(sharedLevelRaf);
+    sharedLevelRaf = null;
   }
-  if (sharedAudioContext) {
-    void sharedAudioContext.close();
-    sharedAudioContext = null;
+  if (sharedRecorder) {
+    if (sharedRecorder.state !== 'inactive') {
+      try { sharedRecorder.stop(); } catch { /* ignore */ }
+    }
+    sharedRecorder = null;
   }
   if (sharedStream) {
     sharedStream.getTracks().forEach(track => track.stop());
     sharedStream = null;
   }
-  if (sharedSocket) {
-    sharedSocket.onopen = null;
-    sharedSocket.onmessage = null;
-    sharedSocket.onerror = null;
-    sharedSocket.onclose = null;
-    if (sharedSocket.readyState === WebSocket.OPEN || sharedSocket.readyState === WebSocket.CONNECTING) {
-      sharedSocket.close();
-    }
-    sharedSocket = null;
+  if (sharedAudioCtx) {
+    sharedAudioCtx.close().catch(() => {});
+    sharedAudioCtx = null;
+    sharedAnalyser = null;
   }
 }
 
-function stopAudioCapture(): void {
-  if (sharedProcessor) {
-    sharedProcessor.disconnect();
-    sharedProcessor.onaudioprocess = null;
-    sharedProcessor = null;
+// Real audio level metering via AnalyserNode
+function setupAudioLevelMeter(stream: MediaStream): void {
+  try {
+    const ctx = new AudioContext();
+    sharedAudioCtx = ctx;
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.4;
+    source.connect(analyser);
+    sharedAnalyser = analyser;
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      if (!sharedAnalyser) return;
+      sharedAnalyser.getByteFrequencyData(dataArray);
+      // RMS-ish level from frequency data, normalized to 0-1
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      const avg = sum / dataArray.length / 255;
+      // Boost low values for visual responsiveness
+      const level = Math.min(1, avg * 3);
+      setSharedVoiceState({ audioLevel: level });
+      sharedLevelRaf = requestAnimationFrame(tick);
+    };
+    sharedLevelRaf = requestAnimationFrame(tick);
+  } catch {
+    // Fallback: no metering, just a static level
+    setSharedVoiceState({ audioLevel: 0.3 });
   }
-  if (sharedAudioContext) {
-    void sharedAudioContext.close();
-    sharedAudioContext = null;
-  }
-  if (sharedStream) {
-    sharedStream.getTracks().forEach(track => track.stop());
-    sharedStream = null;
-  }
+}
+
+// Release mic on page hide/unload so Safari PWA doesn't corrupt the audio session.
+if (typeof window !== 'undefined') {
+  const releaseOnHide = () => {
+    if (sharedStream) teardownRecording();
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') releaseOnHide();
+  });
+  window.addEventListener('pagehide', releaseOnHide);
+  window.addEventListener('beforeunload', releaseOnHide);
+}
+
+export function getAutoSend(): boolean {
+  return localStorage.getItem(AUTO_SEND_KEY) !== 'false';
+}
+
+export function setAutoSend(value: boolean): void {
+  localStorage.setItem(AUTO_SEND_KEY, value ? 'true' : 'false');
 }
 
 export function VoiceButton({ conn, session, isMobile }: Props) {
   const [voiceState, setVoiceState] = useState<VoiceState>(sharedVoiceState);
   const [elapsed, setElapsed] = useState(0);
   const latestSessionRef = useRef(session);
+  const chunksRef = useRef<Blob[]>([]);
+  const mimeRef = useRef<string>('');
 
   useEffect(() => {
     latestSessionRef.current = session;
@@ -156,158 +142,178 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
 
   useEffect(() => {
     if (!voiceState.recording || !voiceState.startedAt) { setElapsed(0); return; }
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - voiceState.startedAt!) / 1000)), 1000);
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - voiceState.startedAt!) / 1000)), 100);
     return () => clearInterval(id);
   }, [voiceState.recording, voiceState.startedAt]);
 
   const startRecording = useCallback(async () => {
-    const apiKey = localStorage.getItem(DEEPGRAM_API_KEY_KEY)?.trim();
-
     setSharedVoiceState({ error: null });
-    if (!apiKey) {
-      setVoiceError('Set Deepgram API key in Settings');
-      return;
-    }
+    chunksRef.current = [];
 
     try {
       const micId = localStorage.getItem(MIC_KEY);
       const audioConstraints: MediaTrackConstraints = micId ? { deviceId: { exact: micId } } : {};
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       sharedStream = stream;
+
+      // Safari iPad PWA can return a dead stream
+      if (!stream.active || stream.getAudioTracks()[0]?.readyState !== 'live') {
+        setVoiceError('Mic stream dead — clear site data in Safari settings and re-add PWA');
+        teardownRecording();
+        return;
+      }
+
       setSharedVoiceState({ micLabel: stream.getAudioTracks()[0]?.label || '' });
-      const params = new URLSearchParams({
-        model: 'nova-3',
-        language: 'en',
-        smart_format: 'true',
-        interim_results: 'true',
-        endpointing: '300',
-        encoding: 'linear16',
-        sample_rate: '16000',
-        channels: '1',
-      });
-      for (const term of getVocabularyTerms()) params.append('keyterm', term);
 
-      const socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['token', apiKey]);
-      sharedSocket = socket;
-
-      socket.onopen = () => {
-        const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtx) {
-          setVoiceError('AudioContext unavailable');
-          teardownRecording();
-          setSharedVoiceState({ recording: false, startedAt: null });
-          return;
-        }
-
-        sharedAudioContext = new AudioCtx({ sampleRate: 16000 });
-        const source = sharedAudioContext.createMediaStreamSource(stream);
-        const processor = sharedAudioContext.createScriptProcessor(4096, 1, 1);
-        sharedProcessor = processor;
-        processor.onaudioprocess = (event) => {
-          if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) return;
-          const inputData = event.inputBuffer.getChannelData(0);
-          const int16 = float32ToInt16(inputData);
-          sharedSocket.send(int16.buffer);
-        };
-        source.connect(processor);
-        processor.connect(sharedAudioContext.destination);
-        setSharedVoiceState({ recording: true, startedAt: Date.now(), error: null });
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data) as {
-            type?: string;
-            is_final?: boolean;
-            channel?: { alternatives?: Array<{ transcript?: string }> };
-          };
-          if (data.type !== 'Results') return;
-          const transcript = data.channel?.alternatives?.[0]?.transcript ?? '';
-          if (!transcript) return;
-
-          const currentSession = latestSessionRef.current;
-          if (!currentSession) return;
-
-          if (data.is_final) {
-            const finalTranscript = normalizeFinalTranscript(transcript);
-            if (!finalTranscript) return;
-            replaceTypedPreview(conn, currentSession, finalTranscript);
-            sharedTypedPreview = '';
-          } else {
-            const interimTranscript = normalizeInterimTranscript(transcript);
-            replaceTypedPreview(conn, currentSession, interimTranscript);
-          }
-        } catch {
-          setVoiceError('Deepgram response parse error');
-        }
-      };
-
-      socket.onerror = () => {
-        setVoiceError('Deepgram connection failed');
-        sharedTypedPreview = '';
-        sharedTypedPreviewSession = null;
+      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac'];
+      const mime = mimeTypes.find(m => MediaRecorder.isTypeSupported(m));
+      if (!mime) {
+        setVoiceError('No supported audio encoding');
         teardownRecording();
-        setSharedVoiceState({ recording: false, startedAt: null });
+        return;
+      }
+      mimeRef.current = mime;
+
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      sharedRecorder = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
       };
 
-      socket.onclose = (event) => {
-        if (!event.wasClean) {
-          setVoiceError(`Deepgram closed: ${event.code}${event.reason ? ` ${event.reason}` : ''}`);
-        }
-        sharedTypedPreviewSession = null;
-        teardownRecording();
-        setSharedVoiceState({ recording: false, startedAt: null });
-      };
+      recorder.start(250);
+      setupAudioLevelMeter(stream);
+      setSharedVoiceState({ recording: true, startedAt: Date.now(), error: null });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Mic access denied';
       setVoiceError(`Mic error: ${message}`);
       teardownRecording();
     }
-  }, [conn]);
+  }, []);
 
   const stopRecording = useCallback(() => {
-    stopAudioCapture();
-    setSharedVoiceState({ recording: false, startedAt: null });
-
-    const socket = sharedSocket;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'CloseStream' }));
-      socket.close();
+    const currentSession = latestSessionRef.current;
+    if (!currentSession) {
+      setVoiceError('No active session');
+      teardownRecording();
+      setSharedVoiceState({ recording: false, startedAt: null, audioLevel: 0 });
       return;
     }
 
-    sharedTypedPreviewSession = null;
-    teardownRecording();
-  }, []);
+    if (sharedRecorder && sharedRecorder.state !== 'inactive') {
+      sharedRecorder.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: mimeRef.current });
+        chunksRef.current = [];
+        teardownRecording();
+
+        if (blob.size < 100) {
+          setSharedVoiceState({ recording: false, sending: false, startedAt: null, audioLevel: 0 });
+          return;
+        }
+
+        setSharedVoiceState({ recording: false, sending: true, startedAt: null, audioLevel: 0 });
+
+        try {
+          const buffer = await blob.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+          const base64 = btoa(binary);
+
+          conn.send({
+            type: 'voice.transcribe',
+            session: currentSession,
+            audio: base64,
+            mimeType: mimeRef.current,
+            autoSend: getAutoSend(),
+          });
+        } catch (err) {
+          setVoiceError(`Failed to encode audio: ${err instanceof Error ? err.message : err}`);
+        }
+        setSharedVoiceState({ sending: false });
+      };
+      sharedRecorder.stop();
+    } else {
+      teardownRecording();
+      setSharedVoiceState({ recording: false, sending: false, startedAt: null, audioLevel: 0 });
+    }
+  }, [conn]);
+
+  const { recording, sending, audioLevel, error } = voiceState;
+
+  // Stop button opacity pulses with voice level
+  const stopOpacity = recording ? 0.5 + audioLevel * 0.5 : 1;
+
+  const timerText = `${Math.floor(elapsed / 60)}:${(elapsed % 60).toString().padStart(2, '0')}`;
 
   return (
     <div className="flex items-center gap-1 min-w-0">
-      <button
-        onClick={voiceState.recording ? stopRecording : startRecording}
-        className={isMobile
-          ? `w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer ${voiceState.recording ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'}`
-          : `w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer ${voiceState.recording ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20' : 'border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300'}`}
-        title={voiceState.recording ? `Stop transcription${voiceState.micLabel ? ` (${voiceState.micLabel})` : ''}` : 'Start transcription'}
-      >
-        {voiceState.recording ? (
+      {recording ? (
+        // Recording state: stop button with voice-reactive opacity + timer
+        <button
+          onClick={stopRecording}
+          style={{ opacity: stopOpacity }}
+          className={isMobile
+            ? 'w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer bg-red-500 hover:bg-red-600'
+            : 'w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'}
+          title={`Stop recording${voiceState.micLabel ? ` (${voiceState.micLabel})` : ''}`}
+        >
           <svg viewBox="0 0 24 24" fill="currentColor" className={isMobile ? 'w-5 h-5' : 'w-4 h-4'}>
             <rect x="6" y="6" width="12" height="12" rx="2" />
           </svg>
-        ) : (
+        </button>
+      ) : (
+        // Idle / sending state: mic button
+        <button
+          onClick={startRecording}
+          disabled={sending}
+          className={isMobile
+            ? `w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer ${sending ? 'bg-yellow-600 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'}`
+            : `w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer ${sending ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-300 animate-pulse' : 'border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300'}`}
+          title={sending ? 'Transcribing...' : 'Start recording'}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={isMobile ? 'w-6 h-6' : 'w-4 h-4'}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
             <line x1="12" y1="19" x2="12" y2="23" />
             <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
-        )}
-      </button>
-      {voiceState.recording && !isMobile && (
-        <span className="text-[10px] text-zinc-500 truncate max-w-[120px]">
-          {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
+        </button>
+      )}
+
+      {/* Audio level bars */}
+      {recording && (
+        <div className={`flex items-center ${isMobile ? 'gap-1.5' : 'gap-1'} shrink-0`}>
+          <div className="flex items-end gap-0.5 h-4">
+            {[0, 1, 2].map(index => (
+              <span
+                key={index}
+                className="w-1 rounded-full bg-red-400/90 transition-all duration-75"
+                style={{
+                  height: `${Math.max(3, Math.min(16, 3 + audioLevel * (index === 1 ? 13 : index === 0 ? 9 : 11)))}px`,
+                  opacity: 0.3 + audioLevel * 0.7,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Timer */}
+      {recording && (
+        <span className={`text-red-400 tabular-nums ${isMobile ? 'text-xs' : 'text-[10px]'}`}>
+          {timerText}
         </span>
       )}
-      {voiceState.error && <span className="text-red-400 text-xs max-w-[180px] truncate">{voiceState.error}</span>}
+
+      {/* Sending indicator */}
+      {sending && !recording && (
+        <span className={`text-yellow-400 ${isMobile ? 'text-xs' : 'text-[10px]'}`}>
+          transcribing…
+        </span>
+      )}
+
+      {error && <span className="text-red-400 text-xs">{error}</span>}
     </div>
   );
 }

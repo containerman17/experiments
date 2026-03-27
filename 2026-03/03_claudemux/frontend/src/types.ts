@@ -42,7 +42,7 @@ export type ClientMessage =
   | { type: 'terminal.resize'; session: string; cols: number; rows: number }
   | { type: 'terminal.sendkeys'; session: string; keys: string }
   | { type: 'terminal.scroll'; session: string; lines: number }
-  | { type: 'voice.transcribe'; session: string; audio: string; mimeType: string }
+  | { type: 'voice.transcribe'; session: string; audio: string; mimeType: string; autoSend: boolean }
   | { type: 'tunnels.list' }
   | { type: 'tunnels.create'; port: number }
   | { type: 'tunnels.delete'; port: number }

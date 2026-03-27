@@ -7,7 +7,7 @@ import type { SessionInfo, TunnelInfo } from './types';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
 import { FileExplorer } from './components/FileExplorer';
-import { VoiceButton } from './components/VoiceButton';
+import { VoiceButton, getAutoSend, setAutoSend } from './components/VoiceButton';
 import { useIsMobile } from './hooks/useIsMobile';
 
 const EMOJIS = '🔥🚀💡🎯🌊🎨🔮🌿🎪🧊🍊🎭🔑🌈🦊🐙🦋🎲🧩🎵🌸🍄🔔🐝🦜🌵🍀🎸🧲🦀🌶️🫧🐳🦎🔭🧪🎯🪐🌻🐢🦉🧸🎹🍉🔱🦚🌙🐍🦁🍋🎺🧿🐠🌰🦑🎻🍁🪨🐊🌺🧬🦈🎳🍇🔮🐺🌾🦩🧊🐋🎼🍒🔬🦅🌴🧲🐡🎯🍑🔭🦖🌼🧪🐆🎲🍓🔑🦢🌿🧩🐘🎸🍌🔔🦃🌵🧸🐬🎹🍎🔱🦂🌻🧬🐎';
@@ -52,10 +52,9 @@ const FILES_TAB = '__files__';
 const STORAGE_KEY = 'claudemux_url';
 const MIC_KEY = 'claudemux_mic';
 const TAB_KEY = 'claudemux_tab';
+const EXPLORER_PATH_KEY = 'claudemux_explorer_path';
 const SIDEBAR_WIDTH_KEY = 'claudemux_sidebar_width';
 const SESSION_ALIASES_KEY = 'claudemux_session_aliases';
-const DEEPGRAM_API_KEY_KEY = 'claudemux_deepgram_api_key';
-const DEEPGRAM_VOCAB_KEY = 'claudemux_deepgram_vocabulary';
 const DEFAULT_SIDEBAR_WIDTH = 288;
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 420;
@@ -72,6 +71,10 @@ function getSavedUrl(): string {
 function getSavedSidebarWidth(): number {
   const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '', 10);
   return Number.isFinite(saved) ? clampSidebarWidth(saved) : DEFAULT_SIDEBAR_WIDTH;
+}
+
+function getSavedExplorerPath(): string {
+  return localStorage.getItem(EXPLORER_PATH_KEY) || '/home/claude';
 }
 
 function getSavedSessionAliases(): Record<string, string> {
@@ -140,18 +143,14 @@ function MicSelector() {
 }
 
 function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boolean; defaultOpen?: boolean }) {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(DEEPGRAM_API_KEY_KEY) || '');
-  const [vocabulary, setVocabulary] = useState(() => localStorage.getItem(DEEPGRAM_VOCAB_KEY) || '');
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [autoSendOn, setAutoSendOn] = useState(() => getAutoSend());
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem(DEEPGRAM_API_KEY_KEY, apiKey);
-  }, [apiKey]);
-
-  useEffect(() => {
-    localStorage.setItem(DEEPGRAM_VOCAB_KEY, vocabulary);
-  }, [vocabulary]);
+  const toggleAutoSend = useCallback(() => {
+    const next = !autoSendOn;
+    setAutoSendOn(next);
+    setAutoSend(next);
+  }, [autoSendOn]);
 
   const closeSettings = useCallback(() => {
     detailsRef.current?.removeAttribute('open');
@@ -163,43 +162,27 @@ function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boo
         Settings
       </summary>
       <div className="mt-3 flex flex-col gap-3">
-        <div className="flex flex-col gap-2">
-          <label className="text-xs text-zinc-500">Deepgram API Key</label>
-          <div className="flex items-center gap-2">
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="dg_xxx"
-              className={`min-w-0 flex-1 bg-zinc-900 border border-zinc-600 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 ${compact ? 'px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}
-            />
-            <button
-              type="button"
-              onClick={() => setShowApiKey(value => !value)}
-              className={`${compact ? 'px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'} border border-zinc-600 rounded text-zinc-300 hover:text-zinc-100 hover:border-zinc-400 transition-colors cursor-pointer shrink-0`}
-            >
-              {showApiKey ? 'Hide' : 'Show'}
-            </button>
-          </div>
-        </div>
         <MicSelector />
-        <div className="flex flex-col gap-2">
-          <label className="text-xs text-zinc-500">Custom Vocabulary</label>
-          <textarea
-            value={vocabulary}
-            onChange={e => setVocabulary(e.target.value)}
-            placeholder="claudemux, tmux, codex, deepgram"
-            className={`w-full min-h-[80px] resize-y bg-zinc-900 border border-zinc-600 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 ${compact ? 'px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}
-          />
-          <span className="text-[11px] text-zinc-600">Comma-separated. Sent to Deepgram as keyterms.</span>
+        <div className="flex items-center justify-between gap-2">
+          <label className={`${compact ? 'text-sm' : 'text-xs'} text-zinc-400`}>Auto-send after transcription</label>
+          <button
+            type="button"
+            onClick={toggleAutoSend}
+            className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${autoSendOn ? 'bg-blue-600' : 'bg-zinc-600'}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoSendOn ? 'translate-x-5' : ''}`}
+            />
+          </button>
         </div>
+        <span className="text-[11px] text-zinc-600">When on, presses Enter after typing the transcription.</span>
         <div className="flex justify-end">
           <button
             type="button"
             onClick={closeSettings}
             className={`${compact ? 'px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'} text-zinc-300 hover:text-zinc-100 border border-zinc-600 rounded hover:border-zinc-400 transition-colors cursor-pointer`}
           >
-            Save
+            Done
           </button>
         </div>
       </div>
@@ -312,6 +295,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const [activeSession, setActiveSessionRaw] = useState<string>(() => localStorage.getItem(TAB_KEY) || FILES_TAB);
   const previousSessionsRef = useRef<SessionInfo[] | null>(null);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const resizeHandleRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const setActiveSession = useCallback((s: string) => {
     setActiveSessionRaw(s);
@@ -323,7 +307,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const [extraKeys, setExtraKeys] = useState(false);
   const [ctrlMode, setCtrlMode] = useState(false);
   const [newTunnelPort, setNewTunnelPort] = useState('');
-  const [explorerPath, setExplorerPath] = useState('/home/claude');
+  const [explorerPath, setExplorerPath] = useState(() => getSavedExplorerPath());
   const [sidebarWidth, setSidebarWidth] = useState(() => getSavedSidebarWidth());
   const [isResizing, setIsResizing] = useState(false);
   const [sessionAliases, setSessionAliases] = useState<Record<string, string>>(() => getSavedSessionAliases());
@@ -372,10 +356,11 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     if (activeSession !== FILES_TAB && sessions.length > 0 && !sessions.find(s => s.name === activeSession)) {
       setActiveSession(sessions[0].name);
     }
-    if (activeSession !== FILES_TAB && sessions.length === 0) {
-      setActiveSession(FILES_TAB);
-    }
   }, [sessions, activeSession]);
+
+  useEffect(() => {
+    localStorage.setItem(EXPLORER_PATH_KEY, explorerPath);
+  }, [explorerPath]);
 
   const createSessionInPath = useCallback((path: string) => {
     if (!path) return;
@@ -421,27 +406,6 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     renameInputRef.current?.focus();
     renameInputRef.current?.select();
   }, [renamingSession]);
-
-  useEffect(() => {
-    if (!isResizing || isMobile) return;
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!resizeStateRef.current) return;
-      const nextWidth = resizeStateRef.current.startWidth + (event.clientX - resizeStateRef.current.startX);
-      setSidebarWidth(clampSidebarWidth(nextWidth));
-    };
-    const handlePointerUp = () => {
-      resizeStateRef.current = null;
-      setIsResizing(false);
-    };
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
-    };
-  }, [isResizing, isMobile]);
 
   const toastEl = toast && (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-600 text-white px-4 py-2 rounded shadow-lg text-sm max-w-sm truncate">
@@ -500,11 +464,32 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     setRenameValue('');
   }, [cancelSessionRename, renameValue]);
 
+  const stopSidebarResize = useCallback(() => {
+    resizeStateRef.current = null;
+    setIsResizing(false);
+  }, []);
+
   const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (isMobile) return;
+    if (isMobile || !event.isPrimary) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
     resizeStateRef.current = { startX: event.clientX, startWidth: sidebarWidth };
     setIsResizing(true);
   }, [isMobile, sidebarWidth]);
+
+  const handleSidebarResizeMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!resizeStateRef.current || !event.isPrimary) return;
+    event.preventDefault();
+    const nextWidth = resizeStateRef.current.startWidth + (event.clientX - resizeStateRef.current.startX);
+    setSidebarWidth(clampSidebarWidth(nextWidth));
+  }, []);
+
+  const handleSidebarResizeEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    stopSidebarResize();
+  }, [stopSidebarResize]);
 
   const sessionItems = (onClick?: () => void) => (
     <>
@@ -780,7 +765,12 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
             </div>
           </div>
           <div
+            ref={resizeHandleRef}
             onPointerDown={startSidebarResize}
+            onPointerMove={handleSidebarResizeMove}
+            onPointerUp={handleSidebarResizeEnd}
+            onPointerCancel={handleSidebarResizeEnd}
+            onLostPointerCapture={stopSidebarResize}
             className="w-2 shrink-0 cursor-col-resize hover:bg-zinc-700/40 active:bg-zinc-600/50 transition-colors touch-none"
             title="Resize sidebar"
           />

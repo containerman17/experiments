@@ -65,16 +65,19 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
       break;
 
     case 'voice.transcribe': {
-      console.log(`[ws] voice.transcribe for session "${msg.session}", ${msg.audio.length} chars`);
+      console.log(`[ws] voice.transcribe for session "${msg.session}", ${msg.audio.length} chars, autoSend=${msg.autoSend}`);
       const context = tm.getContext(msg.session);
       const session = msg.session;
+      const autoSend = msg.autoSend;
       transcribe(msg.audio, msg.mimeType, context)
         .then(text => {
           console.log(`[voice] inserting into "${session}": ${text.slice(0, 50)}...`);
           tm.write(session, text);
-          setTimeout(() => {
-            tm.sendKeys(session, 'Enter');
-          }, 150);
+          if (autoSend) {
+            setTimeout(() => {
+              tm.sendKeys(session, 'Enter');
+            }, 150);
+          }
           send(ws, { type: 'voice.result', session, text });
         })
         .catch(err => { console.error(`[voice] error:`, err); send(ws, { type: 'voice.error', message: String(err) }); });

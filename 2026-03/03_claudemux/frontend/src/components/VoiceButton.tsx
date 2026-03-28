@@ -18,6 +18,7 @@ interface VoiceState {
   micLabel: string;
   error: string | null;
   audioLevel: number;
+  lastResult: { text: string; session: string } | null;
 }
 
 const MIC_KEY = 'claudemux_mic';
@@ -31,7 +32,9 @@ let sharedVoiceState: VoiceState = {
   micLabel: '',
   error: null,
   audioLevel: 0,
+  lastResult: null,
 };
+let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
 let sharedStream: MediaStream | null = null;
 let sharedRecorder: MediaRecorder | null = null;
 let sharedAnalyser: AnalyserNode | null = null;
@@ -120,6 +123,34 @@ export function getAutoSend(): boolean {
 
 export function setAutoSend(value: boolean): void {
   localStorage.setItem(AUTO_SEND_KEY, value ? 'true' : 'false');
+}
+
+/** Called by App when voice.result arrives from the server. */
+export function onVoiceResult(text: string, session: string): void {
+  if (sendingTimeout) { clearTimeout(sendingTimeout); sendingTimeout = null; }
+  setSharedVoiceState({ sending: false, lastResult: { text, session } });
+}
+
+/** Called by App when voice.error arrives from the server. */
+export function onVoiceError(): void {
+  if (sendingTimeout) { clearTimeout(sendingTimeout); sendingTimeout = null; }
+  setSharedVoiceState({ sending: false });
+}
+
+/** Clear the last result (e.g. after re-inserting). */
+export function clearLastResult(): void {
+  setSharedVoiceState({ lastResult: null });
+}
+
+/** Get current shared voice state (for reading lastResult outside VoiceButton). */
+export function getVoiceState(): VoiceState {
+  return sharedVoiceState;
+}
+
+/** Subscribe to voice state changes. Returns unsubscribe function. */
+export function subscribeVoiceState(fn: (state: VoiceState) => void): () => void {
+  voiceStateListeners.add(fn);
+  return () => { voiceStateListeners.delete(fn); };
 }
 
 export function VoiceButton({ conn, session, isMobile }: Props) {
@@ -227,10 +258,20 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
             mimeType: mimeRef.current,
             autoSend: getAutoSend(),
           });
+
+          // Timeout: if server doesn't respond in 30s, reset sending state
+          if (sendingTimeout) clearTimeout(sendingTimeout);
+          sendingTimeout = setTimeout(() => {
+            sendingTimeout = null;
+            if (sharedVoiceState.sending) {
+              setVoiceError('Transcription timed out');
+              setSharedVoiceState({ sending: false });
+            }
+          }, 30_000);
         } catch (err) {
           setVoiceError(`Failed to encode audio: ${err instanceof Error ? err.message : err}`);
+          setSharedVoiceState({ sending: false });
         }
-        setSharedVoiceState({ sending: false });
       };
       sharedRecorder.stop();
     } else {
@@ -239,29 +280,50 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
     }
   }, [conn]);
 
+  const cancelRecording = useCallback(() => {
+    chunksRef.current = [];
+    teardownRecording();
+    setSharedVoiceState({ recording: false, sending: false, startedAt: null, audioLevel: 0, error: null });
+  }, []);
+
   const { recording, sending, audioLevel, error } = voiceState;
 
-  // Stop button opacity pulses with voice level
-  const stopOpacity = recording ? 0.5 + audioLevel * 0.5 : 1;
+  // Record button opacity pulses with voice level
+  const recordOpacity = recording ? 0.5 + audioLevel * 0.5 : 1;
 
   const timerText = `${Math.floor(elapsed / 60)}:${(elapsed % 60).toString().padStart(2, '0')}`;
 
   return (
-    <div className="flex items-center gap-1 min-w-0">
+    <div className="flex items-center gap-1.5 min-w-0">
       {recording ? (
-        // Recording state: stop button with voice-reactive opacity + timer
-        <button
-          onClick={stopRecording}
-          style={{ opacity: stopOpacity }}
-          className={isMobile
-            ? 'w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer bg-red-500 hover:bg-red-600'
-            : 'w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'}
-          title={`Stop recording${voiceState.micLabel ? ` (${voiceState.micLabel})` : ''}`}
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className={isMobile ? 'w-5 h-5' : 'w-4 h-4'}>
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-        </button>
+        <>
+          {/* Big red button with timer inside — tap to send */}
+          <button
+            onClick={stopRecording}
+            style={{ opacity: recordOpacity }}
+            className={isMobile
+              ? 'h-12 px-4 rounded-full flex items-center justify-center transition-colors cursor-pointer bg-red-500 hover:bg-red-600 text-white'
+              : 'h-9 px-3 border flex items-center justify-center transition-colors cursor-pointer border-red-500/40 bg-red-500/20 text-red-300 hover:bg-red-500/30'}
+            title={`Stop and send${voiceState.micLabel ? ` (${voiceState.micLabel})` : ''}`}
+          >
+            <span className={`tabular-nums font-mono ${isMobile ? 'text-sm font-medium' : 'text-xs'}`}>
+              {timerText}
+            </span>
+          </button>
+          {/* Cancel button */}
+          <button
+            onClick={cancelRecording}
+            className={isMobile
+              ? 'w-12 h-12 rounded-full flex items-center justify-center cursor-pointer bg-zinc-700 hover:bg-zinc-600 text-zinc-300'
+              : 'w-9 h-9 border flex items-center justify-center cursor-pointer border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200'}
+            title="Cancel recording"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={isMobile ? 'w-5 h-5' : 'w-4 h-4'}>
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </>
       ) : (
         // Idle / sending state: mic button
         <button
@@ -272,45 +334,17 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
             : `w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer ${sending ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-300 animate-pulse' : 'border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300'}`}
           title={sending ? 'Transcribing...' : 'Start recording'}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={isMobile ? 'w-6 h-6' : 'w-4 h-4'}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
+          {sending ? (
+            <span className={`${isMobile ? 'text-xs' : 'text-[10px]'}`}>...</span>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={isMobile ? 'w-6 h-6' : 'w-4 h-4'}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          )}
         </button>
-      )}
-
-      {/* Audio level bars */}
-      {recording && (
-        <div className={`flex items-center ${isMobile ? 'gap-1.5' : 'gap-1'} shrink-0`}>
-          <div className="flex items-end gap-0.5 h-4">
-            {[0, 1, 2].map(index => (
-              <span
-                key={index}
-                className="w-1 rounded-full bg-red-400/90 transition-all duration-75"
-                style={{
-                  height: `${Math.max(3, Math.min(16, 3 + audioLevel * (index === 1 ? 13 : index === 0 ? 9 : 11)))}px`,
-                  opacity: 0.3 + audioLevel * 0.7,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Timer */}
-      {recording && (
-        <span className={`text-red-400 tabular-nums ${isMobile ? 'text-xs' : 'text-[10px]'}`}>
-          {timerText}
-        </span>
-      )}
-
-      {/* Sending indicator */}
-      {sending && !recording && (
-        <span className={`text-yellow-400 ${isMobile ? 'text-xs' : 'text-[10px]'}`}>
-          transcribing…
-        </span>
       )}
 
       {error && <span className="text-red-400 text-xs">{error}</span>}

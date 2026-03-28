@@ -2,8 +2,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 process.loadEnvFile(resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env'));
 
-import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFileSync, writeFileSync, existsSync, statSync, createReadStream } from 'node:fs';
+import { join, extname } from 'node:path';
+import { homedir } from 'node:os';
 import { WebSocketServer } from 'ws';
 import type WebSocket from 'ws';
 import type { ClientMessage, ServerMessage } from '../frontend/src/types.ts';
@@ -12,8 +15,21 @@ import * as tun from './tunnel-manager.ts';
 import * as fm from './file-manager.ts';
 import { transcribe } from './voice.ts';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT) || 7938;
-const token = randomBytes(16).toString('hex');
+const STATIC_DIR = resolve(__dirname, '..', 'frontend', 'dist');
+
+// Persist token so it survives restarts
+const CONF_PATH = join(homedir(), '.claudemux.conf');
+function loadConf(): Record<string, unknown> {
+  try { return JSON.parse(readFileSync(CONF_PATH, 'utf-8')); } catch { return {}; }
+}
+function saveConf(conf: Record<string, unknown>): void {
+  writeFileSync(CONF_PATH, JSON.stringify(conf, null, 2) + '\n');
+}
+const conf = loadConf();
+const token = (typeof conf.token === 'string' && conf.token) ? conf.token : randomBytes(16).toString('hex');
+if (conf.token !== token) { conf.token = token; saveConf(conf); }
 // Allow large WS messages (up to 20MB for long voice recordings)
 const MAX_PAYLOAD = 20 * 1024 * 1024;
 
@@ -72,6 +88,8 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
       transcribe(msg.audio, msg.mimeType, context)
         .then(text => {
           console.log(`[voice] inserting into "${session}": ${text.slice(0, 50)}...`);
+          // Exit copy-mode (scroll) before writing, otherwise text goes to void
+          tm.exitCopyMode(session);
           tm.write(session, text);
           if (autoSend) {
             setTimeout(() => {
@@ -158,19 +176,63 @@ function handleMessage(ws: WebSocket, msg: ClientMessage): void {
   }
 }
 
-const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD });
+// --- Static file serving ---
 
-wss.on('connection', (ws, req) => {
-  const addr = req.socket.remoteAddress;
-  const url = new URL(req.url || '/', `http://localhost:${port}`);
-  const clientToken = url.searchParams.get('token');
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
+};
 
-  if (clientToken !== token) {
-    console.log(`[ws] rejected (bad token): ${addr}`);
-    ws.close(4001, 'Unauthorized');
+function serveStatic(req: IncomingMessage, res: ServerResponse): void {
+  const reqUrl = new URL(req.url || '/', `http://localhost:${port}`);
+  let filePath = join(STATIC_DIR, reqUrl.pathname === '/' ? 'index.html' : reqUrl.pathname);
+
+  // SPA fallback: if file doesn't exist, serve index.html
+  if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+    filePath = join(STATIC_DIR, 'index.html');
+  }
+
+  if (!existsSync(filePath)) {
+    res.writeHead(404);
+    res.end('Not found');
     return;
   }
 
+  const mime = MIME_TYPES[extname(filePath)] || 'application/octet-stream';
+  res.writeHead(200, { 'Content-Type': mime });
+  createReadStream(filePath).pipe(res);
+}
+
+// --- HTTP + WebSocket server ---
+
+const server = createServer(serveStatic);
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
+
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url || '/', `http://localhost:${port}`);
+
+  // Only upgrade on /ws path
+  if (url.pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+
+  const clientToken = url.searchParams.get('token');
+  if (clientToken !== token) {
+    console.log(`[ws] rejected (bad token): ${req.socket.remoteAddress}`);
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req);
+  });
+});
+
+wss.on('connection', (ws, req) => {
+  const addr = req.socket.remoteAddress;
   console.log(`[ws] connected: ${addr}`);
 
   ws.on('message', (raw) => {
@@ -186,8 +248,8 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-wss.on('listening', () => {
-  console.log(`[claudemux] ws://localhost:${port}?token=${token}`);
+server.listen(port, () => {
+  console.log(`[claudemux] http://localhost:${port}?token=${token}`);
 });
 
 // Broadcast session list changes to all clients every 10s
@@ -199,36 +261,14 @@ setInterval(() => {
   }
 }, 10_000);
 
-// --- Cloudflare tunnel for the backend itself ---
-const tunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], {
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
-
-tunnel.stderr.on('data', (chunk: Buffer) => {
-  const line = chunk.toString();
-  const match = line.match(/https:\/\/[^\s]+\.trycloudflare\.com/);
-  if (match) {
-    const tunnelUrl = match[0];
-    const wsUrl = tunnelUrl.replace('https://', 'wss://');
-    const fullUrl = `${tunnelUrl}?token=${token}`;
-    console.log(`[tunnel] ${fullUrl}`);
-    console.log(`[tunnel] ws: ${wsUrl}?token=${token}`);
-  }
-});
-
-tunnel.on('error', (err) => {
-  console.error(`[tunnel] failed to start cloudflared: ${err.message}`);
-});
-
 process.on('SIGINT', () => {
-  tunnel.kill();
   tun.closeAllTunnels();
   tm.closeAll();
   wss.close();
+  server.close();
   process.exit(0);
 });
 
 process.on('exit', () => {
-  tunnel.kill();
   tun.closeAllTunnels();
 });

@@ -15,6 +15,7 @@ interface Props {
   conn: Connection;
   ctrlMode: boolean;
   onCtrlConsumed: () => void;
+  onBell?: () => void;
 }
 
 function toControlCharacter(data: string): string | null {
@@ -33,13 +34,14 @@ function toControlCharacter(data: string): string | null {
   return specialMap[char] ?? null;
 }
 
-export function Terminal({ session, conn, ctrlMode, onCtrlConsumed }: Props) {
+export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [screenText, setScreenText] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const termRef = useRef<XTerm | null>(null);
   const ctrlModeRef = useRef(ctrlMode);
   const onCtrlConsumedRef = useRef(onCtrlConsumed);
+  const onBellRef = useRef(onBell);
 
   useEffect(() => {
     ctrlModeRef.current = ctrlMode;
@@ -48,6 +50,10 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed }: Props) {
   useEffect(() => {
     onCtrlConsumedRef.current = onCtrlConsumed;
   }, [onCtrlConsumed]);
+
+  useEffect(() => {
+    onBellRef.current = onBell;
+  }, [onBell]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -96,6 +102,8 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed }: Props) {
       setScreenText(lines.join('\n'));
     };
     containerRef.current.addEventListener('copy-screen', onCopyScreen);
+
+    const bellDisposable = term.onBell(() => onBellRef.current?.());
 
     conn.send({ type: 'terminal.attach', session });
     conn.send({ type: 'terminal.resize', session, cols: term.cols, rows: term.rows });
@@ -289,6 +297,7 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed }: Props) {
       el.removeEventListener('touchend', onScrollEnd);
       el.removeEventListener('refit', onRefit);
       el.removeEventListener('copy-screen', onCopyScreen);
+      bellDisposable.dispose();
       term.dispose();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

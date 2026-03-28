@@ -202,6 +202,12 @@ export function write(sessionName: string, data: string): void {
   if (s && !s.exited) s.proc.write(data);
 }
 
+export function exitCopyMode(sessionName: string): void {
+  try {
+    execSync(`${TMUX} copy-mode -q -t ${sessionName}`);
+  } catch { /* ignore — not in copy mode */ }
+}
+
 export function sendKeys(sessionName: string, keys: string): void {
   try {
     execSync(`${TMUX} send-keys -t ${sessionName} ${keys}`);

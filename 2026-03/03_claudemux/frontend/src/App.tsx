@@ -7,7 +7,7 @@ import type { SessionInfo, TunnelInfo } from './types';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
 import { FileExplorer } from './components/FileExplorer';
-import { VoiceButton, getAutoSend, setAutoSend } from './components/VoiceButton';
+import { VoiceButton, getAutoSend, setAutoSend, onVoiceResult, onVoiceError, getVoiceState, clearLastResult, subscribeVoiceState } from './components/VoiceButton';
 import { useIsMobile } from './hooks/useIsMobile';
 
 const EMOJIS = '🔥🚀💡🎯🌊🎨🔮🌿🎪🧊🍊🎭🔑🌈🦊🐙🦋🎲🧩🎵🌸🍄🔔🐝🦜🌵🍀🎸🧲🦀🌶️🫧🐳🦎🔭🧪🎯🪐🌻🐢🦉🧸🎹🍉🔱🦚🌙🐍🦁🍋🎺🧿🐠🌰🦑🎻🍁🪨🐊🌺🧬🦈🎳🍇🔮🐺🌾🦩🧊🐋🎼🍒🔬🦅🌴🧲🐡🎯🍑🔭🦖🌼🧪🐆🎲🍓🔑🦢🌿🧩🐘🎸🍌🔔🦃🌵🧸🐬🎹🍎🔱🦂🌻🧬🐎';
@@ -48,8 +48,22 @@ function groupSessionsByFolder(sessions: SessionInfo[]): Array<{ key: string; fo
   return Array.from(groups.values());
 }
 
+// Tiny inline notification sound (base64 WAV) — short soft ding
+const BELL_SOUND_URI = 'data:audio/wav;base64,UklGRl4DAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YToDAAAAAAEABQAKABIAHQAsAD4AVABuAIwArgDTAPsBJgJTAoIC sgLjAhMDQgNvA5kDwAPjAwAEGAQqBDcEPgQ+BDcEKgQYBAAE4wPAA5kDbwNCA+MC0gKiAnICQgITAuMBsgGBAVEBIQHxAMIAlABnADoADwDm/77/l/9x/03/K/8L/+3+0f63/p/+iv53/mf+Wv5R/kv+SP5I/kz+VP5g/m/+gv6Y/rL+z/7v/hL/N/9f/4n/tf/j/xIAQgBzAKUA1gAIATkBaQGXAcMB7QETAjYCVQJwAocCmQKmAq4CsQKuAqYCmQKHAnACVQI2AhMB7QHDAZcBaQE5AQgB1gClAHMAQgASAOP/tf+J/1//N/8S/+/+z/6y/pj+gv5v/mD+VP5M/kj+SP5L/lH+Wv5n/nf+iv6f/rf+0f7t/gv/K/9N/3H/l/++/+b/DwA6AGcAlADCAAAAAQD+/wAAAQAAAAAA';
+let bellAudio: HTMLAudioElement | null = null;
+let lastBellTime = 0;
+const BELL_DEBOUNCE_MS = 500;
+
+function playBellSound() {
+  const now = Date.now();
+  if (now - lastBellTime < BELL_DEBOUNCE_MS) return;
+  lastBellTime = now;
+  if (!bellAudio) bellAudio = new Audio(BELL_SOUND_URI);
+  bellAudio.currentTime = 0;
+  bellAudio.play().catch(() => {});
+}
+
 const FILES_TAB = '__files__';
-const STORAGE_KEY = 'claudemux_url';
 const MIC_KEY = 'claudemux_mic';
 const TAB_KEY = 'claudemux_tab';
 const EXPLORER_PATH_KEY = 'claudemux_explorer_path';
@@ -62,10 +76,6 @@ const MIN_SESSION_ALIAS_LENGTH = 3;
 
 function clampSidebarWidth(width: number): number {
   return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width));
-}
-
-function getSavedUrl(): string {
-  return localStorage.getItem(STORAGE_KEY) || '';
 }
 
 function getSavedSidebarWidth(): number {
@@ -190,51 +200,34 @@ function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boo
   );
 }
 
-function ConnectScreen({ onConnected, autoConnect: shouldAutoConnect = true }: { onConnected: (conn: Connection, url: string) => void; autoConnect?: boolean }) {
-  const [url, setUrl] = useState(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get('token');
-    if (token) {
-      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${wsProto}//${location.host}?token=${token}`;
-    }
-    return getSavedUrl();
-  });
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'failed'>('idle');
+function getWsUrl(): string {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token');
+  if (!token) return '';
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProto}//${location.host}/ws?token=${token}`;
+}
+
+function ConnectScreen({ onConnected }: { onConnected: (conn: Connection, url: string) => void }) {
+  const [status, setStatus] = useState<'connecting' | 'failed'>('connecting');
   const connRef = useRef<Connection | null>(null);
+  const wsUrl = getWsUrl();
 
-  // Auto-connect if URL available (from query params or saved) and not manually disconnected
-  const autoConnect = useRef(false);
   useEffect(() => {
-    if (url && !autoConnect.current && shouldAutoConnect) {
-      autoConnect.current = true;
-      handleConnect();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!wsUrl) { setStatus('failed'); return; }
 
-  function handleConnect() {
-    if (!url.trim()) return;
-    setStatus('connecting');
-
-    // Clean up previous attempt
-    connRef.current?.close();
-
-    const conn = createConnection(url.trim());
+    const conn = createConnection(wsUrl);
     connRef.current = conn;
-
-    let timeout: ReturnType<typeof setTimeout>;
 
     const unsub = conn.onStatus((connected) => {
       if (connected) {
         clearTimeout(timeout);
         unsub();
-        localStorage.setItem(STORAGE_KEY, url.trim());
-        onConnected(conn, url.trim());
+        onConnected(conn, wsUrl);
       }
     });
 
-    // 5s timeout
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       unsub();
       conn.close();
       connRef.current = null;
@@ -242,48 +235,19 @@ function ConnectScreen({ onConnected, autoConnect: shouldAutoConnect = true }: {
     }, 5000);
 
     conn.start();
-  }
-
-  function handleCancel() {
-    connRef.current?.close();
-    connRef.current = null;
-    setStatus('idle');
-  }
+    return () => { clearTimeout(timeout); unsub(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="h-full flex items-center justify-center p-6">
-      <div className="w-full max-w-md flex flex-col gap-4">
-        <h1 className="text-xl text-zinc-200 text-center">ClaudeMux</h1>
-        <input
-          type="text"
-          value={url}
-          onChange={e => { setUrl(e.target.value); setStatus('idle'); }}
-          onKeyDown={e => { if (e.key === 'Enter') handleConnect(); }}
-          placeholder="ws://localhost:7938?token=..."
-          disabled={status === 'connecting'}
-          className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 disabled:opacity-50"
-          autoFocus
-        />
-        {status === 'connecting' ? (
-          <button
-            onClick={handleCancel}
-            className="w-full bg-zinc-600 hover:bg-zinc-500 text-white rounded px-3 py-2 text-sm transition-colors"
-          >
-            Cancel
-          </button>
-        ) : (
-          <button
-            onClick={handleConnect}
-            disabled={!url.trim()}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded px-3 py-2 text-sm transition-colors"
-          >
-            Connect
-          </button>
+      <div className="w-full max-w-md flex flex-col gap-4 text-center">
+        <h1 className="text-xl text-zinc-200">ClaudeMux</h1>
+        {status === 'connecting' && (
+          <p className="text-zinc-400 text-sm animate-pulse">Connecting...</p>
         )}
         {status === 'failed' && (
-          <p className="text-red-400 text-sm text-center">Connection failed. Check the URL and try again.</p>
+          <p className="text-red-400 text-sm">{wsUrl ? 'Connection failed.' : 'No token in URL. Open the link from the server.'}</p>
         )}
-        <VoiceSettings defaultOpen />
       </div>
     </div>
   );
@@ -319,6 +283,41 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
   const isTerminalActive = activeSession !== FILES_TAB && sessions.some(s => s.name === activeSession);
 
+  // Subscribe to shared voice state for re-insert buttons & sending indicator
+  const [voiceState, setVoiceStateLocal] = useState(() => getVoiceState());
+  useEffect(() => subscribeVoiceState(setVoiceStateLocal), []);
+
+  // Bell notification state
+  const [bellSessions, setBellSessions] = useState<Set<string>>(new Set());
+  const activeSessionRef = useRef(activeSession);
+  useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
+
+  const handleBell = useCallback((session: string) => {
+    playBellSound();
+    if (session !== activeSessionRef.current) {
+      setBellSessions(prev => new Set(prev).add(session));
+    }
+  }, []);
+
+  // Clear bell when switching to a session
+  useEffect(() => {
+    setBellSessions(prev => {
+      if (!prev.has(activeSession)) return prev;
+      const next = new Set(prev);
+      next.delete(activeSession);
+      return next;
+    });
+  }, [activeSession]);
+
+  const reinsertText = useCallback((withEnter: boolean) => {
+    const lr = getVoiceState().lastResult;
+    if (!lr || !isTerminalActive) return;
+    conn.send({ type: 'terminal.input', session: activeSession, data: lr.text });
+    if (withEnter) {
+      setTimeout(() => conn.send({ type: 'terminal.sendkeys', session: activeSession, keys: 'Enter' }), 150);
+    }
+  }, [activeSession, isTerminalActive, conn]);
+
   useEffect(() => {
     const unStatus = conn.onStatus(setConnected);
     const unMsg = conn.subscribe(msg => {
@@ -335,10 +334,11 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
         setSessions(msg.sessions);
       }
       if (msg.type === 'voice.result') {
-        // Server already inserted the text into the terminal
+        onVoiceResult(msg.text, msg.session);
       }
       if (msg.type === 'voice.error') {
         console.error('Voice error:', msg.message);
+        onVoiceError();
         setToast(msg.message);
         setTimeout(() => setToast(null), 5000);
       }
@@ -429,7 +429,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           key={s.name}
           className={`absolute inset-0 ${activeSession === s.name ? '' : 'invisible'}`}
         >
-          <Terminal session={s.name} conn={conn} ctrlMode={ctrlMode} onCtrlConsumed={() => setCtrlMode(false)} />
+          <Terminal session={s.name} conn={conn} ctrlMode={ctrlMode} onCtrlConsumed={() => setCtrlMode(false)} onBell={() => handleBell(s.name)} />
         </div>
       ))}
     </div>
@@ -568,6 +568,11 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
                 />
               ) : (
                 <span className="min-w-0 overflow-hidden whitespace-nowrap">{trimFromLeft(getSessionDisplayName(s.name), 32)}</span>
+              )}
+              {bellSessions.has(s.name) && (
+                <svg className="w-4 h-4 text-amber-400 animate-pulse ml-auto shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2a1 1 0 011 1v1.07A7.002 7.002 0 0119 11v3.76l1.71 1.71A1 1 0 0120 18H4a1 1 0 01-.71-1.71L5 14.59V11a7.002 7.002 0 016-6.93V3a1 1 0 011-1zM10 20h4a2 2 0 01-4 0z" />
+                </svg>
               )}
             </div>
           ))}
@@ -708,6 +713,34 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   const mainControlsRow = (buttonClass: string, rowClass: string, voiceIsMobile: boolean) => (
     <div className={rowClass}>
       <VoiceButton conn={conn} session={isTerminalActive ? activeSession : null} isMobile={voiceIsMobile} />
+      {voiceState.sending && (
+        <span className="text-yellow-400 text-xs animate-pulse whitespace-nowrap">transcribing...</span>
+      )}
+      {voiceState.lastResult && !voiceState.sending && (
+        <>
+          <button
+            onClick={() => reinsertText(false)}
+            className={`${buttonClass} text-xs max-w-[8rem] truncate`}
+            title={`Re-type: ${voiceState.lastResult.text}`}
+          >
+            Re-type
+          </button>
+          <button
+            onClick={() => reinsertText(true)}
+            className={`${buttonClass} text-xs`}
+            title={`Re-type + Enter: ${voiceState.lastResult.text}`}
+          >
+            +↵
+          </button>
+          <button
+            onClick={() => clearLastResult()}
+            className={`${buttonClass} text-xs text-zinc-500`}
+            title="Dismiss"
+          >
+            ×
+          </button>
+        </>
+      )}
       <div className="flex-1" />
       <button
         onClick={() => sendKey('\r')}
@@ -782,9 +815,48 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
     );
   }
 
+  // --- Swipe from left edge to open drawer ---
+  const mobileContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = mobileContainerRef.current;
+    if (!el) return;
+    const EDGE_ZONE = 30; // px from left edge to start swipe
+    const MIN_SWIPE = 50; // px horizontal distance to trigger
+    let startX = 0, startY = 0, tracking = false;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (touch.clientX <= EDGE_ZONE) {
+        startX = touch.clientX;
+        startY = touch.clientY;
+        tracking = true;
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!tracking) return;
+      tracking = false;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - startX;
+      const dy = Math.abs(touch.clientY - startY);
+      if (dx > MIN_SWIPE && dx > dy) {
+        setMenuOpen(true);
+      }
+    };
+    const onTouchCancel = () => { tracking = false; };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchCancel);
+    };
+  }, []);
+
   // --- Mobile layout ---
   return (
-    <div className="h-full flex flex-col relative">
+    <div ref={mobileContainerRef} className="h-full flex flex-col relative">
       {toastEl}
       {reconnectingEl}
       {/* Top bar */}
@@ -823,7 +895,11 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
       {/* Slide-over menu */}
       {menuOpen && (
         <div className="absolute inset-0 z-50 flex" onClick={() => setMenuOpen(false)}>
-          <div className="w-[90vw] max-w-[28rem] border-r border-zinc-700 h-full flex flex-col shadow-2xl" style={{ backgroundColor: 'rgb(24, 24, 27)' }} onClick={e => e.stopPropagation()}>
+          <div
+            className="w-[90vw] max-w-[28rem] border-r border-zinc-700 h-full flex flex-col shadow-2xl"
+            style={{ backgroundColor: 'rgb(24, 24, 27)', animation: 'drawer-slide-in 200ms ease-out' }}
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex-1 overflow-y-auto">
               {sessionItems(() => setMenuOpen(false))}
               <div className="border-t border-zinc-700 mt-2">{tunnelItems}</div>
@@ -834,7 +910,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
               <span className="text-[10px] text-zinc-600">{new Date(__BUILD_TIME__).toLocaleString()}</span>
             </div>
           </div>
-          <div className="flex-1 bg-black/50" />
+          <div className="flex-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', animation: 'drawer-fade-in 200ms ease-out' }} />
         </div>
       )}
 
@@ -855,10 +931,9 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
 export function App() {
   const [state, setState] = useState<{ conn: Connection; url: string } | null>(null);
-  const [manualDisconnect, setManualDisconnect] = useState(false);
 
   if (!state) {
-    return <ConnectScreen autoConnect={!manualDisconnect} onConnected={(conn, url) => { setManualDisconnect(false); setState({ conn, url }); }} />;
+    return <ConnectScreen onConnected={(conn, url) => setState({ conn, url })} />;
   }
 
   return (
@@ -867,7 +942,6 @@ export function App() {
       wsUrl={state.url}
       onDisconnect={() => {
         state.conn.close();
-        setManualDisconnect(true);
         setState(null);
       }}
     />

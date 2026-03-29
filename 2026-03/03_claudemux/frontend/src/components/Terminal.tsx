@@ -36,7 +36,7 @@ function toControlCharacter(data: string): string | null {
 
 export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [screenText, setScreenText] = useState<string | null>(null);
+  const [screenText, setScreenText] = useState<{ text: string; fontSize: number; cellHeight: number; offsetTop: number; charWidth: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const termRef = useRef<XTerm | null>(null);
   const ctrlModeRef = useRef(ctrlMode);
@@ -99,7 +99,18 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Pr
         if (line) lines.push(line.translateToString(true));
       }
       while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-      setScreenText(lines.join('\n'));
+      const screen = containerRef.current!.querySelector('.xterm-screen') as HTMLElement;
+      const containerRect = containerRef.current!.getBoundingClientRect();
+      const screenRect = screen.getBoundingClientRect();
+      const cellHeight = screenRect.height / term.rows;
+      const charWidth = screenRect.width / term.cols;
+      setScreenText({
+        text: lines.join('\n'),
+        fontSize: term.options.fontSize || 13,
+        cellHeight,
+        offsetTop: screenRect.top - containerRect.top,
+        charWidth,
+      });
     };
     containerRef.current.addEventListener('copy-screen', onCopyScreen);
 
@@ -272,6 +283,39 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Pr
       }
     };
 
+    // Long-press → select mode (copy-screen overlay)
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressStartY = 0;
+
+    const onLongPressStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      longPressStartY = e.touches[0].clientY;
+      longPressTimer = setTimeout(() => {
+        el.dispatchEvent(new Event('copy-screen'));
+        longPressTimer = null;
+      }, 700);
+    };
+
+    const onLongPressMove = (e: TouchEvent) => {
+      if (!longPressTimer) return;
+      if (Math.abs(e.touches[0].clientY - longPressStartY) > 10) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    const onLongPressEnd = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    el.addEventListener('touchstart', onLongPressStart, { passive: true });
+    el.addEventListener('touchmove', onLongPressMove, { passive: true });
+    el.addEventListener('touchend', onLongPressEnd, { passive: true });
+    el.addEventListener('touchcancel', onLongPressEnd, { passive: true });
+
     el.addEventListener('touchstart', onDoubleTapTab, { passive: false });
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchstart', onScrollStart, { passive: true });
@@ -288,6 +332,10 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Pr
       ro.disconnect();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      el.removeEventListener('touchstart', onLongPressStart);
+      el.removeEventListener('touchmove', onLongPressMove);
+      el.removeEventListener('touchend', onLongPressEnd);
+      el.removeEventListener('touchcancel', onLongPressEnd);
       el.removeEventListener('touchstart', onDoubleTapTab);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchstart', onScrollStart);
@@ -330,7 +378,7 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Pr
       )}
       {screenText !== null && (
         <div
-          className="absolute inset-0 z-20 bg-zinc-900/95 overflow-auto p-4"
+          className="absolute inset-0 z-20 bg-zinc-900/95 overflow-auto"
           onClick={(e) => { if (e.target === e.currentTarget) setScreenText(null); }}
         >
           <button
@@ -339,7 +387,18 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Pr
           >
             Close
           </button>
-          <pre className="text-xs text-zinc-200 font-mono whitespace-pre-wrap select-text">{screenText}</pre>
+          <pre
+            className="text-zinc-200 whitespace-pre select-text"
+            style={{
+              fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+              fontSize: `${screenText.fontSize}px`,
+              lineHeight: `${screenText.cellHeight}px`,
+              letterSpacing: '0px',
+              paddingTop: `${screenText.offsetTop}px`,
+              paddingLeft: '0',
+              margin: 0,
+            }}
+          >{screenText.text}</pre>
         </div>
       )}
     </div>

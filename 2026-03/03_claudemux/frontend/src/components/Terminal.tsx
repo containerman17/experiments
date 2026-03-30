@@ -16,6 +16,7 @@ interface Props {
   ctrlMode: boolean;
   onCtrlConsumed: () => void;
   onBell?: () => void;
+  onRegisterContext?: (getter: () => string) => void;
 }
 
 function toControlCharacter(data: string): string | null {
@@ -34,7 +35,7 @@ function toControlCharacter(data: string): string | null {
   return specialMap[char] ?? null;
 }
 
-export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Props) {
+export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell, onRegisterContext }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [screenText, setScreenText] = useState<{ text: string; fontSize: number; cellHeight: number; offsetTop: number; charWidth: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -115,6 +116,17 @@ export function Terminal({ session, conn, ctrlMode, onCtrlConsumed, onBell }: Pr
     containerRef.current.addEventListener('copy-screen', onCopyScreen);
 
     const bellDisposable = term.onBell(() => onBellRef.current?.());
+
+    // Register context getter for voice transcription
+    onRegisterContext?.(() => {
+      const buf = term.buffer.active;
+      const lines: string[] = [];
+      for (let i = 0; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        if (line) lines.push(line.translateToString(true));
+      }
+      return lines.join('\n').slice(-4096);
+    });
 
     conn.send({ type: 'terminal.attach', session });
     conn.send({ type: 'terminal.resize', session, cols: term.cols, rows: term.rows });

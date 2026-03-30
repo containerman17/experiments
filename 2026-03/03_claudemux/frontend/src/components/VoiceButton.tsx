@@ -1,6 +1,6 @@
 // Voice input button.
-// Records audio via MediaRecorder, then sends the full clip to the backend
-// for Gemini-based transcription with terminal context.
+// Records audio via MediaRecorder, then sends directly to Gemini API
+// for transcription with terminal context. Falls back to backend if no API key set.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Connection } from '../ws';
@@ -9,6 +9,7 @@ interface Props {
   conn: Connection;
   session: string | null;
   isMobile: boolean;
+  getContext?: () => string;
 }
 
 interface VoiceState {
@@ -23,6 +24,69 @@ interface VoiceState {
 
 const MIC_KEY = 'claudemux_mic';
 const AUTO_SEND_KEY = 'claudemux_voice_auto_send';
+const GEMINI_KEY_STORAGE = 'claudemux_gemini_key';
+const GEMINI_MODEL = 'gemini-3-flash-preview';
+const GEMINI_TIMEOUT = 20_000;
+const GEMINI_MAX_RETRIES = 3;
+
+export function getGeminiKey(): string {
+  return localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+}
+
+export function setGeminiKey(key: string): void {
+  localStorage.setItem(GEMINI_KEY_STORAGE, key);
+}
+
+async function callGeminiDirect(
+  apiKey: string,
+  audioBase64: string,
+  mimeType: string,
+  context: string,
+): Promise<string> {
+  const contextHint = context
+    ? `\n\nRecent terminal output for context (use this to disambiguate technical terms):\n${context}`
+    : '';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  let lastErr: Error | undefined;
+  for (let attempt = 1; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    try {
+      console.log(`[voice-frontend] calling Gemini (${GEMINI_MODEL}), attempt ${attempt}/${GEMINI_MAX_RETRIES}...`);
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT),
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: 'You are a transcription service for a software engineering terminal session. The speaker is dictating commands, code, or discussing technical topics. Preserve technical terms, function names, variable names, CLI commands, and programming jargon accurately. Output ONLY the transcription, nothing else.' }],
+          },
+          generationConfig: { thinkingConfig: { thinkingLevel: 'low' } },
+          contents: [{
+            parts: [
+              { text: `Transcribe this voice message:${contextHint}` },
+              { inlineData: { mimeType, data: audioBase64 } },
+            ],
+          }],
+        }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Gemini API error ${resp.status}: ${errText}`);
+      }
+      const json = await resp.json() as any;
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '(empty transcription)';
+      console.log(`[voice-frontend] transcribed: ${text}`);
+      return text;
+    } catch (err: any) {
+      lastErr = err;
+      console.error(`[voice-frontend] attempt ${attempt} failed:`, err.message || err);
+      if (attempt < GEMINI_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+  throw lastErr!;
+}
 
 const voiceStateListeners = new Set<(state: VoiceState) => void>();
 let sharedVoiceState: VoiceState = {
@@ -153,7 +217,7 @@ export function subscribeVoiceState(fn: (state: VoiceState) => void): () => void
   return () => { voiceStateListeners.delete(fn); };
 }
 
-export function VoiceButton({ conn, session, isMobile }: Props) {
+export function VoiceButton({ conn, session, isMobile, getContext }: Props) {
   const [voiceState, setVoiceState] = useState<VoiceState>(sharedVoiceState);
   const [elapsed, setElapsed] = useState(0);
   const latestSessionRef = useRef(session);
@@ -178,6 +242,10 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
   }, [voiceState.recording, voiceState.startedAt]);
 
   const startRecording = useCallback(async () => {
+    if (!getGeminiKey()) {
+      setVoiceError('Set Gemini API key in Settings');
+      return;
+    }
     setSharedVoiceState({ error: null });
     chunksRef.current = [];
 
@@ -222,9 +290,16 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
     }
   }, []);
 
+  const getContextRef = useRef(getContext);
+  useEffect(() => { getContextRef.current = getContext; }, [getContext]);
+
   const stopRecording = useCallback(() => {
-    const currentSession = latestSessionRef.current;
-    if (!currentSession) {
+    // Capture target session and context RIGHT NOW (at stop time)
+    const targetSession = latestSessionRef.current;
+    const targetContext = getContextRef.current?.() || '';
+    const geminiKey = getGeminiKey();
+
+    if (!targetSession) {
       setVoiceError('No active session');
       teardownRecording();
       setSharedVoiceState({ recording: false, startedAt: null, audioLevel: 0 });
@@ -251,23 +326,21 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
           for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
           const base64 = btoa(binary);
 
-          conn.send({
-            type: 'voice.transcribe',
-            session: currentSession,
-            audio: base64,
-            mimeType: mimeRef.current,
-            autoSend: getAutoSend(),
-          });
-
-          // Timeout: if server doesn't respond in 30s, reset sending state
-          if (sendingTimeout) clearTimeout(sendingTimeout);
-          sendingTimeout = setTimeout(() => {
-            sendingTimeout = null;
-            if (sharedVoiceState.sending) {
-              setVoiceError('Transcription timed out');
-              setSharedVoiceState({ sending: false });
+          // Direct Gemini API call from browser
+          try {
+            const text = await callGeminiDirect(geminiKey, base64, mimeRef.current, targetContext);
+            // Paste into the target session (captured at stop time)
+            conn.send({ type: 'terminal.input', session: targetSession, data: text });
+            if (getAutoSend()) {
+              setTimeout(() => {
+                conn.send({ type: 'terminal.input', session: targetSession, data: '\r' });
+              }, 150);
             }
-          }, 30_000);
+            onVoiceResult(text, targetSession);
+          } catch (err) {
+            setVoiceError(`Transcription failed: ${err instanceof Error ? err.message : err}`);
+            setSharedVoiceState({ sending: false });
+          }
         } catch (err) {
           setVoiceError(`Failed to encode audio: ${err instanceof Error ? err.message : err}`);
           setSharedVoiceState({ sending: false });
@@ -330,9 +403,9 @@ export function VoiceButton({ conn, session, isMobile }: Props) {
           onClick={startRecording}
           disabled={sending}
           className={isMobile
-            ? `w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer ${sending ? 'bg-yellow-600 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'}`
-            : `w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer ${sending ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-300 animate-pulse' : 'border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300'}`}
-          title={sending ? 'Transcribing...' : 'Start recording'}
+            ? `w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer ${sending ? 'bg-yellow-600 animate-pulse' : !getGeminiKey() ? 'bg-zinc-800 text-zinc-600' : 'bg-zinc-700 hover:bg-zinc-600'}`
+            : `w-9 h-9 border flex items-center justify-center transition-colors cursor-pointer ${sending ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-300 animate-pulse' : !getGeminiKey() ? 'border-zinc-800 bg-transparent text-zinc-700' : 'border-zinc-700 bg-transparent hover:bg-zinc-900 text-zinc-300'}`}
+          title={sending ? 'Transcribing...' : !getGeminiKey() ? 'Set Gemini API key in Settings' : 'Start recording'}
         >
           {sending ? (
             <span className={`${isMobile ? 'text-xs' : 'text-[10px]'}`}>...</span>

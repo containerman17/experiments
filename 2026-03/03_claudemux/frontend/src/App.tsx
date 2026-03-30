@@ -7,7 +7,7 @@ import type { SessionInfo, TunnelInfo } from './types';
 import { createConnection, type Connection } from './ws';
 import { Terminal } from './components/Terminal';
 import { FileExplorer } from './components/FileExplorer';
-import { VoiceButton, getAutoSend, setAutoSend, onVoiceResult, onVoiceError, getVoiceState, clearLastResult, subscribeVoiceState } from './components/VoiceButton';
+import { VoiceButton, getAutoSend, setAutoSend, onVoiceResult, onVoiceError, getVoiceState, clearLastResult, subscribeVoiceState, getGeminiKey, setGeminiKey } from './components/VoiceButton';
 import { useIsMobile } from './hooks/useIsMobile';
 
 const EMOJIS = '🔥🚀💡🎯🌊🎨🔮🌿🎪🧊🍊🎭🔑🌈🦊🐙🦋🎲🧩🎵🌸🍄🔔🐝🦜🌵🍀🎸🧲🦀🌶️🫧🐳🦎🔭🧪🎯🪐🌻🐢🦉🧸🎹🍉🔱🦚🌙🐍🦁🍋🎺🧿🐠🌰🦑🎻🍁🪨🐊🌺🧬🦈🎳🍇🔮🐺🌾🦩🧊🐋🎼🍒🔬🦅🌴🧲🐡🎯🍑🔭🦖🌼🧪🐆🎲🍓🔑🦢🌿🧩🐘🎸🍌🔔🦃🌵🧸🐬🎹🍎🔱🦂🌻🧬🐎';
@@ -154,6 +154,7 @@ function MicSelector() {
 
 function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boolean; defaultOpen?: boolean }) {
   const [autoSendOn, setAutoSendOn] = useState(() => getAutoSend());
+  const [geminiKeyValue, setGeminiKeyValue] = useState(() => getGeminiKey());
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
   const toggleAutoSend = useCallback(() => {
@@ -173,6 +174,17 @@ function VoiceSettings({ compact = false, defaultOpen = false }: { compact?: boo
       </summary>
       <div className="mt-3 flex flex-col gap-3">
         <MicSelector />
+        <div className="flex flex-col gap-1">
+          <label className={`${compact ? 'text-sm' : 'text-xs'} text-zinc-400`}>Gemini API Key</label>
+          <input
+            type="password"
+            value={geminiKeyValue}
+            onChange={(e) => { setGeminiKeyValue(e.target.value); setGeminiKey(e.target.value); }}
+            placeholder="paste key for direct voice (optional)"
+            className={`${compact ? 'text-sm px-2.5 py-1.5' : 'text-xs px-2 py-1'} bg-zinc-800 border border-zinc-600 rounded text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-400`}
+          />
+          <span className="text-[11px] text-zinc-600">{geminiKeyValue ? 'Voice calls Gemini directly from browser' : 'No key = voice goes through server'}</span>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <label className={`${compact ? 'text-sm' : 'text-xs'} text-zinc-400`}>Auto-send after transcription</label>
           <button
@@ -286,6 +298,13 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
   // Subscribe to shared voice state for re-insert buttons & sending indicator
   const [voiceState, setVoiceStateLocal] = useState(() => getVoiceState());
   useEffect(() => subscribeVoiceState(setVoiceStateLocal), []);
+
+  // Context getters for voice transcription (one per terminal session)
+  const contextGettersRef = useRef<Map<string, () => string>>(new Map());
+  const getActiveContext = useCallback(() => {
+    const getter = contextGettersRef.current.get(activeSessionRef.current);
+    return getter?.() || '';
+  }, []);
 
   // Bell notification state
   const [bellSessions, setBellSessions] = useState<Set<string>>(new Set());
@@ -429,7 +448,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
           key={s.name}
           className={`absolute inset-0 ${activeSession === s.name ? '' : 'invisible'}`}
         >
-          <Terminal session={s.name} conn={conn} ctrlMode={ctrlMode} onCtrlConsumed={() => setCtrlMode(false)} onBell={() => handleBell(s.name)} />
+          <Terminal session={s.name} conn={conn} ctrlMode={ctrlMode} onCtrlConsumed={() => setCtrlMode(false)} onBell={() => handleBell(s.name)} onRegisterContext={(getter) => contextGettersRef.current.set(s.name, getter)} />
         </div>
       ))}
     </div>
@@ -712,7 +731,7 @@ function MainView({ conn, wsUrl, onDisconnect }: { conn: Connection; wsUrl: stri
 
   const mainControlsRow = (buttonClass: string, rowClass: string, voiceIsMobile: boolean) => (
     <div className={rowClass}>
-      <VoiceButton conn={conn} session={isTerminalActive ? activeSession : null} isMobile={voiceIsMobile} />
+      <VoiceButton conn={conn} session={isTerminalActive ? activeSession : null} isMobile={voiceIsMobile} getContext={getActiveContext} />
       {voiceState.sending && (
         <span className="text-yellow-400 text-xs animate-pulse whitespace-nowrap">transcribing...</span>
       )}

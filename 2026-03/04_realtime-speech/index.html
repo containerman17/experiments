@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Speech Terminal Typing</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #111114;
+            --panel: #18181d;
+            --panel-2: #202028;
+            --border: #353543;
+            --text: #ededf1;
+            --muted: #9797a7;
+            --accent: #78a4ff;
+            --accent-2: #5c7ef0;
+            --danger: #ff7b7b;
+            --ok: #81d4a4;
+            --interim: #9a9ab0;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: linear-gradient(180deg, #101014 0%, #14141a 100%);
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            gap: 20px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+        }
+
+        .stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .row {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        h1,
+        h2 {
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        label {
+            display: grid;
+            gap: 8px;
+            font-size: 13px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            font: inherit;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            padding: 12px 14px;
+            outline: none;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(120, 164, 255, 0.18);
+        }
+
+        textarea {
+            min-height: 92px;
+            resize: vertical;
+        }
+
+        button {
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            color: var(--text);
+            border-radius: 12px;
+            padding: 11px 16px;
+            cursor: pointer;
+        }
+
+        button:hover:not(:disabled) {
+            border-color: var(--accent);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .primary {
+            background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
+            border-color: transparent;
+            color: #fff;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-grid {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        }
+
+        .status-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .status-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .status-value {
+            font-size: 15px;
+            color: var(--text);
+        }
+
+        .error {
+            color: var(--danger);
+            min-height: 1.2em;
+        }
+
+        .preview {
+            min-height: 150px;
+            max-height: 360px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.02);
+            white-space: pre-wrap;
+        }
+
+        .preview-line + .preview-line {
+            margin-top: 10px;
+        }
+
+        .interim {
+            color: var(--interim);
+        }
+
+        .final {
+            color: var(--ok);
+        }
+
+        .help {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        code {
+            color: #c9d6ff;
+        }
+
+        @media (max-width: 640px) {
+            main {
+                padding: 16px;
+            }
+
+            .panel {
+                padding: 14px;
+                border-radius: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <section class="panel stack">
+            <div class="stack" style="gap: 8px;">
+                <h1>Realtime Speech</h1>
+                <p>
+                    Audio stays client-side in the browser, streams directly to Deepgram, and only finalized phrases
+                    are typed into the terminal target. Interim phrases are preview-only.
+                </p>
+            </div>
+
+            <div class="row">
+                <label>
+                    Deepgram API Key
+                    <input id="apiKey" type="password" placeholder="dg_xxx">
+                </label>
+
+                <label>
+                    Microphone
+                    <select id="microphone"></select>
+                </label>
+            </div>
+
+            <label>
+                Custom Vocabulary
+                <textarea id="customVocabulary" placeholder="claudemux, Deepgram, tmux, Codex"></textarea>
+            </label>
+
+            <div class="controls">
+                <button id="refreshDevicesBtn">Refresh Microphones</button>
+                <button id="startBtn" class="primary">Start Recording</button>
+                <button id="stopBtn" disabled>Stop Recording</button>
+            </div>
+
+            <div class="status-grid">
+                <div class="status-card">
+                    <div class="status-label">Status</div>
+                    <div class="status-value" id="status">Disconnected</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">Typing Target</div>
+                    <div class="status-value" id="targetStatus">Waiting for final phrase</div>
+                </div>
+            </div>
+
+            <div id="error" class="error"></div>
+        </section>
+
+        <section class="panel stack">
+            <h2>Transcript Preview</h2>
+            <div id="output" class="preview"></div>
+        </section>
+
+        <section class="panel stack">
+            <h2>Client Typing Notes</h2>
+            <p class="help">
+                Final phrases are emitted as a browser event named <code>deepgram-final-transcript</code> and also
+                inserted into the currently focused editable element when possible. If your terminal app exposes a
+                global hook at <code>window.typeIntoTerminal(text)</code>, this page will use that first.
+            </p>
+        </section>
+    </main>
+
+    <script>
+        const STORAGE_KEYS = {
+            apiKey: 'realtime-speech.api-key',
+            microphoneId: 'realtime-speech.microphone-id',
+            customVocabulary: 'realtime-speech.custom-vocabulary',
+        };
+
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
+        let processor = null;
+        let isStopping = false;
+
+        const apiKeyInput = document.getElementById('apiKey');
+        const microphoneSelect = document.getElementById('microphone');
+        const customVocabularyInput = document.getElementById('customVocabulary');
+        const refreshDevicesBtn = document.getElementById('refreshDevicesBtn');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusEl = document.getElementById('status');
+        const targetStatusEl = document.getElementById('targetStatus');
+        const errorEl = document.getElementById('error');
+        const outputEl = document.getElementById('output');
+
+        apiKeyInput.value = localStorage.getItem(STORAGE_KEYS.apiKey) || '';
+        customVocabularyInput.value = localStorage.getItem(STORAGE_KEYS.customVocabulary) || '';
+
+        apiKeyInput.addEventListener('input', () => {
+            localStorage.setItem(STORAGE_KEYS.apiKey, apiKeyInput.value.trim());
+        });
+
+        customVocabularyInput.addEventListener('input', () => {
+            localStorage.setItem(STORAGE_KEYS.customVocabulary, customVocabularyInput.value);
+        });
+
+        microphoneSelect.addEventListener('change', () => {
+            localStorage.setItem(STORAGE_KEYS.microphoneId, microphoneSelect.value);
+        });
+
+        refreshDevicesBtn.addEventListener('click', async () => {
+            showError('');
+            await loadMicrophones({ requestPermission: true });
+        });
+
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+
+        void loadMicrophones({ requestPermission: false });
+
+        function showError(message) {
+            errorEl.textContent = message;
+        }
+
+        function updateStatus(message) {
+            statusEl.textContent = message;
+        }
+
+        function updateTargetStatus(message) {
+            targetStatusEl.textContent = message;
+        }
+
+        async function loadMicrophones({ requestPermission }) {
+            try {
+                if (requestPermission) {
+                    const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    probe.getTracks().forEach((track) => track.stop());
+                }
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const microphones = devices.filter((device) => device.kind === 'audioinput');
+                const savedDeviceId = localStorage.getItem(STORAGE_KEYS.microphoneId) || '';
+
+                microphoneSelect.innerHTML = '';
+
+                if (!microphones.length) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No microphone found';
+                    microphoneSelect.appendChild(option);
+                    return;
+                }
+
+                microphones.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Microphone ${index + 1}`;
+                    microphoneSelect.appendChild(option);
+                });
+
+                const matchingOption = Array.from(microphoneSelect.options).find(
+                    (option) => option.value === savedDeviceId
+                );
+
+                if (matchingOption) {
+                    microphoneSelect.value = savedDeviceId;
+                }
+            } catch (error) {
+                showError(`Microphone list error: ${error.message}`);
+            }
+        }
+
+        async function startRecording() {
+            showError('');
+
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                showError('Enter a Deepgram API key first.');
+                return;
+            }
+
+            try {
+                const deviceId = microphoneSelect.value;
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+                });
+
+                await loadMicrophones({ requestPermission: false });
+
+                const params = new URLSearchParams({
+                    model: 'nova-3',
+                    language: 'en',
+                    smart_format: 'true',
+                    interim_results: 'true',
+                    endpointing: '300',
+                    encoding: 'linear16',
+                    sample_rate: '16000',
+                    channels: '1',
+                });
+
+                getVocabularyTerms().forEach((term) => {
+                    params.append('keyterm', term);
+                });
+
+                ws = new WebSocket(
+                    `wss://api.deepgram.com/v1/listen?${params.toString()}`,
+                    ['token', apiKey]
+                );
+
+                ws.onopen = () => {
+                    isStopping = false;
+                    updateStatus('Recording...');
+                    updateTargetStatus('Waiting for final phrase');
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    startAudioProcessing();
+                };
+
+                ws.onmessage = (event) => {
+                    handleDeepgramMessage(event.data);
+                };
+
+                ws.onerror = () => {
+                    showError('WebSocket error. Check your API key and network connection.');
+                    stopRecording();
+                };
+
+                ws.onclose = () => {
+                    if (!isStopping) {
+                        updateStatus('Disconnected');
+                    }
+                    teardownAudio();
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                };
+            } catch (error) {
+                showError(`Microphone error: ${error.message}`);
+                teardownAudio();
+            }
+        }
+
+        function handleDeepgramMessage(rawMessage) {
+            try {
+                const data = JSON.parse(rawMessage);
+                if (data.type !== 'Results') {
+                    return;
+                }
+
+                const transcript = data.channel?.alternatives?.[0]?.transcript?.trim();
+                if (!transcript) {
+                    return;
+                }
+
+                if (data.is_final) {
+                    clearInterimLine();
+                    appendLine(transcript, 'final');
+                    typeFinalTranscript(transcript);
+                } else {
+                    upsertInterimLine(transcript);
+                }
+
+                outputEl.scrollTop = outputEl.scrollHeight;
+            } catch (error) {
+                console.error('Deepgram message parse error', error);
+            }
+        }
+
+        function appendLine(text, className) {
+            const line = document.createElement('div');
+            line.className = `preview-line ${className}`;
+            line.textContent = text;
+            outputEl.appendChild(line);
+        }
+
+        function upsertInterimLine(text) {
+            let interim = outputEl.querySelector('[data-role="interim"]');
+            if (!interim) {
+                interim = document.createElement('div');
+                interim.dataset.role = 'interim';
+                interim.className = 'preview-line interim';
+                outputEl.appendChild(interim);
+            }
+            interim.textContent = text;
+        }
+
+        function clearInterimLine() {
+            const interim = outputEl.querySelector('[data-role="interim"]');
+            if (interim) {
+                interim.remove();
+            }
+        }
+
+        function typeFinalTranscript(text) {
+            const finalText = `${text} `;
+            window.dispatchEvent(new CustomEvent('deepgram-final-transcript', { detail: { text } }));
+
+            if (typeof window.typeIntoTerminal === 'function') {
+                window.typeIntoTerminal(finalText);
+                updateTargetStatus(`Typed via window.typeIntoTerminal: ${text}`);
+                return;
+            }
+
+            const active = document.activeElement;
+            if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+                insertIntoTextInput(active, finalText);
+                updateTargetStatus(`Typed into focused input: ${text}`);
+                return;
+            }
+
+            if (active && active.isContentEditable) {
+                insertIntoContentEditable(active, finalText);
+                updateTargetStatus(`Typed into focused editable element: ${text}`);
+                return;
+            }
+
+            updateTargetStatus(`Finalized phrase ready: ${text}`);
+        }
+
+        function insertIntoTextInput(element, text) {
+            const start = element.selectionStart ?? element.value.length;
+            const end = element.selectionEnd ?? element.value.length;
+            const nextValue = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
+            element.value = nextValue;
+            const nextCaret = start + text.length;
+            element.setSelectionRange(nextCaret, nextCaret);
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function insertIntoContentEditable(element, text) {
+            const selection = window.getSelection();
+            if (!selection || !selection.rangeCount) {
+                element.append(document.createTextNode(text));
+                return;
+            }
+
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(document.createTextNode(text));
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        function getVocabularyTerms() {
+            return customVocabularyInput.value
+                .split(',')
+                .map((term) => term.trim())
+                .filter(Boolean);
+        }
+
+        function startAudioProcessing() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (event) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+
+                const inputData = event.inputBuffer.getChannelData(0);
+                const int16Data = float32ToInt16(inputData);
+                ws.send(int16Data.buffer);
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+        }
+
+        function stopRecording() {
+            isStopping = true;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'CloseStream' }));
+                ws.close();
+            } else {
+                teardownAudio();
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+
+            updateStatus('Disconnected');
+        }
+
+        function teardownAudio() {
+            if (processor) {
+                processor.disconnect();
+                processor.onaudioprocess = null;
+                processor = null;
+            }
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach((track) => track.stop());
+                mediaStream = null;
+            }
+
+            ws = null;
+        }
+
+        function float32ToInt16(float32Array) {
+            const int16Array = new Int16Array(float32Array.length);
+            for (let index = 0; index < float32Array.length; index += 1) {
+                const sample = Math.max(-1, Math.min(1, float32Array[index]));
+                int16Array[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+            }
+            return int16Array;
+        }
+    </script>
+</body>
+</html>

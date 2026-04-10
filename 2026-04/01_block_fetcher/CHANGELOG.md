@@ -2,11 +2,13 @@
 
 ## 2026-04-10 (session 12)
 
+- Added `lightnode.BlockByNumber` — returns full parsed block (ethclient-compatible)
+- Added `lightnode.TransactionByHash` stub (needs tx index for O(1) lookup)
+- Implemented real `getHash` function for BLOCKHASH opcode (reads block hashes from stored containers)
 - Added transaction replay testing to `cmd/lightnode_test/main.go`: replays actual block transactions as `eth_call` on block N-1 state, comparing local `lightnode.Node.CallContract()` results against archival RPC
-- Added `--from` and `--to` flags (default 19-100) to configure block range for tx replay
-- Handles reverts (both-revert = match), skips contract creations, rate-limits RPC calls
-- Parses raw blocks from MDBX to extract transactions, recovers sender via `types.LatestSignerForChainID`
-- Existing balance/storage/name tests preserved
+- Test exits on first mismatch for easier debugging
+- Static tests (balance, storage, WAVAX name/symbol/decimals): all pass
+- **Known bug**: block 23 tx 0 — our EVM reverts but archival RPC returns success (`0x`). Contract `0x640440c1` (231 storage slots) called with selector `0x63615149`. Same full calldata, same block 22 state, different result. Root cause: likely incorrect historical storage values for this contract at block 22, or missing precompile behavior. The contract code exists (5443 bytes), sender has balance, but execution reverts in our EVM. Needs investigation of specific storage slot values vs what the archival node has.
 
 ## 2026-04-10 (session 11)
 

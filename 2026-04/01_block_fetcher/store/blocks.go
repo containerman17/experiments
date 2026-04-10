@@ -5,15 +5,29 @@ import (
 	"fmt"
 
 	"github.com/erigontech/mdbx-go/mdbx"
+	"github.com/pierrec/lz4/v4"
 )
 
-// zstdEncoder and zstdDecoder are declared in history.go
-
-// PutContainer stores ZSTD-compressed container bytes by container ID and indexes by block number.
+// PutContainer stores LZ4-compressed container bytes by container ID and indexes by block number.
 func PutContainer(tx *mdbx.Txn, db *DB, containerID [32]byte, blockNum uint64, raw []byte) error {
-	compressed := zstdEncoder.EncodeAll(raw, nil)
-	if err := tx.Put(db.Containers, containerID[:], compressed, 0); err != nil {
-		return err
+	buf := make([]byte, lz4.CompressBlockBound(len(raw)))
+	ht := make([]int, 1<<16)
+	n, _ := lz4.CompressBlock(raw, buf, ht)
+	if n == 0 {
+		// Incompressible — store with a 0-byte prefix to distinguish
+		compressed := make([]byte, 1+len(raw))
+		compressed[0] = 0 // flag: uncompressed
+		copy(compressed[1:], raw)
+		if err := tx.Put(db.Containers, containerID[:], compressed, 0); err != nil {
+			return err
+		}
+	} else {
+		compressed := make([]byte, 1+n)
+		compressed[0] = 1 // flag: lz4 compressed
+		copy(compressed[1:], buf[:n])
+		if err := tx.Put(db.Containers, containerID[:], compressed, 0); err != nil {
+			return err
+		}
 	}
 	key := BlockKey(blockNum)
 	return tx.Put(db.ContainerIndex, key[:], containerID[:], 0)
@@ -21,11 +35,29 @@ func PutContainer(tx *mdbx.Txn, db *DB, containerID [32]byte, blockNum uint64, r
 
 // GetContainer retrieves and decompresses container bytes by container ID.
 func GetContainer(tx *mdbx.Txn, db *DB, containerID [32]byte) ([]byte, error) {
-	compressed, err := tx.Get(db.Containers, containerID[:])
+	data, err := tx.Get(db.Containers, containerID[:])
 	if err != nil {
 		return nil, err
 	}
-	return zstdDecoder.DecodeAll(compressed, nil)
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty container")
+	}
+	if data[0] == 0 {
+		// Uncompressed
+		out := make([]byte, len(data)-1)
+		copy(out, data[1:])
+		return out, nil
+	}
+	// LZ4 compressed — need to try increasingly large buffers
+	compressed := data[1:]
+	for size := len(compressed) * 4; size <= 32*1024*1024; size *= 2 {
+		buf := make([]byte, size)
+		n, err := lz4.UncompressBlock(compressed, buf)
+		if err == nil {
+			return buf[:n], nil
+		}
+	}
+	return nil, fmt.Errorf("lz4 decompress failed: output too large")
 }
 
 // GetContainerByNumber looks up the container ID from the index, then fetches and decompresses.

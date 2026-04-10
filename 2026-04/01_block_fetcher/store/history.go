@@ -121,15 +121,26 @@ func UpdateHistoryIndex(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) err
 	seekKey := HistoryKey(keyID, blockNum)
 	prefix := KeyIDBytes(keyID)
 
-	k, v, err := cursor.Get(seekKey[:], nil, mdbx.SetRange)
+	kRaw, v, err := cursor.Get(seekKey[:], nil, mdbx.SetRange)
 	if err != nil && !mdbx.IsNotFound(err) {
 		return err
+	}
+
+	// Copy cursor-returned key and value since they point to MDBX internal
+	// memory-mapped pages which may be invalidated by subsequent tx.Put/Del calls.
+	var k []byte
+	var vCopy []byte
+	if err == nil {
+		k = make([]byte, len(kRaw))
+		copy(k, kRaw)
+		vCopy = make([]byte, len(v))
+		copy(vCopy, v)
 	}
 
 	if err == nil && bytes.HasPrefix(k, prefix[:]) {
 		// Existing shard found
 		bm := roaring64.NewBitmap()
-		if _, err := bm.ReadFrom(bytes.NewReader(v)); err != nil {
+		if _, err := bm.ReadFrom(bytes.NewReader(vCopy)); err != nil {
 			return fmt.Errorf("decode bitmap: %w", err)
 		}
 		bm.Add(blockNum)

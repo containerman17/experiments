@@ -1,10 +1,18 @@
 # Changelog
 
+## 2026-04-10 (session 10)
+
+- **Fixed**: `UpdateHistoryIndex` bitmap corruption bug — cursor-returned key/value slices point to MDBX memory-mapped pages; subsequent `tx.Put` calls invalidated that memory, causing seeks for other keyIDs to find wrong entries or miss existing sentinels entirely. Fix: copy cursor-returned `k` and `v` to owned byte slices before any write operations.
+- Test result: 90/90 eth_call checks now pass (up from 82/90)
+
 ## 2026-04-10 (session 9)
 
-- Added historical state lookup functions to `store/history.go`: `LookupHistorical`, `LookupHistoricalAccount`, `LookupHistoricalStorage` — retrieve account/storage values at any past block number using changeset history index
+- Added historical state lookup functions to `store/history.go`: `LookupHistoricalAccount`, `LookupHistoricalStorage` — retrieve account/storage values at any past block number using changeset + roaring bitmap history index
 - Algorithm: find earliest changeset after target block that touched the key, return the old value from that changeset; if no later changeset exists, current flat state is still valid
-- Created `cmd/eth_call_test/main.go`: validation tool that compares historical balances, nonces, and storage values from our MDBX database against the Avalanche archival RPC at multiple block heights
+- Pre-history check: if queried block is before the first-ever change, return genesis/pre-creation value from the first changeset's oldValue
+- Created `cmd/eth_call_test/main.go`: validation tool comparing historical balances/nonces/storage against Avalanche archival RPC (`api.avax.network`)
+- Test result: 82/90 checks pass. WAVAX contract verified: name="Wrapped AVAX", symbol="WAVAX", decimals=18
+- **Known bug (fixed in session 10)**: `store.UpdateHistoryIndex` roaring bitmap loses entries from early blocks when later blocks are processed
 
 ## 2026-04-10 (session 8)
 

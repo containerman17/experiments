@@ -7,28 +7,35 @@ import (
 	"github.com/erigontech/mdbx-go/mdbx"
 )
 
-// PutContainer stores raw container bytes by container ID and indexes by block number.
+// zstdEncoder and zstdDecoder are declared in history.go
+
+// PutContainer stores ZSTD-compressed container bytes by container ID and indexes by block number.
 func PutContainer(tx *mdbx.Txn, db *DB, containerID [32]byte, blockNum uint64, raw []byte) error {
-	if err := tx.Put(db.Containers, containerID[:], raw, 0); err != nil {
+	compressed := zstdEncoder.EncodeAll(raw, nil)
+	if err := tx.Put(db.Containers, containerID[:], compressed, 0); err != nil {
 		return err
 	}
 	key := BlockKey(blockNum)
 	return tx.Put(db.ContainerIndex, key[:], containerID[:], 0)
 }
 
-// GetContainer retrieves raw container bytes by container ID.
+// GetContainer retrieves and decompresses container bytes by container ID.
 func GetContainer(tx *mdbx.Txn, db *DB, containerID [32]byte) ([]byte, error) {
-	return tx.Get(db.Containers, containerID[:])
+	compressed, err := tx.Get(db.Containers, containerID[:])
+	if err != nil {
+		return nil, err
+	}
+	return zstdDecoder.DecodeAll(compressed, nil)
 }
 
-// GetContainerByNumber looks up the container ID from the index, then fetches the container.
+// GetContainerByNumber looks up the container ID from the index, then fetches and decompresses.
 func GetContainerByNumber(tx *mdbx.Txn, db *DB, num uint64) ([]byte, error) {
 	key := BlockKey(num)
 	containerID, err := tx.Get(db.ContainerIndex, key[:])
 	if err != nil {
 		return nil, fmt.Errorf("container index lookup for block %d: %w", num, err)
 	}
-	raw, err := tx.Get(db.Containers, containerID)
+	raw, err := GetContainer(tx, db, [32]byte(containerID))
 	if err != nil {
 		return nil, fmt.Errorf("container fetch for block %d: %w", num, err)
 	}

@@ -250,8 +250,8 @@ func (n *Node) StorageAt(ctx context.Context, account common.Address, key common
 	return val[:], nil
 }
 
-// HeaderByNumber returns the block header for the given block number.
-func (n *Node) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+// BlockByNumber returns the full parsed block for the given block number.
+func (n *Node) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
 	num, err := n.resolveBlockNumber(number)
 	if err != nil {
 		return nil, err
@@ -276,7 +276,23 @@ func (n *Node) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Head
 		return nil, fmt.Errorf("parse block %d: %w", num, err)
 	}
 
+	return block, nil
+}
+
+// HeaderByNumber returns the block header for the given block number.
+func (n *Node) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	block, err := n.BlockByNumber(ctx, number)
+	if err != nil {
+		return nil, err
+	}
 	return block.Header(), nil
+}
+
+// TransactionByHash returns a transaction by its hash (scans blocks).
+// For now this is O(blocks) — a tx hash index would make it O(1).
+func (n *Node) TransactionByHash(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, error) {
+	// TODO: add a tx hash index for O(1) lookup
+	return nil, 0, fmt.Errorf("TransactionByHash not yet implemented (needs tx index)")
 }
 
 // CallContract executes a contract call against historical state.
@@ -310,7 +326,24 @@ func (n *Node) CallContract(ctx context.Context, msg CallMsg, blockNumber *big.I
 	ccustomtypes.SetHeaderExtra(header, &ccustomtypes.HeaderExtra{})
 
 	// Build block context.
-	getHashFn := func(n uint64) common.Hash { return common.Hash{} }
+	getHashFn := func(blockNum uint64) common.Hash {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		htx, err := n.db.BeginRO()
+		if err != nil {
+			return common.Hash{}
+		}
+		defer htx.Abort()
+		raw, err := store.GetBlockByNumber(htx, n.db, blockNum)
+		if err != nil {
+			return common.Hash{}
+		}
+		b, err := parseEthBlock(raw)
+		if err != nil {
+			return common.Hash{}
+		}
+		return b.Hash()
+	}
 	blockCtx := buildBlockContext(header, n.chainCfg, getHashFn)
 
 	// Build historical statedb.

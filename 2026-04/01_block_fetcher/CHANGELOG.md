@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-04-10 (session 12)
+
+- Added transaction replay testing to `cmd/lightnode_test/main.go`: replays actual block transactions as `eth_call` on block N-1 state, comparing local `lightnode.Node.CallContract()` results against archival RPC
+- Added `--from` and `--to` flags (default 19-100) to configure block range for tx replay
+- Handles reverts (both-revert = match), skips contract creations, rate-limits RPC calls
+- Parses raw blocks from MDBX to extract transactions, recovers sender via `types.LatestSignerForChainID`
+- Existing balance/storage/name tests preserved
+
 ## 2026-04-10 (session 11)
 
 - Created `lightnode/` package: embeddable API matching `ethclient.Client` method signatures

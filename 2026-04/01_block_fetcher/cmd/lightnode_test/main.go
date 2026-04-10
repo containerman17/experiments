@@ -12,16 +12,23 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"block_fetcher/lightnode"
 
+	proposerblock "github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/rlp"
 )
 
 const rpcURL = "https://api.avax.network/ext/bc/C/rpc"
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
+
+// C-Chain mainnet chain ID
+var chainID = big.NewInt(43114)
 
 // JSON-RPC helpers
 
@@ -42,7 +49,8 @@ type jsonRPCResponse struct {
 	} `json:"error"`
 }
 
-func rpcCall(method string, params []interface{}) (json.RawMessage, error) {
+// rpcCallRaw performs a JSON-RPC call and returns the raw response (result + error).
+func rpcCallRaw(method string, params []interface{}) (*jsonRPCResponse, error) {
 	req := jsonRPCRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: params}
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -60,6 +68,14 @@ func rpcCall(method string, params []interface{}) (json.RawMessage, error) {
 	var rpcResp jsonRPCResponse
 	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w (body: %s)", err, string(respBody))
+	}
+	return &rpcResp, nil
+}
+
+func rpcCall(method string, params []interface{}) (json.RawMessage, error) {
+	rpcResp, err := rpcCallRaw(method, params)
+	if err != nil {
+		return nil, err
 	}
 	if rpcResp.Error != nil {
 		return nil, fmt.Errorf("rpc error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
@@ -119,8 +135,81 @@ func rpcEthCall(to, data string, block uint64) ([]byte, error) {
 	return hex.DecodeString(hexStr[2:])
 }
 
+// rpcEthCallFull performs eth_call with full tx parameters and returns (result, revertErr, rpcErr).
+// If the call reverts, revertErr contains the error message; result may contain revert data.
+// rpcErr is non-nil only for transport/parse errors.
+func rpcEthCallFull(from, to, value, data string, gas uint64, block uint64) ([]byte, string, error) {
+	blockHex := fmt.Sprintf("0x%x", block)
+	callObj := map[string]string{
+		"from":  from,
+		"to":    to,
+		"gas":   fmt.Sprintf("0x%x", gas),
+		"value": value,
+	}
+	if data != "" && data != "0x" {
+		callObj["data"] = data
+	}
+
+	rpcResp, err := rpcCallRaw("eth_call", []interface{}{callObj, blockHex})
+	if err != nil {
+		return nil, "", err
+	}
+
+	if rpcResp.Error != nil {
+		return nil, rpcResp.Error.Message, nil
+	}
+	// Check raw result for revert indicators
+	resultStr := string(rpcResp.Result)
+	if len(rpcResp.Result) == 0 || resultStr == "null" || resultStr == `"0x"` {
+		// Empty success — return empty bytes, no revert
+		return nil, "", nil
+	}
+
+	var hexStr string
+	if err := json.Unmarshal(rpcResp.Result, &hexStr); err != nil {
+		// Check if the raw result contains "execution reverted"
+		if strings.Contains(string(rpcResp.Result), "execution reverted") {
+			return nil, "execution reverted", nil
+		}
+		return nil, "", fmt.Errorf("unmarshal result: %w", err)
+	}
+	if len(hexStr) < 2 {
+		return nil, "", nil
+	}
+	resultBytes, err := hex.DecodeString(hexStr[2:])
+	if err != nil {
+		return nil, "", fmt.Errorf("decode hex result: %w", err)
+	}
+	return resultBytes, "", nil
+}
+
+// parseEthBlock decodes a raw block from MDBX.
+func parseEthBlock(raw []byte) (*types.Block, error) {
+	if blk, err := proposerblock.ParseWithoutVerification(raw); err == nil {
+		ethBlock := new(types.Block)
+		if err := rlp.DecodeBytes(blk.Block(), ethBlock); err != nil {
+			return nil, fmt.Errorf("decode inner eth block: %w", err)
+		}
+		return ethBlock, nil
+	}
+
+	_, _, rest, err := rlp.Split(raw)
+	if err != nil {
+		return nil, fmt.Errorf("rlp split: %w", err)
+	}
+	rawBlock := raw[:len(raw)-len(rest)]
+
+	ethBlock := new(types.Block)
+	if err := rlp.DecodeBytes(rawBlock, ethBlock); err != nil {
+		return nil, fmt.Errorf("decode pre-fork eth block: %w", err)
+	}
+	return ethBlock, nil
+}
+
 func main() {
 	dbDir := flag.String("db", "data/mainnet-mdbx", "MDBX database directory")
+	fromBlock := flag.Uint64("from", 19, "Start block for tx replay (inclusive)")
+	toBlock := flag.Uint64("to", 100, "End block for tx replay (inclusive)")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -288,17 +377,159 @@ func main() {
 		}
 	}
 
+	// ─── Transaction Replay ──────────────────────────────────────
+	fmt.Printf("\n=== TRANSACTION REPLAY (blocks %d-%d) ===\n", *fromBlock, *toBlock)
+
+	endBlock := *toBlock
+	if endBlock > head {
+		endBlock = head
+	}
+
+	// Use the lightnode's BlockByNumber to read blocks (no separate DB needed).
+
+	signer := types.LatestSignerForChainID(chainID)
+
+	var replayChecked, replayMatched, replayMismatched, replayErrors, replaySkipped int
+
+	for blockNum := *fromBlock; blockNum <= endBlock; blockNum++ {
+		block, err := node.BlockByNumber(ctx, new(big.Int).SetUint64(blockNum))
+		if err != nil {
+			fmt.Printf("  block %d: READ ERROR: %v\n", blockNum, err)
+			replayErrors++
+			continue
+		}
+
+		txs := block.Transactions()
+		if len(txs) == 0 {
+			continue
+		}
+
+		if blockNum == *fromBlock || blockNum%50 == 0 {
+			fmt.Printf("  block %d: %d transactions\n", blockNum, len(txs))
+		}
+
+		for txIdx, ethTx := range txs {
+			// Skip contract creation transactions.
+			if ethTx.To() == nil {
+				replaySkipped++
+				continue
+			}
+
+			// Recover sender.
+			from, err := types.Sender(signer, ethTx)
+			if err != nil {
+				fmt.Printf("  block %d tx %d: SENDER RECOVERY ERROR: %v\n", blockNum, txIdx, err)
+				replayErrors++
+				continue
+			}
+
+			toAddr := *ethTx.To()
+			value := ethTx.Value()
+			data := ethTx.Data()
+			gas := ethTx.Gas()
+
+			// Execute on block N-1 state via our node.
+			prevBlock := blockNum - 1
+			callMsg := lightnode.CallMsg{
+				From:  from,
+				To:    &toAddr,
+				Gas:   gas,
+				Value: value,
+				Data:  data,
+			}
+			// Set gas price fields based on tx type.
+			if ethTx.Type() == types.DynamicFeeTxType {
+				callMsg.GasFeeCap = ethTx.GasFeeCap()
+				callMsg.GasTipCap = ethTx.GasTipCap()
+			} else {
+				callMsg.GasPrice = ethTx.GasPrice()
+			}
+
+			localResult, localErr := node.CallContract(ctx, callMsg, big.NewInt(int64(prevBlock)))
+
+			// Call archival RPC with same parameters.
+			valueHex := "0x0"
+			if value != nil && value.Sign() > 0 {
+				valueHex = fmt.Sprintf("0x%x", value)
+			}
+			dataHex := "0x"
+			if len(data) > 0 {
+				dataHex = "0x" + hex.EncodeToString(data)
+			}
+
+			remoteResult, remoteRevertMsg, rpcErr := rpcEthCallFull(
+				from.Hex(), toAddr.Hex(), valueHex, dataHex, gas, prevBlock,
+			)
+
+			// Rate limit: small delay between RPC calls.
+			time.Sleep(20 * time.Millisecond)
+
+			if rpcErr != nil {
+				fmt.Printf("  block %d tx %d: RPC TRANSPORT ERROR: %v\n", blockNum, txIdx, rpcErr)
+				replayErrors++
+				continue
+			}
+
+			replayChecked++
+
+			// Compare results.
+			localReverted := localErr != nil
+			remoteReverted := remoteRevertMsg != ""
+
+			if localReverted && remoteReverted {
+				// Both reverted — count as match.
+				replayMatched++
+			} else if !localReverted && !remoteReverted {
+				// Both succeeded — compare output bytes.
+				if bytes.Equal(localResult, remoteResult) {
+					replayMatched++
+				} else {
+					fmt.Printf("  block %d tx %d: MISMATCH (both succeeded but different output)\n", blockNum, txIdx)
+					fmt.Printf("    from=%s to=%s\n", from.Hex(), toAddr.Hex())
+					log.Fatalf("    local =0x%s\n    remote=0x%s", truncHex(localResult), truncHex(remoteResult))
+				}
+			} else {
+				// One reverted, other didn't — fatal.
+				fmt.Printf("  block %d tx %d: MISMATCH (revert disagreement)\n", blockNum, txIdx)
+				fmt.Printf("    from=%s to=%s\n", from.Hex(), toAddr.Hex())
+				if localReverted {
+					log.Fatalf("    local=REVERTED(%s)  remote=OK(0x%s)", localErr.Error(), truncHex(remoteResult))
+				} else {
+					log.Fatalf("    local=OK(0x%s)  remote=REVERTED(%s)", truncHex(localResult), remoteRevertMsg)
+				}
+			}
+		}
+	}
+
 	// ─── Summary ──────────────────────────────────────────────────
-	fmt.Printf("\n=== SUMMARY ===\n")
+	fmt.Printf("\n=== STATIC TESTS SUMMARY ===\n")
 	fmt.Printf("Checked:    %d\n", checked)
 	fmt.Printf("Matched:    %d\n", matched)
 	fmt.Printf("Mismatched: %d\n", mismatched)
 	fmt.Printf("Errors:     %d\n", errors)
 
-	if mismatched > 0 || errors > 0 {
+	fmt.Printf("\n=== TX REPLAY SUMMARY (blocks %d-%d) ===\n", *fromBlock, endBlock)
+	fmt.Printf("Checked:    %d\n", replayChecked)
+	fmt.Printf("Matched:    %d\n", replayMatched)
+	fmt.Printf("Mismatched: %d\n", replayMismatched)
+	fmt.Printf("Skipped:    %d (contract creations)\n", replaySkipped)
+	fmt.Printf("Errors:     %d\n", replayErrors)
+
+	totalMismatch := mismatched + replayMismatched
+	totalErrors := errors + replayErrors
+	if totalMismatch > 0 || totalErrors > 0 {
 		os.Exit(1)
 	}
 	fmt.Println("\nAll checks passed!")
+}
+
+// truncHex returns a truncated hex string of bytes for display.
+func truncHex(b []byte) string {
+	s := hex.EncodeToString(b)
+	if len(s) > 64 {
+		return s[:64] + "..."
+	}
+	return s
 }
 
 // decodeABIString attempts to decode an ABI-encoded string return value.
@@ -318,3 +549,4 @@ func decodeABIString(data []byte) string {
 	}
 	return string(data[start : start+length])
 }
+

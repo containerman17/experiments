@@ -216,3 +216,128 @@ func LookupHistoricalBlock(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) 
 
 	return 0, false, nil
 }
+
+// LookupHistorical returns the value of a key at a given block number.
+// It finds the earliest changeset AFTER blockNum that touched this key,
+// then returns the old value from that changeset.
+// If no changeset after blockNum touched this key, the current flat state value is still valid.
+// lookupHistoricalRaw returns the raw old value for a key at a given block number.
+// isAccount distinguishes account vs storage lookups for the fallback to current state.
+func lookupHistoricalRaw(tx *mdbx.Txn, db *DB, addr [20]byte, slot [32]byte, blockNum uint64, isAccount bool) ([]byte, error) {
+	keyID, found, err := GetKeyID(tx, db, addr, slot)
+	if err != nil {
+		return nil, fmt.Errorf("GetKeyID: %w", err)
+	}
+	if !found {
+		// Key was never modified — return current flat state value (or nil).
+		return lookupCurrentFlatValue(tx, db, addr, slot, isAccount)
+	}
+
+	// Find the FIRST block that ever changed this key (to handle pre-history lookups).
+	firstChange, hasFirst, err := LookupHistoricalBlock(tx, db, keyID, 0)
+	if err != nil {
+		return nil, fmt.Errorf("LookupHistoricalBlock first: %w", err)
+	}
+	if hasFirst && blockNum < firstChange {
+		// The queried block is BEFORE this key was ever modified.
+		// Read the oldValue from the first changeset — that's the genesis/pre-creation value.
+		changes, err := ReadChangeset(tx, db, firstChange)
+		if err != nil {
+			return nil, fmt.Errorf("ReadChangeset at first block %d: %w", firstChange, err)
+		}
+		for _, c := range changes {
+			if c.KeyID == keyID {
+				return c.OldValue, nil // genesis value (often empty = key didn't exist)
+			}
+		}
+		return nil, nil // key not found in changeset = didn't exist
+	}
+
+	// Find the first block strictly AFTER blockNum that changed this key.
+	changeBlock, hasChange, err := LookupHistoricalBlock(tx, db, keyID, blockNum+1)
+	if err != nil {
+		return nil, fmt.Errorf("LookupHistoricalBlock: %w", err)
+	}
+
+	if !hasChange {
+		// No block after blockNum changed this key — current flat state is the value.
+		return lookupCurrentFlatValue(tx, db, addr, slot, isAccount)
+	}
+
+	// Read the changeset at changeBlock to get the old value (= value at blockNum).
+	changes, err := ReadChangeset(tx, db, changeBlock)
+	if err != nil {
+		return nil, fmt.Errorf("ReadChangeset at block %d: %w", changeBlock, err)
+	}
+
+	for _, c := range changes {
+		if c.KeyID == keyID {
+			return c.OldValue, nil
+		}
+	}
+
+	return nil, fmt.Errorf("keyID %d listed in history at block %d but not found in changeset", keyID, changeBlock)
+}
+
+// lookupCurrentFlatValue returns the current flat state value for a given (addr, slot).
+// For account-level lookups (slot == zero), returns the encoded account bytes.
+// For storage lookups, returns the 32-byte storage value.
+func lookupCurrentFlatValue(tx *mdbx.Txn, db *DB, addr [20]byte, slot [32]byte, isAccount bool) ([]byte, error) {
+	if isAccount {
+		acct, err := GetAccount(tx, db, addr)
+		if err != nil {
+			return nil, err
+		}
+		if acct == nil {
+			return nil, nil
+		}
+		return EncodeAccountBytes(acct), nil
+	}
+	// Storage lookup
+	val, err := GetStorage(tx, db, addr, slot)
+	if err != nil {
+		return nil, err
+	}
+	var zeroVal [32]byte
+	if val == zeroVal {
+		return nil, nil
+	}
+	// Return trimmed bytes (matching changeset format)
+	v := val[:]
+	for len(v) > 1 && v[0] == 0 {
+		v = v[1:]
+	}
+	return v, nil
+}
+
+// LookupHistoricalAccount returns the account state at a given block number.
+func LookupHistoricalAccount(tx *mdbx.Txn, db *DB, addr [20]byte, blockNum uint64) (*Account, error) {
+	var zeroSlot [32]byte
+	data, err := lookupHistoricalRaw(tx, db, addr, zeroSlot, blockNum, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return DecodeAccount(data), nil
+}
+
+// LookupHistoricalStorage returns the storage value at a given block number.
+func LookupHistoricalStorage(tx *mdbx.Txn, db *DB, addr [20]byte, slot [32]byte, blockNum uint64) ([32]byte, error) {
+	data, err := lookupHistoricalRaw(tx, db, addr, slot, blockNum, false)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	if len(data) == 0 {
+		return [32]byte{}, nil
+	}
+	// Pad trimmed bytes back to 32 bytes, right-aligned.
+	var result [32]byte
+	if len(data) <= 32 {
+		copy(result[32-len(data):], data)
+	} else {
+		copy(result[:], data[:32]) // shouldn't happen but safety
+	}
+	return result, nil
+}

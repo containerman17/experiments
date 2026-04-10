@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-10 (session 9)
+
+- Added historical state lookup functions to `store/history.go`: `LookupHistorical`, `LookupHistoricalAccount`, `LookupHistoricalStorage` — retrieve account/storage values at any past block number using changeset history index
+- Algorithm: find earliest changeset after target block that touched the key, return the old value from that changeset; if no later changeset exists, current flat state is still valid
+- Created `cmd/eth_call_test/main.go`: validation tool that compares historical balances, nonces, and storage values from our MDBX database against the Avalanche archival RPC at multiple block heights
+
 ## 2026-04-10 (session 8)
 
 - Wired changeset writing, key dictionary, and history index into custom state trie commit path

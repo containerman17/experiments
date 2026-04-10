@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-10 (session 8)
+
+- Wired changeset writing, key dictionary, and history index into custom state trie commit path
+- Added `AppendChanges` and `FlushChangeset` to `statetrie/database.go` — accumulates changes from both account and storage tries, writes combined per-block changeset + history index in a single RW transaction
+- Modified `AccountTrie.Commit()` to read old account values from MDBX before overwriting, assign keyIDs via `store.GetOrAssignKeyID`, and append `store.Change` entries to the Database accumulator
+- Modified `StorageTrie.Commit()` to read old storage slot values from MDBX before overwriting, assign keyIDs, and append changes to the Database accumulator
+- Added `store.EncodeAccountBytes()` helper for serializing accounts to changeset old-values
+- Updated `cmd/statetrie_verify/main.go` to call `FlushChangeset(blockNum)` after each block commit
+- Verified: all 1000 blocks still pass with changeset collection enabled
+
 ## 2026-04-10 (session 7)
 
 - Created `statetrie/` package implementing `state.Database` and `state.Trie` interfaces backed by flat MDBX storage

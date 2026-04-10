@@ -292,6 +292,13 @@ func processBlock(
 	}
 	_ = root
 
+	// Write changeset and history index for this block.
+	if db, ok := stateDB.(*statetrie.Database); ok {
+		if err := db.FlushChangeset(blockNum); err != nil {
+			return fmt.Errorf("flush changeset: %w", err)
+		}
+	}
+
 	// Update head block in metadata.
 	rwTx, err := mdbxDB.BeginRW()
 	if err != nil {

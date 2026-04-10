@@ -21,15 +21,17 @@ import (
 // AccountTrie implements state.Trie for the account trie, backed by flat MDBX storage.
 type AccountTrie struct {
 	db              *store.DB
+	stateDB         *Database // parent Database for changeset accumulation
 	root            common.Hash
 	dirtyAccounts   map[common.Address]*types.StateAccount
 	deletedAccounts map[common.Address]bool
 }
 
 // NewAccountTrie creates a new AccountTrie for the given root.
-func NewAccountTrie(db *store.DB, root common.Hash) *AccountTrie {
+func NewAccountTrie(db *store.DB, stateDB *Database, root common.Hash) *AccountTrie {
 	return &AccountTrie{
 		db:              db,
+		stateDB:         stateDB,
 		root:            root,
 		dirtyAccounts:   make(map[common.Address]*types.StateAccount),
 		deletedAccounts: make(map[common.Address]bool),
@@ -40,6 +42,7 @@ func NewAccountTrie(db *store.DB, root common.Hash) *AccountTrie {
 func (t *AccountTrie) Copy() *AccountTrie {
 	cp := &AccountTrie{
 		db:              t.db,
+		stateDB:         t.stateDB,
 		root:            t.root,
 		dirtyAccounts:   make(map[common.Address]*types.StateAccount, len(t.dirtyAccounts)),
 		deletedAccounts: make(map[common.Address]bool, len(t.deletedAccounts)),
@@ -171,6 +174,7 @@ func (t *AccountTrie) Hash() common.Hash {
 }
 
 // Commit computes the hash, flushes dirty accounts to MDBX, and returns the root.
+// It also captures old values for the changeset accumulator.
 func (t *AccountTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
 	root := t.Hash()
 
@@ -180,6 +184,58 @@ func (t *AccountTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, 
 	tx, err := t.db.BeginRW()
 	if err != nil {
 		return common.Hash{}, nil, err
+	}
+
+	// Collect changeset entries: read old values before writing new ones.
+	var changes []store.Change
+	if t.stateDB != nil {
+		var zeroSlot [32]byte
+
+		// Dirty accounts: capture old value before overwriting.
+		for address := range t.dirtyAccounts {
+			var addr [20]byte
+			copy(addr[:], address[:])
+
+			// Read old account from MDBX.
+			var oldValue []byte
+			oldAcct, err := store.GetAccount(tx, t.db, addr)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, nil, err
+			}
+			if oldAcct != nil {
+				encoded := store.EncodeAccountBytes(oldAcct)
+				oldValue = encoded
+			}
+
+			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, zeroSlot)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, nil, err
+			}
+			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+		}
+
+		// Deleted accounts: capture old value before deleting.
+		for address := range t.deletedAccounts {
+			var addr [20]byte
+			copy(addr[:], address[:])
+
+			oldAcct, err := store.GetAccount(tx, t.db, addr)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, nil, err
+			}
+			if oldAcct != nil {
+				encoded := store.EncodeAccountBytes(oldAcct)
+				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, zeroSlot)
+				if err != nil {
+					tx.Abort()
+					return common.Hash{}, nil, err
+				}
+				changes = append(changes, store.Change{KeyID: keyID, OldValue: encoded})
+			}
+		}
 	}
 
 	// Write dirty accounts.
@@ -215,6 +271,11 @@ func (t *AccountTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, 
 
 	if _, err := tx.Commit(); err != nil {
 		return common.Hash{}, nil, err
+	}
+
+	// Send changes to the accumulator.
+	if t.stateDB != nil && len(changes) > 0 {
+		t.stateDB.AppendChanges(changes)
 	}
 
 	// Clear dirty state.

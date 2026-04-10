@@ -22,6 +22,7 @@ import (
 // backed by flat MDBX storage.
 type StorageTrie struct {
 	db           *store.DB
+	stateDB      *Database // parent Database for changeset accumulation
 	address      common.Address
 	root         common.Hash
 	dirtySlots   map[common.Hash][]byte // key = raw 32-byte slot, value = trimmed bytes
@@ -29,9 +30,10 @@ type StorageTrie struct {
 }
 
 // NewStorageTrie creates a new StorageTrie for the given address.
-func NewStorageTrie(db *store.DB, address common.Address, root common.Hash) *StorageTrie {
+func NewStorageTrie(db *store.DB, stateDB *Database, address common.Address, root common.Hash) *StorageTrie {
 	return &StorageTrie{
 		db:           db,
+		stateDB:      stateDB,
 		address:      address,
 		root:         root,
 		dirtySlots:   make(map[common.Hash][]byte),
@@ -43,6 +45,7 @@ func NewStorageTrie(db *store.DB, address common.Address, root common.Hash) *Sto
 func (t *StorageTrie) Copy() *StorageTrie {
 	cp := &StorageTrie{
 		db:           t.db,
+		stateDB:      t.stateDB,
 		address:      t.address,
 		root:         t.root,
 		dirtySlots:   make(map[common.Hash][]byte, len(t.dirtySlots)),
@@ -192,6 +195,7 @@ func (t *StorageTrie) Hash() common.Hash {
 }
 
 // Commit computes the hash, flushes dirty storage to MDBX, and returns the root.
+// It also captures old values for the changeset accumulator.
 func (t *StorageTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
 	root := t.Hash()
 
@@ -205,6 +209,62 @@ func (t *StorageTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, 
 
 	var addr [20]byte
 	copy(addr[:], t.address[:])
+
+	// Collect changeset entries: read old values before writing new ones.
+	var changes []store.Change
+	if t.stateDB != nil {
+		// Dirty slots: capture old value before overwriting.
+		for slot, _ := range t.dirtySlots {
+			var slotKey [32]byte
+			copy(slotKey[:], slot[:])
+
+			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, nil, err
+			}
+
+			// Old value: trimmed bytes from MDBX, or empty if slot was zero/new.
+			var oldValue []byte
+			if oldVal != [32]byte{} {
+				trimmed := trimLeadingZeros(oldVal[:])
+				oldValue = make([]byte, len(trimmed))
+				copy(oldValue, trimmed)
+			}
+
+			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, nil, err
+			}
+			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+		}
+
+		// Deleted slots: capture old value before deleting.
+		for slot := range t.deletedSlots {
+			var slotKey [32]byte
+			copy(slotKey[:], slot[:])
+
+			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, nil, err
+			}
+
+			if oldVal != [32]byte{} {
+				trimmed := trimLeadingZeros(oldVal[:])
+				oldValue := make([]byte, len(trimmed))
+				copy(oldValue, trimmed)
+
+				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
+				if err != nil {
+					tx.Abort()
+					return common.Hash{}, nil, err
+				}
+				changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+			}
+		}
+	}
 
 	// Write dirty slots.
 	for slot, value := range t.dirtySlots {
@@ -237,12 +297,25 @@ func (t *StorageTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, 
 		return common.Hash{}, nil, err
 	}
 
+	// Send changes to the accumulator.
+	if t.stateDB != nil && len(changes) > 0 {
+		t.stateDB.AppendChanges(changes)
+	}
+
 	// Clear dirty state.
 	t.dirtySlots = make(map[common.Hash][]byte)
 	t.deletedSlots = make(map[common.Hash]bool)
 	t.root = root
 
 	return root, nil, nil
+}
+
+// trimLeadingZeros removes leading zero bytes, keeping at least one byte.
+func trimLeadingZeros(b []byte) []byte {
+	for len(b) > 1 && b[0] == 0 {
+		b = b[1:]
+	}
+	return b
 }
 
 // NodeIterator is not supported.

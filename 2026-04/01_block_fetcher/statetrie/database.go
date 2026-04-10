@@ -1,6 +1,10 @@
 package statetrie
 
 import (
+	"fmt"
+	"runtime"
+	"sync"
+
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/rawdb"
 	"github.com/ava-labs/libevm/core/state"
@@ -20,6 +24,10 @@ type Database struct {
 	mdbxDB *store.DB
 	ethKV  ethdb.KeyValueStore
 	trieDB *triedb.Database
+
+	// Changeset accumulator: both AccountTrie and StorageTrie append here during Commit.
+	mu      sync.Mutex
+	changes []store.Change
 }
 
 // NewDatabase creates a new state Database backed by the given MDBX store.
@@ -36,12 +44,12 @@ func NewDatabase(mdbxDB *store.DB) *Database {
 
 // OpenTrie opens the main account trie for the given state root.
 func (db *Database) OpenTrie(root common.Hash) (state.Trie, error) {
-	return NewAccountTrie(db.mdbxDB, root), nil
+	return NewAccountTrie(db.mdbxDB, db, root), nil
 }
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *Database) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, self state.Trie) (state.Trie, error) {
-	return NewStorageTrie(db.mdbxDB, address, root), nil
+	return NewStorageTrie(db.mdbxDB, db, address, root), nil
 }
 
 // CopyTrie returns an independent copy of the given trie.
@@ -93,4 +101,58 @@ func (db *Database) DiskDB() ethdb.KeyValueStore {
 // TrieDB returns the underlying trie database.
 func (db *Database) TrieDB() *triedb.Database {
 	return db.trieDB
+}
+
+// AppendChanges adds changeset entries from a trie Commit. Thread-safe.
+func (db *Database) AppendChanges(changes []store.Change) {
+	if len(changes) == 0 {
+		return
+	}
+	db.mu.Lock()
+	db.changes = append(db.changes, changes...)
+	db.mu.Unlock()
+}
+
+// FlushChangeset writes the accumulated changeset and history index for the given block,
+// then clears the accumulator. Must be called after sdb.Commit().
+func (db *Database) FlushChangeset(blockNum uint64) error {
+	db.mu.Lock()
+	changes := db.changes
+	db.changes = nil
+	db.mu.Unlock()
+
+	if len(changes) == 0 {
+		return nil
+	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	tx, err := db.mdbxDB.BeginRW()
+	if err != nil {
+		return fmt.Errorf("begin RW for changeset: %w", err)
+	}
+
+	if err := store.WriteChangeset(tx, db.mdbxDB, blockNum, changes); err != nil {
+		tx.Abort()
+		return fmt.Errorf("write changeset: %w", err)
+	}
+
+	for _, c := range changes {
+		if err := store.UpdateHistoryIndex(tx, db.mdbxDB, c.KeyID, blockNum); err != nil {
+			tx.Abort()
+			return fmt.Errorf("update history index: %w", err)
+		}
+	}
+
+	if _, err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit changeset: %w", err)
+	}
+
+	return nil
+}
+
+// MdbxDB returns the underlying MDBX store for direct access.
+func (db *Database) MdbxDB() *store.DB {
+	return db.mdbxDB
 }

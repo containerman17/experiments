@@ -64,6 +64,14 @@ func decodeAccount(data []byte) *Account {
 	return acct
 }
 
+// EncodeAccountBytes returns the 104-byte encoding of an account as a new slice.
+func EncodeAccountBytes(acct *Account) []byte {
+	buf := encodeAccount(acct)
+	out := make([]byte, accountSize)
+	copy(out, buf[:])
+	return out
+}
+
 // PutAccount stores an account record.
 func PutAccount(tx *mdbx.Txn, db *DB, addr [20]byte, acct *Account) error {
 	buf := encodeAccount(acct)

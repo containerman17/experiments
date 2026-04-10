@@ -1,0 +1,14 @@
+data/
+*.db/
+*.log
+chain.db/
+
+# Compiled binaries
+block_fetcher
+check_genesis
+coreth_verify
+debug_block19
+debug_root
+debug_trie
+verify_history
+migrate_pebble

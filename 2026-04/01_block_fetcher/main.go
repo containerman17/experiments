@@ -70,7 +70,7 @@ const (
 	defaultBatchSize     = 256
 	defaultExpectedNetID = uint32(1)
 	defaultPrimarySubnet = "11111111111111111111111111111111LpoYY"
-	defaultFixedTipBlock = uint64(10_000)
+	defaultFixedTipBlock = uint64(1_000)
 )
 
 var (
@@ -823,9 +823,9 @@ func runWriter(
 		}
 		var maxNum uint64
 		for _, rec := range pending {
-			if err := store.PutBlock(tx, db, rec.innerNumber, [32]byte(rec.innerHash), rec.raw); err != nil {
+			if err := store.PutContainer(tx, db, [32]byte(rec.outerID), rec.innerNumber, rec.raw); err != nil {
 				tx.Abort()
-				return fmt.Errorf("put block %d: %w", rec.innerNumber, err)
+				return fmt.Errorf("put container %d: %w", rec.innerNumber, err)
 			}
 			if rec.innerNumber > maxNum {
 				maxNum = rec.innerNumber

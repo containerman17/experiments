@@ -2,32 +2,65 @@ package store
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/erigontech/mdbx-go/mdbx"
 )
 
-// PutBlock stores a raw block by number and indexes it by hash.
-func PutBlock(tx *mdbx.Txn, db *DB, num uint64, hash [32]byte, raw []byte) error {
-	key := BlockKey(num)
-	if err := tx.Put(db.Blocks, key[:], raw, 0); err != nil {
+// PutContainer stores raw container bytes by container ID and indexes by block number.
+func PutContainer(tx *mdbx.Txn, db *DB, containerID [32]byte, blockNum uint64, raw []byte) error {
+	if err := tx.Put(db.Containers, containerID[:], raw, 0); err != nil {
 		return err
 	}
-	return tx.Put(db.BlockIndex, hash[:], key[:], 0)
+	key := BlockKey(blockNum)
+	return tx.Put(db.ContainerIndex, key[:], containerID[:], 0)
+}
+
+// GetContainer retrieves raw container bytes by container ID.
+func GetContainer(tx *mdbx.Txn, db *DB, containerID [32]byte) ([]byte, error) {
+	return tx.Get(db.Containers, containerID[:])
+}
+
+// GetContainerByNumber looks up the container ID from the index, then fetches the container.
+func GetContainerByNumber(tx *mdbx.Txn, db *DB, num uint64) ([]byte, error) {
+	key := BlockKey(num)
+	containerID, err := tx.Get(db.ContainerIndex, key[:])
+	if err != nil {
+		return nil, fmt.Errorf("container index lookup for block %d: %w", num, err)
+	}
+	raw, err := tx.Get(db.Containers, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("container fetch for block %d: %w", num, err)
+	}
+	return raw, nil
+}
+
+// HasContainer checks whether a container exists by ID.
+func HasContainer(tx *mdbx.Txn, db *DB, containerID [32]byte) bool {
+	_, err := tx.Get(db.Containers, containerID[:])
+	return err == nil
 }
 
 // GetBlockByNumber retrieves a raw block by number.
+// Deprecated: use GetContainerByNumber. Kept for backward compatibility.
 func GetBlockByNumber(tx *mdbx.Txn, db *DB, num uint64) ([]byte, error) {
-	key := BlockKey(num)
-	return tx.Get(db.Blocks, key[:])
+	return GetContainerByNumber(tx, db, num)
 }
 
-// GetBlockByHash retrieves a raw block by hash.
-func GetBlockByHash(tx *mdbx.Txn, db *DB, hash [32]byte) ([]byte, error) {
-	numBytes, err := tx.Get(db.BlockIndex, hash[:])
+// PutBlockHashIndex stores a mapping from ETH block hash to container ID.
+// For pre-ProposerVM blocks, block hash == container ID (redundant but harmless).
+// For post-ProposerVM blocks, they differ and this index is needed for eth_getBlockByHash.
+func PutBlockHashIndex(tx *mdbx.Txn, db *DB, blockHash [32]byte, containerID [32]byte) error {
+	return tx.Put(db.BlockHashIndex, blockHash[:], containerID[:], 0)
+}
+
+// GetContainerByBlockHash looks up a container via ETH block hash.
+func GetContainerByBlockHash(tx *mdbx.Txn, db *DB, blockHash [32]byte) ([]byte, error) {
+	cid, err := tx.Get(db.BlockHashIndex, blockHash[:])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("block hash index lookup: %w", err)
 	}
-	return tx.Get(db.Blocks, numBytes)
+	return tx.Get(db.Containers, cid)
 }
 
 // GetHeadBlock returns the last processed block number from metadata.
@@ -46,7 +79,7 @@ func SetHeadBlock(tx *mdbx.Txn, db *DB, num uint64) error {
 	return tx.Put(db.Metadata, []byte("head"), key[:], 0)
 }
 
-// GetLatestStoredBlock returns the highest block number stored in the Blocks table.
+// GetLatestStoredBlock returns the highest block number stored.
 // Returns 0, false if no blocks stored.
 func GetLatestStoredBlock(tx *mdbx.Txn, db *DB) (uint64, bool) {
 	val, err := tx.Get(db.Metadata, []byte("latest_block"))

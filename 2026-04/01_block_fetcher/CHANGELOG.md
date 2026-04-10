@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-10 (session 6)
+
+- Restructured block storage to use container ID as primary key: replaced `Blocks` (number → raw) and `BlockIndex` (hash → number) tables with `Containers` (containerID → raw) and `ContainerIndex` (blockNumber → containerID)
+- New functions: `PutContainer`, `GetContainer`, `GetContainerByNumber`, `HasContainer`
+- Kept `GetBlockByNumber` as a deprecated wrapper around `GetContainerByNumber` for backward compatibility
+
 ## 2026-04-10 (session 5)
 
 - Replaced broken custom `executor.NewExecutor` in `main.go:runExecutor` with coreth-native state processing (matching the proven `cmd/coreth_verify/main.go` approach)

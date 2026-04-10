@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	TableBlocks       = "Blocks"
-	TableBlockIndex   = "BlockIndex"
-	TableAccountState = "AccountState"
+	TableContainers      = "Containers"
+	TableContainerIndex  = "ContainerIndex"
+	TableBlockHashIndex  = "BlockHashIndex"
+	TableAccountState    = "AccountState"
 	TableCode         = "Code"
 	TableStorageState = "StorageState"
 	TableAddressIndex = "AddressIndex"
@@ -23,8 +24,9 @@ const (
 )
 
 var allTables = []string{
-	TableBlocks,
-	TableBlockIndex,
+	TableContainers,
+	TableContainerIndex,
+	TableBlockHashIndex,
 	TableAccountState,
 	TableCode,
 	TableStorageState,
@@ -41,9 +43,10 @@ var allTables = []string{
 type DB struct {
 	env *mdbx.Env
 
-	Blocks       mdbx.DBI
-	BlockIndex   mdbx.DBI
-	AccountState mdbx.DBI
+	Containers     mdbx.DBI
+	ContainerIndex mdbx.DBI
+	BlockHashIndex mdbx.DBI
+	AccountState   mdbx.DBI
 	Code         mdbx.DBI
 	StorageState mdbx.DBI
 	AddressIndex mdbx.DBI
@@ -106,19 +109,20 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
-	db.Blocks = dbis[0]
-	db.BlockIndex = dbis[1]
-	db.AccountState = dbis[2]
-	db.Code = dbis[3]
-	db.StorageState = dbis[4]
-	db.AddressIndex = dbis[5]
-	db.SlotIndex = dbis[6]
-	db.Changesets = dbis[7]
-	db.HistoryIndex = dbis[8]
-	db.AccountTrie = dbis[9]
-	db.StorageTrie = dbis[10]
-	db.Metadata = dbis[11]
-	db.EthDB = dbis[12]
+	db.Containers = dbis[0]
+	db.ContainerIndex = dbis[1]
+	db.BlockHashIndex = dbis[2]
+	db.AccountState = dbis[3]
+	db.Code = dbis[4]
+	db.StorageState = dbis[5]
+	db.AddressIndex = dbis[6]
+	db.SlotIndex = dbis[7]
+	db.Changesets = dbis[8]
+	db.HistoryIndex = dbis[9]
+	db.AccountTrie = dbis[10]
+	db.StorageTrie = dbis[11]
+	db.Metadata = dbis[12]
+	db.EthDB = dbis[13]
 
 	return db, nil
 }
@@ -139,8 +143,8 @@ func (db *DB) Close() {
 	db.env.Close()
 }
 
-// ClearState drops all data except blocks and block index.
-// Used to re-execute from genesis without refetching blocks.
+// ClearState drops all data except containers and container index.
+// Used to re-execute from genesis without refetching containers.
 func (db *DB) ClearState() error {
 	tx, err := db.BeginRW()
 	if err != nil {

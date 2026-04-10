@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-04-10 (session 7)
+
+- Created `statetrie/` package implementing `state.Database` and `state.Trie` interfaces backed by flat MDBX storage
+- `statetrie/database.go`: `Database` struct with `OpenTrie`, `OpenStorageTrie`, `CopyTrie`, `ContractCode`, `ContractCodeSize`, `DiskDB`, `TrieDB`
+- `statetrie/account_trie.go`: `AccountTrie` implementing `state.Trie` for the account trie — reads from MDBX `AccountState`, dirty overlay, `Hash()` via `StackTrie` (O(total_state) scan), `Commit()` flushes to MDBX
+- `statetrie/storage_trie.go`: `StorageTrie` implementing `state.Trie` for per-account storage tries — reads from MDBX `StorageState`, dirty overlay, `Hash()` via `StackTrie`, `Commit()` flushes to MDBX
+
 ## 2026-04-10 (session 6)
 
 - Restructured block storage to use container ID as primary key: replaced `Blocks` (number → raw) and `BlockIndex` (hash → number) tables with `Containers` (containerID → raw) and `ContainerIndex` (blockNumber → containerID)

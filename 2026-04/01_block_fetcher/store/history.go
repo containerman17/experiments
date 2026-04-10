@@ -7,22 +7,12 @@ import (
 
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 	"github.com/erigontech/mdbx-go/mdbx"
-	"github.com/klauspost/compress/zstd"
+	"github.com/pierrec/lz4/v4"
 )
 
 type Change struct {
 	KeyID    uint64
 	OldValue []byte
-}
-
-var (
-	zstdEncoder *zstd.Encoder
-	zstdDecoder *zstd.Decoder
-)
-
-func init() {
-	zstdEncoder, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault))
-	zstdDecoder, _ = zstd.NewReader(nil)
 }
 
 func encodeChangeset(changes []Change) []byte {
@@ -72,20 +62,49 @@ func decodeChangeset(data []byte) ([]Change, error) {
 
 func WriteChangeset(tx *mdbx.Txn, db *DB, blockNum uint64, changes []Change) error {
 	raw := encodeChangeset(changes)
-	compressed := zstdEncoder.EncodeAll(raw, nil)
+	buf := make([]byte, lz4.CompressBlockBound(len(raw)))
+	ht := make([]int, 1<<16)
+	n, _ := lz4.CompressBlock(raw, buf, ht)
 	key := BlockKey(blockNum)
-	return tx.Put(db.Changesets, key[:], compressed, 0)
+	if n == 0 {
+		// Incompressible — store raw with 0 prefix
+		out := make([]byte, 1+len(raw))
+		out[0] = 0
+		copy(out[1:], raw)
+		return tx.Put(db.Changesets, key[:], out, 0)
+	}
+	out := make([]byte, 1+n)
+	out[0] = 1
+	copy(out[1:], buf[:n])
+	return tx.Put(db.Changesets, key[:], out, 0)
 }
 
 func ReadChangeset(tx *mdbx.Txn, db *DB, blockNum uint64) ([]Change, error) {
 	key := BlockKey(blockNum)
-	compressed, err := tx.Get(db.Changesets, key[:])
+	data, err := tx.Get(db.Changesets, key[:])
 	if err != nil {
 		return nil, err
 	}
-	raw, err := zstdDecoder.DecodeAll(compressed, nil)
-	if err != nil {
-		return nil, fmt.Errorf("zstd decompress: %w", err)
+	var raw []byte
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty changeset")
+	}
+	if data[0] == 0 {
+		raw = make([]byte, len(data)-1)
+		copy(raw, data[1:])
+	} else {
+		compressed := data[1:]
+		for size := len(compressed) * 4; size <= 32*1024*1024; size *= 2 {
+			buf := make([]byte, size)
+			n, err := lz4.UncompressBlock(compressed, buf)
+			if err == nil {
+				raw = buf[:n]
+				break
+			}
+		}
+		if raw == nil {
+			return nil, fmt.Errorf("lz4 decompress failed")
+		}
 	}
 	return decodeChangeset(raw)
 }

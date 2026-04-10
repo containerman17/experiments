@@ -7,9 +7,10 @@ import (
 )
 
 type Account struct {
-	Nonce    uint64
-	Balance  [32]byte // uint256 big-endian
-	CodeHash [32]byte
+	Nonce       uint64
+	Balance     [32]byte // uint256 big-endian
+	CodeHash    [32]byte
+	StorageRoot [32]byte // MPT storage root (EmptyRootHash if no storage)
 }
 
 // EmptyCodeHash is the keccak256 of empty bytes.
@@ -20,13 +21,22 @@ var EmptyCodeHash = [32]byte{
 	0x7b, 0xfa, 0xd8, 0x04, 0x5d, 0x85, 0xa4, 0x70,
 }
 
-const accountSize = 8 + 32 + 32 // 72
+// EmptyRootHash is the hash of an empty trie.
+var EmptyRootHash = [32]byte{
+	0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6,
+	0xff, 0x83, 0x45, 0xe6, 0x92, 0xc0, 0xf8, 0x6e,
+	0x5b, 0x48, 0xe0, 0x1b, 0x99, 0x6c, 0xad, 0xc0,
+	0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
+}
+
+const accountSize = 8 + 32 + 32 + 32 // 104
 
 func encodeAccount(acct *Account) [accountSize]byte {
 	var buf [accountSize]byte
 	binary.BigEndian.PutUint64(buf[:8], acct.Nonce)
 	copy(buf[8:40], acct.Balance[:])
 	copy(buf[40:72], acct.CodeHash[:])
+	copy(buf[72:104], acct.StorageRoot[:])
 	return buf
 }
 
@@ -37,9 +47,20 @@ func DecodeAccount(data []byte) *Account {
 
 func decodeAccount(data []byte) *Account {
 	acct := &Account{}
-	acct.Nonce = binary.BigEndian.Uint64(data[:8])
-	copy(acct.Balance[:], data[8:40])
-	copy(acct.CodeHash[:], data[40:72])
+	if len(data) >= 8 {
+		acct.Nonce = binary.BigEndian.Uint64(data[:8])
+	}
+	if len(data) >= 40 {
+		copy(acct.Balance[:], data[8:40])
+	}
+	if len(data) >= 72 {
+		copy(acct.CodeHash[:], data[40:72])
+	}
+	if len(data) >= 104 {
+		copy(acct.StorageRoot[:], data[72:104])
+	} else {
+		acct.StorageRoot = EmptyRootHash
+	}
 	return acct
 }
 

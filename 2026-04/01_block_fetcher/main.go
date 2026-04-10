@@ -24,15 +24,18 @@ import (
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/genesis"
 	corethcore "github.com/ava-labs/avalanchego/graft/coreth/core"
+	"github.com/ava-labs/avalanchego/graft/coreth/core/extstate"
 	corethethclient "github.com/ava-labs/avalanchego/graft/coreth/ethclient"
 	cparams "github.com/ava-labs/avalanchego/graft/coreth/params"
-	"github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
+	"github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/atomic"
+	ccustomtypes "github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network"
 	avap2p "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/p2p"
-	"github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/snow"
+	avacommon "github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
@@ -43,11 +46,18 @@ import (
 	"github.com/ava-labs/avalanchego/version"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	proposerblock "github.com/ava-labs/avalanchego/vms/proposervm/block"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/rawdb"
+	"github.com/ava-labs/libevm/core/state"
 	ethtypes "github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/core/vm"
+	"github.com/ava-labs/libevm/params"
 	"github.com/ava-labs/libevm/rlp"
+	"github.com/ava-labs/libevm/triedb"
+	"github.com/holiman/uint256"
 
-	"block_fetcher/executor"
 	"block_fetcher/store"
+	mdbxethdb "block_fetcher/store/ethdb"
 )
 
 const (
@@ -60,7 +70,7 @@ const (
 	defaultBatchSize     = 256
 	defaultExpectedNetID = uint32(1)
 	defaultPrimarySubnet = "11111111111111111111111111111111LpoYY"
-	defaultFixedTipBlock = uint64(1_000)
+	defaultFixedTipBlock = uint64(10_000)
 )
 
 var (
@@ -170,8 +180,10 @@ type writerStats struct {
 }
 
 func main() {
+	corethcore.RegisterExtras()
+	ccustomtypes.Register()
+	extstate.RegisterExtras()
 	cparams.RegisterExtras()
-	customtypes.Register()
 
 	var (
 		nodeURI      = flag.String("node-uri", defaultNodeURI, "base AvalancheGo URI for local RPC discovery")
@@ -628,7 +640,7 @@ func fetchAcceptedFrontier(
 	}
 	net.Send(
 		outMsg,
-		common.SendConfig{NodeIDs: set.Of(peerID)},
+		avacommon.SendConfig{NodeIDs: set.Of(peerID)},
 		avaconstants.PrimaryNetworkID,
 		subnets.NoOpAllower,
 	)
@@ -689,7 +701,7 @@ func fetchAncestors(
 	}
 	net.Send(
 		outMsg,
-		common.SendConfig{NodeIDs: set.Of(peerID)},
+		avacommon.SendConfig{NodeIDs: set.Of(peerID)},
 		avaconstants.PrimaryNetworkID,
 		subnets.NoOpAllower,
 	)
@@ -864,42 +876,50 @@ func runWriter(
 	}
 }
 
+const MainnetAVAXAssetID = "FvwEAhmxKfeiG8SnEvq42hc6whRyY3EFYAvebMqDNDGCgxN5Z"
+
 func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	// Parse genesis.
 	config := genesis.GetConfig(avaconstants.MainnetID)
 	var cChainGenesis corethcore.Genesis
 	if err := json.Unmarshal([]byte(config.CChainGenesis), &cChainGenesis); err != nil {
 		return fmt.Errorf("parse C-Chain genesis config: %w", err)
 	}
+	if err := cparams.SetEthUpgrades(cChainGenesis.Config); err != nil {
+		return fmt.Errorf("set eth upgrades: %w", err)
+	}
 	chainCfg := cChainGenesis.Config
 
-	// Load genesis if needed.
-	roTx, err := db.BeginRO()
-	if err != nil {
-		return err
+	// Set up MDBX-backed ethdb.
+	ethKV := mdbxethdb.New(db.Env(), db.EthDB)
+	ethDB := rawdb.NewDatabase(ethKV)
+	trieDB := triedb.NewDatabase(ethDB, nil)
+	stateDB := state.NewDatabaseWithNodeDB(ethDB, trieDB)
+
+	// Commit genesis (idempotent).
+	genesisBlock := cChainGenesis.MustCommit(ethDB, trieDB)
+	genesisRoot := genesisBlock.Root()
+	log.Printf("executor: genesis root=%x", genesisRoot)
+
+	// Verify we can open genesis state.
+	if _, err := state.New(genesisRoot, stateDB, nil); err != nil {
+		return fmt.Errorf("open genesis state: %w", err)
 	}
-	loaded, err := executor.IsGenesisLoaded(roTx, db)
-	roTx.Abort()
+
+	// Set up snow.Context for atomic transactions.
+	avaxAssetID, err := ids.FromString(MainnetAVAXAssetID)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid AVAX asset ID: %w", err)
 	}
-	if !loaded {
-		log.Printf("executor: loading genesis state...")
-		rwTx, err := db.BeginRW()
-		if err != nil {
-			return err
-		}
-		if err := executor.LoadGenesis(rwTx, db); err != nil {
-			rwTx.Abort()
-			return err
-		}
-		if _, err := rwTx.Commit(); err != nil {
-			return err
-		}
-		log.Printf("executor: genesis state loaded")
+	snowCtx := &snow.Context{
+		AVAXAssetID: avaxAssetID,
 	}
 
 	// Resume from last executed block.
-	roTx, err = db.BeginRO()
+	roTx, err := db.BeginRO()
 	if err != nil {
 		return err
 	}
@@ -907,11 +927,28 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 	roTx.Abort()
 
 	nextBlock := uint64(1)
+	parentRoot := genesisRoot
 	if hasHead {
 		nextBlock = headBlock + 1
+		// Load the parent root from the committed state.
+		// We need to read the block header to get its state root.
+		roTx, err := db.BeginRO()
+		if err != nil {
+			return err
+		}
+		raw, err := store.GetBlockByNumber(roTx, db, headBlock)
+		roTx.Abort()
+		if err != nil {
+			return fmt.Errorf("load head block %d for resume: %w", headBlock, err)
+		}
+		ethBlock, err := executorParseEthBlock(raw)
+		if err != nil {
+			return fmt.Errorf("parse head block %d for resume: %w", headBlock, err)
+		}
+		parentRoot = ethBlock.Header().Root
+		log.Printf("executor: resuming from block %d, parent root=%x", nextBlock, parentRoot)
 	}
 
-	exec := executor.NewExecutor(db, chainCfg)
 	var maxBlock uint64
 
 	for {
@@ -935,15 +972,17 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 		if err != nil {
 			return err
 		}
-		_, err = store.GetBlockByNumber(roTx, db, nextBlock)
-		roTx.Abort()
-
+		raw, err := store.GetBlockByNumber(roTx, db, nextBlock)
 		if err != nil {
+			roTx.Abort()
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+		// Copy raw out of mmap before aborting txn.
+		raw = append([]byte(nil), raw...)
+		roTx.Abort()
 
-		if err := exec.ProcessBlock(nextBlock); err != nil {
+		if err := executorProcessBlock(db, stateDB, trieDB, chainCfg, snowCtx, nextBlock, raw, &parentRoot); err != nil {
 			return fmt.Errorf("block %d: %w", nextBlock, err)
 		}
 
@@ -952,6 +991,192 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 		}
 		nextBlock++
 	}
+}
+
+func executorProcessBlock(
+	db *store.DB,
+	stateDB state.Database,
+	trieDB *triedb.Database,
+	chainCfg *params.ChainConfig,
+	snowCtx *snow.Context,
+	blockNum uint64,
+	raw []byte,
+	parentRoot *common.Hash,
+) error {
+	ethBlock, err := executorParseEthBlock(raw)
+	if err != nil {
+		return fmt.Errorf("parse block: %w", err)
+	}
+
+	header := ethBlock.Header()
+	expectedRoot := header.Root
+
+	// Create a fresh StateDB from the parent root.
+	sdb, err := state.New(*parentRoot, stateDB, nil)
+	if err != nil {
+		return fmt.Errorf("open state at parent root %x: %w", *parentRoot, err)
+	}
+
+	// Set Avalanche header extras.
+	ccustomtypes.SetHeaderExtra(header, &ccustomtypes.HeaderExtra{})
+
+	// Build block context.
+	getHashFn := func(n uint64) common.Hash {
+		return common.Hash{}
+	}
+	blockCtx := executorBuildBlockContext(header, chainCfg, getHashFn)
+
+	gp := new(corethcore.GasPool).AddGas(header.GasLimit)
+	signer := ethtypes.MakeSigner(chainCfg, header.Number, header.Time)
+	baseFee := header.BaseFee
+	if baseFee == nil {
+		baseFee = new(big.Int)
+	}
+
+	// Process each transaction.
+	for txIndex, tx := range ethBlock.Transactions() {
+		msg, err := corethcore.TransactionToMessage(tx, signer, baseFee)
+		if err != nil {
+			return fmt.Errorf("tx %d message: %w", txIndex, err)
+		}
+
+		sdb.SetTxContext(tx.Hash(), txIndex)
+
+		rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
+		sdb.Prepare(rules, msg.From, header.Coinbase, msg.To,
+			vm.ActivePrecompiles(rules), tx.AccessList())
+
+		evm := vm.NewEVM(blockCtx, corethcore.NewEVMTxContext(msg), sdb, chainCfg, vm.Config{})
+		result, err := corethcore.ApplyMessage(evm, msg, gp)
+		if err != nil {
+			return fmt.Errorf("tx %d apply: %w", txIndex, err)
+		}
+
+		sdb.Finalise(true)
+
+		if result.Failed() {
+			log.Printf("  block %d tx %d reverted: %v", blockNum, txIndex, result.Err)
+		}
+	}
+
+	// Apply atomic transactions (cross-chain imports/exports).
+	extData := ccustomtypes.BlockExtData(ethBlock)
+	if len(extData) > 0 {
+		rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
+		isAP5 := false
+		if rulesExtra := cparams.GetRulesExtra(rules); rulesExtra != nil {
+			isAP5 = rulesExtra.AvalancheRules.IsApricotPhase5
+		}
+
+		atomicTxs, err := atomic.ExtractAtomicTxs(extData, isAP5, atomic.Codec)
+		if err != nil {
+			return fmt.Errorf("extract atomic txs: %w", err)
+		}
+
+		wrappedStateDB := extstate.New(sdb)
+		for i, tx := range atomicTxs {
+			if err := tx.UnsignedAtomicTx.EVMStateTransfer(snowCtx, wrappedStateDB); err != nil {
+				return fmt.Errorf("atomic tx %d state transfer: %w", i, err)
+			}
+		}
+	}
+
+	// Compute state root.
+	computedRoot := sdb.IntermediateRoot(true)
+
+	if computedRoot != expectedRoot {
+		return fmt.Errorf("state root mismatch: computed %x, expected %x", computedRoot, expectedRoot)
+	}
+
+	// Commit state.
+	root, err := sdb.Commit(blockNum, true)
+	if err != nil {
+		return fmt.Errorf("commit state: %w", err)
+	}
+	if err := trieDB.Commit(root, false); err != nil {
+		return fmt.Errorf("commit trie: %w", err)
+	}
+
+	// Update head block in metadata.
+	rwTx, err := db.BeginRW()
+	if err != nil {
+		return fmt.Errorf("begin RW for head update: %w", err)
+	}
+	if err := store.SetHeadBlock(rwTx, db, blockNum); err != nil {
+		rwTx.Abort()
+		return fmt.Errorf("set head block: %w", err)
+	}
+	if _, err := rwTx.Commit(); err != nil {
+		return fmt.Errorf("commit head block: %w", err)
+	}
+
+	*parentRoot = computedRoot
+	return nil
+}
+
+// executorParseEthBlock decodes a raw block from MDBX. It first tries to unwrap a
+// ProposerVM envelope; if that fails it falls back to a pre-fork RLP decode.
+func executorParseEthBlock(raw []byte) (*ethtypes.Block, error) {
+	if blk, err := proposerblock.ParseWithoutVerification(raw); err == nil {
+		ethBlock := new(ethtypes.Block)
+		if err := rlp.DecodeBytes(blk.Block(), ethBlock); err != nil {
+			return nil, fmt.Errorf("decode inner eth block: %w", err)
+		}
+		return ethBlock, nil
+	}
+
+	_, _, rest, err := rlp.Split(raw)
+	if err != nil {
+		return nil, fmt.Errorf("rlp split: %w", err)
+	}
+	rawBlock := raw[:len(raw)-len(rest)]
+
+	ethBlock := new(ethtypes.Block)
+	if err := rlp.DecodeBytes(rawBlock, ethBlock); err != nil {
+		return nil, fmt.Errorf("decode pre-fork eth block: %w", err)
+	}
+	return ethBlock, nil
+}
+
+// executorBuildBlockContext constructs the vm.BlockContext needed for EVM execution.
+func executorBuildBlockContext(header *ethtypes.Header, chainCfg *params.ChainConfig, getHash func(uint64) common.Hash) vm.BlockContext {
+	rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
+
+	blockDifficulty := new(big.Int)
+	if header.Difficulty != nil {
+		blockDifficulty.Set(header.Difficulty)
+	}
+	blockRandom := header.MixDigest
+	if rules.IsShanghai {
+		blockRandom.SetBytes(blockDifficulty.Bytes())
+		blockDifficulty = new(big.Int)
+	}
+
+	return vm.BlockContext{
+		CanTransfer: func(db vm.StateDB, addr common.Address, amount *uint256.Int) bool {
+			return db.GetBalance(addr).Cmp(amount) >= 0
+		},
+		Transfer: func(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
+			db.SubBalance(sender, amount)
+			db.AddBalance(recipient, amount)
+		},
+		GetHash:     getHash,
+		Coinbase:    header.Coinbase,
+		BlockNumber: new(big.Int).Set(header.Number),
+		Time:        header.Time,
+		Difficulty:  blockDifficulty,
+		Random:      &blockRandom,
+		GasLimit:    header.GasLimit,
+		BaseFee:     executorBaseFeeOrZero(header.BaseFee),
+		Header:      header,
+	}
+}
+
+func executorBaseFeeOrZero(b *big.Int) *big.Int {
+	if b != nil {
+		return new(big.Int).Set(b)
+	}
+	return new(big.Int)
 }
 
 func verifyLatestBlocks(ctx context.Context, db *store.DB, nodeURI string, samples int) error {

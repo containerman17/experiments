@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-04-10 (session 5)
+
+- Replaced broken custom `executor.NewExecutor` in `main.go:runExecutor` with coreth-native state processing (matching the proven `cmd/coreth_verify/main.go` approach)
+- Uses `rawdb.NewDatabase` + `triedb.NewDatabase` + `state.NewDatabaseWithNodeDB` backed by MDBX ethdb adapter
+- Processes blocks with `corethcore.ApplyMessage`, atomic txs via `extstate.New(sdb)`, `sdb.Finalise(true)`, `sdb.IntermediateRoot(true)`, and `sdb.Commit` + `trieDB.Commit`
+- Added missing `cparams.SetEthUpgrades(chainCfg)` call and full coreth extras registration (`corethcore.RegisterExtras`, `extstate.RegisterExtras`)
+- Supports resume: reads head block from Metadata, loads parent state root from committed block header
+- Removed dependency on `block_fetcher/executor` package from main.go
+
 ## 2026-04-10 (session 4)
 
 - Added `TableEthDB` table to `store/db.go` with DBI field, Open assignment, Env() accessor, and ClearState cleanup

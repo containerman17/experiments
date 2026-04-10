@@ -103,7 +103,7 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 		return val, nil
 	}
 
-	// Read from MDBX.
+	// Read from MDBX (current or historical).
 	tx, err := t.db.BeginRO()
 	if err != nil {
 		return nil, err
@@ -115,11 +115,15 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 	var slotKey [32]byte
 	copy(slotKey[:], slot[:])
 
-	val, err := store.GetStorage(tx, t.db, addrKey, slotKey)
+	var val [32]byte
+	if t.stateDB != nil && t.stateDB.historicalBlock > 0 {
+		val, err = store.LookupHistoricalStorage(tx, t.db, addrKey, slotKey, t.stateDB.historicalBlock)
+	} else {
+		val, err = store.GetStorage(tx, t.db, addrKey, slotKey)
+	}
 	if err != nil {
 		return nil, err
 	}
-	// val is a [32]byte; if all zeros, the slot doesn't exist.
 	if val == [32]byte{} {
 		return nil, nil
 	}

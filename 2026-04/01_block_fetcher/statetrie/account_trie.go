@@ -72,7 +72,7 @@ func (t *AccountTrie) GetAccount(address common.Address) (*types.StateAccount, e
 	if acct, ok := t.dirtyAccounts[address]; ok {
 		return acct, nil
 	}
-	// Read from MDBX.
+	// Read from MDBX (current or historical).
 	tx, err := t.db.BeginRO()
 	if err != nil {
 		return nil, err
@@ -81,7 +81,13 @@ func (t *AccountTrie) GetAccount(address common.Address) (*types.StateAccount, e
 
 	var addr [20]byte
 	copy(addr[:], address[:])
-	storeAcct, err := store.GetAccount(tx, t.db, addr)
+
+	var storeAcct *store.Account
+	if t.stateDB != nil && t.stateDB.historicalBlock > 0 {
+		storeAcct, err = store.LookupHistoricalAccount(tx, t.db, addr, t.stateDB.historicalBlock)
+	} else {
+		storeAcct, err = store.GetAccount(tx, t.db, addr)
+	}
 	if err != nil {
 		return nil, err
 	}

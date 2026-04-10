@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-04-10 (session 11)
+
+- Created `lightnode/` package: embeddable API matching `ethclient.Client` method signatures
+- `lightnode/node.go`: `Node` struct with `New(Config)`, `Close()`, `BlockNumber`, `BalanceAt`, `NonceAt`, `CodeAt`, `StorageAt`, `HeaderByNumber`, `CallContract`
+- `lightnode/historical_state.go`: read-only `vm.StateDB` implementation backed by `store.LookupHistorical*` functions for historical EVM execution
+- `CallContract` builds a full EVM with historical state, supports `eth_call` against any past block
+- All read methods use MDBX RO transactions with proper `runtime.LockOSThread`
+- Created `cmd/lightnode_test/main.go`: validation tool comparing `BalanceAt`, `StorageAt`, and `CallContract` results against Avalanche archival RPC
+
 ## 2026-04-10 (session 10)
 
 - **Fixed**: `UpdateHistoryIndex` bitmap corruption bug — cursor-returned key/value slices point to MDBX memory-mapped pages; subsequent `tx.Put` calls invalidated that memory, causing seeks for other keyIDs to find wrong entries or miss existing sentinels entirely. Fix: copy cursor-returned `k` and `v` to owned byte slices before any write operations.

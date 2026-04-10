@@ -25,6 +25,9 @@ type Database struct {
 	ethKV  ethdb.KeyValueStore
 	trieDB *triedb.Database
 
+	// Historical mode: if > 0, reads return state at this block instead of head.
+	historicalBlock uint64
+
 	// Changeset accumulator: both AccountTrie and StorageTrie append here during Commit.
 	mu      sync.Mutex
 	changes []store.Change
@@ -40,6 +43,14 @@ func NewDatabase(mdbxDB *store.DB) *Database {
 		ethKV:  ethKV,
 		trieDB: tdb,
 	}
+}
+
+// NewHistoricalDatabase creates a read-only state Database that returns state
+// as of a specific block number. Used for eth_call at past blocks.
+func NewHistoricalDatabase(mdbxDB *store.DB, blockNum uint64) *Database {
+	db := NewDatabase(mdbxDB)
+	db.historicalBlock = blockNum
+	return db
 }
 
 // OpenTrie opens the main account trie for the given state root.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-04-10 (session 4)
+
+- Added `TableEthDB` table to `store/db.go` with DBI field, Open assignment, Env() accessor, and ClearState cleanup
+- Created `store/ethdb/` package implementing `ethdb.KeyValueStore` backed by MDBX: `mdbxkv.go` (Database with Has/Get/Put/Delete), `batch.go` (in-memory buffered batch with single-txn Write), `iterator.go` (cursor-based prefix iterator with RO txn), `snapshot.go` (MVCC snapshot via RO txn)
+- All byte slices properly copied from mmap'd memory before txn abort
+- Switched `cmd/coreth_verify/main.go` from in-memory database to MDBX-backed ethdb adapter, so trie/state data persists across runs
+- Added `--clean-ethdb` flag to clear the EthDB table before running (useful for re-execution from genesis)
+- Added timing output: prints elapsed time and blocks/second at completion
+
 ## 2026-04-10 (session 3)
 
 - Created `cmd/coreth_verify/main.go`: uses real coreth/libevm code (state.StateDB, ApplyMessage, Finalise, IntermediateRoot) to process C-Chain blocks and verify state roots against block headers, using an in-memory trie database seeded from genesis

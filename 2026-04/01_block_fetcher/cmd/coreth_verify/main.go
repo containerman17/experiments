@@ -11,6 +11,7 @@ import (
 	"log"
 	"math/big"
 	"runtime"
+	"time"
 
 	"github.com/ava-labs/avalanchego/genesis"
 	corethcore "github.com/ava-labs/avalanchego/graft/coreth/core"
@@ -34,6 +35,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"block_fetcher/store"
+	mdbxethdb "block_fetcher/store/ethdb"
 )
 
 const MainnetAVAXAssetID = "FvwEAhmxKfeiG8SnEvq42hc6whRyY3EFYAvebMqDNDGCgxN5Z"
@@ -51,6 +53,7 @@ func main() {
 	dbDir := flag.String("db", "data/mainnet-mdbx", "MDBX directory with raw blocks")
 	fromBlock := flag.Uint64("from", 1, "first block to process")
 	toBlock := flag.Uint64("to", 19, "last block to process")
+	cleanEthDB := flag.Bool("clean-ethdb", false, "Clear EthDB table before running")
 	flag.Parse()
 
 	// Parse genesis.
@@ -64,17 +67,45 @@ func main() {
 	}
 	chainCfg := cChainGenesis.Config
 
-	// Set up in-memory database with genesis state.
-	memdb := rawdb.NewMemoryDatabase()
-	trieDB := triedb.NewDatabase(memdb, nil)
-	genesisBlock := cChainGenesis.MustCommit(memdb, trieDB)
+	// Open MDBX for reading raw blocks and storing ethdb state.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
+	mdbxDB, err := store.Open(*dbDir)
+	if err != nil {
+		log.Fatalf("open MDBX: %v", err)
+	}
+	defer mdbxDB.Close()
+
+	// Clear EthDB table if requested.
+	if *cleanEthDB {
+		log.Println("Clearing EthDB table...")
+		tx, err := mdbxDB.BeginRW()
+		if err != nil {
+			log.Fatalf("begin RW for clean: %v", err)
+		}
+		if err := tx.Drop(mdbxDB.EthDB, false); err != nil {
+			tx.Abort()
+			log.Fatalf("drop EthDB: %v", err)
+		}
+		if _, err := tx.Commit(); err != nil {
+			log.Fatalf("commit EthDB drop: %v", err)
+		}
+	}
+
+	// Set up MDBX-backed ethdb database.
+	ethKV := mdbxethdb.New(mdbxDB.Env(), mdbxDB.EthDB)
+	ethDB := rawdb.NewDatabase(ethKV)
+	trieDB := triedb.NewDatabase(ethDB, nil)
+
+	// Commit genesis (idempotent — writes the same data if already present).
+	genesisBlock := cChainGenesis.MustCommit(ethDB, trieDB)
 	genesisRoot := genesisBlock.Root()
 	log.Printf("Genesis block root: %x", genesisRoot)
 	log.Printf("Genesis block hash: %x", genesisBlock.Hash())
 
 	// Create state database backed by the trie.
-	stateDB := state.NewDatabaseWithNodeDB(memdb, trieDB)
+	stateDB := state.NewDatabaseWithNodeDB(ethDB, trieDB)
 
 	// Verify we can open genesis state.
 	sdb, err := state.New(genesisRoot, stateDB, nil)
@@ -92,25 +123,20 @@ func main() {
 		AVAXAssetID: avaxAssetID,
 	}
 
-	// Open MDBX for reading raw blocks.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	mdbxDB, err := store.Open(*dbDir)
-	if err != nil {
-		log.Fatalf("open MDBX: %v", err)
-	}
-	defer mdbxDB.Close()
-
 	parentRoot := genesisRoot
 
+	startTime := time.Now()
+
 	for blockNum := *fromBlock; blockNum <= *toBlock; blockNum++ {
-		if err := processBlock(mdbxDB, memdb, stateDB, trieDB, chainCfg, snowCtx, blockNum, &parentRoot); err != nil {
+		if err := processBlock(mdbxDB, ethDB, stateDB, trieDB, chainCfg, snowCtx, blockNum, &parentRoot); err != nil {
 			log.Fatalf("block %d: %v", blockNum, err)
 		}
 	}
 
-	log.Printf("All blocks %d-%d verified successfully!", *fromBlock, *toBlock)
+	elapsed := time.Since(startTime)
+	numBlocks := *toBlock - *fromBlock + 1
+	blocksPerSec := float64(numBlocks) / elapsed.Seconds()
+	log.Printf("All blocks %d-%d verified successfully! elapsed=%v blocks/sec=%.1f", *fromBlock, *toBlock, elapsed, blocksPerSec)
 }
 
 func processBlock(

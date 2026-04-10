@@ -19,6 +19,7 @@ const (
 	TableAccountTrie  = "AccountTrie"
 	TableStorageTrie  = "StorageTrie"
 	TableMetadata     = "Metadata"
+	TableEthDB        = "EthDB"
 )
 
 var allTables = []string{
@@ -34,6 +35,7 @@ var allTables = []string{
 	TableAccountTrie,
 	TableStorageTrie,
 	TableMetadata,
+	TableEthDB,
 }
 
 type DB struct {
@@ -51,6 +53,7 @@ type DB struct {
 	AccountTrie  mdbx.DBI
 	StorageTrie  mdbx.DBI
 	Metadata     mdbx.DBI
+	EthDB        mdbx.DBI
 }
 
 func Open(path string) (*DB, error) {
@@ -115,6 +118,7 @@ func Open(path string) (*DB, error) {
 	db.AccountTrie = dbis[9]
 	db.StorageTrie = dbis[10]
 	db.Metadata = dbis[11]
+	db.EthDB = dbis[12]
 
 	return db, nil
 }
@@ -125,6 +129,10 @@ func (db *DB) BeginRO() (*mdbx.Txn, error) {
 
 func (db *DB) BeginRW() (*mdbx.Txn, error) {
 	return db.env.BeginTxn(nil, mdbx.TxRW)
+}
+
+func (db *DB) Env() *mdbx.Env {
+	return db.env
 }
 
 func (db *DB) Close() {
@@ -143,7 +151,7 @@ func (db *DB) ClearState() error {
 		db.AddressIndex, db.SlotIndex,
 		db.Changesets, db.HistoryIndex,
 		db.AccountTrie, db.StorageTrie,
-		db.Metadata,
+		db.Metadata, db.EthDB,
 	}
 	for _, dbi := range tables {
 		if err := tx.Drop(dbi, false); err != nil {

@@ -936,7 +936,6 @@ func executeBatch(
 ) error {
 	overlay := statetrie.NewBatchOverlay()
 	stateDB.Overlay = overlay
-	stateDB.SkipHash = true
 
 	// Open a shared RO transaction for all reads during the batch.
 	// The overlay handles in-batch writes; MDBX stays read-only.
@@ -957,7 +956,6 @@ func executeBatch(
 		stateDB.CurrentBlock = blockNum
 		if err := executeBlock(db, stateDB, chainCfg, snowCtx, blockNum); err != nil {
 			stateDB.Overlay = nil
-			stateDB.SkipHash = false
 			return fmt.Errorf("block %d: %w", blockNum, err)
 		}
 		if blockNum%1000 == 0 || blockNum == to {
@@ -966,7 +964,6 @@ func executeBatch(
 	}
 	execElapsed := time.Since(execStart)
 
-	stateDB.SkipHash = false
 	stateDB.EndBatchRO() // close RO before opening RW
 	batchROClosed = true
 
@@ -991,7 +988,7 @@ func executeBatch(
 	}
 	expectedRoot := ethBlock.Header().Root
 
-	// Capture old storage roots before flushing (overlay has zeros from SkipHash).
+	// Capture old storage roots before flushing (overlay has dummy zeros for storage roots).
 	changedAccounts := overlay.ChangedAccountHashes()
 	oldStorageRoots := statetrie.ReadOldStorageRoots(roTx, db, changedAccounts)
 	roTx.Abort()
@@ -1159,7 +1156,7 @@ func executeBlock(
 		}
 	}
 
-	// Finalise and commit — writes flat state only (SkipHash=true).
+	// Finalise and commit — writes flat state to overlay.
 	sdb.Finalise(true)
 	if _, err := sdb.Commit(blockNum, true); err != nil {
 		return fmt.Errorf("commit state: %w", err)

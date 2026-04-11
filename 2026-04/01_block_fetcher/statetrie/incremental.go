@@ -25,7 +25,7 @@ var emptyRoot = [32]byte{
 //
 // The tx must be a RW transaction with overlay state already flushed.
 // oldStorageRoots contains the pre-batch storage roots for changed accounts
-// (needed because SkipHash wrote zeros for storage roots).
+// (needed because Hash() during execution writes dummy zeros for storage roots).
 func ComputeIncrementalStateRoot(
 	tx *mdbx.Txn,
 	db *store.DB,

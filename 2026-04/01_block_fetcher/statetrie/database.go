@@ -30,9 +30,6 @@ type Database struct {
 	// Historical mode: if > 0, reads return state at this block instead of head.
 	historicalBlock uint64
 
-	// SkipHash: when true, Hash() writes to overlay but skips trie hash.
-	SkipHash bool
-
 	// Batch overlay: when set, all reads/writes go through here instead of MDBX.
 	Overlay *BatchOverlay
 

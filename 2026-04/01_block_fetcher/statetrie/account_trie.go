@@ -182,30 +182,19 @@ type accountEntry struct {
 	encoded   []byte
 }
 
-// Hash computes the MPT root hash using incremental trie hashing.
-// It writes dirty state to BOTH plain and hashed tables, builds a PrefixSet
-// of changed keys, then runs TrieWalker + NodeIter + HashBuilder to compute
-// the root. Branch node updates are persisted to the AccountTrie table.
+// Hash flushes dirty account state to the overlay (or MDBX in non-overlay mode).
+// It does NOT compute the trie hash — that's done once per batch by
+// ComputeIncrementalStateRoot. Returns a dummy hash; callers must not use
+// the return value for verification.
 func (t *AccountTrie) Hash() common.Hash {
-	// No changes — return cached root.
 	if len(t.dirtyAccounts) == 0 && len(t.deletedAccounts) == 0 {
 		return t.root
 	}
 
-	// SkipHash mode: write flat state + changesets but skip trie computation.
-	if t.stateDB != nil && t.stateDB.SkipHash {
-		if err := t.flushStateOnly(); err != nil {
-			return common.Hash{}
-		}
-		return common.Hash{} // dummy root — caller must not verify
-	}
-
-	root, err := t.incrementalHash()
-	if err != nil {
+	if err := t.flushStateOnly(); err != nil {
 		return common.Hash{}
 	}
-	t.root = root
-	return t.root
+	return common.Hash{} // dummy — real root computed at batch boundary
 }
 
 // flushStateOnly writes dirty state and captures changesets, but skips the

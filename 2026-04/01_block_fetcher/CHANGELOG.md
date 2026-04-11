@@ -21,7 +21,7 @@ The code currently has TWO architectures layered on top of each other:
 ### Refactoring plan (one commit per step)
 
 1. ~~Remove `SkipHash` flag from `Database`.~~ **DONE** — `Hash()` always flushes state, never computes trie hash.
-2. Remove `AccountTrie.incrementalHash()` and `StorageTrie.incrementalHash()` — the per-block incremental path. All incremental hashing goes through `ComputeIncrementalStateRoot`.
+2. ~~Remove `AccountTrie.incrementalHash()` and `StorageTrie.incrementalHash()`.~~ **DONE** — ~360 lines removed. All incremental hashing goes through `ComputeIncrementalStateRoot`.
 3. Remove `computeStateRoot()` from main.go — the O(total_state) scanner. Dead code.
 4. Remove `collectAllAccounts()`, `flushStateOnlyMDBX()`, `flushStateOnlyOverlay()` distinction. `Hash()` writes to overlay, period. No MDBX direct-write path.
 5. Remove `--verify-interval` / rename cleanup. Single `--exec-batch-size` flag.

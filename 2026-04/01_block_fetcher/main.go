@@ -242,6 +242,7 @@ func main() {
 		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
 		execBatchSize  = flag.Uint64("exec-batch-size", 1000, "number of blocks per executor batch (verified every batch)")
 		fetchWorkers   = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
+		execOnly       = flag.Bool("exec-only", false, "run executor only, no fetcher/writer/network")
 	)
 	flag.Parse()
 
@@ -269,16 +270,24 @@ func main() {
 		log.Printf("state cleared")
 	}
 
-	writerCh := make(chan []byte, *writerBuffer)
-	writerErrCh := make(chan error, 1)
-	go func() {
-		writerErrCh <- runWriter(ctx, db, writerCh, *batchSize)
-	}()
-
 	executorStopAt := make(chan uint64, 1)
 	executorErrCh := make(chan error, 1)
 	go func() {
 		executorErrCh <- runExecutor(ctx, db, executorStopAt, *execBatchSize)
+	}()
+
+	if *execOnly {
+		log.Printf("exec-only mode: no fetcher/writer")
+		if err := <-executorErrCh; err != nil {
+			log.Fatalf("executor: %v", err)
+		}
+		return
+	}
+
+	writerCh := make(chan []byte, *writerBuffer)
+	writerErrCh := make(chan error, 1)
+	go func() {
+		writerErrCh <- runWriter(ctx, db, writerCh, *batchSize)
 	}()
 
 	subnetID, err := ids.FromString(*subnetIDStr)
@@ -947,6 +956,12 @@ func executeBatch(
 		}
 	}()
 
+	// Hard timeout: kill the process if a batch takes too long.
+	batchTimer := time.AfterFunc(60*time.Second, func() {
+		log.Fatalf("executor: FATAL batch %d-%d exceeded 60s timeout — killing process", from, to)
+	})
+	defer batchTimer.Stop()
+
 	execStart := time.Now()
 	for blockNum := from; blockNum <= to; blockNum++ {
 		stateDB.CurrentBlock = blockNum
@@ -1001,8 +1016,10 @@ func executeBatch(
 
 	// Flush + incremental hash + verify in one RW transaction.
 	hashStart := time.Now()
+	log.Printf("executor: DEBUG about to BeginRW for batch %d-%d", from, to)
 	runtime.LockOSThread()
 	rwTx, err := db.BeginRW()
+	log.Printf("executor: DEBUG got RW tx after %s", time.Since(hashStart))
 	if err != nil {
 		runtime.UnlockOSThread()
 		stateDB.Overlay = nil

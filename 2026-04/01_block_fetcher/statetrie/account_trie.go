@@ -171,12 +171,117 @@ func (t *AccountTrie) Hash() common.Hash {
 		return t.root
 	}
 
+	// SkipHash mode: write flat state + changesets but skip trie computation.
+	if t.stateDB != nil && t.stateDB.SkipHash {
+		if err := t.flushStateOnly(); err != nil {
+			return common.Hash{}
+		}
+		return common.Hash{} // dummy root — caller must not verify
+	}
+
 	root, err := t.incrementalHash()
 	if err != nil {
 		return common.Hash{}
 	}
 	t.root = root
 	return t.root
+}
+
+// flushStateOnly writes dirty state to plain + hashed tables and captures
+// changesets, but skips the trie hash computation. Used in batch mode.
+func (t *AccountTrie) flushStateOnly() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	tx, err := t.db.BeginRW()
+	if err != nil {
+		return err
+	}
+
+	var changes []store.Change
+	acctSlot := store.AccountSentinelSlot
+
+	for address, acct := range t.dirtyAccounts {
+		var addr [20]byte
+		copy(addr[:], address[:])
+		hashedAddr := crypto.Keccak256(address[:])
+		var ha [32]byte
+		copy(ha[:], hashedAddr)
+
+		if t.stateDB != nil {
+			var oldValue []byte
+			oldAcct, err := store.GetAccount(tx, t.db, addr)
+			if err != nil {
+				tx.Abort()
+				return err
+			}
+			if oldAcct != nil {
+				oldValue = store.EncodeAccountBytes(oldAcct)
+			}
+			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, acctSlot)
+			if err != nil {
+				tx.Abort()
+				return err
+			}
+			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+		}
+
+		balance := acct.Balance.Bytes32()
+		var codeHash [32]byte
+		copy(codeHash[:], acct.CodeHash)
+		storeAcct := &store.Account{
+			Nonce: acct.Nonce, Balance: balance,
+			CodeHash: codeHash, StorageRoot: [32]byte(acct.Root),
+		}
+		if err := store.PutAccount(tx, t.db, addr, storeAcct); err != nil {
+			tx.Abort()
+			return err
+		}
+		if err := store.PutHashedAccount(tx, t.db, ha, store.EncodeAccountBytes(storeAcct)); err != nil {
+			tx.Abort()
+			return err
+		}
+	}
+
+	for address := range t.deletedAccounts {
+		var addr [20]byte
+		copy(addr[:], address[:])
+		var ha [32]byte
+		copy(ha[:], crypto.Keccak256(address[:]))
+
+		if t.stateDB != nil {
+			oldAcct, err := store.GetAccount(tx, t.db, addr)
+			if err != nil {
+				tx.Abort()
+				return err
+			}
+			if oldAcct != nil {
+				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, acctSlot)
+				if err != nil {
+					tx.Abort()
+					return err
+				}
+				changes = append(changes, store.Change{KeyID: keyID, OldValue: store.EncodeAccountBytes(oldAcct)})
+			}
+		}
+
+		if err := tx.Del(t.db.AccountState, addr[:], nil); err != nil && !mdbx.IsNotFound(err) {
+			tx.Abort()
+			return err
+		}
+		if err := store.DeleteHashedAccount(tx, t.db, ha); err != nil {
+			tx.Abort()
+			return err
+		}
+	}
+
+	if _, err := tx.Commit(); err != nil {
+		return err
+	}
+	if t.stateDB != nil && len(changes) > 0 {
+		t.stateDB.AppendChanges(changes)
+	}
+	return nil
 }
 
 // incrementalHash performs the full incremental hash computation.
@@ -189,12 +294,10 @@ func (t *AccountTrie) incrementalHash() (common.Hash, error) {
 		return common.Hash{}, err
 	}
 
-	// --- Build PrefixSet from changed keys ---
-	psb := intTrie.NewPrefixSetBuilder()
-
 	// --- Write phase: flush dirty state to plain + hashed tables, collect changesets ---
 	var changes []store.Change
 	acctSlot := store.AccountSentinelSlot
+	psb := intTrie.NewPrefixSetBuilder()
 
 	for address, acct := range t.dirtyAccounts {
 		var addr [20]byte

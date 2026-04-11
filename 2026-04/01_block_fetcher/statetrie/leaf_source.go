@@ -4,12 +4,6 @@ import (
 	"encoding/binary"
 	"math/bits"
 
-	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/rlp"
-	"github.com/holiman/uint256"
-
-	"block_fetcher/store"
 	intTrie "block_fetcher/trie"
 )
 
@@ -18,50 +12,134 @@ import (
 // types.StateAccount as required by the trie.
 type AccountLeafSource struct {
 	inner intTrie.LeafSource
-	// Reusable buffers to reduce allocations in the hot path.
-	sa  types.StateAccount
-	bal uint256.Int
 }
 
-// NewAccountLeafSource creates a LeafSource that reads from HashedAccountState
-// and RLP-encodes values for the trie HashBuilder.
 func NewAccountLeafSource(inner intTrie.LeafSource) *AccountLeafSource {
-	s := &AccountLeafSource{inner: inner}
-	s.sa.CodeHash = make([]byte, 32)
-	return s
+	return &AccountLeafSource{inner: inner}
 }
 
 // Next returns the next (hashedAddress, rlpEncodedAccount) pair.
+// Zero allocations — RLP is encoded manually into a fixed buffer.
 func (s *AccountLeafSource) Next() ([]byte, []byte, error) {
 	key, val, err := s.inner.Next()
 	if err != nil || key == nil {
 		return key, val, err
 	}
 
-	// Decode the raw 104-byte account from HashedAccountState.
-	// Format: [nonce:8][balance:32][codeHash:32][storageRoot:32]
-	if len(val) >= 104 {
-		s.sa.Nonce = binary.BigEndian.Uint64(val[0:8])
-		s.bal.SetBytes32(val[8:40])
-		s.sa.Balance = &s.bal
-		copy(s.sa.CodeHash, val[40:72])
-		copy(s.sa.Root[:], val[72:104])
+	if len(val) < 104 {
+		return nil, nil, nil // malformed account
+	}
+
+	// Raw format: [nonce:8][balance:32][codeHash:32][storageRoot:32]
+	nonce := binary.BigEndian.Uint64(val[0:8])
+	balance := val[8:40]    // 32 bytes, big-endian
+	codeHash := val[40:72]  // 32 bytes
+	storageRoot := val[72:104] // 32 bytes
+
+	// StateAccount RLP: list([nonce, balance, storageRoot, codeHash, extra])
+	// extra = 0x80 (isMultiCoin=false for all C-Chain accounts)
+	//
+	// Encode into a stack buffer, then copy to a fresh slice.
+	// Avoids rlp.EncodeToBytes + pseudo.From[bool] allocations.
+	var buf [160]byte
+	off := 3 // reserve up to 3 bytes for list header
+
+	// nonce (uint64)
+	off += rlpPutUint64(buf[off:], nonce)
+
+	// balance (big int, trimmed)
+	trimBal := trimLeadingZerosBytes(balance)
+	off += rlpPutBytes(buf[off:], trimBal)
+
+	// storageRoot (32 bytes — always full, never trimmed)
+	off += rlpPutFixedBytes(buf[off:], storageRoot)
+
+	// codeHash (32 bytes)
+	off += rlpPutFixedBytes(buf[off:], codeHash)
+
+	// extra: isMultiCoin=false → RLP 0x80
+	buf[off] = 0x80
+	off++
+
+	// Now fill the list header.
+	payloadLen := off - 3
+	// Build the final RLP with list header, copy to owned slice.
+	var start int
+	if payloadLen <= 55 {
+		start = 2
+		buf[start] = 0xc0 + byte(payloadLen)
 	} else {
-		// Fallback for unexpected format.
-		acct := store.DecodeAccount(val)
-		s.sa.Nonce = acct.Nonce
-		s.bal.SetBytes32(acct.Balance[:])
-		s.sa.Balance = &s.bal
-		copy(s.sa.CodeHash, acct.CodeHash[:])
-		s.sa.Root = common.Hash(acct.StorageRoot)
+		lenBytes := uintBytes(uint64(payloadLen))
+		start = 3 - 1 - lenBytes
+		buf[start] = 0xf7 + byte(lenBytes)
+		for i := lenBytes; i > 0; i-- {
+			buf[start+i] = byte(payloadLen >> (8 * (lenBytes - i)))
+		}
 	}
+	out := make([]byte, off-start)
+	copy(out, buf[start:off])
+	return key, out, nil
+}
 
-	encoded, err := rlp.EncodeToBytes(&s.sa)
-	if err != nil {
-		return nil, nil, err
+// rlpPutUint64 encodes a uint64 as RLP into dst, returns bytes written.
+func rlpPutUint64(dst []byte, v uint64) int {
+	if v == 0 {
+		dst[0] = 0x80
+		return 1
 	}
+	if v <= 0x7f {
+		dst[0] = byte(v)
+		return 1
+	}
+	n := uintBytes(v)
+	dst[0] = 0x80 + byte(n)
+	for i := n; i > 0; i-- {
+		dst[i] = byte(v)
+		v >>= 8
+	}
+	return 1 + n
+}
 
-	return key, encoded, nil
+// rlpPutBytes encodes a byte string (trimmed, variable length) as RLP.
+func rlpPutBytes(dst []byte, b []byte) int {
+	if len(b) == 0 {
+		dst[0] = 0x80
+		return 1
+	}
+	if len(b) == 1 && b[0] <= 0x7f {
+		dst[0] = b[0]
+		return 1
+	}
+	if len(b) <= 55 {
+		dst[0] = 0x80 + byte(len(b))
+		copy(dst[1:], b)
+		return 1 + len(b)
+	}
+	lenBytes := uintBytes(uint64(len(b)))
+	dst[0] = 0xb7 + byte(lenBytes)
+	for i := lenBytes; i > 0; i-- {
+		dst[i] = byte(len(b) >> (8 * (lenBytes - i)))
+	}
+	copy(dst[1+lenBytes:], b)
+	return 1 + lenBytes + len(b)
+}
+
+// rlpPutFixedBytes encodes a 32-byte value as RLP string (always 33 bytes: 0xa0 + 32).
+func rlpPutFixedBytes(dst []byte, b []byte) int {
+	dst[0] = 0xa0 // 0x80 + 32
+	copy(dst[1:], b[:32])
+	return 33
+}
+
+func uintBytes(v uint64) int {
+	return (bits.Len64(v) + 7) / 8
+}
+
+func trimLeadingZerosBytes(b []byte) []byte {
+	for len(b) > 0 && b[0] == 0 {
+		b = b[1:]
+	}
+	return b
 }
 
 // StorageLeafSource wraps an MDBXLeafSource reading from HashedStorageState
@@ -70,8 +148,6 @@ type StorageLeafSource struct {
 	inner intTrie.LeafSource
 }
 
-// NewStorageLeafSource creates a LeafSource that reads from HashedStorageState
-// and RLP-encodes values for the trie HashBuilder.
 func NewStorageLeafSource(inner intTrie.LeafSource) *StorageLeafSource {
 	return &StorageLeafSource{inner: inner}
 }
@@ -82,14 +158,10 @@ func (s *StorageLeafSource) Next() ([]byte, []byte, error) {
 	if err != nil || key == nil {
 		return key, val, err
 	}
-
-	// Fast-path RLP encoding for storage values (small byte strings).
-	encoded := rlpEncodeBytesAlloc(val)
-	return key, encoded, nil
+	return key, rlpEncodeBytesAlloc(val), nil
 }
 
-// rlpEncodeBytesAlloc encodes a byte string to RLP with a fresh allocation.
-// Avoids the overhead of rlp.EncodeToBytes for simple byte strings.
+// rlpEncodeBytesAlloc encodes a byte string to RLP. Allocates minimally.
 func rlpEncodeBytesAlloc(val []byte) []byte {
 	if len(val) == 1 && val[0] <= 0x7f {
 		return []byte{val[0]}
@@ -100,7 +172,7 @@ func rlpEncodeBytesAlloc(val []byte) []byte {
 		copy(out[1:], val)
 		return out
 	}
-	lenBytes := (bits.Len(uint(len(val))) + 7) / 8
+	lenBytes := uintBytes(uint64(len(val)))
 	out := make([]byte, 1+lenBytes+len(val))
 	out[0] = 0xb7 + byte(lenBytes)
 	for i := lenBytes; i > 0; i-- {

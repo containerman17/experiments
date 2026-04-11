@@ -28,6 +28,11 @@ type Database struct {
 	// Historical mode: if > 0, reads return state at this block instead of head.
 	historicalBlock uint64
 
+	// SkipHash: when true, Hash() writes flat state + changesets but skips
+	// the expensive trie hash computation. Used for batch verification —
+	// only compute hash every N blocks during sync.
+	SkipHash bool
+
 	// Changeset accumulator: both AccountTrie and StorageTrie append here during Commit.
 	mu      sync.Mutex
 	changes []store.Change

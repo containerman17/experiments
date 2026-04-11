@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	_ "net/http/pprof"
@@ -59,6 +60,9 @@ import (
 
 	"block_fetcher/statetrie"
 	"block_fetcher/store"
+	intTrie "block_fetcher/trie"
+
+	"github.com/erigontech/mdbx-go/mdbx"
 )
 
 const (
@@ -202,7 +206,8 @@ func main() {
 		batchSize    = flag.Int("batch-size", defaultBatchSize, "number of containers per MDBX batch")
 		expectedNet  = flag.Uint("expected-network-id", uint(defaultExpectedNetID), "expected Avalanche network ID")
 		subnetIDStr  = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
-		cleanState   = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
+		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
+		verifyEvery    = flag.Uint64("verify-interval", 0, "verify state root every N blocks (0=every block)")
 	)
 	flag.Parse()
 
@@ -239,7 +244,7 @@ func main() {
 	executorStopAt := make(chan uint64, 1)
 	executorErrCh := make(chan error, 1)
 	go func() {
-		executorErrCh <- runExecutor(ctx, db, executorStopAt)
+		executorErrCh <- runExecutor(ctx, db, executorStopAt, *verifyEvery)
 	}()
 
 	subnetID, err := ids.FromString(*subnetIDStr)
@@ -885,7 +890,7 @@ func runWriter(
 
 const MainnetAVAXAssetID = "FvwEAhmxKfeiG8SnEvq42hc6whRyY3EFYAvebMqDNDGCgxN5Z"
 
-func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error {
+func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchSize uint64) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -908,9 +913,7 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 		return fmt.Errorf("load genesis: %w", err)
 	}
 
-	// Compute genesis root using our statetrie.
-	genesisBlock := cChainGenesis.ToBlock()
-	genesisRoot := genesisBlock.Root()
+	genesisRoot := cChainGenesis.ToBlock().Root()
 	log.Printf("executor: genesis root=%x", genesisRoot)
 
 	// Set up snow.Context for atomic transactions.
@@ -918,9 +921,7 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 	if err != nil {
 		return fmt.Errorf("invalid AVAX asset ID: %w", err)
 	}
-	snowCtx := &snow.Context{
-		AVAXAssetID: avaxAssetID,
-	}
+	snowCtx := &snow.Context{AVAXAssetID: avaxAssetID}
 
 	// Resume from last executed block.
 	roTx, err := db.BeginRO()
@@ -931,26 +932,13 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 	roTx.Abort()
 
 	nextBlock := uint64(1)
-	parentRoot := genesisRoot
 	if hasHead {
 		nextBlock = headBlock + 1
-		// Load the parent root from the committed state.
-		// We need to read the block header to get its state root.
-		roTx, err := db.BeginRO()
-		if err != nil {
-			return err
-		}
-		raw, err := store.GetBlockByNumber(roTx, db, headBlock)
-		roTx.Abort()
-		if err != nil {
-			return fmt.Errorf("load head block %d for resume: %w", headBlock, err)
-		}
-		ethBlock, err := executorParseEthBlock(raw)
-		if err != nil {
-			return fmt.Errorf("parse head block %d for resume: %w", headBlock, err)
-		}
-		parentRoot = ethBlock.Header().Root
-		log.Printf("executor: resuming from block %d, parent root=%x", nextBlock, parentRoot)
+		log.Printf("executor: resuming from block %d", nextBlock)
+	}
+
+	if batchSize == 0 {
+		batchSize = 1 // default: verify every block
 	}
 
 	var maxBlock uint64
@@ -960,7 +948,6 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 			return nil
 		}
 
-		// Check if we've been told to stop at a certain block.
 		select {
 		case mb := <-stopAt:
 			maxBlock = mb
@@ -971,63 +958,163 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 			return nil
 		}
 
-		// Try to get the next block. If not there, wait 100ms.
-		roTx, err := db.BeginRO()
-		if err != nil {
+		// Determine batch range.
+		batchEnd := nextBlock + batchSize - 1
+		if maxBlock > 0 && batchEnd > maxBlock {
+			batchEnd = maxBlock
+		}
+
+		// Wait for all blocks in this batch to be available.
+		for {
+			roTx, err := db.BeginRO()
+			if err != nil {
+				return err
+			}
+			_, err = store.GetBlockByNumber(roTx, db, batchEnd)
+			roTx.Abort()
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+			if ctx.Err() != nil {
+				return nil
+			}
+		}
+
+		// Execute the batch.
+		if err := executeBatch(db, stateTrieDB, chainCfg, snowCtx, nextBlock, batchEnd); err != nil {
 			return err
 		}
-		raw, err := store.GetBlockByNumber(roTx, db, nextBlock)
-		if err != nil {
-			roTx.Abort()
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		// Copy raw out of mmap before aborting txn.
-		raw = append([]byte(nil), raw...)
-		roTx.Abort()
 
-		if err := executorProcessBlock(db, stateTrieDB, chainCfg, snowCtx, nextBlock, raw, &parentRoot); err != nil {
-			return fmt.Errorf("block %d: %w", nextBlock, err)
-		}
-
-		if nextBlock%100 == 0 {
-			log.Printf("executor: processed block %d", nextBlock)
-		}
-		nextBlock++
+		nextBlock = batchEnd + 1
 	}
 }
 
-func executorProcessBlock(
+// executeBatch processes blocks [from, to] inclusive.
+// All blocks execute with flat state writes only (no trie hashing).
+// At the end, the state root is computed once and verified against the last block's header.
+func executeBatch(
+	db *store.DB,
+	stateDB *statetrie.Database,
+	chainCfg *params.ChainConfig,
+	snowCtx *snow.Context,
+	from, to uint64,
+) error {
+	// All blocks in the batch: execute EVM, write flat state, skip trie hash.
+	stateDB.SkipHash = true
+
+	for blockNum := from; blockNum <= to; blockNum++ {
+		if err := executeBlock(db, stateDB, chainCfg, snowCtx, blockNum); err != nil {
+			return fmt.Errorf("block %d: %w", blockNum, err)
+		}
+		if blockNum%100 == 0 || blockNum == to {
+			log.Printf("executor: processed block %d", blockNum)
+		}
+	}
+
+	// Verify: compute state root from hashed tables and compare to last block's header.
+	stateDB.SkipHash = false
+
+	roTx, err := db.BeginRO()
+	if err != nil {
+		return fmt.Errorf("begin RO for verify: %w", err)
+	}
+	raw, err := store.GetBlockByNumber(roTx, db, to)
+	roTx.Abort()
+	if err != nil {
+		return fmt.Errorf("read block %d for verify: %w", to, err)
+	}
+	ethBlock, err := executorParseEthBlock(raw)
+	if err != nil {
+		return fmt.Errorf("parse block %d for verify: %w", to, err)
+	}
+	expectedRoot := ethBlock.Header().Root
+
+	computedRoot, err := computeStateRoot(db)
+	if err != nil {
+		return fmt.Errorf("compute state root at block %d: %w", to, err)
+	}
+
+	if computedRoot != expectedRoot {
+		return fmt.Errorf("state root mismatch at block %d: computed %x, expected %x", to, computedRoot, expectedRoot)
+	}
+
+	log.Printf("executor: verified batch %d-%d root=%x", from, to, computedRoot)
+
+	// Update head block.
+	rwTx, err := db.BeginRW()
+	if err != nil {
+		return fmt.Errorf("begin RW for head update: %w", err)
+	}
+	if err := store.SetHeadBlock(rwTx, db, to); err != nil {
+		rwTx.Abort()
+		return fmt.Errorf("set head block: %w", err)
+	}
+	if _, err := rwTx.Commit(); err != nil {
+		return fmt.Errorf("commit head block: %w", err)
+	}
+	return nil
+}
+
+// executeBlock processes a single block: EVM execution + flat state writes + changesets.
+// No trie hash computation — that's done at batch boundaries.
+func executeBlock(
 	db *store.DB,
 	stateDB *statetrie.Database,
 	chainCfg *params.ChainConfig,
 	snowCtx *snow.Context,
 	blockNum uint64,
-	raw []byte,
-	parentRoot *common.Hash,
 ) error {
+	roTx, err := db.BeginRO()
+	if err != nil {
+		return err
+	}
+	raw, err := store.GetBlockByNumber(roTx, db, blockNum)
+	if err != nil {
+		roTx.Abort()
+		return fmt.Errorf("get block: %w", err)
+	}
+	raw = append([]byte(nil), raw...)
+	roTx.Abort()
+
 	ethBlock, err := executorParseEthBlock(raw)
 	if err != nil {
 		return fmt.Errorf("parse block: %w", err)
 	}
 
 	header := ethBlock.Header()
-	expectedRoot := header.Root
 
-	// Create a fresh StateDB from the parent root.
-	sdb, err := state.New(*parentRoot, stateDB, nil)
+	// Open state from parent — we trust the previous block's header root.
+	var parentRoot common.Hash
+	if blockNum == 1 {
+		parentRoot = common.Hash(common.HexToHash("d65eb1b8604a7aa497d41cd6372663785a5f809a17bd192edb86658ef24e29cc"))
+	} else {
+		// Read parent block's root.
+		proTx, err := db.BeginRO()
+		if err != nil {
+			return err
+		}
+		parentRaw, err := store.GetBlockByNumber(proTx, db, blockNum-1)
+		proTx.Abort()
+		if err != nil {
+			return fmt.Errorf("get parent block: %w", err)
+		}
+		parentBlock, err := executorParseEthBlock(parentRaw)
+		if err != nil {
+			return fmt.Errorf("parse parent block: %w", err)
+		}
+		parentRoot = parentBlock.Header().Root
+	}
+
+	sdb, err := state.New(parentRoot, stateDB, nil)
 	if err != nil {
-		return fmt.Errorf("open state at parent root %x: %w", *parentRoot, err)
+		return fmt.Errorf("open state at root %x: %w", parentRoot, err)
 	}
 
-	// Set Avalanche header extras.
 	ccustomtypes.SetHeaderExtra(header, &ccustomtypes.HeaderExtra{})
-
-	// Build block context.
-	getHashFn := func(n uint64) common.Hash {
+	blockCtx := executorBuildBlockContext(header, chainCfg, func(n uint64) common.Hash {
 		return common.Hash{}
-	}
-	blockCtx := executorBuildBlockContext(header, chainCfg, getHashFn)
+	})
 
 	gp := new(corethcore.GasPool).AddGas(header.GasLimit)
 	signer := ethtypes.MakeSigner(chainCfg, header.Number, header.Time)
@@ -1036,7 +1123,6 @@ func executorProcessBlock(
 		baseFee = new(big.Int)
 	}
 
-	// Process each transaction.
 	for txIndex, tx := range ethBlock.Transactions() {
 		msg, err := corethcore.TransactionToMessage(tx, signer, baseFee)
 		if err != nil {
@@ -1054,15 +1140,13 @@ func executorProcessBlock(
 		if err != nil {
 			return fmt.Errorf("tx %d apply: %w", txIndex, err)
 		}
-
 		sdb.Finalise(true)
-
 		if result.Failed() {
 			log.Printf("  block %d tx %d reverted: %v", blockNum, txIndex, result.Err)
 		}
 	}
 
-	// Apply atomic transactions (cross-chain imports/exports).
+	// Atomic transactions.
 	extData := ccustomtypes.BlockExtData(ethBlock)
 	if len(extData) > 0 {
 		rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
@@ -1070,12 +1154,10 @@ func executorProcessBlock(
 		if rulesExtra := cparams.GetRulesExtra(rules); rulesExtra != nil {
 			isAP5 = rulesExtra.AvalancheRules.IsApricotPhase5
 		}
-
 		atomicTxs, err := atomic.ExtractAtomicTxs(extData, isAP5, atomic.Codec)
 		if err != nil {
 			return fmt.Errorf("extract atomic txs: %w", err)
 		}
-
 		wrappedStateDB := extstate.New(sdb)
 		for i, tx := range atomicTxs {
 			if err := tx.UnsignedAtomicTx.EVMStateTransfer(snowCtx, wrappedStateDB); err != nil {
@@ -1084,38 +1166,198 @@ func executorProcessBlock(
 		}
 	}
 
-	// Compute state root.
-	computedRoot := sdb.IntermediateRoot(true)
-
-	if computedRoot != expectedRoot {
-		return fmt.Errorf("state root mismatch: computed %x, expected %x", computedRoot, expectedRoot)
-	}
-
-	// Commit state — this flushes dirty state to our flat MDBX tables.
+	// Finalise and commit — writes flat state only (SkipHash=true).
+	sdb.Finalise(true)
 	if _, err := sdb.Commit(blockNum, true); err != nil {
 		return fmt.Errorf("commit state: %w", err)
 	}
 
-	// Flush changeset and history index for this block.
+	// Flush changeset.
 	if err := stateDB.FlushChangeset(blockNum); err != nil {
 		return fmt.Errorf("flush changeset: %w", err)
 	}
 
-	// Update head block in metadata.
-	rwTx, err := db.BeginRW()
+	return nil
+}
+
+// computeStateRoot computes the state root from hashed state tables in one shot.
+// First computes all storage roots, then the account root.
+func computeStateRoot(db *store.DB) (common.Hash, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	tx, err := db.BeginRO()
 	if err != nil {
-		return fmt.Errorf("begin RW for head update: %w", err)
+		return common.Hash{}, err
 	}
-	if err := store.SetHeadBlock(rwTx, db, blockNum); err != nil {
-		rwTx.Abort()
-		return fmt.Errorf("set head block: %w", err)
+	defer tx.Abort()
+
+	// Phase 1: compute storage roots for all accounts with storage.
+	storageRoots := make(map[[32]byte][32]byte) // addrHash → storageRoot
+	storageCursor, err := tx.OpenCursor(db.HashedStorageState)
+	if err != nil {
+		return common.Hash{}, err
 	}
-	if _, err := rwTx.Commit(); err != nil {
-		return fmt.Errorf("commit head block: %w", err)
+	defer storageCursor.Close()
+
+	var currentAddr [32]byte
+	var hb *intTrie.HashBuilder
+	k, v, e := storageCursor.Get(nil, nil, mdbx.First)
+	for e == nil {
+		if len(k) < 64 {
+			k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
+			continue
+		}
+		var addrHash [32]byte
+		copy(addrHash[:], k[:32])
+
+		if addrHash != currentAddr {
+			// Finalize previous account's storage root.
+			if hb != nil {
+				root := hb.Root()
+				storageRoots[currentAddr] = root
+			}
+			currentAddr = addrHash
+			hb = intTrie.NewHashBuilder()
+		}
+
+		// Add storage leaf: keccak(slot) → RLP(trimmedValue)
+		slotHash := make([]byte, 32)
+		copy(slotHash, k[32:64])
+		vCopy := make([]byte, len(v))
+		copy(vCopy, v)
+		hb.AddLeaf(intTrie.FromHex(slotHash), rlpEncodeBytesLocal(vCopy))
+
+		k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
+	}
+	if hb != nil {
+		root := hb.Root()
+		storageRoots[currentAddr] = root
 	}
 
-	*parentRoot = computedRoot
-	return nil
+	// Phase 2: compute account root.
+	acctCursor, err := tx.OpenCursor(db.HashedAccountState)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	defer acctCursor.Close()
+
+	acctHB := intTrie.NewHashBuilder()
+	k, v, e = acctCursor.Get(nil, nil, mdbx.First)
+	for e == nil {
+		kCopy := make([]byte, len(k))
+		copy(kCopy, k)
+		vCopy := make([]byte, len(v))
+		copy(vCopy, v)
+
+		// Decode account, override StorageRoot with computed one.
+		if len(vCopy) >= 104 {
+			var addrHash [32]byte
+			copy(addrHash[:], kCopy)
+			if sr, ok := storageRoots[addrHash]; ok {
+				copy(vCopy[72:104], sr[:])
+			}
+		}
+
+		// Manual RLP encode (same as AccountLeafSource).
+		encoded := manualEncodeAccountRLP(vCopy)
+		acctHB.AddLeaf(intTrie.FromHex(kCopy), encoded)
+
+		k, v, e = acctCursor.Get(nil, nil, mdbx.Next)
+	}
+
+	root := acctHB.Root()
+	return common.Hash(root), nil
+}
+
+// rlpEncodeBytesLocal is a local copy of RLP byte string encoding.
+func rlpEncodeBytesLocal(val []byte) []byte {
+	if len(val) == 1 && val[0] <= 0x7f {
+		return []byte{val[0]}
+	}
+	out := make([]byte, 1+len(val))
+	out[0] = 0x80 + byte(len(val))
+	copy(out[1:], val)
+	return out
+}
+
+// manualEncodeAccountRLP encodes a 104-byte account as StateAccount RLP.
+func manualEncodeAccountRLP(val []byte) []byte {
+	if len(val) < 104 {
+		return nil
+	}
+	nonce := binary.BigEndian.Uint64(val[0:8])
+	balance := val[8:40]
+	codeHash := val[40:72]
+	storageRoot := val[72:104]
+
+	var buf [160]byte
+	off := 3
+	off += rlpPutUint64Local(buf[off:], nonce)
+	trimBal := balance
+	for len(trimBal) > 0 && trimBal[0] == 0 {
+		trimBal = trimBal[1:]
+	}
+	off += rlpPutBytesLocal(buf[off:], trimBal)
+	buf[off] = 0xa0
+	copy(buf[off+1:], storageRoot[:32])
+	off += 33
+	buf[off] = 0xa0
+	copy(buf[off+1:], codeHash[:32])
+	off += 33
+	buf[off] = 0x80
+	off++
+
+	payloadLen := off - 3
+	var start int
+	if payloadLen <= 55 {
+		start = 2
+		buf[start] = 0xc0 + byte(payloadLen)
+	} else {
+		start = 1
+		buf[start] = 0xf8
+		buf[start+1] = byte(payloadLen)
+	}
+	out := make([]byte, off-start)
+	copy(out, buf[start:off])
+	return out
+}
+
+func rlpPutUint64Local(dst []byte, v uint64) int {
+	if v == 0 {
+		dst[0] = 0x80
+		return 1
+	}
+	if v <= 0x7f {
+		dst[0] = byte(v)
+		return 1
+	}
+	n := 0
+	tmp := v
+	for tmp > 0 {
+		n++
+		tmp >>= 8
+	}
+	dst[0] = 0x80 + byte(n)
+	for i := n; i > 0; i-- {
+		dst[i] = byte(v)
+		v >>= 8
+	}
+	return 1 + n
+}
+
+func rlpPutBytesLocal(dst []byte, b []byte) int {
+	if len(b) == 0 {
+		dst[0] = 0x80
+		return 1
+	}
+	if len(b) == 1 && b[0] <= 0x7f {
+		dst[0] = b[0]
+		return 1
+	}
+	dst[0] = 0x80 + byte(len(b))
+	copy(dst[1:], b)
+	return 1 + len(b)
 }
 
 // loadGenesisFlat writes genesis alloc to flat MDBX state tables (plain + hashed).

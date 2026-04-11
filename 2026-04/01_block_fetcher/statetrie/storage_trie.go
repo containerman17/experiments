@@ -189,12 +189,117 @@ func (t *StorageTrie) Hash() common.Hash {
 		return t.root
 	}
 
+	// Storage tries always compute — their root is needed for correct
+	// StorageRoot in accounts, even in batch/skip mode.
+
 	root, err := t.incrementalHash()
 	if err != nil {
 		return common.Hash{}
 	}
 	t.root = root
 	return t.root
+}
+
+// flushStateOnly writes dirty storage to plain + hashed tables and captures
+// changesets, but skips the trie hash computation. Used in batch mode.
+func (t *StorageTrie) flushStateOnly() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	tx, err := t.db.BeginRW()
+	if err != nil {
+		return err
+	}
+
+	var addr [20]byte
+	copy(addr[:], t.address[:])
+	addrHash := crypto.Keccak256(t.address[:])
+	var addrHash32 [32]byte
+	copy(addrHash32[:], addrHash)
+
+	var changes []store.Change
+
+	for slot, value := range t.dirtySlots {
+		var slotKey [32]byte
+		copy(slotKey[:], slot[:])
+		var hs [32]byte
+		copy(hs[:], crypto.Keccak256(slot[:]))
+
+		if t.stateDB != nil {
+			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
+			if err != nil {
+				tx.Abort()
+				return err
+			}
+			var oldValue []byte
+			if oldVal != [32]byte{} {
+				trimmed := trimLeadingZeros(oldVal[:])
+				oldValue = make([]byte, len(trimmed))
+				copy(oldValue, trimmed)
+			}
+			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
+			if err != nil {
+				tx.Abort()
+				return err
+			}
+			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+		}
+
+		var val32 [32]byte
+		copy(val32[32-len(value):], value)
+		if err := store.PutStorage(tx, t.db, addr, slotKey, val32); err != nil {
+			tx.Abort()
+			return err
+		}
+		if err := store.PutHashedStorage(tx, t.db, addrHash32, hs, value); err != nil {
+			tx.Abort()
+			return err
+		}
+	}
+
+	for slot := range t.deletedSlots {
+		var slotKey [32]byte
+		copy(slotKey[:], slot[:])
+		var hs [32]byte
+		copy(hs[:], crypto.Keccak256(slot[:]))
+
+		if t.stateDB != nil {
+			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
+			if err != nil {
+				tx.Abort()
+				return err
+			}
+			if oldVal != [32]byte{} {
+				trimmed := trimLeadingZeros(oldVal[:])
+				oldValue := make([]byte, len(trimmed))
+				copy(oldValue, trimmed)
+				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
+				if err != nil {
+					tx.Abort()
+					return err
+				}
+				changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+			}
+		}
+
+		var zeroVal [32]byte
+		if err := store.PutStorage(tx, t.db, addr, slotKey, zeroVal); err != nil {
+			tx.Abort()
+			return err
+		}
+		if err := store.DeleteHashedStorage(tx, t.db, addrHash32, hs); err != nil {
+			tx.Abort()
+			return err
+		}
+	}
+
+	if _, err := tx.Commit(); err != nil {
+		return err
+	}
+	if t.stateDB != nil && len(changes) > 0 {
+		t.stateDB.AppendChanges(changes)
+	}
+	return nil
 }
 
 // incrementalHash performs the full incremental hash computation for storage.

@@ -14,6 +14,8 @@ import (
 
 	"block_fetcher/store"
 	mdbxethdb "block_fetcher/store/ethdb"
+
+	"github.com/erigontech/mdbx-go/mdbx"
 )
 
 // Compile-time check that Database implements state.Database.
@@ -28,14 +30,24 @@ type Database struct {
 	// Historical mode: if > 0, reads return state at this block instead of head.
 	historicalBlock uint64
 
-	// SkipHash: when true, Hash() writes flat state + changesets but skips
-	// the expensive trie hash computation. Used for batch verification —
-	// only compute hash every N blocks during sync.
+	// SkipHash: when true, Hash() writes to overlay but skips trie hash.
 	SkipHash bool
 
+	// Batch overlay: when set, all reads/writes go through here instead of MDBX.
+	Overlay *BatchOverlay
+
+	// Shared RO transaction for batch mode — avoids opening/closing per read.
+	// Set by BeginBatchRO(), cleared by EndBatchRO().
+	batchROTx *mdbx.Txn
+
+	// CurrentBlock is set by the executor before each block so tries know
+	// which block they are processing (for per-block changeset grouping).
+	CurrentBlock uint64
+
 	// Changeset accumulator: both AccountTrie and StorageTrie append here during Commit.
-	mu      sync.Mutex
-	changes []store.Change
+	mu         sync.Mutex
+	changes    []store.Change
+	rawChanges []RawChange
 }
 
 // NewDatabase creates a new state Database backed by the given MDBX store.
@@ -85,19 +97,19 @@ func (db *Database) ContractCode(addr common.Address, codeHash common.Hash) ([]b
 	if codeHash == types.EmptyCodeHash {
 		return nil, nil
 	}
-	tx, err := db.mdbxDB.BeginRO()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Abort()
-
 	var ch [32]byte
 	copy(ch[:], codeHash[:])
-	code, err := store.GetCode(tx, db.mdbxDB, ch)
+
+	tx, done, err := db.GetROTx()
 	if err != nil {
 		return nil, err
 	}
-	return code, nil
+	defer done()
+
+	if db.Overlay != nil {
+		return db.Overlay.GetCode(tx, db.mdbxDB, ch)
+	}
+	return store.GetCode(tx, db.mdbxDB, ch)
 }
 
 // ContractCodeSize retrieves the size of a contract's bytecode.
@@ -119,7 +131,43 @@ func (db *Database) TrieDB() *triedb.Database {
 	return db.trieDB
 }
 
+// BeginBatchRO opens a shared RO transaction for the batch.
+// All trie reads use this instead of opening per-call transactions.
+func (db *Database) BeginBatchRO() error {
+	runtime.LockOSThread()
+	tx, err := db.mdbxDB.BeginRO()
+	if err != nil {
+		runtime.UnlockOSThread()
+		return err
+	}
+	db.batchROTx = tx
+	return nil
+}
+
+// EndBatchRO closes the shared RO transaction.
+func (db *Database) EndBatchRO() {
+	if db.batchROTx != nil {
+		db.batchROTx.Abort()
+		db.batchROTx = nil
+		runtime.UnlockOSThread()
+	}
+}
+
+// GetROTx returns the shared batch RO transaction if available,
+// otherwise opens a fresh one. Caller must call doneFunc when done.
+func (db *Database) GetROTx() (tx *mdbx.Txn, doneFunc func(), err error) {
+	if db.batchROTx != nil {
+		return db.batchROTx, func() {}, nil // shared, don't abort
+	}
+	tx, err = db.mdbxDB.BeginRO()
+	if err != nil {
+		return nil, nil, err
+	}
+	return tx, func() { tx.Abort() }, nil
+}
+
 // AppendChanges adds changeset entries from a trie Commit. Thread-safe.
+// Used in non-overlay mode (incremental hash path).
 func (db *Database) AppendChanges(changes []store.Change) {
 	if len(changes) == 0 {
 		return
@@ -129,9 +177,37 @@ func (db *Database) AppendChanges(changes []store.Change) {
 	db.mu.Unlock()
 }
 
+// AppendRawChanges adds raw changeset entries (without keyIDs). Thread-safe.
+// Used in overlay/batch mode where keyIDs are assigned during Flush.
+func (db *Database) AppendRawChanges(changes []RawChange) {
+	if len(changes) == 0 {
+		return
+	}
+	db.mu.Lock()
+	db.rawChanges = append(db.rawChanges, changes...)
+	db.mu.Unlock()
+}
+
 // FlushChangeset writes the accumulated changeset and history index for the given block,
 // then clears the accumulator. Must be called after sdb.Commit().
+// In overlay mode, raw changes are sent to the overlay for deferred keyID assignment.
 func (db *Database) FlushChangeset(blockNum uint64) error {
+	// Overlay mode: send raw changes to the overlay, no MDBX writes.
+	if db.Overlay != nil {
+		db.mu.Lock()
+		rawChanges := db.rawChanges
+		db.rawChanges = nil
+		// Also drain any store.Change entries (shouldn't happen in overlay mode, but be safe).
+		db.changes = nil
+		db.mu.Unlock()
+
+		if len(rawChanges) > 0 {
+			db.Overlay.AddRawChangeset(blockNum, rawChanges)
+		}
+		return nil
+	}
+
+	// Non-overlay mode: write directly to MDBX.
 	db.mu.Lock()
 	changes := db.changes
 	db.changes = nil

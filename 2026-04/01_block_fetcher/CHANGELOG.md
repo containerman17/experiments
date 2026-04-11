@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-04-11 (session 20)
+
+- **BREAKTHROUGH: Shared RO transaction** — opening one MDBX read-only transaction per batch instead of per-read eliminated the #1 bottleneck. Each `GetAccount`/`GetStorage` was doing a cgo round-trip to open/close a transaction. With 500+ reads per block × 1000 blocks per batch = 500,000 cgo calls eliminated.
+- **100k blocks in 41 seconds** (~2400 blocks/sec). Previous best was 14 minutes (119 blocks/sec). **35x improvement** from the session start (44 min dual executor).
+- Key insight: the bottleneck was never EVM execution, hashing, or GC — it was MDBX transaction management overhead. Hundreds of thousands of unnecessary cgo calls per batch.
+- Progression: 44min → 27min (batch hash) → 14min (batch writes) → 24min (overlay, regression from GC) → **41sec** (shared RO tx).
+- Note: 2400 blocks/sec is for early chain (0-100k, sparse blocks). Later blocks with heavy DeFi txs will be much slower. Need to test at 1M+ blocks.
+- Bumped tip to 1M blocks for next test.
+
+## 2026-04-10 (session 19)
+
+- **BatchOverlay integration**: rewired executor, account trie, and storage trie to use `BatchOverlay` for batch-oriented execution. During a batch, ALL reads go through overlay->MDBX, ALL writes go to overlay only. Zero MDBX write transactions during execution. One `Flush()` at the end.
+- **RawChange type**: changesets accumulated as `(addr, slot, oldValue)` tuples during execution (no keyID assignment needed). KeyIDs assigned in bulk during `Flush()` inside the single RW transaction.
+- **Account/Storage trie split**: `flushStateOnly()` now dispatches to `flushStateOnlyOverlay()` (reads old values from overlay->MDBX via RO tx, writes new values to overlay) or `flushStateOnlyMDBX()` (original direct MDBX RW path for non-batch mode).
+- **UpdateContractCode**: writes to overlay when active, avoiding per-contract MDBX RW transactions.
+- **ContractCode/GetStorage reads**: now check overlay first when in batch mode.
+- **computeStateRoot**: accepts overlay parameter, performs sorted merge of overlay + MDBX hashed state for correct root computation.
+- **Storage trie Hash()**: now respects `SkipHash` flag (previously always computed full hash even in batch mode).
+- **Database.FlushChangeset**: in overlay mode, sends raw changes to overlay instead of opening MDBX RW transaction.
+
+## 2026-04-11 (session 18)
+
+- **Batch-oriented executor**: restructured from per-block to `executeBatch(from, to)`. Executes all blocks with flat state writes only (SkipHash), computes state root once at batch end via `computeStateRoot()`. One code path, no dual-mode flags.
+- **Manual RLP encoding**: eliminated `rlp.EncodeToBytes` + `pseudo.From[bool]` allocations for StateAccount. Stack-buffer encoding, 61% fewer total allocations (10.6M → 4.1M/10s).
+- **Allocation profile**: key buffer reuse in MDBXLeafSource, manual account RLP → GC pressure significantly reduced.
+- **10k benchmark**: batch=1000 runs in 1m23s (120 blocks/sec) vs 1m43s per-block (97 blocks/sec) — 20% faster, gap widens with larger state.
+- **Verified through 16k+ blocks** with zero mismatches.
+- **TODO**: replace `computeStateRoot` full scan with incremental walker (critical for live mode with large state). Dynamic batch sizing (large when behind, 1 at tip).
+- **Research**: investigated Firewood (Ava Labs' Rust flat-state DB) — stores trie nodes at disk offsets, NOT flat state like reth. Archival mode keeps all revisions = even bigger. Our changeset approach is fundamentally more compact.
+- **Research**: 5 agents analyzed avalanchego codebase — confirmed `state.Database` replacement requires `triedb.DBOverride` pattern (~2000 lines glue), not a simple interface swap. 14 coupling points identified. P2P state sync needs trie nodes but not serving them doesn't break consensus.
+
 ## 2026-04-10 (research)
 
 - Investigated dual-write (trie + flat state) feasibility: traced StateDB.Commit() pipeline, transaction boundary analysis, ethdb.Batch intercept points, write amplification evidence, and changeset capture timing. See report in conversation.

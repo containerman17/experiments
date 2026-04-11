@@ -63,6 +63,18 @@ func (t *StorageTrie) Copy() *StorageTrie {
 	return cp
 }
 
+// getROTx returns a shared batch RO tx if available, otherwise opens a fresh one.
+func (t *StorageTrie) getROTx() (*mdbx.Txn, func(), error) {
+	if t.stateDB != nil {
+		return t.stateDB.GetROTx()
+	}
+	tx, err := t.db.BeginRO()
+	if err != nil {
+		return nil, nil, err
+	}
+	return tx, func() { tx.Abort() }, nil
+}
+
 // GetKey returns nil (preimage lookup not needed).
 func (t *StorageTrie) GetKey([]byte) []byte {
 	return nil
@@ -104,12 +116,12 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 		return val, nil
 	}
 
-	// Read from MDBX (current or historical).
-	tx, err := t.db.BeginRO()
+	// Read from overlay→MDBX (current or historical).
+	tx, done, err := t.getROTx()
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Abort()
+	defer done()
 
 	var addrKey [20]byte
 	copy(addrKey[:], t.address[:])
@@ -119,6 +131,8 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 	var val [32]byte
 	if t.stateDB != nil && t.stateDB.historicalBlock > 0 {
 		val, err = store.LookupHistoricalStorage(tx, t.db, addrKey, slotKey, t.stateDB.historicalBlock)
+	} else if t.stateDB != nil && t.stateDB.Overlay != nil {
+		val, err = t.stateDB.Overlay.GetStorage(tx, t.db, addrKey, slotKey)
 	} else {
 		val, err = store.GetStorage(tx, t.db, addrKey, slotKey)
 	}
@@ -189,8 +203,13 @@ func (t *StorageTrie) Hash() common.Hash {
 		return t.root
 	}
 
-	// Storage tries always compute — their root is needed for correct
-	// StorageRoot in accounts, even in batch/skip mode.
+	// SkipHash mode: write flat state + changesets but skip trie computation.
+	if t.stateDB != nil && t.stateDB.SkipHash {
+		if err := t.flushStateOnly(); err != nil {
+			return common.Hash{}
+		}
+		return common.Hash{} // dummy root — caller must not verify
+	}
 
 	root, err := t.incrementalHash()
 	if err != nil {
@@ -200,9 +219,87 @@ func (t *StorageTrie) Hash() common.Hash {
 	return t.root
 }
 
-// flushStateOnly writes dirty storage to plain + hashed tables and captures
-// changesets, but skips the trie hash computation. Used in batch mode.
+// flushStateOnly writes dirty storage and captures changesets, but skips the
+// trie hash computation. Used in batch mode.
+// When an overlay is active, all reads/writes go through the overlay (zero MDBX
+// write transactions). Otherwise falls back to direct MDBX RW transaction.
 func (t *StorageTrie) flushStateOnly() error {
+	overlay := t.stateDB.Overlay
+	if overlay != nil {
+		return t.flushStateOnlyOverlay(overlay)
+	}
+	return t.flushStateOnlyMDBX()
+}
+
+// flushStateOnlyOverlay writes dirty storage to the BatchOverlay and captures
+// raw changesets (keyIDs assigned later during Flush).
+func (t *StorageTrie) flushStateOnlyOverlay(overlay *BatchOverlay) error {
+	// We need a RO transaction to read old values for changeset capture.
+	tx, err := t.db.BeginRO()
+	if err != nil {
+		return err
+	}
+	defer tx.Abort()
+
+	var addr [20]byte
+	copy(addr[:], t.address[:])
+
+	var rawChanges []RawChange
+
+	for slot, value := range t.dirtySlots {
+		var slotKey [32]byte
+		copy(slotKey[:], slot[:])
+
+		// Read old value from overlay→MDBX BEFORE writing new value.
+		if t.stateDB != nil {
+			oldVal, err := overlay.GetStorage(tx, t.db, addr, slotKey)
+			if err != nil {
+				return err
+			}
+			var oldValue []byte
+			if oldVal != [32]byte{} {
+				trimmed := trimLeadingZeros(oldVal[:])
+				oldValue = make([]byte, len(trimmed))
+				copy(oldValue, trimmed)
+			}
+			rawChanges = append(rawChanges, RawChange{Addr: addr, Slot: slotKey, OldValue: oldValue})
+		}
+
+		// Write new value to overlay.
+		var val32 [32]byte
+		copy(val32[32-len(value):], value)
+		overlay.PutStorage(addr, slotKey, val32, value)
+	}
+
+	for slot := range t.deletedSlots {
+		var slotKey [32]byte
+		copy(slotKey[:], slot[:])
+
+		// Read old value from overlay→MDBX BEFORE deleting.
+		if t.stateDB != nil {
+			oldVal, err := overlay.GetStorage(tx, t.db, addr, slotKey)
+			if err != nil {
+				return err
+			}
+			if oldVal != [32]byte{} {
+				trimmed := trimLeadingZeros(oldVal[:])
+				oldValue := make([]byte, len(trimmed))
+				copy(oldValue, trimmed)
+				rawChanges = append(rawChanges, RawChange{Addr: addr, Slot: slotKey, OldValue: oldValue})
+			}
+		}
+
+		overlay.DeleteStorage(addr, slotKey)
+	}
+
+	if t.stateDB != nil && len(rawChanges) > 0 {
+		t.stateDB.AppendRawChanges(rawChanges)
+	}
+	return nil
+}
+
+// flushStateOnlyMDBX writes dirty storage directly to MDBX (non-overlay path).
+func (t *StorageTrie) flushStateOnlyMDBX() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -527,11 +624,11 @@ func (t *StorageTrie) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
 func (t *StorageTrie) collectAllStorage() ([]storageEntry, error) {
 	seen := make(map[common.Hash][]byte) // slot -> trimmed value
 
-	tx, err := t.db.BeginRO()
+	tx, done, err := t.getROTx()
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Abort()
+	defer done()
 
 	cursor, err := tx.OpenCursor(t.db.StorageState)
 	if err != nil {

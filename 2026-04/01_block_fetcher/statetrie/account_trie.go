@@ -58,6 +58,18 @@ func (t *AccountTrie) Copy() *AccountTrie {
 	return cp
 }
 
+// getROTx returns a shared batch RO tx if available, otherwise opens a fresh one.
+func (t *AccountTrie) getROTx() (*mdbx.Txn, func(), error) {
+	if t.stateDB != nil {
+		return t.stateDB.GetROTx()
+	}
+	tx, err := t.db.BeginRO()
+	if err != nil {
+		return nil, nil, err
+	}
+	return tx, func() { tx.Abort() }, nil
+}
+
 // GetKey returns the preimage of a hashed key. Not needed for our implementation.
 func (t *AccountTrie) GetKey([]byte) []byte {
 	return nil
@@ -73,12 +85,12 @@ func (t *AccountTrie) GetAccount(address common.Address) (*types.StateAccount, e
 	if acct, ok := t.dirtyAccounts[address]; ok {
 		return acct, nil
 	}
-	// Read from MDBX (current or historical).
-	tx, err := t.db.BeginRO()
+	// Read from overlay (if in batch mode) or MDBX.
+	tx, done, err := t.getROTx()
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Abort()
+	defer done()
 
 	var addr [20]byte
 	copy(addr[:], address[:])
@@ -86,6 +98,8 @@ func (t *AccountTrie) GetAccount(address common.Address) (*types.StateAccount, e
 	var storeAcct *store.Account
 	if t.stateDB != nil && t.stateDB.historicalBlock > 0 {
 		storeAcct, err = store.LookupHistoricalAccount(tx, t.db, addr, t.stateDB.historicalBlock)
+	} else if t.stateDB != nil && t.stateDB.Overlay != nil {
+		storeAcct, err = t.stateDB.Overlay.GetAccount(tx, t.db, addr)
 	} else {
 		storeAcct, err = store.GetAccount(tx, t.db, addr)
 	}
@@ -136,8 +150,17 @@ func (t *AccountTrie) DeleteStorage(addr common.Address, key []byte) error {
 	return errors.New("DeleteStorage not supported on AccountTrie")
 }
 
-// UpdateContractCode writes contract code to MDBX.
+// UpdateContractCode writes contract code to overlay (if active) or MDBX.
 func (t *AccountTrie) UpdateContractCode(address common.Address, codeHash common.Hash, code []byte) error {
+	var ch [32]byte
+	copy(ch[:], codeHash[:])
+
+	// Overlay mode: write to overlay, no MDBX transaction.
+	if t.stateDB != nil && t.stateDB.Overlay != nil {
+		t.stateDB.Overlay.PutCode(ch, code)
+		return nil
+	}
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -145,8 +168,6 @@ func (t *AccountTrie) UpdateContractCode(address common.Address, codeHash common
 	if err != nil {
 		return err
 	}
-	var ch [32]byte
-	copy(ch[:], codeHash[:])
 	if err := store.PutCode(tx, t.db, ch, code); err != nil {
 		tx.Abort()
 		return err
@@ -187,9 +208,89 @@ func (t *AccountTrie) Hash() common.Hash {
 	return t.root
 }
 
-// flushStateOnly writes dirty state to plain + hashed tables and captures
-// changesets, but skips the trie hash computation. Used in batch mode.
+// flushStateOnly writes dirty state and captures changesets, but skips the
+// trie hash computation. Used in batch mode.
+// When an overlay is active, all reads/writes go through the overlay (zero MDBX
+// write transactions). Otherwise falls back to direct MDBX RW transaction.
 func (t *AccountTrie) flushStateOnly() error {
+	overlay := t.stateDB.Overlay
+	if overlay != nil {
+		return t.flushStateOnlyOverlay(overlay)
+	}
+	return t.flushStateOnlyMDBX()
+}
+
+// flushStateOnlyOverlay writes dirty state to the BatchOverlay and captures
+// raw changesets (keyIDs assigned later during Flush).
+func (t *AccountTrie) flushStateOnlyOverlay(overlay *BatchOverlay) error {
+	// We need a RO transaction to read old values for changeset capture.
+	tx, err := t.db.BeginRO()
+	if err != nil {
+		return err
+	}
+	defer tx.Abort()
+
+	var rawChanges []RawChange
+	acctSlot := store.AccountSentinelSlot
+
+	for address, acct := range t.dirtyAccounts {
+		var addr [20]byte
+		copy(addr[:], address[:])
+
+		// Read old value from overlay→MDBX BEFORE writing new value.
+		if t.stateDB != nil {
+			oldAcct, err := overlay.GetAccount(tx, t.db, addr)
+			if err != nil {
+				return err
+			}
+			var oldValue []byte
+			if oldAcct != nil {
+				oldValue = store.EncodeAccountBytes(oldAcct)
+			}
+			rawChanges = append(rawChanges, RawChange{Addr: addr, Slot: acctSlot, OldValue: oldValue})
+		}
+
+		// Write new value to overlay.
+		balance := acct.Balance.Bytes32()
+		var codeHash [32]byte
+		copy(codeHash[:], acct.CodeHash)
+		storeAcct := &store.Account{
+			Nonce: acct.Nonce, Balance: balance,
+			CodeHash: codeHash, StorageRoot: [32]byte(acct.Root),
+		}
+		encoded := store.EncodeAccountBytes(storeAcct)
+		overlay.PutAccount(addr, encoded)
+	}
+
+	for address := range t.deletedAccounts {
+		var addr [20]byte
+		copy(addr[:], address[:])
+
+		// Read old value from overlay→MDBX BEFORE deleting.
+		if t.stateDB != nil {
+			oldAcct, err := overlay.GetAccount(tx, t.db, addr)
+			if err != nil {
+				return err
+			}
+			if oldAcct != nil {
+				rawChanges = append(rawChanges, RawChange{
+					Addr: addr, Slot: acctSlot,
+					OldValue: store.EncodeAccountBytes(oldAcct),
+				})
+			}
+		}
+
+		overlay.DeleteAccount(addr)
+	}
+
+	if t.stateDB != nil && len(rawChanges) > 0 {
+		t.stateDB.AppendRawChanges(rawChanges)
+	}
+	return nil
+}
+
+// flushStateOnlyMDBX writes dirty state directly to MDBX (non-overlay path).
+func (t *AccountTrie) flushStateOnlyMDBX() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -490,11 +591,11 @@ func (t *AccountTrie) collectAllAccounts() ([]accountEntry, error) {
 	// Collect all accounts from MDBX via cursor scan.
 	seen := make(map[common.Address]*types.StateAccount)
 
-	tx, err := t.db.BeginRO()
+	tx, done, err := t.getROTx()
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Abort()
+	defer done()
 
 	cursor, err := tx.OpenCursor(t.db.AccountState)
 	if err != nil {

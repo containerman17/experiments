@@ -75,7 +75,7 @@ const (
 	defaultBatchSize     = 256
 	defaultExpectedNetID = uint32(1)
 	defaultPrimarySubnet = "11111111111111111111111111111111LpoYY"
-	defaultFixedTipBlock = uint64(100_000)
+	defaultFixedTipBlock = uint64(1_000_000)
 )
 
 var (
@@ -992,7 +992,9 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchS
 
 // executeBatch processes blocks [from, to] inclusive.
 // All blocks execute with flat state writes only (no trie hashing).
-// At the end, the state root is computed once and verified against the last block's header.
+// Reads go through overlay→MDBX, writes go to overlay only.
+// At the end, the state root is computed once (from overlay+MDBX merged)
+// and verified against the last block's header. One MDBX Flush at the end.
 func executeBatch(
 	db *store.DB,
 	stateDB *statetrie.Database,
@@ -1000,11 +1002,22 @@ func executeBatch(
 	snowCtx *snow.Context,
 	from, to uint64,
 ) error {
-	// All blocks in the batch: execute EVM, write flat state, skip trie hash.
+	overlay := statetrie.NewBatchOverlay()
+	stateDB.Overlay = overlay
 	stateDB.SkipHash = true
 
+	// Open a shared RO transaction for all reads during the batch.
+	// The overlay handles in-batch writes; MDBX stays read-only.
+	if err := stateDB.BeginBatchRO(); err != nil {
+		return fmt.Errorf("begin batch RO: %w", err)
+	}
+	defer stateDB.EndBatchRO()
+
 	for blockNum := from; blockNum <= to; blockNum++ {
+		stateDB.CurrentBlock = blockNum
 		if err := executeBlock(db, stateDB, chainCfg, snowCtx, blockNum); err != nil {
+			stateDB.Overlay = nil
+			stateDB.SkipHash = false
 			return fmt.Errorf("block %d: %w", blockNum, err)
 		}
 		if blockNum%100 == 0 || blockNum == to {
@@ -1012,47 +1025,47 @@ func executeBatch(
 		}
 	}
 
-	// Verify: compute state root from hashed tables and compare to last block's header.
 	stateDB.SkipHash = false
 
+	// Verify: compute state root from overlay+MDBX merged state.
 	roTx, err := db.BeginRO()
 	if err != nil {
+		stateDB.Overlay = nil
 		return fmt.Errorf("begin RO for verify: %w", err)
 	}
 	raw, err := store.GetBlockByNumber(roTx, db, to)
 	roTx.Abort()
 	if err != nil {
+		stateDB.Overlay = nil
 		return fmt.Errorf("read block %d for verify: %w", to, err)
 	}
 	ethBlock, err := executorParseEthBlock(raw)
 	if err != nil {
+		stateDB.Overlay = nil
 		return fmt.Errorf("parse block %d for verify: %w", to, err)
 	}
 	expectedRoot := ethBlock.Header().Root
 
-	computedRoot, err := computeStateRoot(db)
+	computedRoot, err := computeStateRoot(db, overlay)
 	if err != nil {
+		stateDB.Overlay = nil
 		return fmt.Errorf("compute state root at block %d: %w", to, err)
 	}
 
 	if computedRoot != expectedRoot {
+		stateDB.Overlay = nil
 		return fmt.Errorf("state root mismatch at block %d: computed %x, expected %x", to, computedRoot, expectedRoot)
 	}
 
 	log.Printf("executor: verified batch %d-%d root=%x", from, to, computedRoot)
 
-	// Update head block.
-	rwTx, err := db.BeginRW()
-	if err != nil {
-		return fmt.Errorf("begin RW for head update: %w", err)
+	// Flush everything to MDBX in one transaction.
+	if err := overlay.Flush(db, to); err != nil {
+		stateDB.Overlay = nil
+		return fmt.Errorf("flush overlay at block %d: %w", to, err)
 	}
-	if err := store.SetHeadBlock(rwTx, db, to); err != nil {
-		rwTx.Abort()
-		return fmt.Errorf("set head block: %w", err)
-	}
-	if _, err := rwTx.Commit(); err != nil {
-		return fmt.Errorf("commit head block: %w", err)
-	}
+
+	stateDB.Overlay = nil
 	return nil
 }
 
@@ -1180,9 +1193,10 @@ func executeBlock(
 	return nil
 }
 
-// computeStateRoot computes the state root from hashed state tables in one shot.
+// computeStateRoot computes the state root from hashed state tables merged with
+// the overlay (if non-nil) in one shot.
 // First computes all storage roots, then the account root.
-func computeStateRoot(db *store.DB) (common.Hash, error) {
+func computeStateRoot(db *store.DB, overlay *statetrie.BatchOverlay) (common.Hash, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -1192,82 +1206,200 @@ func computeStateRoot(db *store.DB) (common.Hash, error) {
 	}
 	defer tx.Abort()
 
-	// Phase 1: compute storage roots for all accounts with storage.
-	storageRoots := make(map[[32]byte][32]byte) // addrHash → storageRoot
+	// Collect merged hashed storage entries from MDBX + overlay.
+	type storageKV struct {
+		key [64]byte // addrHash(32) + slotHash(32)
+		val []byte   // trimmed value
+	}
+	var allStorage []storageKV
+
+	// First, scan MDBX.
 	storageCursor, err := tx.OpenCursor(db.HashedStorageState)
 	if err != nil {
 		return common.Hash{}, err
 	}
 	defer storageCursor.Close()
 
-	var currentAddr [32]byte
-	var hb *intTrie.HashBuilder
+	mdbxStorageKeys := make(map[[64]byte]bool) // track what MDBX has
 	k, v, e := storageCursor.Get(nil, nil, mdbx.First)
 	for e == nil {
-		if len(k) < 64 {
-			k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
-			continue
+		if len(k) >= 64 {
+			var hk [64]byte
+			copy(hk[:], k[:64])
+			mdbxStorageKeys[hk] = true
+
+			deleted := false
+			var val []byte
+			if overlay != nil {
+				if d, v, ok := overlay.GetHashedStorage(hk); ok {
+					if d {
+						deleted = true
+					} else {
+						val = v
+					}
+				}
+			}
+			if !deleted {
+				if val == nil {
+					// Not in overlay, use MDBX value.
+					vCopy := make([]byte, len(v))
+					copy(vCopy, v)
+					val = vCopy
+				}
+				if len(val) > 0 {
+					allStorage = append(allStorage, storageKV{key: hk, val: val})
+				}
+			}
 		}
+		k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
+	}
+
+	// Add overlay entries not in MDBX.
+	if overlay != nil {
+		for hk, val := range overlay.HashedStorageEntries() {
+			if mdbxStorageKeys[hk] {
+				continue // already handled
+			}
+			if len(val) > 0 {
+				allStorage = append(allStorage, storageKV{key: hk, val: val})
+			}
+		}
+	}
+
+	// Sort by key.
+	sort.Slice(allStorage, func(i, j int) bool {
+		return compareBytes64(allStorage[i].key, allStorage[j].key) < 0
+	})
+
+	// Phase 1: compute storage roots.
+	storageRoots := make(map[[32]byte][32]byte)
+	var currentAddr [32]byte
+	var hb *intTrie.HashBuilder
+	for _, sv := range allStorage {
 		var addrHash [32]byte
-		copy(addrHash[:], k[:32])
+		copy(addrHash[:], sv.key[:32])
 
 		if addrHash != currentAddr {
-			// Finalize previous account's storage root.
 			if hb != nil {
-				root := hb.Root()
-				storageRoots[currentAddr] = root
+				storageRoots[currentAddr] = hb.Root()
 			}
 			currentAddr = addrHash
 			hb = intTrie.NewHashBuilder()
 		}
 
-		// Add storage leaf: keccak(slot) → RLP(trimmedValue)
 		slotHash := make([]byte, 32)
-		copy(slotHash, k[32:64])
-		vCopy := make([]byte, len(v))
-		copy(vCopy, v)
-		hb.AddLeaf(intTrie.FromHex(slotHash), rlpEncodeBytesLocal(vCopy))
-
-		k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
+		copy(slotHash, sv.key[32:64])
+		hb.AddLeaf(intTrie.FromHex(slotHash), rlpEncodeBytesLocal(sv.val))
 	}
 	if hb != nil {
-		root := hb.Root()
-		storageRoots[currentAddr] = root
+		storageRoots[currentAddr] = hb.Root()
 	}
 
-	// Phase 2: compute account root.
+	// Phase 2: collect merged hashed account entries from MDBX + overlay.
+	type accountKV struct {
+		key [32]byte
+		val []byte // 104-byte encoded account
+	}
+	var allAccounts []accountKV
+
 	acctCursor, err := tx.OpenCursor(db.HashedAccountState)
 	if err != nil {
 		return common.Hash{}, err
 	}
 	defer acctCursor.Close()
 
-	acctHB := intTrie.NewHashBuilder()
+	mdbxAcctKeys := make(map[[32]byte]bool)
 	k, v, e = acctCursor.Get(nil, nil, mdbx.First)
 	for e == nil {
-		kCopy := make([]byte, len(k))
-		copy(kCopy, k)
-		vCopy := make([]byte, len(v))
-		copy(vCopy, v)
+		if len(k) >= 32 {
+			var ha [32]byte
+			copy(ha[:], k[:32])
+			mdbxAcctKeys[ha] = true
 
-		// Decode account, override StorageRoot with computed one.
-		if len(vCopy) >= 104 {
-			var addrHash [32]byte
-			copy(addrHash[:], kCopy)
-			if sr, ok := storageRoots[addrHash]; ok {
-				copy(vCopy[72:104], sr[:])
+			deleted := false
+			var val []byte
+			if overlay != nil {
+				if d, ov, ok := overlay.GetHashedAccount(ha); ok {
+					if d {
+						deleted = true
+					} else {
+						val = ov
+					}
+				}
+			}
+			if !deleted {
+				if val == nil {
+					vCopy := make([]byte, len(v))
+					copy(vCopy, v)
+					val = vCopy
+				}
+				allAccounts = append(allAccounts, accountKV{key: ha, val: val})
 			}
 		}
-
-		// Manual RLP encode (same as AccountLeafSource).
-		encoded := manualEncodeAccountRLP(vCopy)
-		acctHB.AddLeaf(intTrie.FromHex(kCopy), encoded)
-
 		k, v, e = acctCursor.Get(nil, nil, mdbx.Next)
+	}
+
+	// Add overlay entries not in MDBX.
+	if overlay != nil {
+		for ha, val := range overlay.HashedAccountEntries() {
+			if mdbxAcctKeys[ha] {
+				continue
+			}
+			if len(val) > 0 {
+				allAccounts = append(allAccounts, accountKV{key: ha, val: val})
+			}
+		}
+	}
+
+	// Sort by key.
+	sort.Slice(allAccounts, func(i, j int) bool {
+		return compareBytes32Main(allAccounts[i].key, allAccounts[j].key) < 0
+	})
+
+	// Phase 2 continued: compute account root.
+	acctHB := intTrie.NewHashBuilder()
+	for _, av := range allAccounts {
+		val := av.val
+		// Override StorageRoot with computed one.
+		if len(val) >= 104 {
+			if sr, ok := storageRoots[av.key]; ok {
+				val = make([]byte, len(av.val))
+				copy(val, av.val)
+				copy(val[72:104], sr[:])
+			}
+		}
+		encoded := manualEncodeAccountRLP(val)
+		kCopy := make([]byte, 32)
+		copy(kCopy, av.key[:])
+		acctHB.AddLeaf(intTrie.FromHex(kCopy), encoded)
 	}
 
 	root := acctHB.Root()
 	return common.Hash(root), nil
+}
+
+func compareBytes64(a, b [64]byte) int {
+	for i := 0; i < 64; i++ {
+		if a[i] < b[i] {
+			return -1
+		}
+		if a[i] > b[i] {
+			return 1
+		}
+	}
+	return 0
+}
+
+func compareBytes32Main(a, b [32]byte) int {
+	for i := 0; i < 32; i++ {
+		if a[i] < b[i] {
+			return -1
+		}
+		if a[i] > b[i] {
+			return 1
+		}
+	}
+	return 0
 }
 
 // rlpEncodeBytesLocal is a local copy of RLP byte string encoding.

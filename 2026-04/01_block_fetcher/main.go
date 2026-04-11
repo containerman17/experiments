@@ -27,6 +27,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/genesis"
+	"github.com/ava-labs/avalanchego/upgrade"
 	corethcore "github.com/ava-labs/avalanchego/graft/coreth/core"
 	"github.com/ava-labs/avalanchego/graft/coreth/core/extstate"
 	corethethclient "github.com/ava-labs/avalanchego/graft/coreth/ethclient"
@@ -837,6 +838,12 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchS
 	if err := json.Unmarshal([]byte(config.CChainGenesis), &cChainGenesis); err != nil {
 		return fmt.Errorf("parse C-Chain genesis config: %w", err)
 	}
+	// Set Avalanche network upgrade timestamps on the chain config.
+	// The genesis JSON only has standard Ethereum forks — Avalanche-specific
+	// upgrades (ApricotPhase1-5, Banff, Cortina, etc.) must be set from the
+	// known mainnet upgrade schedule.
+	mainnetUpgrades := upgrade.GetConfig(avaconstants.MainnetID)
+	setAvalancheUpgrades(cChainGenesis.Config, mainnetUpgrades)
 	if err := cparams.SetEthUpgrades(cChainGenesis.Config); err != nil {
 		return fmt.Errorf("set eth upgrades: %w", err)
 	}
@@ -1045,13 +1052,25 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		// Debug: compute full root from scratch (no stored branch nodes) to check flat state.
-		fullRoot, err := statetrie.ComputeFullStateRoot(rwTx, db)
-		if err != nil {
-			log.Printf("executor: DEBUG full root computation failed: %v", err)
-		} else {
-			log.Printf("executor: DEBUG block %d: incremental=%x full=%x expected=%x fullMatchesExpected=%v",
-				to, computedRoot, fullRoot, expectedRoot, common.Hash(fullRoot) == expectedRoot)
+		log.Printf("executor: MISMATCH block %d: computed=%x expected=%x", to, computedRoot, expectedRoot)
+		// Dump what the overlay changed
+		for _, ha := range changedAccounts {
+			// Read the value we just wrote
+			val, err := rwTx.Get(db.HashedAccountState, ha[:])
+			if err != nil {
+				log.Printf("  acct %x: read error %v", ha[:8], err)
+				continue
+			}
+			if len(val) >= 104 {
+				log.Printf("  acct %x: nonce=%d bal=%x storageRoot=%x",
+					ha[:8],
+					uint64(val[0])<<56|uint64(val[1])<<48|uint64(val[2])<<40|uint64(val[3])<<32|uint64(val[4])<<24|uint64(val[5])<<16|uint64(val[6])<<8|uint64(val[7]),
+					val[8:16], val[72:80])
+			}
+		}
+		changedStorage := overlay.ChangedStorageGrouped()
+		for addrHash, slots := range changedStorage {
+			log.Printf("  storage %x: %d changed slots", addrHash[:8], len(slots))
 		}
 		rwTx.Abort()
 		runtime.UnlockOSThread()
@@ -1354,6 +1373,31 @@ func executorBuildBlockContext(header *ethtypes.Header, chainCfg *params.ChainCo
 		BaseFee:     executorBaseFeeOrZero(header.BaseFee),
 		Header:      header,
 	}
+}
+
+// setAvalancheUpgrades sets the Avalanche network upgrade timestamps on the
+// chain config extras. The genesis JSON only has standard Ethereum forks;
+// Avalanche-specific upgrades must be set from the known upgrade schedule.
+func setAvalancheUpgrades(c *params.ChainConfig, cfg upgrade.Config) {
+	extra := cparams.GetExtra(c)
+	ts := func(t time.Time) *uint64 { v := uint64(t.Unix()); return &v }
+	extra.NetworkUpgrades.ApricotPhase1BlockTimestamp = ts(cfg.ApricotPhase1Time)
+	extra.NetworkUpgrades.ApricotPhase2BlockTimestamp = ts(cfg.ApricotPhase2Time)
+	extra.NetworkUpgrades.ApricotPhase3BlockTimestamp = ts(cfg.ApricotPhase3Time)
+	extra.NetworkUpgrades.ApricotPhase4BlockTimestamp = ts(cfg.ApricotPhase4Time)
+	extra.NetworkUpgrades.ApricotPhase5BlockTimestamp = ts(cfg.ApricotPhase5Time)
+	extra.NetworkUpgrades.ApricotPhasePre6BlockTimestamp = ts(cfg.ApricotPhasePre6Time)
+	extra.NetworkUpgrades.ApricotPhase6BlockTimestamp = ts(cfg.ApricotPhase6Time)
+	extra.NetworkUpgrades.ApricotPhasePost6BlockTimestamp = ts(cfg.ApricotPhasePost6Time)
+	extra.NetworkUpgrades.BanffBlockTimestamp = ts(cfg.BanffTime)
+	extra.NetworkUpgrades.CortinaBlockTimestamp = ts(cfg.CortinaTime)
+	extra.NetworkUpgrades.DurangoBlockTimestamp = ts(cfg.DurangoTime)
+	extra.NetworkUpgrades.EtnaTimestamp = ts(cfg.EtnaTime)
+	cparams.WithExtra(c, extra)
+	log.Printf("executor: Avalanche upgrades set (AP1=%d AP2=%d AP3=%d AP5=%d Banff=%d Cortina=%d Durango=%d Etna=%d)",
+		cfg.ApricotPhase1Time.Unix(), cfg.ApricotPhase2Time.Unix(), cfg.ApricotPhase3Time.Unix(),
+		cfg.ApricotPhase5Time.Unix(), cfg.BanffTime.Unix(), cfg.CortinaTime.Unix(),
+		cfg.DurangoTime.Unix(), cfg.EtnaTime.Unix())
 }
 
 func executorBaseFeeOrZero(b *big.Int) *big.Int {

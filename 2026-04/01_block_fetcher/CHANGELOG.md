@@ -24,8 +24,8 @@ The code currently has TWO architectures layered on top of each other:
 2. ~~Remove `AccountTrie.incrementalHash()` and `StorageTrie.incrementalHash()`.~~ **DONE** — ~360 lines removed. All incremental hashing goes through `ComputeIncrementalStateRoot`.
 3. ~~Remove `computeStateRoot()` from main.go.~~ **DONE** — ~300 lines removed (function + helper RLP encoders).
 4. ~~Remove `collectAllAccounts()`, `flushStateOnlyMDBX()`, etc.~~ **DONE** — ~200 lines removed. `flushStateOnly()` inlined to always use overlay.
-5. Remove `--verify-interval` / rename cleanup. Single `--exec-batch-size` flag.
-6. Clean up `executeBatch` — no SkipHash toggle, no mode flags, just: execute → flush+hash+verify.
+5. ~~Remove `--verify-interval` / rename.~~ **DONE** — single `--exec-batch-size` flag.
+6. ~~Clean up `executeBatch`.~~ **DONE** — no SkipHash toggle, no mode flags.
 
 ## 2026-04-11 (session 22)
 

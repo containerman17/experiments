@@ -7,10 +7,11 @@ import (
 )
 
 type Account struct {
-	Nonce       uint64
-	Balance     [32]byte // uint256 big-endian
-	CodeHash    [32]byte
-	StorageRoot [32]byte // MPT storage root (EmptyRootHash if no storage)
+	Nonce        uint64
+	Balance      [32]byte // uint256 big-endian
+	CodeHash     [32]byte
+	StorageRoot  [32]byte // MPT storage root (EmptyRootHash if no storage)
+	IsMultiCoin  bool     // libevm extra: true if account has NativeAsset multi-coin balances
 }
 
 // EmptyCodeHash is the keccak256 of empty bytes.
@@ -29,7 +30,7 @@ var EmptyRootHash = [32]byte{
 	0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
 }
 
-const accountSize = 8 + 32 + 32 + 32 // 104
+const accountSize = 8 + 32 + 32 + 32 + 1 // 105: nonce(8) + balance(32) + codeHash(32) + storageRoot(32) + isMultiCoin(1)
 
 func encodeAccount(acct *Account) [accountSize]byte {
 	var buf [accountSize]byte
@@ -37,6 +38,9 @@ func encodeAccount(acct *Account) [accountSize]byte {
 	copy(buf[8:40], acct.Balance[:])
 	copy(buf[40:72], acct.CodeHash[:])
 	copy(buf[72:104], acct.StorageRoot[:])
+	if acct.IsMultiCoin {
+		buf[104] = 1
+	}
 	return buf
 }
 
@@ -60,6 +64,9 @@ func decodeAccount(data []byte) *Account {
 		copy(acct.StorageRoot[:], data[72:104])
 	} else {
 		acct.StorageRoot = EmptyRootHash
+	}
+	if len(data) >= 105 {
+		acct.IsMultiCoin = data[104] != 0
 	}
 	return acct
 }

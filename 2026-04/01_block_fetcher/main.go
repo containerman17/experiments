@@ -1045,6 +1045,13 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
+		// Debug: compute full root from scratch (no stored branch nodes) to check flat state.
+		fullRoot, err := statetrie.ComputeFullStateRoot(rwTx, db)
+		if err != nil {
+			log.Printf("executor: DEBUG full root computation failed: %v", err)
+		} else {
+			log.Printf("executor: DEBUG block %d: incremental=%x full=%x expected=%x", to, computedRoot, fullRoot, expectedRoot)
+		}
 		rwTx.Abort()
 		runtime.UnlockOSThread()
 		stateDB.Overlay = nil

@@ -7,6 +7,8 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethdb"
+
+	ccustomtypes "github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
 	"github.com/ava-labs/libevm/trie"
 	"github.com/ava-labs/libevm/trie/trienode"
 	"github.com/erigontech/mdbx-go/mdbx"
@@ -228,9 +230,11 @@ func (t *AccountTrie) flushStateOnly() error {
 		balance := acct.Balance.Bytes32()
 		var codeHash [32]byte
 		copy(codeHash[:], acct.CodeHash)
+		isMultiCoin := ccustomtypes.IsAccountMultiCoin(acct)
 		storeAcct := &store.Account{
 			Nonce: acct.Nonce, Balance: balance,
 			CodeHash: codeHash, StorageRoot: [32]byte(acct.Root),
+			IsMultiCoin: isMultiCoin,
 		}
 		encoded := store.EncodeAccountBytes(storeAcct)
 		overlay.PutAccount(addr, encoded)

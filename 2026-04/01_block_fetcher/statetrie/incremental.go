@@ -216,7 +216,188 @@ func computeTrieRoot(
 		}
 	}
 
-	return hb.Root(), hb.Updates(), nil
+	updates := hb.Updates()
+
+	// Clean up stale branch nodes: scan stored nodes and delete any that
+	// the walker would have visited (under a changed prefix) but aren't in
+	// the update set. Without this, old branch nodes accumulate when the trie
+	// restructures, and the walker trusts their stale cached hashes.
+	cleanStart := time.Now()
+	staleDeleted, err := deleteStaleNodes(tx, trieDBI, prefix, prefixSet, updates)
+	if err != nil {
+		return [32]byte{}, nil, err
+	}
+	if staleDeleted > 0 || time.Since(cleanStart) > 50*time.Millisecond {
+		log.Printf("incremental: cleanup took %s (scanned, deleted=%d)", time.Since(cleanStart), staleDeleted)
+	}
+
+	return hb.Root(), updates, nil
+}
+
+// deleteStaleNodes scans stored branch nodes and deletes any that fall under
+// a changed prefix (walker would have visited) but aren't in the update set.
+func deleteStaleNodes(
+	tx *mdbx.Txn,
+	trieDBI mdbx.DBI,
+	prefix []byte,
+	prefixSet *intTrie.PrefixSet,
+	updates map[string]*intTrie.BranchNodeCompact,
+) (int, error) {
+	cursor, err := tx.OpenCursor(trieDBI)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close()
+
+	var k []byte
+	if prefix != nil {
+		k, _, err = cursor.Get(prefix, nil, mdbx.SetRange)
+	} else {
+		k, _, err = cursor.Get(nil, nil, mdbx.First)
+	}
+
+	deleted := 0
+	for err == nil {
+		// Check prefix scope.
+		if prefix != nil && (len(k) < len(prefix) || !bytes.HasPrefix(k, prefix)) {
+			break
+		}
+
+		// Extract the packed path (strip prefix if present).
+		var packedPath []byte
+		if prefix != nil {
+			packedPath = k[len(prefix):]
+		} else {
+			packedPath = k
+		}
+
+		// Unpack to nibbles and check if this path is under a changed prefix.
+		nibblePath := intTrie.Unpack(packedPath)
+		if prefixSet.ContainsPrefix(nibblePath) {
+			// Walker would have visited this node. Is it in updates?
+			pathKey := string(packedPath)
+			if _, ok := updates[pathKey]; !ok {
+				// Stale node — delete it.
+				if err := cursor.Del(0); err != nil {
+					return deleted, err
+				}
+				deleted++
+				// After Del, cursor advances to next — don't call Next.
+				k, _, err = cursor.Get(nil, nil, mdbx.GetCurrent)
+				if err != nil {
+					break
+				}
+				continue
+			}
+		}
+
+		k, _, err = cursor.Get(nil, nil, mdbx.Next)
+	}
+
+	return deleted, nil
+}
+
+// ComputeFullStateRoot computes the state root from scratch by scanning ALL
+// hashed state. No stored branch nodes, no PrefixSet. O(total_state) but
+// guaranteed correct. Used for debugging only — does NOT write anything.
+func ComputeFullStateRoot(tx *mdbx.Txn, db *store.DB) ([32]byte, error) {
+	// Step 1: Collect all storage, compute storage roots per account.
+	storageCursor, err := tx.OpenCursor(db.HashedStorageState)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	defer storageCursor.Close()
+
+	storageRoots := make(map[[32]byte][32]byte)
+	var currentAddr [32]byte
+	var hb *intTrie.HashBuilder
+	k, v, e := storageCursor.Get(nil, nil, mdbx.First)
+	for e == nil && len(k) >= 64 {
+		var addrHash [32]byte
+		copy(addrHash[:], k[:32])
+
+		if addrHash != currentAddr {
+			if hb != nil {
+				storageRoots[currentAddr] = hb.Root()
+			}
+			currentAddr = addrHash
+			hb = intTrie.NewHashBuilder()
+		}
+
+		slotHash := make([]byte, 32)
+		copy(slotHash, k[32:64])
+		valCopy := make([]byte, len(v))
+		copy(valCopy, v)
+		hb.AddLeaf(intTrie.FromHex(slotHash), rlpEncodeBytesForDebug(valCopy))
+
+		k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
+	}
+	if hb != nil {
+		storageRoots[currentAddr] = hb.Root()
+	}
+
+	// Step 2: Scan all accounts, patch storage roots, compute account root.
+	acctCursor, err := tx.OpenCursor(db.HashedAccountState)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	defer acctCursor.Close()
+
+	acctHB := intTrie.NewHashBuilder()
+	k, v, e = acctCursor.Get(nil, nil, mdbx.First)
+	for e == nil && len(k) >= 32 {
+		var ha [32]byte
+		copy(ha[:], k[:32])
+
+		valCopy := make([]byte, len(v))
+		copy(valCopy, v)
+
+		// Patch storage root if we computed one.
+		if len(valCopy) >= 104 {
+			if sr, ok := storageRoots[ha]; ok {
+				copy(valCopy[72:104], sr[:])
+			}
+		}
+
+		// Transform to RLP using AccountLeafSource logic.
+		leafSource := NewAccountLeafSource(&singleLeafSource{key: k[:32], val: valCopy})
+		lk, lv, _ := leafSource.Next()
+		if lk != nil {
+			acctHB.AddLeaf(intTrie.FromHex(lk), lv)
+		}
+
+		k, v, e = acctCursor.Get(nil, nil, mdbx.Next)
+	}
+
+	return acctHB.Root(), nil
+}
+
+// singleLeafSource returns one leaf then exhausts.
+type singleLeafSource struct {
+	key  []byte
+	val  []byte
+	done bool
+}
+
+func (s *singleLeafSource) Next() ([]byte, []byte, error) {
+	if s.done {
+		return nil, nil, nil
+	}
+	s.done = true
+	return s.key, s.val, nil
+}
+
+func rlpEncodeBytesForDebug(val []byte) []byte {
+	if len(val) == 1 && val[0] <= 0x7f {
+		return []byte{val[0]}
+	}
+	if len(val) <= 55 {
+		out := make([]byte, 1+len(val))
+		out[0] = 0x80 + byte(len(val))
+		copy(out[1:], val)
+		return out
+	}
+	return val // shouldn't happen for storage values
 }
 
 // deletePrefixedEntries removes all entries from a DBI whose key starts with prefix.

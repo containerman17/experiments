@@ -30,14 +30,15 @@ func (s *AccountLeafSource) Next() ([]byte, []byte, error) {
 		return nil, nil, nil // malformed account
 	}
 
-	// Raw format: [nonce:8][balance:32][codeHash:32][storageRoot:32]
+	// Raw format: [nonce:8][balance:32][codeHash:32][storageRoot:32][isMultiCoin:1]
 	nonce := binary.BigEndian.Uint64(val[0:8])
-	balance := val[8:40]    // 32 bytes, big-endian
-	codeHash := val[40:72]  // 32 bytes
+	balance := val[8:40]       // 32 bytes, big-endian
+	codeHash := val[40:72]     // 32 bytes
 	storageRoot := val[72:104] // 32 bytes
+	isMultiCoin := len(val) >= 105 && val[104] != 0
 
 	// StateAccount RLP: list([nonce, balance, storageRoot, codeHash, extra])
-	// extra = 0x80 (isMultiCoin=false for all C-Chain accounts)
+	// extra = isMultiCoin boolean: true → 0x01, false → 0x80
 	//
 	// Encode into a stack buffer, then copy to a fresh slice.
 	// Avoids rlp.EncodeToBytes + pseudo.From[bool] allocations.
@@ -57,8 +58,12 @@ func (s *AccountLeafSource) Next() ([]byte, []byte, error) {
 	// codeHash (32 bytes)
 	off += rlpPutFixedBytes(buf[off:], codeHash)
 
-	// extra: isMultiCoin=false → RLP 0x80
-	buf[off] = 0x80
+	// extra: isMultiCoin boolean
+	if isMultiCoin {
+		buf[off] = 0x01
+	} else {
+		buf[off] = 0x80
+	}
 	off++
 
 	// Now fill the list header.

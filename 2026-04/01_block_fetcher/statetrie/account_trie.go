@@ -2,6 +2,7 @@ package statetrie
 
 import (
 	"errors"
+	"log"
 	"runtime"
 
 	"github.com/ava-labs/libevm/common"
@@ -231,6 +232,9 @@ func (t *AccountTrie) flushStateOnly() error {
 		var codeHash [32]byte
 		copy(codeHash[:], acct.CodeHash)
 		isMultiCoin := ccustomtypes.IsAccountMultiCoin(acct)
+		if acct.Extra != nil || isMultiCoin {
+			log.Printf("DEBUG FLUSH addr=%x extraNil=%v isMultiCoin=%v", addr[:8], acct.Extra == nil, isMultiCoin)
+		}
 		storeAcct := &store.Account{
 			Nonce: acct.Nonce, Balance: balance,
 			CodeHash: codeHash, StorageRoot: [32]byte(acct.Root),

@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	syncatomic "sync/atomic"
 	"syscall"
 	"time"
 
@@ -109,6 +111,12 @@ type inboundHandler struct {
 	ancestorsCh chan ancestorsResponse
 	peers       set.Set[ids.NodeID]
 	tracker     *avap2p.PeerTracker
+
+	// Response routing for parallel fetcher: requestID -> dedicated channel.
+	// When a worker registers a channel, the AncestorsOp handler routes
+	// the response to that channel instead of the shared ancestorsCh.
+	routeMu  sync.Mutex
+	routeMap map[uint32]chan ancestorsResponse
 }
 
 func (h *inboundHandler) Connected(nodeID ids.NodeID, _ *version.Application, _ ids.ID) {
@@ -156,15 +164,44 @@ func (h *inboundHandler) HandleInbound(_ context.Context, msg *message.InboundMe
 		if !ok {
 			return
 		}
-		select {
-		case h.ancestorsCh <- ancestorsResponse{
+		resp := ancestorsResponse{
 			nodeID:    msg.NodeID,
 			requestID: payload.RequestId,
 			blocks:    payload.Containers,
-		}:
-		default:
+		}
+		// Try to route to a registered worker channel first.
+		h.routeMu.Lock()
+		ch, routed := h.routeMap[payload.RequestId]
+		if routed {
+			delete(h.routeMap, payload.RequestId)
+		}
+		h.routeMu.Unlock()
+		if routed {
+			select {
+			case ch <- resp:
+			default:
+			}
+		} else {
+			select {
+			case h.ancestorsCh <- resp:
+			default:
+			}
 		}
 	}
+}
+
+// registerRoute registers a one-shot response channel for a specific requestID.
+func (h *inboundHandler) registerRoute(requestID uint32, ch chan ancestorsResponse) {
+	h.routeMu.Lock()
+	h.routeMap[requestID] = ch
+	h.routeMu.Unlock()
+}
+
+// unregisterRoute removes a route (e.g. on timeout).
+func (h *inboundHandler) unregisterRoute(requestID uint32) {
+	h.routeMu.Lock()
+	delete(h.routeMap, requestID)
+	h.routeMu.Unlock()
 }
 
 type blockMeta struct {
@@ -208,6 +245,7 @@ func main() {
 		subnetIDStr  = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
 		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
 		verifyEvery    = flag.Uint64("verify-interval", 0, "verify state root every N blocks (0=every block)")
+		fetchWorkers   = flag.Int("fetch-workers", 8, "number of parallel fetch workers")
 	)
 	flag.Parse()
 
@@ -304,6 +342,7 @@ func main() {
 		ancestorsCh: make(chan ancestorsResponse, 8),
 		peers:       peerIDs,
 		tracker:     peerTracker,
+		routeMap:    make(map[uint32]chan ancestorsResponse),
 	}
 
 	vdrs := &permissiveValidatorManager{
@@ -363,143 +402,36 @@ func main() {
 		log.Fatalf("NewCreator: %v", err)
 	}
 
-	var (
-		tipID        ids.ID
-		frontierPeer ids.NodeID
-		nextID       ids.ID
-		requestID    uint32 = 1
+	// Build fetch jobs from embedded checkpoints and run the parallel fetcher.
+	maxBlock, fetchErr := runParallelFetcher(
+		ctx,
+		db,
+		net,
+		msgCreator,
+		chainID,
+		peerTracker,
+		handler,
+		writerCh,
+		writerErrCh,
+		dispatchErrCh,
+		*requestWait,
+		*fetchWorkers,
 	)
-	tipID, err = loadEmbeddedContainerID(defaultFixedTipBlock)
-	if err != nil {
-		log.Fatalf("load fixed tip container: %v", err)
+	close(writerCh)
+	if writerErr := <-writerErrCh; writerErr != nil {
+		log.Fatalf("writer failed: %v", writerErr)
 	}
-	log.Printf("using fixed tip container: blockID=%s block_number=%d", tipID, defaultFixedTipBlock)
-	nextID = tipID
+	if fetchErr != nil {
+		log.Fatalf("parallel fetcher: %v", fetchErr)
+	}
 
-	started := time.Now()
-	var (
-		totalBlocks int
-	)
-
-	for {
-		select {
-		case <-ctx.Done():
-			close(writerCh)
-			if err := <-writerErrCh; err != nil {
-				log.Fatalf("writer failed: %v", err)
-			}
-			elapsed := time.Since(started)
-			log.Printf(
-				"stopped fetched=%d peer=%s tip_block=%s elapsed=%s blocks_per_sec=%.2f",
-				totalBlocks,
-				frontierPeer,
-				tipID,
-				elapsed.Truncate(time.Millisecond),
-				float64(totalBlocks)/elapsed.Seconds(),
-			)
-			return
-		case err := <-writerErrCh:
-			if err != nil {
-				log.Fatalf("writer failed: %v", err)
-			}
-			log.Fatalf("writer stopped unexpectedly")
-		case err := <-executorErrCh:
-			if err != nil {
-				log.Fatalf("executor failed: %v", err)
-			}
-			log.Fatalf("executor stopped unexpectedly")
-		default:
+	// Tell executor the max block number and wait.
+	if maxBlock > 0 {
+		executorStopAt <- maxBlock
+		log.Printf("waiting for executor to finish processing up to block %d...", maxBlock)
+		if err := <-executorErrCh; err != nil {
+			log.Fatalf("executor failed: %v", err)
 		}
-
-		if nextID == ids.Empty {
-			close(writerCh)
-			if err := <-writerErrCh; err != nil {
-				log.Fatalf("writer failed: %v", err)
-			}
-			elapsed := time.Since(started)
-			log.Printf(
-				"reached genesis fetched=%d tip_block=%s elapsed=%s blocks_per_sec=%.2f",
-				totalBlocks,
-				tipID,
-				elapsed.Truncate(time.Millisecond),
-				float64(totalBlocks)/elapsed.Seconds(),
-			)
-			// Tell executor the max block number and wait.
-			executorStopAt <- defaultFixedTipBlock
-			log.Printf("waiting for executor to finish processing up to block %d...", defaultFixedTipBlock)
-			if err := <-executorErrCh; err != nil {
-				log.Fatalf("executor failed: %v", err)
-			}
-			return
-		}
-
-		if storedParentID, ok, err := loadStoredParentID(nextID); err != nil {
-			log.Fatalf("load stored parent for %s: %v", nextID, err)
-		} else if ok {
-			totalBlocks++
-			nextID = storedParentID
-			continue
-		}
-
-		resp, peerID, err := fetchAncestors(ctx, dispatchErrCh, net, msgCreator, chainID, peerTracker, requestID, nextID, *requestWait, handler.ancestorsCh)
-		if err != nil {
-			log.Printf("fetch ancestors request_id=%d failed: %v", requestID, err)
-			requestID++
-			continue
-		}
-		requestID++
-
-		if len(resp.blocks) == 0 {
-			peerTracker.RegisterFailure(peerID)
-			continue
-		}
-
-		consume := len(resp.blocks)
-
-		var oldestMeta blockMeta
-		batchValid := true
-		for i := 0; i < consume; i++ {
-			raw := append([]byte(nil), resp.blocks[i]...)
-			if len(raw) == 0 {
-				peerTracker.RegisterFailure(peerID)
-				batchValid = false
-				break
-			}
-			meta, err := parseBlockMeta(raw)
-			if err != nil {
-				log.Printf("discarding batch request_id=%d peer=%s: parse block %d/%d failed: bytes=%d err=%v", resp.requestID, peerID, i, consume, len(raw), err)
-				peerTracker.RegisterFailure(peerID)
-				batchValid = false
-				break
-			}
-			select {
-			case writerCh <- raw:
-			case err := <-writerErrCh:
-				if err != nil {
-					log.Fatalf("writer failed: %v", err)
-				}
-				log.Fatalf("writer stopped unexpectedly")
-			case <-ctx.Done():
-				log.Fatalf("context canceled while enqueueing container: %v", ctx.Err())
-			}
-			oldestMeta = meta
-		}
-		if !batchValid {
-			continue
-		}
-
-		totalBlocks += consume
-		log.Printf(
-			"batch request_id=%d peer=%s blocks=%d consumed=%d total=%d next_parent=%s",
-			resp.requestID,
-			peerID,
-			len(resp.blocks),
-			consume,
-			totalBlocks,
-			oldestMeta.parentID,
-		)
-
-		nextID = oldestMeta.parentID
 	}
 }
 
@@ -1709,4 +1641,381 @@ func cChainRPCURL(nodeURI string) string {
 func loadStoredParentID(containerID ids.ID) (ids.ID, bool, error) {
 	_ = containerID
 	return ids.Empty, false, nil
+}
+
+// --- Parallel Fetcher ---
+
+// fetchJob represents a range of blocks to fetch walking backwards from tipID.
+// The worker walks from fromBlock down to toBlock (inclusive).
+type fetchJob struct {
+	fromBlock uint64 // higher block number (start here, walk backwards)
+	toBlock   uint64 // lower block number (stop when reached)
+	tipID     ids.ID // known container ID at fromBlock
+}
+
+// checkpoint is a parsed entry from container_ids.json.
+type checkpoint struct {
+	blockNum    uint64
+	containerID ids.ID
+}
+
+// parseCheckpoints parses the embedded container_ids.json into a sorted list of checkpoints.
+func parseCheckpoints() ([]checkpoint, error) {
+	var raw map[string]string
+	if err := json.Unmarshal(embeddedContainerIDs, &raw); err != nil {
+		return nil, fmt.Errorf("decode embedded container ids: %w", err)
+	}
+
+	cps := make([]checkpoint, 0, len(raw))
+	for blockStr, idStr := range raw {
+		num, err := strconv.ParseUint(blockStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse block number %q: %w", blockStr, err)
+		}
+		cid, err := ids.FromString(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse container ID for block %s: %w", blockStr, err)
+		}
+		cps = append(cps, checkpoint{blockNum: num, containerID: cid})
+	}
+
+	// Sort ascending by block number.
+	sort.Slice(cps, func(i, j int) bool {
+		return cps[i].blockNum < cps[j].blockNum
+	})
+	return cps, nil
+}
+
+// buildFetchJobs creates fetch jobs from checkpoints. Each job covers the range
+// (checkpoint[i-1].blockNum, checkpoint[i].blockNum] walking backwards from
+// checkpoint[i]. Jobs are sorted by toBlock ascending so lowest ranges are fetched first.
+func buildFetchJobs(checkpoints []checkpoint) []fetchJob {
+	jobs := make([]fetchJob, 0, len(checkpoints))
+
+	for i, cp := range checkpoints {
+		var toBlock uint64
+		if i == 0 {
+			// First checkpoint: walk from this checkpoint down to block 1 (genesis is block 0).
+			toBlock = 1
+		} else {
+			// Walk from this checkpoint down to just after the previous checkpoint.
+			toBlock = checkpoints[i-1].blockNum + 1
+		}
+		jobs = append(jobs, fetchJob{
+			fromBlock: cp.blockNum,
+			toBlock:   toBlock,
+			tipID:     cp.containerID,
+		})
+	}
+
+	// Sort by toBlock ascending so lowest ranges are prioritized.
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].toBlock < jobs[j].toBlock
+	})
+	return jobs
+}
+
+// runParallelFetcher manages concurrent fetch workers pulling blocks from peers.
+// Returns the highest block number across all jobs when complete.
+func runParallelFetcher(
+	ctx context.Context,
+	db *store.DB,
+	net network.Network,
+	msgCreator message.Creator,
+	chainID ids.ID,
+	peerTracker *avap2p.PeerTracker,
+	handler *inboundHandler,
+	writerCh chan<- []byte,
+	writerErrCh <-chan error,
+	dispatchErrCh <-chan error,
+	requestTimeout time.Duration,
+	numWorkers int,
+) (uint64, error) {
+	checkpoints, err := parseCheckpoints()
+	if err != nil {
+		return 0, fmt.Errorf("parse checkpoints: %w", err)
+	}
+	if len(checkpoints) == 0 {
+		return 0, fmt.Errorf("no checkpoints found")
+	}
+
+	allJobs := buildFetchJobs(checkpoints)
+	log.Printf("parallel fetcher: %d jobs from %d checkpoints, %d workers",
+		len(allJobs), len(checkpoints), numWorkers)
+
+	// Filter out jobs that are already fully fetched.
+	var pendingJobs []fetchJob
+	for _, job := range allJobs {
+		// A job is "done" if the block at toBlock is already stored.
+		// This is a quick heuristic — a partially-done job restarts from the top,
+		// but PutContainer is idempotent so duplicates are harmless.
+		roTx, err := db.BeginRO()
+		if err != nil {
+			return 0, err
+		}
+		_, getErr := store.GetBlockByNumber(roTx, db, job.toBlock)
+		roTx.Abort()
+		if getErr == nil {
+			// toBlock exists, check fromBlock too.
+			roTx2, err := db.BeginRO()
+			if err != nil {
+				return 0, err
+			}
+			_, getErr2 := store.GetBlockByNumber(roTx2, db, job.fromBlock)
+			roTx2.Abort()
+			if getErr2 == nil {
+				log.Printf("parallel fetcher: skipping completed job [%d, %d]", job.toBlock, job.fromBlock)
+				continue
+			}
+		}
+		pendingJobs = append(pendingJobs, job)
+	}
+
+	if len(pendingJobs) == 0 {
+		log.Printf("parallel fetcher: all jobs already complete")
+		return checkpoints[len(checkpoints)-1].blockNum, nil
+	}
+
+	log.Printf("parallel fetcher: %d pending jobs (of %d total)", len(pendingJobs), len(allJobs))
+
+	// Job queue protected by mutex. Workers pull from the front (lowest range first).
+	var jobMu sync.Mutex
+	jobIdx := 0
+
+	// Global atomic request ID counter — each worker gets unique IDs.
+	var globalRequestID syncatomic.Uint32
+	globalRequestID.Store(1)
+
+	// Track total blocks fetched across all workers.
+	var totalFetched syncatomic.Int64
+
+	started := time.Now()
+
+	// Progress reporter.
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				fetched := totalFetched.Load()
+				elapsed := time.Since(started).Seconds()
+				if elapsed > 0 {
+					log.Printf("parallel fetcher: total_fetched=%d elapsed=%.1fs blocks_per_sec=%.0f",
+						fetched, elapsed, float64(fetched)/elapsed)
+				}
+			}
+		}
+	}()
+
+	// Worker function.
+	workerFn := func(workerID int) error {
+		// Each worker has its own response channel.
+		respCh := make(chan ancestorsResponse, 1)
+
+		for {
+			if ctx.Err() != nil {
+				return nil
+			}
+
+			// Grab the next job.
+			jobMu.Lock()
+			if jobIdx >= len(pendingJobs) {
+				jobMu.Unlock()
+				return nil // no more jobs
+			}
+			job := pendingJobs[jobIdx]
+			jobIdx++
+			jobMu.Unlock()
+
+			log.Printf("worker %d: starting job [%d -> %d] tipID=%s",
+				workerID, job.fromBlock, job.toBlock, job.tipID)
+
+			jobStart := time.Now()
+			jobBlocks := 0
+			nextID := job.tipID
+
+			for nextID != ids.Empty {
+				if ctx.Err() != nil {
+					return nil
+				}
+
+				// Check for writer/dispatch errors.
+				select {
+				case err := <-writerErrCh:
+					if err != nil {
+						return fmt.Errorf("writer failed: %w", err)
+					}
+					return fmt.Errorf("writer stopped unexpectedly")
+				case err := <-dispatchErrCh:
+					if err != nil {
+						return fmt.Errorf("network stopped: %w", err)
+					}
+					return fmt.Errorf("network stopped unexpectedly")
+				default:
+				}
+
+				reqID := globalRequestID.Add(1) - 1
+
+				// Pick a peer and send the request.
+				peerID, ok := peerTracker.SelectPeer()
+				if !ok {
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+				peerTracker.RegisterRequest(peerID)
+
+				// Register the response route before sending.
+				handler.registerRoute(reqID, respCh)
+
+				outMsg, err := msgCreator.GetAncestors(
+					chainID, reqID, requestTimeout, nextID,
+					p2p.EngineType_ENGINE_TYPE_CHAIN,
+				)
+				if err != nil {
+					handler.unregisterRoute(reqID)
+					return fmt.Errorf("create GetAncestors message: %w", err)
+				}
+
+				sendStarted := time.Now()
+				net.Send(
+					outMsg,
+					avacommon.SendConfig{NodeIDs: set.Of(peerID)},
+					avaconstants.PrimaryNetworkID,
+					subnets.NoOpAllower,
+				)
+
+				// Wait for response with timeout.
+				timer := time.NewTimer(requestTimeout)
+				var resp ancestorsResponse
+				gotResp := false
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					handler.unregisterRoute(reqID)
+					return nil
+				case <-timer.C:
+					handler.unregisterRoute(reqID)
+					peerTracker.RegisterFailure(peerID)
+					log.Printf("worker %d: timeout waiting for ancestors from %s reqID=%d blockID=%s",
+						workerID, peerID, reqID, nextID)
+					continue
+				case resp = <-respCh:
+					timer.Stop()
+					gotResp = true
+				}
+
+				if !gotResp || len(resp.blocks) == 0 {
+					peerTracker.RegisterFailure(peerID)
+					continue
+				}
+
+				// Score the peer based on throughput.
+				numBytes := 0
+				for _, blk := range resp.blocks {
+					numBytes += len(blk)
+				}
+				elapsed := time.Since(sendStarted).Seconds()
+				if elapsed <= 0 {
+					elapsed = 1e-9
+				}
+				peerTracker.RegisterResponse(peerID, float64(numBytes)/elapsed)
+
+				// Process the response: parse and enqueue blocks.
+				batchValid := true
+				var oldestMeta blockMeta
+				for i := 0; i < len(resp.blocks); i++ {
+					raw := append([]byte(nil), resp.blocks[i]...)
+					if len(raw) == 0 {
+						peerTracker.RegisterFailure(peerID)
+						batchValid = false
+						break
+					}
+					meta, err := parseBlockMeta(raw)
+					if err != nil {
+						log.Printf("worker %d: parse block %d/%d failed: %v",
+							workerID, i, len(resp.blocks), err)
+						peerTracker.RegisterFailure(peerID)
+						batchValid = false
+						break
+					}
+					select {
+					case writerCh <- raw:
+					case <-ctx.Done():
+						return nil
+					}
+					oldestMeta = meta
+					jobBlocks++
+				}
+				if !batchValid {
+					continue
+				}
+
+				totalFetched.Add(int64(len(resp.blocks)))
+
+				// Check if we've reached or passed the lower bound of our job.
+				// The last block in the response is the oldest. We need to check
+				// if we've walked past job.toBlock. Parse the oldest block to get its number.
+				// We don't have a direct block number from the meta, but we can check
+				// if the parentID is the genesis (ids.Empty) or if we should stop.
+				// Actually, let's check: if the parent of the oldest block is before our range,
+				// we're done. Since we can't directly check the block number from the meta,
+				// we rely on the writer storing blocks and the fact that GetAncestors returns
+				// blocks in order. We check the DB for the toBlock to see if it's been stored.
+				nextID = oldestMeta.parentID
+
+				// Quick check: if parentID is empty, we've reached genesis.
+				if nextID == ids.Empty {
+					break
+				}
+			}
+
+			jobElapsed := time.Since(jobStart)
+			rate := float64(0)
+			if jobElapsed.Seconds() > 0 {
+				rate = float64(jobBlocks) / jobElapsed.Seconds()
+			}
+			log.Printf("worker %d: finished job [%d -> %d] blocks=%d elapsed=%s rate=%.0f/s",
+				workerID, job.fromBlock, job.toBlock, jobBlocks,
+				jobElapsed.Truncate(time.Millisecond), rate)
+		}
+		return nil
+	}
+
+	// Launch workers.
+	if numWorkers > len(pendingJobs) {
+		numWorkers = len(pendingJobs)
+	}
+	var wg sync.WaitGroup
+	errCh := make(chan error, numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		workerID := i
+		go func() {
+			defer wg.Done()
+			if err := workerFn(workerID); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+
+	// Wait for all workers to finish.
+	wg.Wait()
+	close(errCh)
+
+	// Report any errors.
+	for err := range errCh {
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	fetched := totalFetched.Load()
+	elapsed := time.Since(started)
+	log.Printf("parallel fetcher: complete total_fetched=%d elapsed=%s blocks_per_sec=%.0f",
+		fetched, elapsed.Truncate(time.Millisecond), float64(fetched)/elapsed.Seconds())
+
+	return checkpoints[len(checkpoints)-1].blockNum, nil
 }

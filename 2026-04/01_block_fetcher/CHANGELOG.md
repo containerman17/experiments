@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-10 (session 21)
+
+- **Parallel block fetcher**: replaced sequential single-request fetch loop with a job-based parallel fetcher using N concurrent workers (default 8, configurable via `--fetch-workers`).
+- **Design**: Embedded checkpoints from `container_ids.json` (85 entries at 1k, 10k, 100k, 1M, 2M, ..., 82M) define block ranges. Each adjacent pair of checkpoints becomes a `fetchJob`. Jobs are sorted by `toBlock` ascending so lowest ranges near the executor frontier are fetched first.
+- **Workers**: Each worker pulls the next unstarted job from a shared priority queue, picks a peer via `peerTracker`, and walks backwards via `GetAncestors` from the checkpoint's known container ID. Workers send blocks to the existing `writerCh` channel (thread-safe, writer unchanged).
+- **Response demuxing**: Added `routeMap` to `inboundHandler` — each worker registers a per-request response channel before sending, so concurrent `GetAncestors` responses are routed to the correct worker without interference. Unrouted responses still fall through to the shared `ancestorsCh`.
+- **Job skipping**: On startup, jobs whose `toBlock` and `fromBlock` are both already in MDBX are skipped (resume support). Partially-fetched jobs restart from the top — `PutContainer` is idempotent, so duplicate writes are harmless.
+- **Progress reporting**: Background goroutine logs aggregate fetch rate every 5 seconds. Per-job completion logs include block count, elapsed time, and rate.
+- **Rationale**: Sequential fetching at ~300 blocks/sec was the bottleneck vs ~4000 blocks/sec execution. Parallel fetching across 8 peers should approach the aggregate bandwidth of connected validators.
+- Added `--fetch-workers=N` flag (default 8).
+
 ## 2026-04-11 (session 20)
 
 - **BREAKTHROUGH: Shared RO transaction** — opening one MDBX read-only transaction per batch instead of per-read eliminated the #1 bottleneck. Each `GetAccount`/`GetStorage` was doing a cgo round-trip to open/close a transaction. With 500+ reads per block × 1000 blocks per batch = 500,000 cgo calls eliminated.

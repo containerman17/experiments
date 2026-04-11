@@ -46,11 +46,6 @@ func ComputeIncrementalStateRoot(
 		}
 		prefixSet := psb.Build()
 
-		// Clear stale StorageTrie branch nodes for this account before recomputing.
-		if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
-			return [32]byte{}, err
-		}
-
 		root, updates, err := computeTrieRoot(tx, db.StorageTrie, db.HashedStorageState, addrHash[:], prefixSet, true)
 		if err != nil {
 			return [32]byte{}, err

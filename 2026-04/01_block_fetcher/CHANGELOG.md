@@ -24,6 +24,8 @@ The code currently has TWO architectures layered on top of each other:
 2. ~~Remove `AccountTrie.incrementalHash()` and `StorageTrie.incrementalHash()`.~~ **DONE** — ~360 lines removed. All incremental hashing goes through `ComputeIncrementalStateRoot`.
 3. ~~Remove `computeStateRoot()` from main.go.~~ **DONE** — ~300 lines removed (function + helper RLP encoders).
 4. ~~Remove `collectAllAccounts()`, `flushStateOnlyMDBX()`, etc.~~ **DONE** — ~200 lines removed. `flushStateOnly()` inlined to always use overlay.
+
+**Bugfix: storage trie hash was not truly incremental** — `deletePrefixedEntries` was destroying all stored branch nodes before recomputing each account's storage root, forcing a full rebuild every batch. Removed the call; the walker + PrefixSet already handles unchanged subtrees correctly via cached hashes. Hash time dropped from ~700ms to ~100ms per 1000-block batch.
 5. ~~Remove `--verify-interval` / rename.~~ **DONE** — single `--exec-batch-size` flag.
 6. ~~Clean up `executeBatch`.~~ **DONE** — no SkipHash toggle, no mode flags.
 

@@ -1050,7 +1050,8 @@ func executeBatch(
 		if err != nil {
 			log.Printf("executor: DEBUG full root computation failed: %v", err)
 		} else {
-			log.Printf("executor: DEBUG block %d: incremental=%x full=%x expected=%x", to, computedRoot, fullRoot, expectedRoot)
+			log.Printf("executor: DEBUG block %d: incremental=%x full=%x expected=%x fullMatchesExpected=%v",
+				to, computedRoot, fullRoot, expectedRoot, common.Hash(fullRoot) == expectedRoot)
 		}
 		rwTx.Abort()
 		runtime.UnlockOSThread()

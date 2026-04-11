@@ -212,21 +212,24 @@ func (h *HashBuilder) pushBranchNode(current Nibbles, length int) [][32]byte {
 	childCount := popcount16(stateMask)
 	firstChildIdx := len(h.stack) - childCount
 
-	// Collect child hashes if updates are enabled
+	// Collect child hashes if updates are enabled.
+	// Try to extract hash from ALL children (not just those with hashMask set).
+	// This ensures fresh trie computations also produce storable branch nodes.
 	var children [][32]byte
 	if h.updates != nil {
 		childIdx := firstChildIdx
 		for nibble := 0; nibble < 16; nibble++ {
 			if stateMask&(1<<nibble) != 0 {
-				if hashMask&(1<<nibble) != 0 {
-					if hash, ok := rlpNodeAsHash(h.stack[childIdx]); ok {
-						children = append(children, hash)
-					}
+				if hash, ok := rlpNodeAsHash(h.stack[childIdx]); ok {
+					children = append(children, hash)
+					// Mark this child as having a cached hash so the branch node gets stored.
+					h.hashMasks[length] |= 1 << nibble
 				}
 				childIdx++
 			}
 		}
 	}
+	_ = hashMask // was used before; now hashes are collected for all children
 
 	// RLP-encode the branch node from the stack
 	rlpData := rlpEncodeBranchNodeFromStack(h.stack[firstChildIdx:], stateMask)

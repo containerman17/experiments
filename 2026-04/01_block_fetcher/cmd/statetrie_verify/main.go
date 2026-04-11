@@ -45,7 +45,7 @@ func main() {
 
 	dbDir := flag.String("db-dir", "data/mainnet-mdbx", "MDBX database directory")
 	fromBlock := flag.Uint64("from", 1, "first block to process")
-	toBlock := flag.Uint64("to", 19, "last block to process")
+	toBlock := flag.Uint64("to", 0, "last block to process (0 = head block)")
 	cleanState := flag.Bool("clean-state", false, "Clear flat state tables before running")
 	flag.Parse()
 
@@ -69,6 +69,21 @@ func main() {
 		log.Fatalf("open MDBX: %v", err)
 	}
 	defer mdbxDB.Close()
+
+	// Resolve --to=0 to head block.
+	if *toBlock == 0 {
+		rtx, err := mdbxDB.BeginRO()
+		if err != nil {
+			log.Fatalf("begin RO: %v", err)
+		}
+		head, ok := store.GetHeadBlock(rtx, mdbxDB)
+		rtx.Abort()
+		if !ok {
+			log.Fatalf("no head block in database")
+		}
+		*toBlock = head
+		log.Printf("Resolved --to to head block %d", *toBlock)
+	}
 
 	// Clear flat state if requested.
 	if *cleanState {

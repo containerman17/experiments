@@ -1,9 +1,107 @@
 package trie
 
 import (
-	"github.com/ava-labs/libevm/crypto"
+	"bytes"
+
 	"github.com/erigontech/mdbx-go/mdbx"
 )
+
+// LeafSource provides sorted leaf entries for the trie computation.
+// Entries must be yielded in ascending key order (by the raw bytes of the key,
+// which for hashed state tables means keccak-sorted order).
+type LeafSource interface {
+	// Next returns the next (key, value) pair.
+	// Returns (nil, nil, nil) when exhausted.
+	// key is the raw bytes from the DB (e.g., 32-byte keccak hash for accounts,
+	// or the suffix after a prefix for storage).
+	Next() (key []byte, value []byte, err error)
+}
+
+// MDBXLeafSource wraps an MDBX cursor as a LeafSource.
+// It iterates entries starting from prefix, stopping when entries
+// no longer match the prefix.
+type MDBXLeafSource struct {
+	cursor  *mdbx.Cursor
+	prefix  []byte
+	started bool
+	done    bool
+	// Pre-allocated key buffer — callers copy via FromHex before next call.
+	keyBuf [32]byte
+}
+
+// NewMDBXLeafSource creates a LeafSource backed by an MDBX cursor.
+// prefix scopes the iteration: for account trie this is nil (iterate all),
+// for storage trie this is the 32-byte keccak(address) prefix.
+// When prefix is set, returned keys have the prefix stripped (only the suffix is returned).
+func NewMDBXLeafSource(cursor *mdbx.Cursor, prefix []byte) *MDBXLeafSource {
+	return &MDBXLeafSource{
+		cursor: cursor,
+		prefix: prefix,
+	}
+}
+
+// Next returns the next (key, value) pair from the MDBX cursor.
+// Returns (nil, nil, nil) when exhausted or past the prefix scope.
+func (s *MDBXLeafSource) Next() ([]byte, []byte, error) {
+	if s.done {
+		return nil, nil, nil
+	}
+
+	var k, v []byte
+	var err error
+
+	if !s.started {
+		s.started = true
+		if s.prefix != nil {
+			k, v, err = s.cursor.Get(s.prefix, nil, mdbx.SetRange)
+		} else {
+			k, v, err = s.cursor.Get(nil, nil, mdbx.First)
+		}
+	} else {
+		k, v, err = s.cursor.Get(nil, nil, mdbx.Next)
+	}
+
+	if err != nil {
+		if mdbx.IsNotFound(err) {
+			s.done = true
+			return nil, nil, nil
+		}
+		s.done = true
+		return nil, nil, err
+	}
+
+	// Check prefix scope.
+	if s.prefix != nil {
+		if len(k) < len(s.prefix) || !bytes.HasPrefix(k, s.prefix) {
+			s.done = true
+			return nil, nil, nil
+		}
+	}
+
+	// Copy key and value from MDBX mmap'd memory into owned buffers.
+	var keySrc []byte
+	if s.prefix != nil {
+		keySrc = k[len(s.prefix):]
+	} else {
+		keySrc = k
+	}
+
+	// Key: use fixed buffer (callers copy via FromHex before next call).
+	var keyCopy []byte
+	if len(keySrc) <= 32 {
+		copy(s.keyBuf[:], keySrc)
+		keyCopy = s.keyBuf[:len(keySrc)]
+	} else {
+		keyCopy = make([]byte, len(keySrc))
+		copy(keyCopy, keySrc)
+	}
+
+	// Value: must allocate — callers may hold references across Next() calls.
+	valCopy := make([]byte, len(v))
+	copy(valCopy, v)
+
+	return keyCopy, valCopy, nil
+}
 
 // TrieElement represents either a branch node or a leaf in the merged iteration.
 type TrieElement struct {
@@ -30,34 +128,29 @@ type TrieElement struct {
 // elements in sorted nibble order for the HashBuilder.
 //
 // The walker yields branch nodes from the trie DB (either cached hashes for
-// unchanged subtrees, or descended nodes for changed subtrees). The state
-// cursor yields leaf entries (actual account/storage values). The merge
+// unchanged subtrees, or descended nodes for changed subtrees). The leaf
+// source yields leaf entries (actual account/storage values). The merge
 // interleaves them by nibble path order.
 type NodeIter struct {
-	walker      *TrieWalker
-	stateCursor *mdbx.Cursor
-
-	// statePrefix scopes the state cursor. For account trie this is nil.
-	// For storage trie this is the 32-byte keccak(address) prefix.
-	statePrefix []byte
+	walker     *TrieWalker
+	leafSource LeafSource
 
 	// Buffered elements from each source.
 	walkerElem *TrieElement
 	walkerDone bool
 	stateElem  *TrieElement
 	stateDone  bool
-	stateStarted bool // whether we've done the initial seek on the state cursor
 
 	done bool
 }
 
-// NewNodeIter creates a node iterator merging trie nodes and state entries.
-// statePrefix scopes the state cursor (nil for account trie, keccak(address) for storage trie).
-func NewNodeIter(walker *TrieWalker, stateCursor *mdbx.Cursor, statePrefix []byte) *NodeIter {
+// NewNodeIter creates a node iterator merging trie nodes and leaf entries.
+// leaves provides sorted leaf entries (use MDBXLeafSource for MDBX-backed iteration,
+// or any other LeafSource implementation for merged/overlay sources).
+func NewNodeIter(walker *TrieWalker, leaves LeafSource) *NodeIter {
 	n := &NodeIter{
-		walker:      walker,
-		stateCursor: stateCursor,
-		statePrefix: statePrefix,
+		walker:     walker,
+		leafSource: leaves,
 	}
 	// Prime both sources.
 	n.advanceWalker()
@@ -100,6 +193,16 @@ func (n *NodeIter) Next() (*TrieElement, error) {
 			// Walker is behind — yield walker element.
 			elem := n.walkerElem
 			n.advanceWalker()
+
+			// If this is a cached-hash branch (not descended into),
+			// skip all state leaves that fall under this subtree.
+			// They're covered by the branch's cached hash.
+			if elem.IsBranch && elem.Node == nil {
+				for n.stateElem != nil && n.stateElem.Key.HasPrefix(elem.Key) {
+					n.advanceState()
+				}
+			}
+
 			return elem, nil
 		}
 
@@ -155,97 +258,34 @@ func (n *NodeIter) advanceWalker() {
 	n.walkerElem = elem
 }
 
-// advanceState fetches the next leaf element from the state cursor.
+// advanceState fetches the next leaf element from the leaf source.
 func (n *NodeIter) advanceState() {
 	if n.stateDone {
 		n.stateElem = nil
 		return
 	}
 
-	for {
-		var k, v []byte
-		var err error
-
-		if !n.stateStarted {
-			// First call — seek to the beginning (or to the prefix).
-			n.stateStarted = true
-			if n.statePrefix != nil {
-				k, v, err = n.stateCursor.Get(n.statePrefix, nil, mdbx.SetRange)
-			} else {
-				k, v, err = n.stateCursor.Get(nil, nil, mdbx.First)
-			}
-		} else {
-			k, v, err = n.stateCursor.Get(nil, nil, mdbx.Next)
-		}
-
-		if err != nil {
-			if mdbx.IsNotFound(err) {
-				n.stateDone = true
-				n.stateElem = nil
-				return
-			}
-			// On error, stop iteration.
-			n.stateDone = true
-			n.stateElem = nil
-			return
-		}
-
-		// Check prefix scope for storage tries.
-		if n.statePrefix != nil {
-			if len(k) < len(n.statePrefix) {
-				n.stateDone = true
-				n.stateElem = nil
-				return
-			}
-			// If the key no longer starts with our prefix, we're done.
-			prefixMatch := true
-			for i := 0; i < len(n.statePrefix); i++ {
-				if k[i] != n.statePrefix[i] {
-					prefixMatch = false
-					break
-				}
-			}
-			if !prefixMatch {
-				n.stateDone = true
-				n.stateElem = nil
-				return
-			}
-		}
-
-		// Convert the DB key to a nibble path.
-		// For accounts: key is keccak(address) [32B] → nibble path is FromHex(key)
-		// For storage:  key is keccak(address) [32B] ++ keccak(slot) [32B]
-		//               → nibble path is FromHex(keccak(slot)), i.e. the suffix after prefix
-		var hashInput []byte
-		if n.statePrefix != nil {
-			// Storage: the key after the prefix is keccak(slot) already.
-			hashInput = k[len(n.statePrefix):]
-		} else {
-			// Account: the key is keccak(address) already.
-			hashInput = k
-		}
-
-		// The keys in AccountState/StorageState are already keccak hashes,
-		// so the nibble path is just the hex expansion of the key bytes.
-		nibblePath := FromHex(hashInput)
-
-		// Copy value since the cursor may reuse the buffer.
-		val := make([]byte, len(v))
-		copy(val, v)
-
-		n.stateElem = &TrieElement{
-			Key:      nibblePath,
-			IsBranch: false,
-			Value:    val,
-		}
+	k, v, err := n.leafSource.Next()
+	if err != nil {
+		n.stateDone = true
+		n.stateElem = nil
 		return
 	}
-}
+	if k == nil {
+		// Exhausted.
+		n.stateDone = true
+		n.stateElem = nil
+		return
+	}
 
-// keccak256 computes the Keccak-256 hash of data and returns it as a 32-byte array.
-func keccak256(data []byte) [32]byte {
-	h := crypto.Keccak256(data)
-	var result [32]byte
-	copy(result[:], h)
-	return result
+	// The keys from the LeafSource are already the raw bytes we need
+	// (keccak hashes for hashed state). Convert to nibble path.
+	nibblePath := FromHex(k)
+
+	// Value is already copied by the LeafSource contract.
+	n.stateElem = &TrieElement{
+		Key:      nibblePath,
+		IsBranch: false,
+		Value:    v,
+	}
 }

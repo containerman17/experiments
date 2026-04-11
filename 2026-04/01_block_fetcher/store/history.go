@@ -323,8 +323,7 @@ func lookupCurrentFlatValue(tx *mdbx.Txn, db *DB, addr [20]byte, slot [32]byte, 
 
 // LookupHistoricalAccount returns the account state at a given block number.
 func LookupHistoricalAccount(tx *mdbx.Txn, db *DB, addr [20]byte, blockNum uint64) (*Account, error) {
-	var zeroSlot [32]byte
-	data, err := lookupHistoricalRaw(tx, db, addr, zeroSlot, blockNum, true)
+	data, err := lookupHistoricalRaw(tx, db, addr, AccountSentinelSlot, blockNum, true)
 	if err != nil {
 		return nil, err
 	}

@@ -127,6 +127,43 @@ func PutStorage(tx *mdbx.Txn, db *DB, addr [20]byte, slot [32]byte, value [32]by
 	return tx.Put(db.StorageState, key[:], v, 0)
 }
 
+// PutHashedAccount writes an account to the HashedAccountState table.
+// hashedAddr is keccak256(address).
+func PutHashedAccount(tx *mdbx.Txn, db *DB, hashedAddr [32]byte, data []byte) error {
+	return tx.Put(db.HashedAccountState, hashedAddr[:], data, 0)
+}
+
+// DeleteHashedAccount removes an account from HashedAccountState.
+func DeleteHashedAccount(tx *mdbx.Txn, db *DB, hashedAddr [32]byte) error {
+	err := tx.Del(db.HashedAccountState, hashedAddr[:], nil)
+	if mdbx.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+// PutHashedStorage writes a storage value to the HashedStorageState table.
+// hashedAddr is keccak256(address), hashedSlot is keccak256(slot).
+// value is the trimmed (leading zeros stripped) storage value bytes.
+func PutHashedStorage(tx *mdbx.Txn, db *DB, hashedAddr [32]byte, hashedSlot [32]byte, value []byte) error {
+	key := make([]byte, 64)
+	copy(key[:32], hashedAddr[:])
+	copy(key[32:], hashedSlot[:])
+	return tx.Put(db.HashedStorageState, key, value, 0)
+}
+
+// DeleteHashedStorage removes a storage entry from HashedStorageState.
+func DeleteHashedStorage(tx *mdbx.Txn, db *DB, hashedAddr [32]byte, hashedSlot [32]byte) error {
+	key := make([]byte, 64)
+	copy(key[:32], hashedAddr[:])
+	copy(key[32:], hashedSlot[:])
+	err := tx.Del(db.HashedStorageState, key, nil)
+	if mdbx.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 // GetStorage retrieves a storage slot value. Returns zero hash if not found.
 func GetStorage(tx *mdbx.Txn, db *DB, addr [20]byte, slot [32]byte) ([32]byte, error) {
 	key := StorageKey(addr, slot)

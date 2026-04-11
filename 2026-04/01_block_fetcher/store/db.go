@@ -19,8 +19,10 @@ const (
 	TableHistoryIndex = "HistoryIndex"
 	TableAccountTrie  = "AccountTrie"
 	TableStorageTrie  = "StorageTrie"
-	TableMetadata     = "Metadata"
-	TableEthDB        = "EthDB"
+	TableMetadata           = "Metadata"
+	TableEthDB              = "EthDB"
+	TableHashedAccountState = "HashedAccountState"
+	TableHashedStorageState = "HashedStorageState"
 )
 
 var allTables = []string{
@@ -38,6 +40,8 @@ var allTables = []string{
 	TableStorageTrie,
 	TableMetadata,
 	TableEthDB,
+	TableHashedAccountState,
+	TableHashedStorageState,
 }
 
 type DB struct {
@@ -55,8 +59,10 @@ type DB struct {
 	HistoryIndex mdbx.DBI
 	AccountTrie  mdbx.DBI
 	StorageTrie  mdbx.DBI
-	Metadata     mdbx.DBI
-	EthDB        mdbx.DBI
+	Metadata           mdbx.DBI
+	EthDB              mdbx.DBI
+	HashedAccountState mdbx.DBI
+	HashedStorageState mdbx.DBI
 }
 
 func Open(path string) (*DB, error) {
@@ -123,6 +129,8 @@ func Open(path string) (*DB, error) {
 	db.StorageTrie = dbis[11]
 	db.Metadata = dbis[12]
 	db.EthDB = dbis[13]
+	db.HashedAccountState = dbis[14]
+	db.HashedStorageState = dbis[15]
 
 	return db, nil
 }
@@ -156,6 +164,7 @@ func (db *DB) ClearState() error {
 		db.Changesets, db.HistoryIndex,
 		db.AccountTrie, db.StorageTrie,
 		db.Metadata, db.EthDB,
+		db.HashedAccountState, db.HashedStorageState,
 	}
 	for _, dbi := range tables {
 		if err := tx.Drop(dbi, false); err != nil {

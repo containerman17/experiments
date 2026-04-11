@@ -16,6 +16,7 @@ import (
 	"github.com/erigontech/mdbx-go/mdbx"
 
 	"block_fetcher/store"
+	intTrie "block_fetcher/trie"
 )
 
 // StorageTrie implements state.Trie for per-account storage tries,
@@ -179,137 +180,221 @@ type storageEntry struct {
 	encoded   []byte
 }
 
-// Hash computes the storage MPT root using a StackTrie.
+// Hash computes the storage MPT root using incremental trie hashing.
+// It writes dirty state to BOTH plain and hashed tables, builds a PrefixSet
+// of changed keys, then runs TrieWalker + NodeIter + HashBuilder.
 func (t *StorageTrie) Hash() common.Hash {
-	entries, err := t.collectAllStorage()
+	// No changes — return cached root.
+	if len(t.dirtySlots) == 0 && len(t.deletedSlots) == 0 {
+		return t.root
+	}
+
+	root, err := t.incrementalHash()
 	if err != nil {
 		return common.Hash{}
 	}
-	if len(entries) == 0 {
-		return types.EmptyRootHash
-	}
-
-	st := trie.NewStackTrie(nil)
-	for _, entry := range entries {
-		if err := st.Update(entry.hashedKey[:], entry.encoded); err != nil {
-			return common.Hash{}
-		}
-	}
-	return st.Hash()
+	t.root = root
+	return t.root
 }
 
-// Commit computes the hash, flushes dirty storage to MDBX, and returns the root.
-// It also captures old values for the changeset accumulator.
-func (t *StorageTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
-	root := t.Hash()
-
+// incrementalHash performs the full incremental hash computation for storage.
+func (t *StorageTrie) incrementalHash() (common.Hash, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	tx, err := t.db.BeginRW()
 	if err != nil {
-		return common.Hash{}, nil, err
+		return common.Hash{}, err
 	}
 
 	var addr [20]byte
 	copy(addr[:], t.address[:])
+	addrHash := crypto.Keccak256(t.address[:])
+	var addrHash32 [32]byte
+	copy(addrHash32[:], addrHash)
 
-	// Collect changeset entries: read old values before writing new ones.
+	// --- Build PrefixSet from changed keys ---
+	psb := intTrie.NewPrefixSetBuilder()
+
+	// --- Write phase: flush dirty state to plain + hashed tables, collect changesets ---
 	var changes []store.Change
-	if t.stateDB != nil {
-		// Dirty slots: capture old value before overwriting.
-		for slot, _ := range t.dirtySlots {
-			var slotKey [32]byte
-			copy(slotKey[:], slot[:])
 
+	for slot, value := range t.dirtySlots {
+		var slotKey [32]byte
+		copy(slotKey[:], slot[:])
+		hashedSlot := crypto.Keccak256(slot[:])
+		var hs [32]byte
+		copy(hs[:], hashedSlot)
+
+		// Add to prefix set.
+		psb.AddKey(intTrie.FromHex(hashedSlot))
+
+		// Read old value for changeset.
+		if t.stateDB != nil {
 			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
 			if err != nil {
 				tx.Abort()
-				return common.Hash{}, nil, err
+				return common.Hash{}, err
 			}
-
-			// Old value: trimmed bytes from MDBX, or empty if slot was zero/new.
 			var oldValue []byte
 			if oldVal != [32]byte{} {
 				trimmed := trimLeadingZeros(oldVal[:])
 				oldValue = make([]byte, len(trimmed))
 				copy(oldValue, trimmed)
 			}
-
 			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
 			if err != nil {
 				tx.Abort()
-				return common.Hash{}, nil, err
+				return common.Hash{}, err
 			}
 			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
 		}
 
-		// Deleted slots: capture old value before deleting.
-		for slot := range t.deletedSlots {
-			var slotKey [32]byte
-			copy(slotKey[:], slot[:])
+		// Write to plain StorageState.
+		var val32 [32]byte
+		copy(val32[32-len(value):], value)
+		if err := store.PutStorage(tx, t.db, addr, slotKey, val32); err != nil {
+			tx.Abort()
+			return common.Hash{}, err
+		}
 
+		// Write to HashedStorageState (trimmed value).
+		if err := store.PutHashedStorage(tx, t.db, addrHash32, hs, value); err != nil {
+			tx.Abort()
+			return common.Hash{}, err
+		}
+	}
+
+	for slot := range t.deletedSlots {
+		var slotKey [32]byte
+		copy(slotKey[:], slot[:])
+		hashedSlot := crypto.Keccak256(slot[:])
+		var hs [32]byte
+		copy(hs[:], hashedSlot)
+
+		// Add to prefix set.
+		psb.AddKey(intTrie.FromHex(hashedSlot))
+
+		// Read old value for changeset.
+		if t.stateDB != nil {
 			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
 			if err != nil {
 				tx.Abort()
-				return common.Hash{}, nil, err
+				return common.Hash{}, err
 			}
-
 			if oldVal != [32]byte{} {
 				trimmed := trimLeadingZeros(oldVal[:])
 				oldValue := make([]byte, len(trimmed))
 				copy(oldValue, trimmed)
-
 				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
 				if err != nil {
 					tx.Abort()
-					return common.Hash{}, nil, err
+					return common.Hash{}, err
 				}
 				changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
 			}
 		}
-	}
 
-	// Write dirty slots.
-	for slot, value := range t.dirtySlots {
-		var slotKey [32]byte
-		copy(slotKey[:], slot[:])
-
-		// Pad value back to 32 bytes for storage.
-		var val32 [32]byte
-		copy(val32[32-len(value):], value)
-
-		if err := store.PutStorage(tx, t.db, addr, slotKey, val32); err != nil {
-			tx.Abort()
-			return common.Hash{}, nil, err
-		}
-	}
-
-	// Delete slots.
-	for slot := range t.deletedSlots {
-		var slotKey [32]byte
-		copy(slotKey[:], slot[:])
-
+		// Delete from plain StorageState (write zero).
 		var zeroVal [32]byte
 		if err := store.PutStorage(tx, t.db, addr, slotKey, zeroVal); err != nil {
 			tx.Abort()
-			return common.Hash{}, nil, err
+			return common.Hash{}, err
+		}
+
+		// Delete from HashedStorageState.
+		if err := store.DeleteHashedStorage(tx, t.db, addrHash32, hs); err != nil {
+			tx.Abort()
+			return common.Hash{}, err
 		}
 	}
 
-	if _, err := tx.Commit(); err != nil {
-		return common.Hash{}, nil, err
+	// --- Hash phase: incremental trie hashing via Walker + NodeIter ---
+	prefixSet := psb.Build()
+
+	// Open cursor on StorageTrie with address prefix for TrieWalker.
+	rawTrieCursor, err := tx.OpenCursor(t.db.StorageTrie)
+	if err != nil {
+		tx.Abort()
+		return common.Hash{}, err
+	}
+	defer rawTrieCursor.Close()
+
+	trieCursor := NewPrefixedTrieCursor(rawTrieCursor, addrHash)
+	walker := intTrie.NewTrieWalker(trieCursor, prefixSet)
+
+	// Open cursor on HashedStorageState with address prefix for leaf source.
+	hashedCursor, err := tx.OpenCursor(t.db.HashedStorageState)
+	if err != nil {
+		tx.Abort()
+		return common.Hash{}, err
+	}
+	defer hashedCursor.Close()
+
+	leafSource := NewStorageLeafSource(intTrie.NewMDBXLeafSource(hashedCursor, addrHash))
+	iter := intTrie.NewNodeIter(walker, leafSource)
+	hb := intTrie.NewHashBuilder().WithUpdates()
+
+	for {
+		elem, err := iter.Next()
+		if err != nil {
+			tx.Abort()
+			return common.Hash{}, err
+		}
+		if elem == nil {
+			break
+		}
+		if elem.IsBranch {
+			hb.AddBranch(elem.Key, elem.Hash, elem.ChildrenInTrie)
+		} else {
+			hb.AddLeaf(elem.Key, elem.Value)
+		}
 	}
 
-	// Send changes to the accumulator.
+	root := hb.Root()
+
+	// Persist branch node updates (prefixed by addrHash for per-account scoping).
+	for packedPath, node := range hb.Updates() {
+		if node != nil {
+			fullKey := make([]byte, len(addrHash)+len(packedPath))
+			copy(fullKey, addrHash)
+			copy(fullKey[len(addrHash):], packedPath)
+			if err := tx.Put(t.db.StorageTrie, fullKey, node.Encode(), 0); err != nil {
+				tx.Abort()
+				return common.Hash{}, err
+			}
+		}
+	}
+
+	// Commit the RW transaction.
+	if _, err := tx.Commit(); err != nil {
+		return common.Hash{}, err
+	}
+
+	// Send changeset entries to the accumulator.
 	if t.stateDB != nil && len(changes) > 0 {
 		t.stateDB.AppendChanges(changes)
 	}
 
+	rootHash := common.Hash(root)
+	// If empty root (keccak(rlp(""))), use types.EmptyRootHash for consistency.
+	if rootHash == intTrie.EmptyRootHash {
+		rootHash = types.EmptyRootHash
+	}
+
+	return rootHash, nil
+}
+
+// Commit returns the cached root from Hash() and clears dirty state.
+// All actual work (writing state, changeset collection, branch node updates)
+// is done in Hash().
+func (t *StorageTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
+	// Ensure Hash() has been called (state.StateDB always calls Hash() before Commit()).
+	root := t.Hash()
+
 	// Clear dirty state.
 	t.dirtySlots = make(map[common.Hash][]byte)
 	t.deletedSlots = make(map[common.Hash]bool)
-	t.root = root
 
 	return root, nil, nil
 }

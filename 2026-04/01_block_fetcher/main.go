@@ -4,6 +4,8 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"net/http"
+	_ "net/http/pprof"
 	"errors"
 	"flag"
 	"fmt"
@@ -47,17 +49,16 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	proposerblock "github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/core/rawdb"
 	"github.com/ava-labs/libevm/core/state"
 	ethtypes "github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/core/vm"
+	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/params"
 	"github.com/ava-labs/libevm/rlp"
-	"github.com/ava-labs/libevm/triedb"
 	"github.com/holiman/uint256"
 
+	"block_fetcher/statetrie"
 	"block_fetcher/store"
-	mdbxethdb "block_fetcher/store/ethdb"
 )
 
 const (
@@ -70,7 +71,7 @@ const (
 	defaultBatchSize     = 256
 	defaultExpectedNetID = uint32(1)
 	defaultPrimarySubnet = "11111111111111111111111111111111LpoYY"
-	defaultFixedTipBlock = uint64(1_000)
+	defaultFixedTipBlock = uint64(100_000)
 )
 
 var (
@@ -180,6 +181,12 @@ type writerStats struct {
 }
 
 func main() {
+	// pprof server for profiling
+	go func() {
+		log.Println("pprof listening on :6060")
+		log.Println(http.ListenAndServe(":6060", nil))
+	}()
+
 	corethcore.RegisterExtras()
 	ccustomtypes.Register()
 	extstate.RegisterExtras()
@@ -893,21 +900,18 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 	}
 	chainCfg := cChainGenesis.Config
 
-	// Set up MDBX-backed ethdb.
-	ethKV := mdbxethdb.New(db.Env(), db.EthDB)
-	ethDB := rawdb.NewDatabase(ethKV)
-	trieDB := triedb.NewDatabase(ethDB, nil)
-	stateDB := state.NewDatabaseWithNodeDB(ethDB, trieDB)
+	// Set up statetrie-backed state database.
+	stateTrieDB := statetrie.NewDatabase(db)
 
-	// Commit genesis (idempotent).
-	genesisBlock := cChainGenesis.MustCommit(ethDB, trieDB)
+	// Load genesis into flat MDBX tables (idempotent).
+	if err := loadGenesisFlat(db, &cChainGenesis); err != nil {
+		return fmt.Errorf("load genesis: %w", err)
+	}
+
+	// Compute genesis root using our statetrie.
+	genesisBlock := cChainGenesis.ToBlock()
 	genesisRoot := genesisBlock.Root()
 	log.Printf("executor: genesis root=%x", genesisRoot)
-
-	// Verify we can open genesis state.
-	if _, err := state.New(genesisRoot, stateDB, nil); err != nil {
-		return fmt.Errorf("open genesis state: %w", err)
-	}
 
 	// Set up snow.Context for atomic transactions.
 	avaxAssetID, err := ids.FromString(MainnetAVAXAssetID)
@@ -982,7 +986,7 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 		raw = append([]byte(nil), raw...)
 		roTx.Abort()
 
-		if err := executorProcessBlock(db, stateDB, trieDB, chainCfg, snowCtx, nextBlock, raw, &parentRoot); err != nil {
+		if err := executorProcessBlock(db, stateTrieDB, chainCfg, snowCtx, nextBlock, raw, &parentRoot); err != nil {
 			return fmt.Errorf("block %d: %w", nextBlock, err)
 		}
 
@@ -995,8 +999,7 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64) error 
 
 func executorProcessBlock(
 	db *store.DB,
-	stateDB state.Database,
-	trieDB *triedb.Database,
+	stateDB *statetrie.Database,
 	chainCfg *params.ChainConfig,
 	snowCtx *snow.Context,
 	blockNum uint64,
@@ -1088,13 +1091,14 @@ func executorProcessBlock(
 		return fmt.Errorf("state root mismatch: computed %x, expected %x", computedRoot, expectedRoot)
 	}
 
-	// Commit state.
-	root, err := sdb.Commit(blockNum, true)
-	if err != nil {
+	// Commit state — this flushes dirty state to our flat MDBX tables.
+	if _, err := sdb.Commit(blockNum, true); err != nil {
 		return fmt.Errorf("commit state: %w", err)
 	}
-	if err := trieDB.Commit(root, false); err != nil {
-		return fmt.Errorf("commit trie: %w", err)
+
+	// Flush changeset and history index for this block.
+	if err := stateDB.FlushChangeset(blockNum); err != nil {
+		return fmt.Errorf("flush changeset: %w", err)
 	}
 
 	// Update head block in metadata.
@@ -1112,6 +1116,99 @@ func executorProcessBlock(
 
 	*parentRoot = computedRoot
 	return nil
+}
+
+// loadGenesisFlat writes genesis alloc to flat MDBX state tables (plain + hashed).
+// Idempotent: checks metadata for "genesis_loaded" marker.
+func loadGenesisFlat(db *store.DB, gen *corethcore.Genesis) error {
+	// Check if already loaded.
+	tx, err := db.BeginRO()
+	if err != nil {
+		return err
+	}
+	_, loadErr := tx.Get(db.Metadata, []byte("genesis_loaded"))
+	tx.Abort()
+	if loadErr == nil {
+		return nil // already loaded
+	}
+
+	// Write genesis alloc to flat state.
+	rwTx, err := db.BeginRW()
+	if err != nil {
+		return err
+	}
+
+	for addr, account := range gen.Alloc {
+		var addr20 [20]byte
+		copy(addr20[:], addr[:])
+		hashedAddr := crypto.Keccak256(addr[:])
+		var ha [32]byte
+		copy(ha[:], hashedAddr)
+
+		codeHash := store.EmptyCodeHash
+		if len(account.Code) > 0 {
+			codeHash = [32]byte(crypto.Keccak256Hash(account.Code))
+			if err := store.PutCode(rwTx, db, codeHash, account.Code); err != nil {
+				rwTx.Abort()
+				return err
+			}
+		}
+
+		var balance [32]byte
+		if account.Balance != nil {
+			bal, _ := uint256.FromBig(account.Balance)
+			bal.WriteToArray32(&balance)
+		}
+
+		acct := &store.Account{
+			Nonce:       account.Nonce,
+			Balance:     balance,
+			CodeHash:    codeHash,
+			StorageRoot: store.EmptyRootHash,
+		}
+		if err := store.PutAccount(rwTx, db, addr20, acct); err != nil {
+			rwTx.Abort()
+			return err
+		}
+
+		// Also write to hashed account state.
+		if err := store.PutHashedAccount(rwTx, db, ha, store.EncodeAccountBytes(acct)); err != nil {
+			rwTx.Abort()
+			return err
+		}
+
+		for slot, value := range account.Storage {
+			if err := store.PutStorage(rwTx, db, addr20, [32]byte(slot), [32]byte(value)); err != nil {
+				rwTx.Abort()
+				return err
+			}
+
+			// Hashed storage.
+			hashedSlot := crypto.Keccak256(slot[:])
+			var hs [32]byte
+			copy(hs[:], hashedSlot)
+			// Trim leading zeros for hashed storage value.
+			val32 := [32]byte(value)
+			trimmed := val32[:]
+			for len(trimmed) > 0 && trimmed[0] == 0 {
+				trimmed = trimmed[1:]
+			}
+			if len(trimmed) > 0 {
+				if err := store.PutHashedStorage(rwTx, db, ha, hs, trimmed); err != nil {
+					rwTx.Abort()
+					return err
+				}
+			}
+		}
+	}
+
+	if err := rwTx.Put(db.Metadata, []byte("genesis_loaded"), []byte{1}, 0); err != nil {
+		rwTx.Abort()
+		return err
+	}
+
+	_, err = rwTx.Commit()
+	return err
 }
 
 // executorParseEthBlock decodes a raw block from MDBX. It first tries to unwrap a

@@ -10,17 +10,20 @@ import (
 
 	"github.com/ava-labs/avalanchego/genesis"
 	corethcore "github.com/ava-labs/avalanchego/graft/coreth/core"
+	"github.com/ava-labs/avalanchego/graft/coreth/core/extstate"
 	cparams "github.com/ava-labs/avalanchego/graft/coreth/params"
 	ccustomtypes "github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
 	avaconstants "github.com/ava-labs/avalanchego/utils/constants"
 	proposerblock "github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/state"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/core/vm"
 	"github.com/ava-labs/libevm/params"
 	"github.com/ava-labs/libevm/rlp"
 	"github.com/holiman/uint256"
 
+	"block_fetcher/statetrie"
 	"block_fetcher/store"
 )
 
@@ -28,12 +31,15 @@ var registerOnce sync.Once
 
 func registerExtras() {
 	registerOnce.Do(func() {
-		// Only register type extras, NOT corethcore.RegisterExtras() which
-		// installs a VM hook that type-asserts StateDB to *state.StateDB.
-		// Our historicalState implements vm.StateDB but isn't that concrete type.
-		// This matches defi-toolbox-avalanche's lightclient approach.
-		cparams.RegisterExtras()
+		// Register all libevm extras — same as evm.RegisterAllLibEVMExtras().
+		// core.RegisterExtras() installs OverrideNewEVMArgs hook that wraps
+		// StateDB with StateDBAP0 for pre-AP1 blocks (correct GetCommittedState).
+		// This requires CallContract to use a real *state.StateDB (not a custom
+		// vm.StateDB) because the hook does statedb.(*state.StateDB).
+		corethcore.RegisterExtras()
 		ccustomtypes.Register()
+		extstate.RegisterExtras()
+		cparams.RegisterExtras()
 	})
 }
 
@@ -302,17 +308,16 @@ func (n *Node) CallContract(ctx context.Context, msg CallMsg, blockNumber *big.I
 		return nil, err
 	}
 
+	// Get block header for EVM context.
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	tx, err := n.db.BeginRO()
+	rtx, err := n.db.BeginRO()
 	if err != nil {
+		runtime.UnlockOSThread()
 		return nil, err
 	}
-	defer tx.Abort()
-
-	// Get block header for EVM context.
-	raw, err := store.GetBlockByNumber(tx, n.db, num)
+	raw, err := store.GetBlockByNumber(rtx, n.db, num)
+	rtx.Abort()
+	runtime.UnlockOSThread()
 	if err != nil {
 		return nil, fmt.Errorf("get block %d: %w", num, err)
 	}
@@ -334,11 +339,11 @@ func (n *Node) CallContract(ctx context.Context, msg CallMsg, blockNumber *big.I
 			return common.Hash{}
 		}
 		defer htx.Abort()
-		raw, err := store.GetBlockByNumber(htx, n.db, blockNum)
+		r, err := store.GetBlockByNumber(htx, n.db, blockNum)
 		if err != nil {
 			return common.Hash{}
 		}
-		b, err := parseEthBlock(raw)
+		b, err := parseEthBlock(r)
 		if err != nil {
 			return common.Hash{}
 		}
@@ -346,8 +351,15 @@ func (n *Node) CallContract(ctx context.Context, msg CallMsg, blockNumber *big.I
 	}
 	blockCtx := buildBlockContext(header, n.chainCfg, getHashFn)
 
-	// Build historical statedb.
-	statedb := newHistoricalState(tx, n.db, num)
+	// Build historical statedb using real *state.StateDB backed by statetrie.
+	// This is critical: corethcore.RegisterExtras() installs a hook that wraps
+	// the StateDB (StateDBAP0 for pre-AP1 blocks). The hook type-asserts to
+	// *state.StateDB, so we must use the real type here.
+	histDB := statetrie.NewHistoricalDatabase(n.db, num)
+	statedb, err := state.New(header.Root, histDB, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create historical statedb at block %d: %w", num, err)
+	}
 
 	// Build tx context from the call message.
 	gas := msg.Gas
@@ -375,13 +387,8 @@ func (n *Node) CallContract(ctx context.Context, msg CallMsg, blockNumber *big.I
 		GasPrice: gasPrice,
 	}
 
-	// Prepare statedb for the call.
-	rules := n.chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
-	statedb.Prepare(rules, msg.From, header.Coinbase, to,
-		vm.ActivePrecompiles(rules), nil)
-
-	// Create EVM via NewEVM. This triggers coreth's hook which wraps the StateDB.
-	// Our statedb must be a real *state.StateDB (backed by statetrie.HistoricalDatabase).
+	// Create EVM via NewEVM. The coreth hook wraps StateDB with StateDBAP0
+	// for pre-AP1 blocks, fixing GetCommittedState behavior.
 	evm := vm.NewEVM(blockCtx, txCtx, statedb, n.chainCfg, vm.Config{NoBaseFee: true})
 
 	result, err := corethcore.ApplyMessage(evm, &corethcore.Message{

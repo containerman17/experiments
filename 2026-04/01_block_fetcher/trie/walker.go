@@ -6,13 +6,21 @@ import (
 	"github.com/erigontech/mdbx-go/mdbx"
 )
 
+// TrieCursor is an interface abstracting MDBX cursor operations for the TrieWalker.
+// This allows wrapping a raw *mdbx.Cursor with prefix-stripping adapters
+// (e.g., for per-address scoped StorageTrie tables).
+type TrieCursor interface {
+	Get(key, val []byte, op uint) ([]byte, []byte, error)
+	Close()
+}
+
 // TrieWalker walks trie nodes from MDBX, skipping unchanged subtrees.
 //
 // It reads BranchNodeCompact entries from a trie cursor (AccountTrie or StorageTrie)
 // and uses a PrefixSet to decide which branches need re-examination (changed)
 // versus which can be skipped (returning their cached hash).
 type TrieWalker struct {
-	cursor    *mdbx.Cursor
+	cursor    TrieCursor
 	prefixSet *PrefixSet
 
 	// Stack of branch nodes being traversed. Each frame represents a node
@@ -38,7 +46,8 @@ type walkerFrame struct {
 }
 
 // NewTrieWalker creates a walker over a trie table.
-func NewTrieWalker(cursor *mdbx.Cursor, prefixSet *PrefixSet) *TrieWalker {
+// cursor can be a raw *mdbx.Cursor or any TrieCursor implementation (e.g., PrefixedTrieCursor).
+func NewTrieWalker(cursor TrieCursor, prefixSet *PrefixSet) *TrieWalker {
 	return &TrieWalker{
 		cursor:    cursor,
 		prefixSet: prefixSet,
@@ -98,10 +107,10 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 							node:     childNode,
 							childIdx: 0,
 						})
-						// Yield this descended branch node so the caller knows
-						// it exists at this path (the NodeIter needs to know about
-						// branch nodes at each level for the HashBuilder).
-						return childPath, childNode, [32]byte{}, false
+						// Don't yield descended branches — just push onto stack
+						// and continue. Only cached hashes (skipped subtrees) are
+						// yielded. Leaves come from the LeafSource via NodeIter.
+						break
 					}
 				}
 				// If no subtree in DB or seek failed, this child is a leaf-level

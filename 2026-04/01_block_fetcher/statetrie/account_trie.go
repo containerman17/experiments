@@ -16,6 +16,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"block_fetcher/store"
+	intTrie "block_fetcher/trie"
 )
 
 // AccountTrie implements state.Trie for the account trie, backed by flat MDBX storage.
@@ -160,94 +161,71 @@ type accountEntry struct {
 	encoded   []byte
 }
 
-// Hash computes the MPT root hash by scanning all accounts (dirty + MDBX) and
-// feeding them into a StackTrie in sorted order.
+// Hash computes the MPT root hash using incremental trie hashing.
+// It writes dirty state to BOTH plain and hashed tables, builds a PrefixSet
+// of changed keys, then runs TrieWalker + NodeIter + HashBuilder to compute
+// the root. Branch node updates are persisted to the AccountTrie table.
 func (t *AccountTrie) Hash() common.Hash {
-	accounts, err := t.collectAllAccounts()
+	// No changes — return cached root.
+	if len(t.dirtyAccounts) == 0 && len(t.deletedAccounts) == 0 {
+		return t.root
+	}
+
+	root, err := t.incrementalHash()
 	if err != nil {
-		// In production this would need better error handling, but Hash() returns
-		// only a hash. Returning empty hash on error.
 		return common.Hash{}
 	}
-
-	st := trie.NewStackTrie(nil)
-	for _, entry := range accounts {
-		if err := st.Update(entry.hashedKey[:], entry.encoded); err != nil {
-			return common.Hash{}
-		}
-	}
-	return st.Hash()
+	t.root = root
+	return t.root
 }
 
-// Commit computes the hash, flushes dirty accounts to MDBX, and returns the root.
-// It also captures old values for the changeset accumulator.
-func (t *AccountTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
-	root := t.Hash()
-
+// incrementalHash performs the full incremental hash computation.
+func (t *AccountTrie) incrementalHash() (common.Hash, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	tx, err := t.db.BeginRW()
 	if err != nil {
-		return common.Hash{}, nil, err
+		return common.Hash{}, err
 	}
 
-	// Collect changeset entries: read old values before writing new ones.
+	// --- Build PrefixSet from changed keys ---
+	psb := intTrie.NewPrefixSetBuilder()
+
+	// --- Write phase: flush dirty state to plain + hashed tables, collect changesets ---
 	var changes []store.Change
-	if t.stateDB != nil {
-		var zeroSlot [32]byte
+	acctSlot := store.AccountSentinelSlot
 
-		// Dirty accounts: capture old value before overwriting.
-		for address := range t.dirtyAccounts {
-			var addr [20]byte
-			copy(addr[:], address[:])
+	for address, acct := range t.dirtyAccounts {
+		var addr [20]byte
+		copy(addr[:], address[:])
+		hashedAddr := crypto.Keccak256(address[:])
+		var ha [32]byte
+		copy(ha[:], hashedAddr)
 
-			// Read old account from MDBX.
+		// Add to prefix set.
+		psb.AddKey(intTrie.FromHex(hashedAddr))
+
+		// Read old value for changeset.
+		if t.stateDB != nil {
 			var oldValue []byte
 			oldAcct, err := store.GetAccount(tx, t.db, addr)
 			if err != nil {
 				tx.Abort()
-				return common.Hash{}, nil, err
+				return common.Hash{}, err
 			}
 			if oldAcct != nil {
-				encoded := store.EncodeAccountBytes(oldAcct)
-				oldValue = encoded
+				oldValue = store.EncodeAccountBytes(oldAcct)
 			}
-
-			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, zeroSlot)
+			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, acctSlot)
 			if err != nil {
 				tx.Abort()
-				return common.Hash{}, nil, err
+				return common.Hash{}, err
 			}
 			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
 		}
 
-		// Deleted accounts: capture old value before deleting.
-		for address := range t.deletedAccounts {
-			var addr [20]byte
-			copy(addr[:], address[:])
-
-			oldAcct, err := store.GetAccount(tx, t.db, addr)
-			if err != nil {
-				tx.Abort()
-				return common.Hash{}, nil, err
-			}
-			if oldAcct != nil {
-				encoded := store.EncodeAccountBytes(oldAcct)
-				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, zeroSlot)
-				if err != nil {
-					tx.Abort()
-					return common.Hash{}, nil, err
-				}
-				changes = append(changes, store.Change{KeyID: keyID, OldValue: encoded})
-			}
-		}
-	}
-
-	// Write dirty accounts.
-	for address, acct := range t.dirtyAccounts {
-		var addr [20]byte
-		copy(addr[:], address[:])
+		// Write to plain AccountState.
 		balance := acct.Balance.Bytes32()
 		var codeHash [32]byte
 		copy(codeHash[:], acct.CodeHash)
@@ -259,35 +237,136 @@ func (t *AccountTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, 
 		}
 		if err := store.PutAccount(tx, t.db, addr, storeAcct); err != nil {
 			tx.Abort()
-			return common.Hash{}, nil, err
+			return common.Hash{}, err
+		}
+
+		// Write to hashed HashedAccountState.
+		encoded := store.EncodeAccountBytes(storeAcct)
+		if err := store.PutHashedAccount(tx, t.db, ha, encoded); err != nil {
+			tx.Abort()
+			return common.Hash{}, err
 		}
 	}
 
-	// Delete accounts.
 	for address := range t.deletedAccounts {
 		var addr [20]byte
 		copy(addr[:], address[:])
+		hashedAddr := crypto.Keccak256(address[:])
+		var ha [32]byte
+		copy(ha[:], hashedAddr)
+
+		// Add to prefix set.
+		psb.AddKey(intTrie.FromHex(hashedAddr))
+
+		// Read old value for changeset.
+		if t.stateDB != nil {
+			oldAcct, err := store.GetAccount(tx, t.db, addr)
+			if err != nil {
+				tx.Abort()
+				return common.Hash{}, err
+			}
+			if oldAcct != nil {
+				oldValue := store.EncodeAccountBytes(oldAcct)
+				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, acctSlot)
+				if err != nil {
+					tx.Abort()
+					return common.Hash{}, err
+				}
+				changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
+			}
+		}
+
+		// Delete from plain AccountState.
 		if err := tx.Del(t.db.AccountState, addr[:], nil); err != nil {
 			if !mdbx.IsNotFound(err) {
 				tx.Abort()
-				return common.Hash{}, nil, err
+				return common.Hash{}, err
+			}
+		}
+
+		// Delete from HashedAccountState.
+		if err := store.DeleteHashedAccount(tx, t.db, ha); err != nil {
+			tx.Abort()
+			return common.Hash{}, err
+		}
+	}
+
+	// --- Hash phase: incremental trie hashing via Walker + NodeIter ---
+	prefixSet := psb.Build()
+
+	// Open cursor on AccountTrie for TrieWalker (stored branch nodes).
+	trieCursor, err := tx.OpenCursor(t.db.AccountTrie)
+	if err != nil {
+		tx.Abort()
+		return common.Hash{}, err
+	}
+	defer trieCursor.Close()
+
+	walker := intTrie.NewTrieWalker(trieCursor, prefixSet)
+
+	// Open cursor on HashedAccountState for leaf source.
+	hashedCursor, err := tx.OpenCursor(t.db.HashedAccountState)
+	if err != nil {
+		tx.Abort()
+		return common.Hash{}, err
+	}
+	defer hashedCursor.Close()
+
+	leafSource := NewAccountLeafSource(intTrie.NewMDBXLeafSource(hashedCursor, nil))
+	iter := intTrie.NewNodeIter(walker, leafSource)
+	hb := intTrie.NewHashBuilder().WithUpdates()
+
+	for {
+		elem, err := iter.Next()
+		if err != nil {
+			tx.Abort()
+			return common.Hash{}, err
+		}
+		if elem == nil {
+			break
+		}
+		if elem.IsBranch {
+			hb.AddBranch(elem.Key, elem.Hash, elem.ChildrenInTrie)
+		} else {
+			hb.AddLeaf(elem.Key, elem.Value)
+		}
+	}
+
+	root := hb.Root()
+
+	// Persist branch node updates.
+	for packedPath, node := range hb.Updates() {
+		if node != nil {
+			if err := tx.Put(t.db.AccountTrie, []byte(packedPath), node.Encode(), 0); err != nil {
+				tx.Abort()
+				return common.Hash{}, err
 			}
 		}
 	}
 
+	// Commit the RW transaction.
 	if _, err := tx.Commit(); err != nil {
-		return common.Hash{}, nil, err
+		return common.Hash{}, err
 	}
 
-	// Send changes to the accumulator.
+	// Send changeset entries to the accumulator.
 	if t.stateDB != nil && len(changes) > 0 {
 		t.stateDB.AppendChanges(changes)
 	}
 
+	return common.Hash(root), nil
+}
+
+// Commit returns the cached root from Hash() and clears dirty state.
+// All actual work (writing state, changeset collection, branch node updates)
+// is done in Hash().
+func (t *AccountTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
+	// Ensure Hash() has been called (state.StateDB always calls Hash() before Commit()).
+	root := t.Hash()
+
 	// Clear dirty state.
 	t.dirtyAccounts = make(map[common.Address]*types.StateAccount)
 	t.deletedAccounts = make(map[common.Address]bool)
-	t.root = root
 
 	return root, nil, nil
 }

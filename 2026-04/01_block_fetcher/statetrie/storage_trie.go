@@ -3,14 +3,10 @@ package statetrie
 import (
 	"bytes"
 	"errors"
-	"runtime"
-	"sort"
 
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethdb"
-	"github.com/ava-labs/libevm/rlp"
 	"github.com/ava-labs/libevm/trie"
 	"github.com/ava-labs/libevm/trie/trienode"
 	"github.com/erigontech/mdbx-go/mdbx"
@@ -207,21 +203,10 @@ func (t *StorageTrie) Hash() common.Hash {
 	return common.Hash{} // dummy — real root computed at batch boundary
 }
 
-// flushStateOnly writes dirty storage and captures changesets, but skips the
-// trie hash computation. Used in batch mode.
-// When an overlay is active, all reads/writes go through the overlay (zero MDBX
-// write transactions). Otherwise falls back to direct MDBX RW transaction.
+// flushStateOnly writes dirty storage state to the overlay and captures
+// raw changesets (keyIDs assigned later during Flush).
 func (t *StorageTrie) flushStateOnly() error {
 	overlay := t.stateDB.Overlay
-	if overlay != nil {
-		return t.flushStateOnlyOverlay(overlay)
-	}
-	return t.flushStateOnlyMDBX()
-}
-
-// flushStateOnlyOverlay writes dirty storage to the BatchOverlay and captures
-// raw changesets (keyIDs assigned later during Flush).
-func (t *StorageTrie) flushStateOnlyOverlay(overlay *BatchOverlay) error {
 	// We need a RO transaction to read old values for changeset capture.
 	tx, err := t.db.BeginRO()
 	if err != nil {
@@ -286,106 +271,6 @@ func (t *StorageTrie) flushStateOnlyOverlay(overlay *BatchOverlay) error {
 	return nil
 }
 
-// flushStateOnlyMDBX writes dirty storage directly to MDBX (non-overlay path).
-func (t *StorageTrie) flushStateOnlyMDBX() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	tx, err := t.db.BeginRW()
-	if err != nil {
-		return err
-	}
-
-	var addr [20]byte
-	copy(addr[:], t.address[:])
-	addrHash := crypto.Keccak256(t.address[:])
-	var addrHash32 [32]byte
-	copy(addrHash32[:], addrHash)
-
-	var changes []store.Change
-
-	for slot, value := range t.dirtySlots {
-		var slotKey [32]byte
-		copy(slotKey[:], slot[:])
-		var hs [32]byte
-		copy(hs[:], crypto.Keccak256(slot[:]))
-
-		if t.stateDB != nil {
-			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
-			if err != nil {
-				tx.Abort()
-				return err
-			}
-			var oldValue []byte
-			if oldVal != [32]byte{} {
-				trimmed := trimLeadingZeros(oldVal[:])
-				oldValue = make([]byte, len(trimmed))
-				copy(oldValue, trimmed)
-			}
-			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
-			if err != nil {
-				tx.Abort()
-				return err
-			}
-			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
-		}
-
-		var val32 [32]byte
-		copy(val32[32-len(value):], value)
-		if err := store.PutStorage(tx, t.db, addr, slotKey, val32); err != nil {
-			tx.Abort()
-			return err
-		}
-		if err := store.PutHashedStorage(tx, t.db, addrHash32, hs, value); err != nil {
-			tx.Abort()
-			return err
-		}
-	}
-
-	for slot := range t.deletedSlots {
-		var slotKey [32]byte
-		copy(slotKey[:], slot[:])
-		var hs [32]byte
-		copy(hs[:], crypto.Keccak256(slot[:]))
-
-		if t.stateDB != nil {
-			oldVal, err := store.GetStorage(tx, t.db, addr, slotKey)
-			if err != nil {
-				tx.Abort()
-				return err
-			}
-			if oldVal != [32]byte{} {
-				trimmed := trimLeadingZeros(oldVal[:])
-				oldValue := make([]byte, len(trimmed))
-				copy(oldValue, trimmed)
-				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, slotKey)
-				if err != nil {
-					tx.Abort()
-					return err
-				}
-				changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
-			}
-		}
-
-		var zeroVal [32]byte
-		if err := store.PutStorage(tx, t.db, addr, slotKey, zeroVal); err != nil {
-			tx.Abort()
-			return err
-		}
-		if err := store.DeleteHashedStorage(tx, t.db, addrHash32, hs); err != nil {
-			tx.Abort()
-			return err
-		}
-	}
-
-	if _, err := tx.Commit(); err != nil {
-		return err
-	}
-	if t.stateDB != nil && len(changes) > 0 {
-		t.stateDB.AppendChanges(changes)
-	}
-	return nil
-}
 
 // Commit returns the cached root from Hash() and clears dirty state.
 // All actual work (writing state, changeset collection, branch node updates)
@@ -417,81 +302,4 @@ func (t *StorageTrie) NodeIterator(startKey []byte) (trie.NodeIterator, error) {
 // Prove is not supported.
 func (t *StorageTrie) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
 	return errors.New("Prove not supported")
-}
-
-// collectAllStorage reads all storage for this address from MDBX and merges
-// with dirty state, returning entries sorted by keccak256(slot).
-func (t *StorageTrie) collectAllStorage() ([]storageEntry, error) {
-	seen := make(map[common.Hash][]byte) // slot -> trimmed value
-
-	tx, done, err := t.getROTx()
-	if err != nil {
-		return nil, err
-	}
-	defer done()
-
-	cursor, err := tx.OpenCursor(t.db.StorageState)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close()
-
-	// Storage keys are 52 bytes: 20 (address) + 32 (slot).
-	// We need to scan for keys with matching address prefix.
-	var addrPrefix [20]byte
-	copy(addrPrefix[:], t.address[:])
-
-	key, val, err := cursor.Get(addrPrefix[:], nil, mdbx.SetRange)
-	for err == nil {
-		if len(key) != 52 || !bytes.Equal(key[:20], addrPrefix[:]) {
-			break
-		}
-
-		var slot common.Hash
-		copy(slot[:], key[20:52])
-
-		if !t.deletedSlots[slot] {
-			// Value is stored trimmed (leading zeros stripped). Copy it.
-			trimmed := make([]byte, len(val))
-			copy(trimmed, val)
-			seen[slot] = trimmed
-		}
-
-		key, val, err = cursor.Get(nil, nil, mdbx.Next)
-	}
-	if err != nil && !mdbx.IsNotFound(err) {
-		return nil, err
-	}
-
-	// Override with dirty slots.
-	for slot, val := range t.dirtySlots {
-		seen[slot] = val
-	}
-
-	// Remove deleted slots.
-	for slot := range t.deletedSlots {
-		delete(seen, slot)
-	}
-
-	// Build sorted entries by keccak256(slot).
-	entries := make([]storageEntry, 0, len(seen))
-	for slot, val := range seen {
-		hashedKey := crypto.Keccak256Hash(slot[:])
-
-		// RLP-encode the trimmed value, matching StateTrie.UpdateStorage behavior.
-		encoded, err := rlp.EncodeToBytes(val)
-		if err != nil {
-			return nil, err
-		}
-
-		var hk [32]byte
-		copy(hk[:], hashedKey[:])
-		entries = append(entries, storageEntry{hashedKey: hk, encoded: encoded})
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return compareBytes32(entries[i].hashedKey, entries[j].hashedKey) < 0
-	})
-
-	return entries, nil
 }

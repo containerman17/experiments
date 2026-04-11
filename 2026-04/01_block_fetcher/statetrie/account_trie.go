@@ -3,13 +3,10 @@ package statetrie
 import (
 	"errors"
 	"runtime"
-	"sort"
 
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethdb"
-	"github.com/ava-labs/libevm/rlp"
 	"github.com/ava-labs/libevm/trie"
 	"github.com/ava-labs/libevm/trie/trienode"
 	"github.com/erigontech/mdbx-go/mdbx"
@@ -196,21 +193,10 @@ func (t *AccountTrie) Hash() common.Hash {
 	return common.Hash{} // dummy — real root computed at batch boundary
 }
 
-// flushStateOnly writes dirty state and captures changesets, but skips the
-// trie hash computation. Used in batch mode.
-// When an overlay is active, all reads/writes go through the overlay (zero MDBX
-// write transactions). Otherwise falls back to direct MDBX RW transaction.
+// flushStateOnly writes dirty account state to the overlay and captures
+// raw changesets (keyIDs assigned later during Flush).
 func (t *AccountTrie) flushStateOnly() error {
 	overlay := t.stateDB.Overlay
-	if overlay != nil {
-		return t.flushStateOnlyOverlay(overlay)
-	}
-	return t.flushStateOnlyMDBX()
-}
-
-// flushStateOnlyOverlay writes dirty state to the BatchOverlay and captures
-// raw changesets (keyIDs assigned later during Flush).
-func (t *AccountTrie) flushStateOnlyOverlay(overlay *BatchOverlay) error {
 	// We need a RO transaction to read old values for changeset capture.
 	tx, err := t.db.BeginRO()
 	if err != nil {
@@ -277,102 +263,6 @@ func (t *AccountTrie) flushStateOnlyOverlay(overlay *BatchOverlay) error {
 	return nil
 }
 
-// flushStateOnlyMDBX writes dirty state directly to MDBX (non-overlay path).
-func (t *AccountTrie) flushStateOnlyMDBX() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	tx, err := t.db.BeginRW()
-	if err != nil {
-		return err
-	}
-
-	var changes []store.Change
-	acctSlot := store.AccountSentinelSlot
-
-	for address, acct := range t.dirtyAccounts {
-		var addr [20]byte
-		copy(addr[:], address[:])
-		hashedAddr := crypto.Keccak256(address[:])
-		var ha [32]byte
-		copy(ha[:], hashedAddr)
-
-		if t.stateDB != nil {
-			var oldValue []byte
-			oldAcct, err := store.GetAccount(tx, t.db, addr)
-			if err != nil {
-				tx.Abort()
-				return err
-			}
-			if oldAcct != nil {
-				oldValue = store.EncodeAccountBytes(oldAcct)
-			}
-			keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, acctSlot)
-			if err != nil {
-				tx.Abort()
-				return err
-			}
-			changes = append(changes, store.Change{KeyID: keyID, OldValue: oldValue})
-		}
-
-		balance := acct.Balance.Bytes32()
-		var codeHash [32]byte
-		copy(codeHash[:], acct.CodeHash)
-		storeAcct := &store.Account{
-			Nonce: acct.Nonce, Balance: balance,
-			CodeHash: codeHash, StorageRoot: [32]byte(acct.Root),
-		}
-		if err := store.PutAccount(tx, t.db, addr, storeAcct); err != nil {
-			tx.Abort()
-			return err
-		}
-		if err := store.PutHashedAccount(tx, t.db, ha, store.EncodeAccountBytes(storeAcct)); err != nil {
-			tx.Abort()
-			return err
-		}
-	}
-
-	for address := range t.deletedAccounts {
-		var addr [20]byte
-		copy(addr[:], address[:])
-		var ha [32]byte
-		copy(ha[:], crypto.Keccak256(address[:]))
-
-		if t.stateDB != nil {
-			oldAcct, err := store.GetAccount(tx, t.db, addr)
-			if err != nil {
-				tx.Abort()
-				return err
-			}
-			if oldAcct != nil {
-				keyID, err := store.GetOrAssignKeyID(tx, t.db, addr, acctSlot)
-				if err != nil {
-					tx.Abort()
-					return err
-				}
-				changes = append(changes, store.Change{KeyID: keyID, OldValue: store.EncodeAccountBytes(oldAcct)})
-			}
-		}
-
-		if err := tx.Del(t.db.AccountState, addr[:], nil); err != nil && !mdbx.IsNotFound(err) {
-			tx.Abort()
-			return err
-		}
-		if err := store.DeleteHashedAccount(tx, t.db, ha); err != nil {
-			tx.Abort()
-			return err
-		}
-	}
-
-	if _, err := tx.Commit(); err != nil {
-		return err
-	}
-	if t.stateDB != nil && len(changes) > 0 {
-		t.stateDB.AppendChanges(changes)
-	}
-	return nil
-}
-
 // Commit returns the cached root from Hash() and clears dirty state.
 // All actual work (writing state, changeset collection, branch node updates)
 // is done in Hash().
@@ -395,90 +285,4 @@ func (t *AccountTrie) NodeIterator(startKey []byte) (trie.NodeIterator, error) {
 // Prove is not supported.
 func (t *AccountTrie) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
 	return errors.New("Prove not supported")
-}
-
-// collectAllAccounts reads all accounts from MDBX and merges with dirty state,
-// returning them sorted by keccak256(address).
-func (t *AccountTrie) collectAllAccounts() ([]accountEntry, error) {
-	// Collect all accounts from MDBX via cursor scan.
-	seen := make(map[common.Address]*types.StateAccount)
-
-	tx, done, err := t.getROTx()
-	if err != nil {
-		return nil, err
-	}
-	defer done()
-
-	cursor, err := tx.OpenCursor(t.db.AccountState)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close()
-
-	// Scan all accounts in MDBX.
-	key, val, err := cursor.Get(nil, nil, mdbx.First)
-	for err == nil {
-		if len(key) == 20 {
-			var addr common.Address
-			copy(addr[:], key)
-
-			// Skip if deleted.
-			if !t.deletedAccounts[addr] {
-				storeAcct := store.DecodeAccount(val)
-				sa := &types.StateAccount{
-					Nonce:    storeAcct.Nonce,
-					Balance:  new(uint256.Int).SetBytes32(storeAcct.Balance[:]),
-					Root:     common.Hash(storeAcct.StorageRoot),
-					CodeHash: storeAcct.CodeHash[:],
-				}
-				seen[addr] = sa
-			}
-		}
-		key, val, err = cursor.Get(nil, nil, mdbx.Next)
-	}
-	if !mdbx.IsNotFound(err) && err != nil {
-		return nil, err
-	}
-
-	// Override with dirty accounts.
-	for addr, acct := range t.dirtyAccounts {
-		seen[addr] = acct
-	}
-
-	// Remove deleted accounts.
-	for addr := range t.deletedAccounts {
-		delete(seen, addr)
-	}
-
-	// Build sorted entries by keccak256(address).
-	entries := make([]accountEntry, 0, len(seen))
-	for addr, acct := range seen {
-		hashedKey := crypto.Keccak256Hash(addr[:])
-		encoded, err := rlp.EncodeToBytes(acct)
-		if err != nil {
-			return nil, err
-		}
-		var hk [32]byte
-		copy(hk[:], hashedKey[:])
-		entries = append(entries, accountEntry{hashedKey: hk, encoded: encoded})
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return compareBytes32(entries[i].hashedKey, entries[j].hashedKey) < 0
-	})
-
-	return entries, nil
-}
-
-// compareBytes32 compares two [32]byte values lexicographically.
-func compareBytes32(a, b [32]byte) int {
-	for i := 0; i < 32; i++ {
-		if a[i] < b[i] {
-			return -1
-		}
-		if a[i] > b[i] {
-			return 1
-		}
-	}
-	return 0
 }

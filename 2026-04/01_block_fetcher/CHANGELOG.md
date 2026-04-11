@@ -1,5 +1,48 @@
 # Changelog
 
+## Executor Architecture (agreed 2026-04-11)
+
+The executor processes blocks in batches. This is how it SHOULD work:
+
+1. **Take a batch** of N blocks (configurable via `--exec-batch-size`).
+2. **Execute in memory** — an overlay accumulates all state changes. Block execution NEVER computes trie hashes. There is no "skip hash" mode because hashing is not a per-block operation.
+3. **Capture diffs per block** — changesets (keyID → oldValue) stored for every block, enabling historical state lookups. Keys are compressed via the key dictionary (address+slot → 8-byte keyID).
+4. **Flush + incremental hash + verify** — one atomic operation at the batch boundary: flush overlay to MDBX, compute state root via incremental hashing (O(changed_state) using PrefixSet + TrieWalker + NodeIter + HashBuilder), verify against block header, set head block, commit.
+
+Batch size is the ONLY tunable. Every batch is verified. There is no flag controlling "how often to verify" because verification is integral to every batch commit.
+
+### Current state vs target
+
+The code currently has TWO architectures layered on top of each other:
+
+- **Old per-block path**: `AccountTrie.Hash()` / `StorageTrie.Hash()` with `SkipHash` mode toggle, `incrementalHash()` opening its own RW tx, `flushStateOnlyMDBX()` for non-overlay writes, `computeStateRoot()` doing O(total_state) scans, `collectAllAccounts()` for full state enumeration.
+- **New batch path**: `ComputeIncrementalStateRoot()` in `statetrie/incremental.go`, overlay-based execution, `FlushStateToTx()`.
+
+### Refactoring plan (one commit per step)
+
+1. Remove `SkipHash` flag from `Database`. `Hash()` during execution always just flushes state to overlay — that's its only job. No mode switching.
+2. Remove `AccountTrie.incrementalHash()` and `StorageTrie.incrementalHash()` — the per-block incremental path. All incremental hashing goes through `ComputeIncrementalStateRoot`.
+3. Remove `computeStateRoot()` from main.go — the O(total_state) scanner. Dead code.
+4. Remove `collectAllAccounts()`, `flushStateOnlyMDBX()`, `flushStateOnlyOverlay()` distinction. `Hash()` writes to overlay, period. No MDBX direct-write path.
+5. Remove `--verify-interval` / rename cleanup. Single `--exec-batch-size` flag.
+6. Clean up `executeBatch` — no SkipHash toggle, no mode flags, just: execute → flush+hash+verify.
+
+## 2026-04-11 (session 22)
+
+- **100k checkpoint intervals**: Replaced mixed 1k/10k/1M checkpoint grid with uniform 100k intervals (826 entries). Fetcher now creates smaller, more granular jobs so the executor frontier gets fed sooner.
+- **godotenv for `.env` loading**: `utils/blockcontainerids/main.go` now loads `.env` automatically via `godotenv.Load()` instead of requiring manual env export.
+- **Thorough job skip check**: Replaced endpoint-only heuristic (check toBlock + fromBlock) with cursor-scan that counts every block in the range via `store.CountContainersInRange()`. Old check was hiding massive gaps — e.g. [1800001, 1900000] had 1/100000 blocks but was marked complete.
+- **Executor batch timing**: Added exec/hash/flush timing breakdown to `executeBatch` log output.
+- **Default verify-interval changed from 0→256**: `--verify-interval=0` meant verify every block, calling O(total_state) `computeStateRoot` per block. At 100k+ blocks this takes minutes per block. Now defaults to 256 (same as writer batch size).
+- **Default fetch-workers changed to 32**: Benchmarked 8/16/32 workers over 2-minute runs: 2,769 / 5,084 / 7,308 blocks/sec. Nearly linear scaling with 250+ connected peers.
+- **Per-peer in-flight request cap (4)**: Added `peerInflight` tracker so no single peer gets more than 4 concurrent GetAncestors requests. Avalanchego default limit is 1024 concurrent msgs/peer + 512 KiB/sec bandwidth throttle — cap of 4 is conservative. Forces better load distribution: 32 workers with cap = 8,399 blocks/sec (+15% vs uncapped 7,308), because workers spread across more peers instead of piling onto fast ones.
+- **INCREMENTAL STATE ROOT HASHING** — replaced O(total_state) `computeStateRoot` with O(changed_state) incremental approach using PrefixSet + TrieWalker + NodeIter + HashBuilder. New `statetrie/incremental.go` with `ComputeIncrementalStateRoot()`.
+  - **Algorithm**: At batch end, flush overlay to MDBX, then for each account with changed storage compute its storage root incrementally (only re-hashing changed slots). Fix HashedAccountState entries with correct storage roots (SkipHash writes zeros). Then compute account trie root incrementally. All in one RW transaction with branch node persistence.
+  - **Performance**: Hash time is flat ~300ms per 1000-block batch regardless of total state size. At block 100k: 298ms. Previously would have taken minutes with the full scan.
+  - **100k blocks verified** in ~42 seconds with 1000-block batches, all roots match.
+  - Added `overlay.FlushStateToTx()`, `overlay.ChangedAccountHashes()`, `overlay.ChangedStorageGrouped()`, `ReadOldStorageRoots()`.
+  - `executeBatch` restructured: EndBatchRO → read expected root → capture old storage roots → RW tx (flush + incremental hash + verify + set head + commit).
+
 ## 2026-04-10 (session 21)
 
 - **Parallel block fetcher**: replaced sequential single-request fetch loop with a job-based parallel fetcher using N concurrent workers (default 8, configurable via `--fetch-workers`).

@@ -244,8 +244,8 @@ func main() {
 		expectedNet  = flag.Uint("expected-network-id", uint(defaultExpectedNetID), "expected Avalanche network ID")
 		subnetIDStr  = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
 		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
-		verifyEvery    = flag.Uint64("verify-interval", 0, "verify state root every N blocks (0=every block)")
-		fetchWorkers   = flag.Int("fetch-workers", 8, "number of parallel fetch workers")
+		execBatchSize  = flag.Uint64("exec-batch-size", 1000, "number of blocks per executor batch (verified every batch)")
+		fetchWorkers   = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
 	)
 	flag.Parse()
 
@@ -282,7 +282,7 @@ func main() {
 	executorStopAt := make(chan uint64, 1)
 	executorErrCh := make(chan error, 1)
 	go func() {
-		executorErrCh <- runExecutor(ctx, db, executorStopAt, *verifyEvery)
+		executorErrCh <- runExecutor(ctx, db, executorStopAt, *execBatchSize)
 	}()
 
 	subnetID, err := ids.FromString(*subnetIDStr)
@@ -943,8 +943,16 @@ func executeBatch(
 	if err := stateDB.BeginBatchRO(); err != nil {
 		return fmt.Errorf("begin batch RO: %w", err)
 	}
-	defer stateDB.EndBatchRO()
+	// EndBatchRO is called explicitly before the RW transaction below.
+	// Defer as safety net in case of early return.
+	batchROClosed := false
+	defer func() {
+		if !batchROClosed {
+			stateDB.EndBatchRO()
+		}
+	}()
 
+	execStart := time.Now()
 	for blockNum := from; blockNum <= to; blockNum++ {
 		stateDB.CurrentBlock = blockNum
 		if err := executeBlock(db, stateDB, chainCfg, snowCtx, blockNum); err != nil {
@@ -952,50 +960,90 @@ func executeBatch(
 			stateDB.SkipHash = false
 			return fmt.Errorf("block %d: %w", blockNum, err)
 		}
-		if blockNum%100 == 0 || blockNum == to {
+		if blockNum%1000 == 0 || blockNum == to {
 			log.Printf("executor: processed block %d", blockNum)
 		}
 	}
+	execElapsed := time.Since(execStart)
 
 	stateDB.SkipHash = false
+	stateDB.EndBatchRO() // close RO before opening RW
+	batchROClosed = true
 
-	// Verify: compute state root from overlay+MDBX merged state.
+	// Read expected root from block header.
 	roTx, err := db.BeginRO()
 	if err != nil {
 		stateDB.Overlay = nil
 		return fmt.Errorf("begin RO for verify: %w", err)
 	}
 	raw, err := store.GetBlockByNumber(roTx, db, to)
-	roTx.Abort()
 	if err != nil {
+		roTx.Abort()
 		stateDB.Overlay = nil
 		return fmt.Errorf("read block %d for verify: %w", to, err)
 	}
+	raw = append([]byte(nil), raw...) // copy before abort
 	ethBlock, err := executorParseEthBlock(raw)
 	if err != nil {
+		roTx.Abort()
 		stateDB.Overlay = nil
 		return fmt.Errorf("parse block %d for verify: %w", to, err)
 	}
 	expectedRoot := ethBlock.Header().Root
 
-	computedRoot, err := computeStateRoot(db, overlay)
+	// Capture old storage roots before flushing (overlay has zeros from SkipHash).
+	changedAccounts := overlay.ChangedAccountHashes()
+	oldStorageRoots := statetrie.ReadOldStorageRoots(roTx, db, changedAccounts)
+	roTx.Abort()
+
+	// Flush + incremental hash + verify in one RW transaction.
+	hashStart := time.Now()
+	runtime.LockOSThread()
+	rwTx, err := db.BeginRW()
 	if err != nil {
+		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
-		return fmt.Errorf("compute state root at block %d: %w", to, err)
+		return fmt.Errorf("begin RW for flush+hash: %w", err)
 	}
 
-	if computedRoot != expectedRoot {
+	if err := overlay.FlushStateToTx(rwTx, db); err != nil {
+		rwTx.Abort()
+		runtime.UnlockOSThread()
+		stateDB.Overlay = nil
+		return fmt.Errorf("flush state at block %d: %w", to, err)
+	}
+
+	computedRoot, err := statetrie.ComputeIncrementalStateRoot(rwTx, db, overlay, oldStorageRoots)
+	if err != nil {
+		rwTx.Abort()
+		runtime.UnlockOSThread()
+		stateDB.Overlay = nil
+		return fmt.Errorf("incremental state root at block %d: %w", to, err)
+	}
+	hashElapsed := time.Since(hashStart)
+
+	if common.Hash(computedRoot) != expectedRoot {
+		rwTx.Abort()
+		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
 		return fmt.Errorf("state root mismatch at block %d: computed %x, expected %x", to, computedRoot, expectedRoot)
 	}
 
-	log.Printf("executor: verified batch %d-%d root=%x", from, to, computedRoot)
-
-	// Flush everything to MDBX in one transaction.
-	if err := overlay.Flush(db, to); err != nil {
+	if err := store.SetHeadBlock(rwTx, db, to); err != nil {
+		rwTx.Abort()
+		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
-		return fmt.Errorf("flush overlay at block %d: %w", to, err)
+		return fmt.Errorf("set head block %d: %w", to, err)
 	}
+
+	if _, err := rwTx.Commit(); err != nil {
+		runtime.UnlockOSThread()
+		stateDB.Overlay = nil
+		return fmt.Errorf("commit at block %d: %w", to, err)
+	}
+	runtime.UnlockOSThread()
+
+	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond))
 
 	stateDB.Overlay = nil
 	return nil
@@ -1744,32 +1792,27 @@ func runParallelFetcher(
 		len(allJobs), len(checkpoints), numWorkers)
 
 	// Filter out jobs that are already fully fetched.
+	// Check every block in the range via cursor scan — not just endpoints.
 	var pendingJobs []fetchJob
+	roTx, err := db.BeginRO()
+	if err != nil {
+		return 0, err
+	}
 	for _, job := range allJobs {
-		// A job is "done" if the block at toBlock is already stored.
-		// This is a quick heuristic — a partially-done job restarts from the top,
-		// but PutContainer is idempotent so duplicates are harmless.
-		roTx, err := db.BeginRO()
+		expected := job.fromBlock - job.toBlock + 1
+		count, err := store.CountContainersInRange(roTx, db, job.toBlock, job.fromBlock)
 		if err != nil {
+			roTx.Abort()
 			return 0, err
 		}
-		_, getErr := store.GetBlockByNumber(roTx, db, job.toBlock)
-		roTx.Abort()
-		if getErr == nil {
-			// toBlock exists, check fromBlock too.
-			roTx2, err := db.BeginRO()
-			if err != nil {
-				return 0, err
-			}
-			_, getErr2 := store.GetBlockByNumber(roTx2, db, job.fromBlock)
-			roTx2.Abort()
-			if getErr2 == nil {
-				log.Printf("parallel fetcher: skipping completed job [%d, %d]", job.toBlock, job.fromBlock)
-				continue
-			}
+		if count == expected {
+			log.Printf("parallel fetcher: skipping completed job [%d, %d]", job.toBlock, job.fromBlock)
+			continue
 		}
+		log.Printf("parallel fetcher: job [%d, %d] has %d/%d blocks, needs fetch", job.toBlock, job.fromBlock, count, expected)
 		pendingJobs = append(pendingJobs, job)
 	}
+	roTx.Abort()
 
 	if len(pendingJobs) == 0 {
 		log.Printf("parallel fetcher: all jobs already complete")
@@ -1788,6 +1831,12 @@ func runParallelFetcher(
 
 	// Track total blocks fetched across all workers.
 	var totalFetched syncatomic.Int64
+
+	// Per-peer in-flight request limiter.
+	// Avalanchego default is 1024 concurrent msgs/peer; cap at 4 to spread load.
+	const maxInflightPerPeer = 4
+	var peerInflightMu sync.Mutex
+	peerInflight := make(map[ids.NodeID]int)
 
 	started := time.Now()
 
@@ -1859,10 +1908,26 @@ func runParallelFetcher(
 
 				reqID := globalRequestID.Add(1) - 1
 
-				// Pick a peer and send the request.
-				peerID, ok := peerTracker.SelectPeer()
-				if !ok {
-					time.Sleep(500 * time.Millisecond)
+				// Pick a peer that isn't at the in-flight limit.
+				var peerID ids.NodeID
+				peerFound := false
+				for attempts := 0; attempts < 64; attempts++ {
+					candidate, ok := peerTracker.SelectPeer()
+					if !ok {
+						break
+					}
+					peerInflightMu.Lock()
+					if peerInflight[candidate] < maxInflightPerPeer {
+						peerInflight[candidate]++
+						peerInflightMu.Unlock()
+						peerID = candidate
+						peerFound = true
+						break
+					}
+					peerInflightMu.Unlock()
+				}
+				if !peerFound {
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 				peerTracker.RegisterRequest(peerID)
@@ -1895,10 +1960,16 @@ func runParallelFetcher(
 				case <-ctx.Done():
 					timer.Stop()
 					handler.unregisterRoute(reqID)
+					peerInflightMu.Lock()
+					peerInflight[peerID]--
+					peerInflightMu.Unlock()
 					return nil
 				case <-timer.C:
 					handler.unregisterRoute(reqID)
 					peerTracker.RegisterFailure(peerID)
+					peerInflightMu.Lock()
+					peerInflight[peerID]--
+					peerInflightMu.Unlock()
 					log.Printf("worker %d: timeout waiting for ancestors from %s reqID=%d blockID=%s",
 						workerID, peerID, reqID, nextID)
 					continue
@@ -1906,6 +1977,10 @@ func runParallelFetcher(
 					timer.Stop()
 					gotResp = true
 				}
+
+				peerInflightMu.Lock()
+				peerInflight[peerID]--
+				peerInflightMu.Unlock()
 
 				if !gotResp || len(resp.blocks) == 0 {
 					peerTracker.RegisterFailure(peerID)

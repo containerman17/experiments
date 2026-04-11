@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const defaultOutputName = "container_ids.json"
@@ -43,6 +45,7 @@ type indexContainerResult struct {
 }
 
 func main() {
+	_ = godotenv.Load()
 	var (
 		rpcURL = flag.String("rpc-url", strings.TrimSpace(os.Getenv("ARCHIVAL_RPC_URL")), "archival C-Chain RPC URL")
 		out    = flag.String("out", filepath.Join("utils", "blockcontainerids", defaultOutputName), "output JSON path")
@@ -174,22 +177,10 @@ func parseHexUint64(s string) (uint64, error) {
 }
 
 func milestoneBlocks(tip uint64) []uint64 {
-	set := map[uint64]struct{}{
-		1_000:   {},
-		10_000:  {},
-		100_000: {},
+	blocks := make([]uint64, 0, tip/100_000+1)
+	for block := uint64(100_000); block <= tip; block += 100_000 {
+		blocks = append(blocks, block)
 	}
-	for block := uint64(1_000_000); block <= tip; block += 1_000_000 {
-		set[block] = struct{}{}
-	}
-
-	blocks := make([]uint64, 0, len(set))
-	for block := range set {
-		if block <= tip {
-			blocks = append(blocks, block)
-		}
-	}
-	sort.Slice(blocks, func(i, j int) bool { return blocks[i] < blocks[j] })
 	return blocks
 }
 

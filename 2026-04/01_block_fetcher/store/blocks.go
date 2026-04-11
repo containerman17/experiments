@@ -86,6 +86,33 @@ func GetBlockByNumber(tx *mdbx.Txn, db *DB, num uint64) ([]byte, error) {
 	return GetContainerByNumber(tx, db, num)
 }
 
+// CountContainersInRange counts how many entries exist in ContainerIndex
+// for block numbers in [from, to] (inclusive). Uses a cursor scan.
+func CountContainersInRange(tx *mdbx.Txn, db *DB, from, to uint64) (uint64, error) {
+	cursor, err := tx.OpenCursor(db.ContainerIndex)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close()
+
+	startKey := BlockKey(from)
+	k, _, err := cursor.Get(startKey[:], nil, mdbx.SetRange)
+	if err != nil {
+		return 0, nil // no entries at or after from
+	}
+
+	var count uint64
+	for err == nil && len(k) == 8 {
+		num := binary.BigEndian.Uint64(k)
+		if num > to {
+			break
+		}
+		count++
+		k, _, err = cursor.Get(nil, nil, mdbx.Next)
+	}
+	return count, nil
+}
+
 // PutBlockHashIndex stores a mapping from ETH block hash to container ID.
 // For pre-ProposerVM blocks, block hash == container ID (redundant but harmless).
 // For post-ProposerVM blocks, they differ and this index is needed for eth_getBlockByHash.

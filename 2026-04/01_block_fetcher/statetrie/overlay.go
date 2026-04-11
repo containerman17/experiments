@@ -237,6 +237,138 @@ func (o *BatchOverlay) HashedStorageEntries() map[[64]byte][]byte {
 	return result
 }
 
+// ChangedAccountHashes returns all keccak(addr) keys touched during the batch.
+func (o *BatchOverlay) ChangedAccountHashes() [][32]byte {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	seen := make(map[[32]byte]bool, len(o.hashedAccounts)+len(o.hashedAccountDeleted))
+	for ha := range o.hashedAccounts {
+		seen[ha] = true
+	}
+	for ha := range o.hashedAccountDeleted {
+		seen[ha] = true
+	}
+	result := make([][32]byte, 0, len(seen))
+	for ha := range seen {
+		result = append(result, ha)
+	}
+	return result
+}
+
+// ChangedStorageGrouped returns changed storage slot hashes grouped by account hash.
+func (o *BatchOverlay) ChangedStorageGrouped() map[[32]byte][][32]byte {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	result := make(map[[32]byte][][32]byte)
+	for hk := range o.hashedStorage {
+		var addrHash, slotHash [32]byte
+		copy(addrHash[:], hk[:32])
+		copy(slotHash[:], hk[32:])
+		result[addrHash] = append(result[addrHash], slotHash)
+	}
+	for hk := range o.hashedStorageDeleted {
+		var addrHash, slotHash [32]byte
+		copy(addrHash[:], hk[:32])
+		copy(slotHash[:], hk[32:])
+		result[addrHash] = append(result[addrHash], slotHash)
+	}
+	return result
+}
+
+// FlushStateToTx writes all state (accounts, storage, hashed state, code, changesets)
+// to the given RW transaction. Does NOT set head block or commit.
+func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
+	// Write accounts.
+	for addr, data := range o.accounts {
+		if err := tx.Put(db.AccountState, addr[:], data, 0); err != nil {
+			return err
+		}
+	}
+	for addr := range o.accountDeleted {
+		if err := tx.Del(db.AccountState, addr[:], nil); err != nil && !mdbx.IsNotFound(err) {
+			return err
+		}
+	}
+
+	// Write hashed accounts.
+	for ha, data := range o.hashedAccounts {
+		if err := tx.Put(db.HashedAccountState, ha[:], data, 0); err != nil {
+			return err
+		}
+	}
+	for ha := range o.hashedAccountDeleted {
+		if err := tx.Del(db.HashedAccountState, ha[:], nil); err != nil && !mdbx.IsNotFound(err) {
+			return err
+		}
+	}
+
+	// Write storage.
+	for sk, data := range o.storage {
+		var addr [20]byte
+		var slot [32]byte
+		copy(addr[:], sk[:20])
+		copy(slot[:], sk[20:])
+		var val32 [32]byte
+		copy(val32[:], data)
+		if err := store.PutStorage(tx, db, addr, slot, val32); err != nil {
+			return err
+		}
+	}
+	for sk := range o.storageDeleted {
+		var addr [20]byte
+		var slot [32]byte
+		copy(addr[:], sk[:20])
+		copy(slot[:], sk[20:])
+		var zeroVal [32]byte
+		if err := store.PutStorage(tx, db, addr, slot, zeroVal); err != nil {
+			return err
+		}
+	}
+
+	// Write hashed storage.
+	for hk, data := range o.hashedStorage {
+		if err := tx.Put(db.HashedStorageState, hk[:], data, 0); err != nil {
+			return err
+		}
+	}
+	for hk := range o.hashedStorageDeleted {
+		if err := tx.Del(db.HashedStorageState, hk[:], nil); err != nil && !mdbx.IsNotFound(err) {
+			return err
+		}
+	}
+
+	// Write code.
+	for ch, code := range o.code {
+		if err := store.PutCode(tx, db, ch, code); err != nil {
+			return err
+		}
+	}
+
+	// Convert raw changesets to store.Change (with keyID assignment) and write.
+	for blockNum, rawChanges := range o.rawChangesets {
+		if len(rawChanges) == 0 {
+			continue
+		}
+		changes := make([]store.Change, 0, len(rawChanges))
+		for _, rc := range rawChanges {
+			keyID, err := store.GetOrAssignKeyID(tx, db, rc.Addr, rc.Slot)
+			if err != nil {
+				return fmt.Errorf("assign keyID for changeset at block %d: %w", blockNum, err)
+			}
+			changes = append(changes, store.Change{KeyID: keyID, OldValue: rc.OldValue})
+		}
+		if err := store.WriteChangeset(tx, db, blockNum, changes); err != nil {
+			return err
+		}
+		for _, c := range changes {
+			if err := store.UpdateHistoryIndex(tx, db, c.KeyID, blockNum); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Flush writes everything to MDBX in a single transaction.
 func (o *BatchOverlay) Flush(db *store.DB, headBlock uint64) error {
 	runtime.LockOSThread()

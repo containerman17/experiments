@@ -2,6 +2,8 @@ package statetrie
 
 import (
 	"bytes"
+	"log"
+	"time"
 
 	"github.com/erigontech/mdbx-go/mdbx"
 
@@ -35,6 +37,8 @@ func ComputeIncrementalStateRoot(
 	changedStorage := overlay.ChangedStorageGrouped()
 	changedAccounts := overlay.ChangedAccountHashes()
 
+	t0 := time.Now()
+
 	// Step 1: Compute storage roots for accounts with changed storage.
 	storageRoots := make(map[[32]byte][32]byte)
 
@@ -51,20 +55,29 @@ func ComputeIncrementalStateRoot(
 			return [32]byte{}, err
 		}
 
-		// Persist branch node updates (prefixed with addrHash).
+		// Persist branch node updates (prefixed with addrHash). Skip unchanged.
 		for packedPath, node := range updates {
+			if node == nil {
+				continue
+			}
 			fullKey := make([]byte, len(addrHash)+len(packedPath))
 			copy(fullKey, addrHash[:])
 			copy(fullKey[len(addrHash):], packedPath)
-			if node != nil {
-				if err := tx.Put(db.StorageTrie, fullKey, node.Encode(), 0); err != nil {
-					return [32]byte{}, err
-				}
+			encoded := node.Encode()
+			existing, err := tx.Get(db.StorageTrie, fullKey)
+			if err == nil && bytes.Equal(existing, encoded) {
+				continue // unchanged
+			}
+			if err := tx.Put(db.StorageTrie, fullKey, encoded, 0); err != nil {
+				return [32]byte{}, err
 			}
 		}
 
 		storageRoots[addrHash] = root
 	}
+
+	t1 := time.Now()
+	log.Printf("incremental: step1 storage roots took %s (accounts=%d)", t1.Sub(t0), len(changedStorage))
 
 	// Step 2: Fix HashedAccountState entries with correct storage roots.
 	for _, addrHash := range changedAccounts {
@@ -100,6 +113,9 @@ func ComputeIncrementalStateRoot(
 		}
 	}
 
+	t2 := time.Now()
+	log.Printf("incremental: step2 fix storage roots took %s", t2.Sub(t1))
+
 	// Step 3: Build account PrefixSet from all changed accounts.
 	psb := intTrie.NewPrefixSetBuilder()
 	for _, ha := range changedAccounts {
@@ -116,16 +132,27 @@ func ComputeIncrementalStateRoot(
 	if err != nil {
 		return [32]byte{}, err
 	}
+	t3 := time.Now()
+	log.Printf("incremental: step3+4 account trie took %s (changed=%d)", t3.Sub(t2), len(changedAccounts))
 
-	// Persist account trie branch node updates.
+	// Persist account trie branch node updates. Skip unchanged.
+	written := 0
 	for packedPath, node := range updates {
-		if node != nil {
-			if err := tx.Put(db.AccountTrie, []byte(packedPath), node.Encode(), 0); err != nil {
-				return [32]byte{}, err
-			}
+		if node == nil {
+			continue
 		}
+		encoded := node.Encode()
+		existing, err := tx.Get(db.AccountTrie, []byte(packedPath))
+		if err == nil && bytes.Equal(existing, encoded) {
+			continue // unchanged
+		}
+		if err := tx.Put(db.AccountTrie, []byte(packedPath), encoded, 0); err != nil {
+			return [32]byte{}, err
+		}
+		written++
 	}
 
+	log.Printf("incremental: step5 persist account branch nodes took %s (total=%d written=%d)", time.Since(t3), len(updates), written)
 	return root, nil
 }
 

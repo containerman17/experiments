@@ -986,6 +986,16 @@ func executeBatch(
 
 	// Capture old storage roots before flushing (overlay has dummy zeros for storage roots).
 	changedAccounts := overlay.ChangedAccountHashes()
+	changedStorage := overlay.ChangedStorageGrouped()
+	totalSlots := 0
+	for addrHash, slots := range changedStorage {
+		totalSlots += len(slots)
+		if len(slots) > 100 {
+			log.Printf("executor: DEBUG batch %d-%d addr=%x changed_slots=%d", from, to, addrHash[:8], len(slots))
+		}
+	}
+	log.Printf("executor: DEBUG batch %d-%d changed_accounts=%d changed_storage_accounts=%d total_slots=%d",
+		from, to, len(changedAccounts), len(changedStorage), totalSlots)
 	oldStorageRoots := statetrie.ReadOldStorageRoots(roTx, db, changedAccounts)
 	roTx.Abort()
 
@@ -999,12 +1009,14 @@ func executeBatch(
 		return fmt.Errorf("begin RW for flush+hash: %w", err)
 	}
 
+	flushStart := time.Now()
 	if err := overlay.FlushStateToTx(rwTx, db); err != nil {
 		rwTx.Abort()
 		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
 		return fmt.Errorf("flush state at block %d: %w", to, err)
 	}
+	log.Printf("executor: DEBUG flush took %s", time.Since(flushStart))
 
 	computedRoot, err := statetrie.ComputeIncrementalStateRoot(rwTx, db, overlay, oldStorageRoots)
 	if err != nil {
@@ -1029,14 +1041,16 @@ func executeBatch(
 		return fmt.Errorf("set head block %d: %w", to, err)
 	}
 
+	commitStart := time.Now()
 	if _, err := rwTx.Commit(); err != nil {
 		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
 		return fmt.Errorf("commit at block %d: %w", to, err)
 	}
+	commitElapsed := time.Since(commitStart)
 	runtime.UnlockOSThread()
 
-	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond))
+	log.Printf("executor: verified batch %d-%d root=%x (exec=%s flush=%s hash=%s commit=%s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), time.Since(flushStart).Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond))
 
 	stateDB.Overlay = nil
 	return nil

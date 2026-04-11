@@ -25,6 +25,8 @@ The code currently has TWO architectures layered on top of each other:
 3. ~~Remove `computeStateRoot()` from main.go.~~ **DONE** — ~300 lines removed (function + helper RLP encoders).
 4. ~~Remove `collectAllAccounts()`, `flushStateOnlyMDBX()`, etc.~~ **DONE** — ~200 lines removed. `flushStateOnly()` inlined to always use overlay.
 
+**Fix: skip unchanged branch nodes during persist** — `HashBuilder.Updates()` returns every branch node traversed, not just changed ones. With 544 changed accounts (uniformly distributed by keccak), the walker descends into nearly all branches at the top levels. Was writing 19,864 identical nodes per batch; now compares before writing, only 1,066 actually changed. Prevents massive MDBX commits.
+
 **Bugfix: storage trie hash was not truly incremental** — `deletePrefixedEntries` was destroying all stored branch nodes before recomputing each account's storage root, forcing a full rebuild every batch. Removed the call; the walker + PrefixSet already handles unchanged subtrees correctly via cached hashes. Hash time dropped from ~700ms to ~100ms per 1000-block batch.
 5. ~~Remove `--verify-interval` / rename.~~ **DONE** — single `--exec-batch-size` flag.
 6. ~~Clean up `executeBatch`.~~ **DONE** — no SkipHash toggle, no mode flags.

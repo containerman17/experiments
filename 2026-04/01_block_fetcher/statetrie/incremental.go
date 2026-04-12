@@ -156,6 +156,14 @@ func ComputeIncrementalStateRoot(
 			}
 		}
 
+		// Verify against full scan.
+		fullRoot := computeFullStorageRoot(tx, db, addrHash)
+		if root != fullRoot {
+			osr := oldStorageRoots[addrHash]
+			log.Printf("  STORAGE INCREMENTAL BUG acct %x: incremental=%x full=%x changedSlots=%d oldRoot=%x",
+				addrHash[:8], root[:8], fullRoot[:8], len(slotHashes), osr[:8])
+		}
+
 		storageRoots[addrHash] = root
 	}
 

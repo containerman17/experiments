@@ -1,5 +1,36 @@
 # Changelog
 
+## Incremental hash bug confirmed — computeTrieRoot for storage is wrong (2026-04-12)
+
+### The bug
+`computeTrieRoot` for storage produces wrong roots on batch 2+, even with perfectly clean
+branch nodes from a fresh batch 1 rebuild. Confirmed by clean-state restart:
+
+- Batch 1 (1-50k): passes (empty trie tables → full rebuild from leaves)
+- Batch 2 (50k-100k): **FAILS** — 10 accounts have wrong storage roots
+- `computeFullStorageRoot` (full scan) produces correct roots for the same accounts
+- Data is correct (full root matches expected). Only the incremental hash is wrong.
+
+This means the bug is in `computeTrieRoot` itself — how it merges walker output with
+leaf data using the branch nodes from batch 1. NOT corrupted branch nodes, NOT accumulated
+state errors. The walker/NodeIter/HashBuilder pipeline produces wrong results when
+processing storage tries with stored branch nodes.
+
+### Full-root fallback removed
+`ComputeFullStateRoot` is now diagnostic-only. On mismatch it logs diagnostics and
+calls `log.Fatalf`. The user explicitly requested this: no fallback, no workaround.
+The incremental hash must be fixed.
+
+### --exec-stop flag added
+New `--exec-stop=N` flag stops the executor after reaching block N.
+
+### What to investigate next
+- Pick ONE of the 10 failing storage accounts from batch 2
+- Compare leaf-by-leaf: what `computeTrieRoot` (via walker+NodeIter) produces vs what
+  `computeFullStorageRoot` (direct scan) produces for that account
+- The difference will reveal whether the walker is skipping leaves, duplicating them,
+  or returning wrong cached hashes for unchanged subtrees
+
 ## Debug cleanup (2026-04-12)
 
 Removed temporary debug/diagnostic code from `main.go` and `statetrie/incremental.go`.

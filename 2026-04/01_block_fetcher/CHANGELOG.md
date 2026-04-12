@@ -1,5 +1,16 @@
 # Changelog
 
+## Debug cleanup (2026-04-12)
+
+Removed temporary debug/diagnostic code from `main.go` and `statetrie/incremental.go`.
+Kept all actual bug fixes (broader step 2 patching, full-scan storage roots, isMultiCoin tracking)
+and the permanent `CompareLeafEncoding` diagnostic function.
+
+Removed:
+- `main.go`: oldStorageRoots empty/non-empty count logging; changed-account raw value dump in MISMATCH handler; per-tx coinbase balance logging for block 3308764
+- `statetrie/incremental.go`: step2 overlap counting block and `step2 patch:` log; `debugCount` variable and `step2 PATCH` per-account log; `acctHBNative` debug HashBuilder, RLP/ROOT DIVERGENCE logging from `ComputeFullStateRoot`; `computeFullStorageRootWithCount` function; `nativeEncodeAccount` function; `rlp` import
+- `store/state.go`: no changes needed (`types`/`uint256` imports are used by `ToSlimAccount` which is kept)
+
 ## Incremental hash debugging session (2026-04-12 night)
 
 ### What we tried and what happened
@@ -63,9 +74,19 @@ reference exactly (179229450338131214705436 wei).
 wrong root even though the underlying state data is correct. This is the same bug
 as the incremental hash issue, not a new execution bug.
 
-### What to investigate next
-- Why does ComputeFullStateRoot produce wrong root for correct state?
-- Focus on the hash computation, not execution — the state data is verified correct
+### Root cause found: isMultiCoin flag lost on round-trip + accumulated state corruption
+
+`AccountTrie.GetAccount()` returned `types.StateAccount` without setting the isMultiCoin
+Extra field. When the StateDB wrote the account back, the flag was lost. One account
+(`d4a4e60f`) has isMultiCoin=true. Combined with 1340 wrong storage roots accumulated from
+the missing step 2 patching, the state was too corrupted to fix incrementally.
+
+### Fixes applied
+1. **Broader step 2 patching**: `changedAccounts ∪ storageRoots` instead of just `changedAccounts`
+2. **isMultiCoin tracking**: `AccountTrie` tracks isMultiCoin in a separate map, preserves
+   it through round-trips since the libevm Extra system can't be set externally
+3. **Full-scan storage roots**: step 1 uses `computeFullStorageRoot` (bypass corrupted branch nodes)
+4. **Clean state restart**: `--clean-state` to wipe all state and re-execute from genesis
 - Check if it's an atomic tx, a specific opcode, or a consensus rule we're missing
 - Incremental hash bug is a separate, lower-priority issue
 

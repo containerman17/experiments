@@ -1097,6 +1097,7 @@ func executeBatch(
 		if fullErr != nil || common.Hash(fullRoot) != expectedRoot {
 			log.Printf("executor: MISMATCH block %d: incremental=%x full=%x expected=%x fullErr=%v",
 				to, computedRoot, fullRoot, expectedRoot, fullErr)
+			statetrie.CompareLeafEncoding(rwTx, db, overlay)
 			rwTx.Abort()
 			runtime.UnlockOSThread()
 			stateDB.Overlay = nil
@@ -1225,13 +1226,6 @@ func executeBlock(
 		sdb.Prepare(rules, msg.From, header.Coinbase, msg.To,
 			vm.ActivePrecompiles(rules), tx.AccessList())
 
-		// DEBUG: log coinbase balance before/after for the failing block
-		if blockNum == 3308764 {
-			coinbase := header.Coinbase
-			log.Printf("  DEBUG block %d tx %d: coinbase %x balance_before=%s baseFee=%v gasPrice=%v",
-				blockNum, txIndex, coinbase[:4], sdb.GetBalance(coinbase), header.BaseFee, msg.GasPrice)
-		}
-
 		evm := vm.NewEVM(blockCtx, corethcore.NewEVMTxContext(msg), sdb, chainCfg, vm.Config{})
 		result, err := corethcore.ApplyMessage(evm, msg, gp)
 		if err != nil {
@@ -1239,11 +1233,6 @@ func executeBlock(
 		}
 		sdb.Finalise(true)
 
-		if blockNum == 3308764 {
-			coinbase := header.Coinbase
-			log.Printf("  DEBUG block %d tx %d: coinbase balance_after=%s gasUsed=%d",
-				blockNum, txIndex, sdb.GetBalance(coinbase), result.UsedGas)
-		}
 		if result.Failed() {
 			log.Printf("  block %d tx %d reverted: %v", blockNum, txIndex, result.Err)
 		}

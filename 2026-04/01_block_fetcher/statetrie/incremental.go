@@ -71,18 +71,16 @@ func CompareLeafEncoding(tx *mdbx.Txn, db *store.DB, overlay *BatchOverlay) {
 			}
 			if !bytes.Equal(storedSR, expectedSR[:]) {
 				diffs++
-				if diffs <= 3 {
-					currentSR, nowCount := computeFullStorageRootWithCount(tx, db, ha)
+				if diffs <= 10 {
+					currentSR := computeFullStorageRoot(tx, db, ha)
 					step1Count := 0
 					var step1Root [32]byte
 					if overlay != nil && overlay.DebugStep1Counts != nil {
 						step1Count = overlay.DebugStep1Counts[ha]
 						step1Root = overlay.DebugStep1Roots[ha]
 					}
-					var storedArr [32]byte
-					copy(storedArr[:], storedSR)
-					log.Printf("  DIFF acct %x: step1root=%x step1leaves=%d nowRoot=%x nowLeaves=%d scanAllRoot=%x leafCountChanged=%v",
-						ha[:8], step1Root[:8], step1Count, currentSR[:8], nowCount, expectedSR[:8], step1Count != nowCount)
+					log.Printf("  DIFF acct %x: step1root=%x step1leaves=%d nowRoot=%x scanAllRoot=%x",
+						ha[:8], step1Root[:8], step1Count, currentSR[:8], expectedSR[:8])
 				}
 			}
 		}
@@ -120,49 +118,21 @@ func ComputeIncrementalStateRoot(
 	// Step 1: Compute storage roots for accounts with changed storage.
 	storageRoots := make(map[[32]byte][32]byte)
 
-	for addrHash, slotHashes := range changedStorage {
-		// If old storage root was emptyRoot, delete stale StorageTrie nodes.
-		if oldRoot, ok := oldStorageRoots[addrHash]; ok && oldRoot == emptyRoot {
-			if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
-				return [32]byte{}, err
-			}
-		}
-
-		// Build PrefixSet from changed slot hashes.
-		psb := intTrie.NewPrefixSetBuilder()
-		for _, sh := range slotHashes {
-			psb.AddKey(intTrie.FromHex(sh[:]))
-		}
-		prefixSet := psb.Build()
-
-		root, updates, err := computeTrieRoot(tx, db.StorageTrie, db.HashedStorageState, addrHash[:], prefixSet, true)
-		if err != nil {
-			return [32]byte{}, err
-		}
-
-		// Persist branch node updates.
-		for packedPath, node := range updates {
-			if node == nil {
-				continue
-			}
-			fullKey := make([]byte, len(addrHash)+len(packedPath))
-			copy(fullKey, addrHash[:])
-			copy(fullKey[len(addrHash):], packedPath)
-			encoded := node.Encode()
-			existing, err := tx.Get(db.StorageTrie, fullKey)
-			if err == nil && bytes.Equal(existing, encoded) {
-				continue
-			}
-			if err := tx.Put(db.StorageTrie, fullKey, encoded, 0); err != nil {
-				return [32]byte{}, err
-			}
-		}
-
-		storageRoots[addrHash] = root
+	for addrHash := range changedStorage {
+		// Full scan from HashedStorageState — bypasses StorageTrie branch nodes
+		// which may have been corrupted by previous incremental hash failures.
+		storageRoots[addrHash] = computeFullStorageRoot(tx, db, addrHash)
 	}
 
 	// Step 2: Fix HashedAccountState entries with correct storage roots.
-	for _, addrHash := range changedAccounts {
+	patchSet := make(map[[32]byte]bool, len(changedAccounts)+len(storageRoots))
+	for _, ha := range changedAccounts {
+		patchSet[ha] = true
+	}
+	for ha := range storageRoots {
+		patchSet[ha] = true
+	}
+	for addrHash := range patchSet {
 		var correctRoot [32]byte
 
 		if newRoot, ok := storageRoots[addrHash]; ok {
@@ -430,7 +400,6 @@ func ComputeFullStateRoot(tx *mdbx.Txn, db *store.DB) ([32]byte, error) {
 			}
 		}
 
-		// Transform to RLP using AccountLeafSource logic.
 		leafSource := NewAccountLeafSource(&singleLeafSource{key: k[:32], val: valCopy})
 		lk, lv, _ := leafSource.Next()
 		if lk != nil {
@@ -467,7 +436,6 @@ func computeFullStorageRoot(tx *mdbx.Txn, db *store.DB, addrHash [32]byte) [32]b
 	defer cursor.Close()
 
 	hb := intTrie.NewHashBuilder()
-	count := 0
 	k, v, e := cursor.Get(addrHash[:], nil, mdbx.SetRange)
 	for e == nil && len(k) >= 64 {
 		var ah [32]byte
@@ -480,38 +448,9 @@ func computeFullStorageRoot(tx *mdbx.Txn, db *store.DB, addrHash [32]byte) [32]b
 		valCopy := make([]byte, len(v))
 		copy(valCopy, v)
 		hb.AddLeaf(intTrie.FromHex(sh), rlpEncodeBytesForDebug(valCopy))
-		count++
 		k, v, e = cursor.Get(nil, nil, mdbx.Next)
 	}
 	return hb.Root()
-}
-
-// computeFullStorageRootWithCount is like computeFullStorageRoot but also returns the leaf count.
-func computeFullStorageRootWithCount(tx *mdbx.Txn, db *store.DB, addrHash [32]byte) ([32]byte, int) {
-	cursor, err := tx.OpenCursor(db.HashedStorageState)
-	if err != nil {
-		return emptyRoot, 0
-	}
-	defer cursor.Close()
-
-	hb := intTrie.NewHashBuilder()
-	count := 0
-	k, v, e := cursor.Get(addrHash[:], nil, mdbx.SetRange)
-	for e == nil && len(k) >= 64 {
-		var ah [32]byte
-		copy(ah[:], k[:32])
-		if ah != addrHash {
-			break
-		}
-		sh := make([]byte, 32)
-		copy(sh, k[32:64])
-		valCopy := make([]byte, len(v))
-		copy(valCopy, v)
-		hb.AddLeaf(intTrie.FromHex(sh), rlpEncodeBytesForDebug(valCopy))
-		count++
-		k, v, e = cursor.Get(nil, nil, mdbx.Next)
-	}
-	return hb.Root(), count
 }
 
 func rlpEncodeBytesForDebug(val []byte) []byte {

@@ -24,6 +24,10 @@ type AccountTrie struct {
 	root            common.Hash
 	dirtyAccounts   map[common.Address]*types.StateAccount
 	deletedAccounts map[common.Address]bool
+	// isMultiCoin tracks the isMultiCoin flag for accounts loaded from DB.
+	// go-ethereum's StateDB doesn't preserve the Extra field through round-trips
+	// unless it was properly set. We track it separately to avoid losing it.
+	isMultiCoin     map[common.Address]bool
 }
 
 // NewAccountTrie creates a new AccountTrie for the given root.
@@ -34,6 +38,7 @@ func NewAccountTrie(db *store.DB, stateDB *Database, root common.Hash) *AccountT
 		root:            root,
 		dirtyAccounts:   make(map[common.Address]*types.StateAccount),
 		deletedAccounts: make(map[common.Address]bool),
+		isMultiCoin:     make(map[common.Address]bool),
 	}
 }
 
@@ -45,6 +50,7 @@ func (t *AccountTrie) Copy() *AccountTrie {
 		root:            t.root,
 		dirtyAccounts:   make(map[common.Address]*types.StateAccount, len(t.dirtyAccounts)),
 		deletedAccounts: make(map[common.Address]bool, len(t.deletedAccounts)),
+		isMultiCoin:     make(map[common.Address]bool, len(t.isMultiCoin)),
 	}
 	for addr, acct := range t.dirtyAccounts {
 		acctCopy := *acct
@@ -52,6 +58,9 @@ func (t *AccountTrie) Copy() *AccountTrie {
 	}
 	for addr := range t.deletedAccounts {
 		cp.deletedAccounts[addr] = true
+	}
+	for addr := range t.isMultiCoin {
+		cp.isMultiCoin[addr] = true
 	}
 	return cp
 }
@@ -114,6 +123,10 @@ func (t *AccountTrie) GetAccount(address common.Address) (*types.StateAccount, e
 		Balance:  new(uint256.Int).SetBytes32(storeAcct.Balance[:]),
 		Root:     common.Hash(storeAcct.StorageRoot),
 		CodeHash: storeAcct.CodeHash[:],
+	}
+	// Track isMultiCoin separately — the Extra system can't be set externally.
+	if storeAcct.IsMultiCoin {
+		t.isMultiCoin[address] = true
 	}
 	return sa, nil
 }
@@ -242,7 +255,8 @@ func (t *AccountTrie) flushStateOnly() error {
 		balance := acct.Balance.Bytes32()
 		var codeHash [32]byte
 		copy(codeHash[:], acct.CodeHash)
-		isMultiCoin := ccustomtypes.IsAccountMultiCoin(acct)
+		// Use tracked flag OR the Extra system (if the EVM set it during execution).
+		isMultiCoin := t.isMultiCoin[address] || ccustomtypes.IsAccountMultiCoin(acct)
 		storeAcct := &store.Account{
 			Nonce: acct.Nonce, Balance: balance,
 			CodeHash: codeHash, StorageRoot: storageRoot,

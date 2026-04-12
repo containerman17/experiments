@@ -3,7 +3,9 @@ package store
 import (
 	"encoding/binary"
 
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/erigontech/mdbx-go/mdbx"
+	"github.com/holiman/uint256"
 )
 
 type Account struct {
@@ -69,6 +71,17 @@ func decodeAccount(data []byte) *Account {
 		acct.IsMultiCoin = data[104] != 0
 	}
 	return acct
+}
+
+// ToSlimAccount converts a store Account to a libevm SlimAccount for native RLP encoding.
+// Note: does NOT set isMultiCoin extra — caller must handle if needed.
+func (a *Account) ToSlimAccount() *types.SlimAccount {
+	return &types.SlimAccount{
+		Nonce:    a.Nonce,
+		Balance:  new(uint256.Int).SetBytes(a.Balance[:]),
+		Root:     a.StorageRoot[:],
+		CodeHash: a.CodeHash[:],
+	}
 }
 
 // EncodeAccountBytes returns the 104-byte encoding of an account as a new slice.

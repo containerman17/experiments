@@ -25,17 +25,26 @@
 4. **Small batches (1000 blocks) work fine** — every batch passes with full-root fallback.
    No MISMATCH. The 50k-batch MISMATCH at block 3312988 was from DB corruption caused by #2.
 
+5. **Execution bug found at block 3,308,764** — binary searched from 1000-block batch
+   failure down to the exact block. Both incremental AND full root wrong. Normal Trader Joe
+   swap tx (USDT.e → WAVAX → AVAX, single tx, status success). Our EVM produces wrong state.
+   
+   Block: `0x327E9C` (3308764), tx: `0x69ca7cf6...`
+   Expected stateRoot: `0xc996676c43552e31d7ce1547cb526ded2485e500339e9156fad75308018f57c6`
+   Reference: sender(0xff5ba0aa) balance=0xba484f5e7250be12, nonce=0x209
+              coinbase(0x01000000) balance=0x25f5bec68fcce4ef40ff
+
 ### Current state
-- Sync running with 1000-block batches past the corrupted range
-- Will switch to 50k batches after passing 3312988 to keep sync moving
-- Incremental hash fails EVERY batch (1000 or 50k), full-root fallback covers it
+- DB backed up at block 3307988 (`mdbx.dat.bak.3307988`)
+- Running single-block batches to find exact failing block
+- Incremental hash fails EVERY batch but full-root covers it (separate issue)
 - `cmd/repair_storage_roots` tool available if DB gets corrupted again
 
 ### What to investigate next
-- Why does `computeFullStorageRoot` return different results at different times in the same tx?
-  This is the key to the incremental hash bug. The step 1 storage root computation is wrong,
-  which means step 2 patches wrong values, which means the account trie gets wrong leaf data.
-- Try: log the first differing leaf (key + value) between step 1 and later scans for ONE account
+- Find the exact block that causes the execution MISMATCH
+- Compare our execution output against an archival RPC for that block
+- Check if it's an atomic tx, a specific opcode, or a consensus rule we're missing
+- Incremental hash bug is a separate, lower-priority issue
 
 ## Incremental hash bug: diagnosis and fix plan (2026-04-12)
 

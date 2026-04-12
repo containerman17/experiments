@@ -60,6 +60,7 @@ import (
 	"github.com/ava-labs/libevm/rlp"
 	"github.com/holiman/uint256"
 
+	rpcpkg "block_fetcher/rpc"
 	"block_fetcher/statetrie"
 	"block_fetcher/store"
 )
@@ -241,9 +242,10 @@ func main() {
 		expectedNet  = flag.Uint("expected-network-id", uint(defaultExpectedNetID), "expected Avalanche network ID")
 		subnetIDStr  = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
 		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
-		execBatchSize  = flag.Uint64("exec-batch-size", 10000, "number of blocks per executor batch (verified every batch)")
+		execBatchSize  = flag.Uint64("exec-batch-size", 50000, "number of blocks per executor batch (verified every batch)")
 		fetchWorkers   = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
 		execOnly       = flag.Bool("exec-only", false, "run executor only, no fetcher/writer/network")
+		rpcAddr        = flag.String("rpc-addr", ":9670", "JSON-RPC server listen address")
 	)
 	flag.Parse()
 
@@ -270,6 +272,15 @@ func main() {
 		}
 		log.Printf("state cleared")
 	}
+
+	// Start JSON-RPC server.
+	rpcBackend := rpcpkg.NewBackend(db)
+	rpcServer := rpcpkg.NewServer(rpcBackend)
+	go func() {
+		if err := rpcServer.ListenAndServe(*rpcAddr); err != nil {
+			log.Printf("RPC server error: %v", err)
+		}
+	}()
 
 	executorStopAt := make(chan uint64, 1)
 	executorErrCh := make(chan error, 1)
@@ -963,9 +974,13 @@ func executeBatch(
 		}
 	}()
 
-	// Hard timeout: kill the process if a batch takes too long.
-	batchTimer := time.AfterFunc(60*time.Second, func() {
-		log.Fatalf("executor: FATAL batch %d-%d exceeded 60s timeout — killing process", from, to)
+	// Hard timeout: scale with batch size (roughly 1s per 500 blocks, minimum 60s).
+	batchTimeout := time.Duration(to-from+1) * 2 * time.Millisecond
+	if batchTimeout < 60*time.Second {
+		batchTimeout = 60 * time.Second
+	}
+	batchTimer := time.AfterFunc(batchTimeout, func() {
+		log.Fatalf("executor: FATAL batch %d-%d exceeded %v timeout — killing process", from, to, batchTimeout)
 	})
 	defer batchTimer.Stop()
 
@@ -1039,25 +1054,6 @@ func executeBatch(
 
 	if common.Hash(computedRoot) != expectedRoot {
 		log.Printf("executor: MISMATCH block %d: computed=%x expected=%x", to, computedRoot, expectedRoot)
-		// Dump what the overlay changed
-		for _, ha := range changedAccounts {
-			// Read the value we just wrote
-			val, err := rwTx.Get(db.HashedAccountState, ha[:])
-			if err != nil {
-				log.Printf("  acct %x: read error %v", ha[:8], err)
-				continue
-			}
-			if len(val) >= 104 {
-				log.Printf("  acct %x: nonce=%d bal=%x storageRoot=%x",
-					ha[:8],
-					uint64(val[0])<<56|uint64(val[1])<<48|uint64(val[2])<<40|uint64(val[3])<<32|uint64(val[4])<<24|uint64(val[5])<<16|uint64(val[6])<<8|uint64(val[7]),
-					val[8:16], val[72:80])
-			}
-		}
-		changedStorage := overlay.ChangedStorageGrouped()
-		for addrHash, slots := range changedStorage {
-			log.Printf("  storage %x: %d changed slots", addrHash[:8], len(slots))
-		}
 		rwTx.Abort()
 		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
@@ -1166,6 +1162,9 @@ func executeBlock(
 		baseFee = new(big.Int)
 	}
 
+	var blockReceipts []store.TxReceipt
+	cumulativeGas := uint64(0)
+
 	for txIndex, tx := range ethBlock.Transactions() {
 		msg, err := corethcore.TransactionToMessage(tx, signer, baseFee)
 		if err != nil {
@@ -1183,12 +1182,49 @@ func executeBlock(
 		if err != nil {
 			return fmt.Errorf("tx %d apply: %w", txIndex, err)
 		}
-		if blockNum >= 1562985 && blockNum <= 1562995 {
-			log.Printf("  block %d tx %d: gasUsed=%d failed=%v", blockNum, txIndex, result.UsedGas, result.Failed())
-		}
 		sdb.Finalise(true)
 		if result.Failed() {
 			log.Printf("  block %d tx %d reverted: %v", blockNum, txIndex, result.Err)
+		}
+
+		// Build receipt from execution result.
+		cumulativeGas += result.UsedGas
+		receipt := store.TxReceipt{
+			TxHash:        [32]byte(tx.Hash()),
+			CumulativeGas: cumulativeGas,
+			GasUsed:       result.UsedGas,
+			TxType:        tx.Type(),
+		}
+		if result.Failed() {
+			receipt.Status = 0
+		} else {
+			receipt.Status = 1
+		}
+
+		// Contract creation address.
+		if tx.To() == nil && !result.Failed() {
+			contractAddr := crypto.CreateAddress(msg.From, tx.Nonce())
+			receipt.ContractAddress = [20]byte(contractAddr)
+		}
+
+		// Capture logs.
+		txLogs := sdb.GetLogs(tx.Hash(), blockNum, common.Hash{})
+		for _, l := range txLogs {
+			entry := store.LogEntry{
+				Address: [20]byte(l.Address),
+				Data:    l.Data,
+			}
+			for _, t := range l.Topics {
+				entry.Topics = append(entry.Topics, [32]byte(t))
+			}
+			receipt.Logs = append(receipt.Logs, entry)
+		}
+
+		blockReceipts = append(blockReceipts, receipt)
+
+		// Record tx hash → (blockNum, txIndex).
+		if stateDB != nil && stateDB.Overlay != nil {
+			stateDB.Overlay.AddTxHash([32]byte(tx.Hash()), blockNum, uint16(txIndex))
 		}
 	}
 
@@ -1216,6 +1252,14 @@ func executeBlock(
 	sdb.Finalise(true)
 	if _, err := sdb.Commit(blockNum, true); err != nil {
 		return fmt.Errorf("commit state: %w", err)
+	}
+
+	// Store receipts and block hash in overlay.
+	if stateDB != nil && stateDB.Overlay != nil {
+		if len(blockReceipts) > 0 {
+			stateDB.Overlay.AddBlockReceipts(blockNum, blockReceipts)
+		}
+		stateDB.Overlay.AddBlockHash([32]byte(ethBlock.Hash()), blockNum)
 	}
 
 	// Flush changeset.

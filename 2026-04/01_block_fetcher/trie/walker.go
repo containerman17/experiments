@@ -82,6 +82,7 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 		frame := &w.stack[len(w.stack)-1]
 
 		// Find the next child with state in this node.
+		descended := false
 		for frame.childIdx < 16 {
 			nibble := frame.childIdx
 			frame.childIdx++
@@ -107,28 +108,26 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 							node:     childNode,
 							childIdx: 0,
 						})
-						// Don't yield descended branches — just push onto stack
-						// and continue. Only cached hashes (skipped subtrees) are
-						// yielded. Leaves come from the LeafSource via NodeIter.
+						descended = true
 						break
 					}
 				}
-				// If no subtree in DB or seek failed, this child is a leaf-level
-				// branch — nothing more to descend into from the walker's perspective.
-				// The NodeIter will pick up leaves from the state cursor.
 				continue
 			}
 
 			// This subtree is unchanged — yield the cached hash.
 			if frame.node.HashMask&(1<<nibble) != 0 {
 				h := w.hashForChild(frame.node, nibble)
-				childrenInTrie := frame.node.TreeMask&(1<<nibble) != 0
-				_ = childrenInTrie // stored in the hash return for the caller
 				return childPath, nil, h, false
 			}
 
 			// Child exists in state but has no hash cached — this shouldn't normally
 			// happen for unchanged subtrees. Skip it.
+		}
+
+		if descended {
+			// We pushed a child frame — continue the outer loop to process it.
+			continue
 		}
 
 		// All children of this node are processed. Pop the frame.

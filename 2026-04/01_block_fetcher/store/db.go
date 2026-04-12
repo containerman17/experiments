@@ -23,6 +23,10 @@ const (
 	TableEthDB              = "EthDB"
 	TableHashedAccountState = "HashedAccountState"
 	TableHashedStorageState = "HashedStorageState"
+	TableReceiptsByBlock        = "ReceiptsByBlock"
+	TableTxHashIndex        = "TxHashIndex"
+	TableAddressLogIndex    = "AddressLogIndex"
+	TableTopicLogIndex      = "TopicLogIndex"
 )
 
 var allTables = []string{
@@ -42,6 +46,10 @@ var allTables = []string{
 	TableEthDB,
 	TableHashedAccountState,
 	TableHashedStorageState,
+	TableReceiptsByBlock,
+	TableTxHashIndex,
+	TableAddressLogIndex,
+	TableTopicLogIndex,
 }
 
 type DB struct {
@@ -63,6 +71,10 @@ type DB struct {
 	EthDB              mdbx.DBI
 	HashedAccountState mdbx.DBI
 	HashedStorageState mdbx.DBI
+	ReceiptsByBlock        mdbx.DBI
+	TxHashIndex        mdbx.DBI
+	AddressLogIndex    mdbx.DBI
+	TopicLogIndex      mdbx.DBI
 }
 
 func Open(path string) (*DB, error) {
@@ -75,7 +87,7 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
-	if err := env.SetOption(mdbx.OptMaxDB, 20); err != nil {
+	if err := env.SetOption(mdbx.OptMaxDB, 24); err != nil {
 		env.Close()
 		return nil, err
 	}
@@ -131,6 +143,10 @@ func Open(path string) (*DB, error) {
 	db.EthDB = dbis[13]
 	db.HashedAccountState = dbis[14]
 	db.HashedStorageState = dbis[15]
+	db.ReceiptsByBlock = dbis[16]
+	db.TxHashIndex = dbis[17]
+	db.AddressLogIndex = dbis[18]
+	db.TopicLogIndex = dbis[19]
 
 	return db, nil
 }
@@ -165,6 +181,8 @@ func (db *DB) ClearState() error {
 		db.AccountTrie, db.StorageTrie,
 		db.Metadata, db.EthDB,
 		db.HashedAccountState, db.HashedStorageState,
+		db.ReceiptsByBlock, db.TxHashIndex,
+		db.AddressLogIndex, db.TopicLogIndex,
 	}
 	for _, dbi := range tables {
 		if err := tx.Drop(dbi, false); err != nil {

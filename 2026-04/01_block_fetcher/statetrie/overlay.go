@@ -1,6 +1,7 @@
 package statetrie
 
 import (
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"sync"
@@ -42,6 +43,28 @@ type BatchOverlay struct {
 
 	// Raw changesets per block (keyIDs assigned during Flush).
 	rawChangesets map[uint64][]RawChange
+
+	// Receipts per block (receipts contain logs), captured during execution.
+	blockReceipts map[uint64][]store.TxReceipt
+
+	// Transaction hash index: txHash → (blockNum, txIndex).
+	txHashes []TxHashEntry
+
+	// Block hash index: blockHash → blockNum.
+	blockHashes []BlockHashEntry
+}
+
+// TxHashEntry records a tx hash and its location.
+type TxHashEntry struct {
+	TxHash   [32]byte
+	BlockNum uint64
+	TxIndex  uint16
+}
+
+// BlockHashEntry records a block hash and its number.
+type BlockHashEntry struct {
+	BlockHash [32]byte
+	BlockNum  uint64
 }
 
 func NewBatchOverlay() *BatchOverlay {
@@ -56,6 +79,7 @@ func NewBatchOverlay() *BatchOverlay {
 		hashedStorageDeleted: make(map[[64]byte]bool),
 		code:                 make(map[[32]byte][]byte),
 		rawChangesets:        make(map[uint64][]RawChange),
+		blockReceipts:        make(map[uint64][]store.TxReceipt),
 	}
 }
 
@@ -129,6 +153,27 @@ func (o *BatchOverlay) PutCode(codeHash [32]byte, code []byte) {
 	c := make([]byte, len(code))
 	copy(c, code)
 	o.code[codeHash] = c
+	o.mu.Unlock()
+}
+
+// AddBlockReceipts stores receipts (with embedded logs) for a block.
+func (o *BatchOverlay) AddBlockReceipts(blockNum uint64, receipts []store.TxReceipt) {
+	o.mu.Lock()
+	o.blockReceipts[blockNum] = receipts
+	o.mu.Unlock()
+}
+
+// AddTxHash records a transaction hash and its location.
+func (o *BatchOverlay) AddTxHash(txHash [32]byte, blockNum uint64, txIndex uint16) {
+	o.mu.Lock()
+	o.txHashes = append(o.txHashes, TxHashEntry{TxHash: txHash, BlockNum: blockNum, TxIndex: txIndex})
+	o.mu.Unlock()
+}
+
+// AddBlockHash records a block hash and its number.
+func (o *BatchOverlay) AddBlockHash(blockHash [32]byte, blockNum uint64) {
+	o.mu.Lock()
+	o.blockHashes = append(o.blockHashes, BlockHashEntry{BlockHash: blockHash, BlockNum: blockNum})
 	o.mu.Unlock()
 }
 
@@ -366,6 +411,54 @@ func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
 			}
 		}
 	}
+
+	// Write block receipts (with embedded logs) and update bitmap indexes.
+	for blockNum, receipts := range o.blockReceipts {
+		if len(receipts) == 0 {
+			continue
+		}
+		if err := store.WriteBlockReceipts(tx, db, blockNum, receipts); err != nil {
+			return fmt.Errorf("write block receipts at block %d: %w", blockNum, err)
+		}
+		// Update address and topic bitmap indexes from logs within receipts.
+		seen := make(map[[20]byte]bool)
+		seenTopics := make(map[[32]byte]bool)
+		for _, r := range receipts {
+			for _, l := range r.Logs {
+				if !seen[l.Address] {
+					seen[l.Address] = true
+					if err := store.UpdateAddressLogIndex(tx, db, l.Address, blockNum); err != nil {
+						return fmt.Errorf("update address log index: %w", err)
+					}
+				}
+				for _, t := range l.Topics {
+					if !seenTopics[t] {
+						seenTopics[t] = true
+						if err := store.UpdateTopicLogIndex(tx, db, t, blockNum); err != nil {
+							return fmt.Errorf("update topic log index: %w", err)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Write tx hash index.
+	for _, entry := range o.txHashes {
+		if err := store.PutTxHash(tx, db, entry.TxHash, entry.BlockNum, entry.TxIndex); err != nil {
+			return fmt.Errorf("write tx hash index: %w", err)
+		}
+	}
+
+	// Write block hash → block number index.
+	for _, entry := range o.blockHashes {
+		var val [8]byte
+		binary.BigEndian.PutUint64(val[:], entry.BlockNum)
+		if err := tx.Put(db.BlockHashIndex, entry.BlockHash[:], val[:], 0); err != nil {
+			return fmt.Errorf("write block hash index: %w", err)
+		}
+	}
+
 	return nil
 }
 

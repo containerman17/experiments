@@ -1,35 +1,105 @@
 # Changelog
 
-## CURRENT TASK (2026-04-12) — Read this after compaction
+## Full JSON-RPC Server + Receipt Storage (2026-04-12)
 
-### Status
-- **1,562,988 blocks verified** with correct state roots. DB backed up at `data/mainnet-mdbx/mdbx.dat.bak`.
-- **Stuck on block 1,562,989** — state root mismatch. The exact failing block was found via batch=1 bisect.
+### RPC server (`rpc/` package)
+HTTP JSON-RPC 2.0 server on `:9670` (configurable via `--rpc-addr`). Serves on `/ext/bc/C/rpc` and `/`. Supports batch requests.
 
-### What we know
-1. **EVM execution is CORRECT.** Confirmed by seeding coreth's real in-memory trie from our flat MDBX state at block 1,562,988, then executing block 1,562,989 through coreth's `state.StateDB` + real `triedb`. It produces the CORRECT root `50785380...`. See `/tmp/seed_and_run.go` for the test.
-2. **Our flat state values are correct.** Account nonces, balances, storage all match between coreth's execution and ours. Gas usage matches (64,828).
-3. **The bug is in our trie ROOT COMPUTATION**, not execution. After flushing the overlay to MDBX, `ComputeIncrementalStateRoot` (and `ComputeFullStateRoot`) produce a different root than coreth's trie does from the same data.
-4. **StackTrie from our flat state produces correct root at 1,562,988** (before the failing block). So the data is correct, encoding is correct at that point.
-5. **After flushing overlay for block 1,562,989**, our root diverges. The overlay writes 3 changed accounts + 2 storage slots. The values are correct but the resulting trie hash is wrong.
+All 16 methods verified against `api.avax.network`:
+- eth_blockNumber, eth_chainId, net_version, web3_clientVersion
+- eth_getBlockByNumber, eth_getBlockByHash
+- eth_getBalance, eth_getStorageAt, eth_getCode, eth_getTransactionCount
+- eth_getTransactionByHash, eth_getTransactionReceipt
+- eth_getLogs (10k block range cap, brute-force scan with stored receipts)
+- eth_call, eth_estimateGas (full EVM execution against historical state via `statetrie.NewHistoricalDatabase`)
+- eth_gasPrice (static 25 nAVAX)
 
-### Most likely root cause
-The **storage root** field in HashedAccountState entries. During execution, `Hash()` on StorageTrie returns `common.Hash{}` (dummy). This dummy root is written to the overlay's account entries. `ComputeIncrementalStateRoot` patches these with computed storage roots, but the patch may be wrong for specific accounts. The `ComputeFullStateRoot` ALSO fails because it reads the HashedAccountState with wrong (dummy) storage roots and doesn't fix them.
+### Receipt storage refactor
+Unified logs + receipts into single `ReceiptsByBlock` table (was `LogsByBlock`). Each entry stores per-tx: txHash, status, cumulativeGas, gasUsed, txType, contractAddress, and embedded logs. LZ4 compressed per block. `eth_getTransactionReceipt` reads directly from storage — no re-execution needed.
 
-### What to investigate next
-1. Compare the **storage root** that `ComputeIncrementalStateRoot` computes for the contract `0x8d36C5c6947ADCcd25Ef49Ea1aAC2ceACFff0bD7` (2 changed slots) vs what coreth's trie computes.
-2. Check if the `oldStorageRoots` capture (for accounts with NO storage changes) correctly restores the pre-batch root from MDBX — or if it reads the already-flushed dummy zeros.
-3. The ordering of operations in `executeBatch`: flush overlay (writes dummy storage roots to HashedAccountState) → then `ComputeIncrementalStateRoot` patches them. But `ComputeFullStateRoot` doesn't patch — it reads raw. This is why both fail.
+### eth_call / eth_estimateGas implementation
+`rpc/evm.go` — sets up EVM against historical state using `statetrie.NewHistoricalDatabase(db, blockNum)`. Same chain config and block context as the executor. eth_estimateGas uses binary search over gas limit.
 
-### Key files
-- `statetrie/incremental.go` — `ComputeIncrementalStateRoot`, storage root computation, account patching
-- `statetrie/overlay.go` — `FlushStateToTx`, `PutAccount` (writes dummy storage root)
-- `statetrie/account_trie.go` — `flushStateOnly` (writes accounts with dummy storage root to overlay)
-- `main.go:executeBatch` — orchestration: flush → incremental hash → verify
-- `statetrie/leaf_source.go` — `AccountLeafSource` RLP encoding (reads from HashedAccountState)
+### Minor: address checksum casing
+Our addresses use EIP-55 mixed-case checksums (via `common.Address.Hex()`), reference nodes return lowercase. Data is identical.
+
+## Log Storage & Indexes Implemented (2026-04-12)
+
+Five new data paths added to the execution/flush loop. All write in the same RW transaction as state changes. Verified with batch=50k, zero mismatches, negligible commit overhead.
+
+- **LogsByBlock**: `blockNum(8) → LZ4(logs)`. Logs captured from `sdb.GetLogs()` after each tx during execution. Stored per block, LZ4 compressed.
+- **AddressLogIndex**: `address(20)+maxBlock(8) → roaring bitmap`. Sharded at 50k entries. One bitmap per event-emitting address. Updated per-block (deduplicated within block).
+- **TopicLogIndex**: `topic(32)+maxBlock(8) → roaring bitmap`. Same sharding. All topic positions (0-3) in one table. Position-unaware — false positives filtered in memory.
+- **TxHashIndex**: `txHash(32) → blockNum(8)+txIndex(2)`. One entry per transaction.
+- **BlockHashIndex**: `blockHash(32) → blockNum(8)`. One entry per block. Repurposed existing table (was unused).
+
+Files changed: `store/db.go` (5 new DBIs), `store/logs.go` (new), `statetrie/overlay.go` (AddBlockLogs/AddTxHash/AddBlockHash + flush), `main.go` (capture in executeBlock).
+
+## Log Storage & eth_getLogs Design (2026-04-12)
+
+### Final design: Bitmap indexes + stored logs
+
+Three new MDBX tables:
+
+```
+AddressLogIndex:  address(20) + maxBlock(8) → roaring bitmap of block numbers
+TopicLogIndex:    topic(32) + maxBlock(8)   → roaring bitmap of block numbers
+LogsByBlock:      blockNum(8) → LZ4([txIdx(2) | logIdx(2) | addr(20) | nTopics(1) | topics(0-4×32) | dataLen(2) | data])
+```
+
+**AddressLogIndex**: one sharded bitmap per event-emitting address. Same pattern as history index — seal shard at threshold, new shard with sentinel key.
+
+**TopicLogIndex**: one sharded bitmap per unique topic value. All 4 topic positions (0-3) go into the same table — no per-position separation. Position-unaware means false positives when the same 32-byte value appears in different positions (e.g., an address as topic1 in one event and topic2 in another). Acceptable: precise filtering happens in-memory after decompressing matching blocks' logs.
+
+**LogsByBlock**: all logs for a block, LZ4-compressed. Generated during execution at zero extra cost (we already run every tx). Written in the batch flush alongside changesets.
+
+**Query flow**: bitmap lookup per filter field (microseconds) → AND/OR intersect (microseconds) → decompress only matching blocks' logs (few ms) → precise in-memory filtering → return. Single-digit ms for any query with at least one filter.
+
+**Caps**: 10k block range limit per request. Result count cap (10k logs). Both standard across providers.
+
+### Rejected alternatives
+
+**Bloom-filter-only (reth's approach)**: No separate indexes; scan block header blooms for eth_getLogs. Problem: our blocks are stored as opaque blobs, extracting the 256-byte bloom requires full block deserialization. Storing blooms separately (256 bytes × 82M blocks = 21GB) is worse than bitmap indexes that compress to a few GB total and give exact results.
+
+**No log storage, re-execute on demand**: Generate logs by re-executing blocks for every eth_getLogs hit. Too slow — a 10k block scan touching 200 matching blocks means 200 block re-executions.
+
+**Separate per-position topic indexes (Topic0Index, Topic1Index, Topic2Index, Topic3Index)**: Eliminates false positives from position ambiguity. 4x tables and 4x writes during sync. Not worth it — false positive rate is low (event signatures are keccak hashes, won't collide with addresses/uint256s), and in-memory filtering catches everything.
+
+**Inverted index without stored logs**: Bitmaps tell you WHICH blocks, but you still need the actual log data. Without stored logs you'd re-execute matching blocks. Defeats the purpose.
+
+### Receipts
+
+`eth_getTransactionReceipt(txHash)`: re-execute the single block on demand. Receipt fields (`status`, `cumulativeGasUsed`, `effectiveGasPrice`, `logs`, `contractAddress`) are all deterministic from execution. No receipt storage needed.
+
+## 2026-04-12 — Fixed state root mismatch at block 1,562,989
+
+**Three bugs found and fixed** that caused incremental trie computation to produce wrong state roots:
+
+### Bug 1: Stale StorageTrie branch nodes (ROOT CAUSE of block 1,562,989 mismatch)
+**File:** `statetrie/incremental.go`
+**Problem:** When an account's storage is deleted and later recreated across batches, old branch nodes remain in the `StorageTrie` table even though the account's storage root resets to `emptyRoot`. When `ComputeIncrementalStateRoot` recomputes the storage root for such an account, the walker finds these stale branch nodes and trusts their cached hashes, producing a wrong storage root. At block 1,562,989, contract `0x8d36C5c6` (addrHash `ea901832...`) had 12 stale StorageTrie entries from previous batches, but its old storage root was `emptyRoot` (no storage expected). The walker used 3 of these stale branches, computing root `8cc59aa2...` instead of the correct `6e10f4b3...`.
+**Fix:** Before computing the storage root for any account with changed storage, delete ALL existing StorageTrie entries for that account. The incremental computation then starts fresh, and the new branch nodes are written after computation.
+
+### Bug 2: Walker descent frame immediately popped
+**File:** `trie/walker.go`
+**Problem:** When the `TrieWalker.Advance()` descended into a child subtree (pushing a new frame onto the stack via `break`), the code immediately fell through to `w.stack = w.stack[:len(w.stack)-1]`, popping the just-pushed frame. The child subtree was never processed. This meant subtrees with stored branch nodes (TreeMask=1) that needed re-hashing were silently skipped — their cached hashes from the walker were lost, and ALL their leaves had to come from the leaf source.
+**Fix:** Added `descended` flag; when true, `continue` the outer loop instead of popping.
+
+### Bug 3: `deletePrefixedEntries` skipping every other entry
+**File:** `statetrie/incremental.go`
+**Problem:** After `cursor.Del(0)`, MDBX positions the cursor at the successor entry. The code called `cursor.Get(nil, nil, mdbx.Next)` which advanced AGAIN, skipping every other entry. Only half the entries were deleted.
+**Fix:** Changed to `cursor.Get(nil, nil, mdbx.GetCurrent)` after deletion, matching the pattern in `deleteStaleNodes`.
+
+### Verification
+- Block 1,562,989 now passes. 136+ consecutive batches (batch=100) verified with zero mismatches past the former stuck point.
+- `ComputeFullStateRoot` (from-scratch) always matched expected root, confirming the flat state data was correct all along.
+- dRPC endpoint `lb.drpc.live/avalanche/...` confirmed to have archival state at this block (eth_getStorageAt, eth_call work; debug_trace only for recent blocks; eth_getProof limited to 32-block window).
+
+### Batch size increased to 50k (default)
+10k → 50k: ~960 blocks/sec vs ~650. Per-batch overhead (hash+commit ~12.5s) amortized over more blocks. Batch timeout now scales with size (2ms per block, min 60s).
 
 ### DB backup
-`data/mainnet-mdbx/mdbx.dat.bak` — snapshot at head=1,562,988, all state correct. Restore with `cp mdbx.dat.bak mdbx.dat`.
+`data/mainnet-mdbx/mdbx.dat.bak` — snapshot at head=1,562,988. Restore with `cp mdbx.dat.bak mdbx.dat`.
 
 ## Executor Architecture (agreed 2026-04-11)
 

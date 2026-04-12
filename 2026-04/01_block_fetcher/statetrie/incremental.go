@@ -39,6 +39,14 @@ func ComputeIncrementalStateRoot(
 	storageRoots := make(map[[32]byte][32]byte)
 
 	for addrHash, slotHashes := range changedStorage {
+		// Clean up any existing StorageTrie branch nodes for this account before
+		// recomputing. Stale nodes can exist from previous batches (e.g., if storage
+		// was created, deleted, then recreated) and would corrupt the incremental
+		// computation by providing wrong cached hashes to the walker.
+		if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
+			return [32]byte{}, err
+		}
+
 		// Build PrefixSet from changed slot hashes.
 		psb := intTrie.NewPrefixSetBuilder()
 		for _, sh := range slotHashes {
@@ -395,7 +403,8 @@ func deletePrefixedEntries(tx *mdbx.Txn, dbi mdbx.DBI, prefix []byte) error {
 		if err := cursor.Del(0); err != nil {
 			return err
 		}
-		k, _, err = cursor.Get(nil, nil, mdbx.Next)
+		// After Del, cursor points to successor — use GetCurrent, not Next.
+		k, _, err = cursor.Get(nil, nil, mdbx.GetCurrent)
 	}
 	return nil
 }

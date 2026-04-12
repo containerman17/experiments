@@ -1183,6 +1183,9 @@ func executeBlock(
 		if err != nil {
 			return fmt.Errorf("tx %d apply: %w", txIndex, err)
 		}
+		if blockNum >= 1562985 && blockNum <= 1562995 {
+			log.Printf("  block %d tx %d: gasUsed=%d failed=%v", blockNum, txIndex, result.UsedGas, result.Failed())
+		}
 		sdb.Finalise(true)
 		if result.Failed() {
 			log.Printf("  block %d tx %d reverted: %v", blockNum, txIndex, result.Err)

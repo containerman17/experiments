@@ -1,12 +1,58 @@
 # Changelog
 
-## Full-root fallback for batch=50k (2026-04-12)
+## Incremental hash bug: diagnosis and fix plan (2026-04-12)
 
-`ComputeIncrementalStateRoot` still produces wrong hashes for large batches due to storage root dummy propagation + TreeMask degradation. Fix: conditional preservation of storage roots in `flushStateOnly` (only when `acct.Root == zero`, meaning dirty storage) + `ComputeFullStateRoot` fallback when incremental fails.
+### The bug: cascading TreeMask corruption
 
-Fallback scans all HashedAccountState + HashedStorageState from scratch — O(total_state) instead of O(changed). At 1.6M blocks: ~10s per 50k batch. Will grow with state size but keeps sync moving at ~600 blocks/sec.
+Incremental hash works for batch 1 (trie tables empty → full rebuild from leaves → correct branch nodes).
+Every batch after that fails. Root cause is **two problems compounding**:
 
-TODO: fix the incremental path so fallback is never needed.
+1. **TreeMask not propagated through cached hashes.** When the walker yields a cached hash
+   for an unchanged subtree (`walker.go:121`), it passes `childrenInTrie=false`. The HashBuilder
+   then stores the parent branch node with `TreeMask=0` for that child — even though the child's
+   branch nodes ARE in the DB. In the next batch, the walker reads this parent, sees TreeMask=0,
+   and refuses to descend into the child when it has changes.
+
+2. **Wrong branch nodes committed on failure.** `ComputeIncrementalStateRoot` writes branch node
+   updates to the RW transaction during computation (steps 1 and 4). When the root mismatches
+   and we fall back to `ComputeFullStateRoot`, those **wrong branch nodes are committed anyway**.
+   Every subsequent batch reads wrong nodes → produces wrong root → commits more wrong nodes.
+
+Together: batch 1 writes correct nodes, batch 2 writes nodes with degraded TreeMask, commit
+persists them, batch 3 reads degraded nodes and can't descend → wrong hash → cascading forever.
+
+### The fix: one line in walker.go
+
+`trie/walker.go:121` — change:
+```go
+return childPath, nil, h, false, false
+```
+to:
+```go
+return childPath, nil, h, frame.node.TreeMask&(1<<nibble) != 0, false
+```
+
+This preserves TreeMask through cached hashes. The parent's TreeMask bit tells us whether the
+child has branch nodes in the DB — pass that through so the HashBuilder records it in the new
+branch node.
+
+**Why this doesn't change the hash:** `storedInDatabase` (the `childrenInTrie` parameter) only
+sets `treeMasks[]` in the HashBuilder. `treeMasks` controls which branch nodes get STORED in the
+DB — it never feeds into RLP encoding or keccak hashing. The earlier attempt (#4) that "changed
+the hash" must have had another issue.
+
+No safety net (full-root fallback). If the fix is wrong, it crashes and we debug the real failure.
+
+### Previous wrong theories (for the record)
+- "Storage root dummy propagation" — real but step 2 patches it correctly. Not the cause.
+- "TreeMask childrenInTrie=true changes hash" — wrong. treeMasks only affect DB persistence.
+- "Conditional storage root preservation" — a workaround for the wrong problem.
+
+### Sync status
+At block ~2.56M with full-root fallback, ~800 blocks/sec. Full root taking 10-60s/batch, growing.
+After the fix: incremental should be O(changes), targeting <1s/batch.
+
+## Full JSON-RPC Server + Receipt Storage (2026-04-12)
 
 ## Full JSON-RPC Server + Receipt Storage (2026-04-12)
 

@@ -2,12 +2,85 @@ package statetrie
 
 import (
 	"bytes"
+	"log"
 
 	"github.com/erigontech/mdbx-go/mdbx"
 
 	"block_fetcher/store"
 	intTrie "block_fetcher/trie"
 )
+
+// CompareLeafEncoding finds accounts where the stored storage root differs from
+// what ComputeFullStateRoot would compute. Logs differences for debugging.
+func CompareLeafEncoding(tx *mdbx.Txn, db *store.DB) {
+	// Recompute all storage roots from HashedStorageState.
+	storageCursor, err := tx.OpenCursor(db.HashedStorageState)
+	if err != nil {
+		return
+	}
+	defer storageCursor.Close()
+
+	storageRoots := make(map[[32]byte][32]byte)
+	var curAddr [32]byte
+	var hb *intTrie.HashBuilder
+	first := true
+	k, v, e := storageCursor.Get(nil, nil, mdbx.First)
+	for e == nil && len(k) >= 64 {
+		var ah [32]byte
+		copy(ah[:], k[:32])
+		if !first && ah != curAddr {
+			if hb != nil {
+				storageRoots[curAddr] = hb.Root()
+			}
+			hb = nil
+		}
+		if hb == nil {
+			hb = intTrie.NewHashBuilder()
+		}
+		first = false
+		curAddr = ah
+		sh := make([]byte, 32)
+		copy(sh, k[32:64])
+		valCopy := make([]byte, len(v))
+		copy(valCopy, v)
+		hb.AddLeaf(intTrie.FromHex(sh), rlpEncodeBytesForDebug(valCopy))
+		k, v, e = storageCursor.Get(nil, nil, mdbx.Next)
+	}
+	if hb != nil {
+		storageRoots[curAddr] = hb.Root()
+	}
+
+	// Scan HashedAccountState and compare storage roots.
+	acctCursor, err := tx.OpenCursor(db.HashedAccountState)
+	if err != nil {
+		return
+	}
+	defer acctCursor.Close()
+
+	diffs := 0
+	k, v, e = acctCursor.Get(nil, nil, mdbx.First)
+	for e == nil && len(k) >= 32 {
+		if len(v) >= 104 {
+			var ha [32]byte
+			copy(ha[:], k[:32])
+			storedSR := v[72:104]
+			// What should it be?
+			expectedSR := store.EmptyRootHash
+			if sr, ok := storageRoots[ha]; ok {
+				expectedSR = sr
+			}
+			if !bytes.Equal(storedSR, expectedSR[:]) {
+				diffs++
+				if diffs <= 5 {
+					log.Printf("  DIFF acct %x: stored_sr=%x expected_sr=%x",
+						ha[:8], storedSR[:8], expectedSR[:8])
+				}
+			}
+		}
+		k, v, e = acctCursor.Get(nil, nil, mdbx.Next)
+	}
+	log.Printf("  CompareLeafEncoding: %d accounts with wrong storage roots", diffs)
+}
 
 // emptyRoot is keccak256(RLP("")) = keccak256(0x80).
 var emptyRoot = [32]byte{

@@ -1102,6 +1102,7 @@ func executeBatch(
 			stateDB.Overlay = nil
 			return fmt.Errorf("state root mismatch at block %d", to)
 		}
+		statetrie.CompareLeafEncoding(rwTx, db)
 		log.Printf("executor: incremental wrong at block %d, used full root (incremental=%x)",
 			to, computedRoot[:8])
 		computedRoot = fullRoot

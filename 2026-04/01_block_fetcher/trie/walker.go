@@ -60,9 +60,9 @@ func NewTrieWalker(cursor TrieCursor, prefixSet *PrefixSet) *TrieWalker {
 //   - node: the branch node (non-nil if this branch was descended into and needs re-hashing)
 //   - hash: cached hash to use (non-zero if we're skipping this subtree)
 //   - done: true when iteration is complete
-func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]byte, done bool) {
+func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]byte, childrenInTrie bool, done bool) {
 	if w.done {
-		return Nibbles{}, nil, [32]byte{}, true
+		return Nibbles{}, nil, [32]byte{}, false, true
 	}
 
 	if !w.started {
@@ -70,10 +70,10 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 		// Seek to the very first trie node.
 		if err := w.seekFirst(); err != nil {
 			w.done = true
-			return Nibbles{}, nil, [32]byte{}, true
+			return Nibbles{}, nil, [32]byte{}, false, true
 		}
 		if w.done {
-			return Nibbles{}, nil, [32]byte{}, true
+			return Nibbles{}, nil, [32]byte{}, false, true
 		}
 	}
 
@@ -118,7 +118,7 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 			// This subtree is unchanged — yield the cached hash.
 			if frame.node.HashMask&(1<<nibble) != 0 {
 				h := w.hashForChild(frame.node, nibble)
-				return childPath, nil, h, false
+				return childPath, nil, h, false, false
 			}
 
 			// Child exists in state but has no hash cached — this shouldn't normally
@@ -135,7 +135,7 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 	}
 
 	w.done = true
-	return Nibbles{}, nil, [32]byte{}, true
+	return Nibbles{}, nil, [32]byte{}, false, true
 }
 
 // seekFirst seeks to the first trie node and pushes it onto the stack.

@@ -39,10 +39,7 @@ func ComputeIncrementalStateRoot(
 	storageRoots := make(map[[32]byte][32]byte)
 
 	for addrHash, slotHashes := range changedStorage {
-		// Clean up any existing StorageTrie branch nodes for this account before
-		// recomputing. Stale nodes can exist from previous batches (e.g., if storage
-		// was created, deleted, then recreated) and would corrupt the incremental
-		// computation by providing wrong cached hashes to the walker.
+		// Delete existing StorageTrie branch nodes before recomputing.
 		if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
 			return [32]byte{}, err
 		}

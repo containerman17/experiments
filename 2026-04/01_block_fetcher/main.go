@@ -975,9 +975,9 @@ func executeBatch(
 	}()
 
 	// Hard timeout: scale with batch size (roughly 1s per 500 blocks, minimum 60s).
-	batchTimeout := time.Duration(to-from+1) * 2 * time.Millisecond
-	if batchTimeout < 60*time.Second {
-		batchTimeout = 60 * time.Second
+	batchTimeout := time.Duration(to-from+1) * 5 * time.Millisecond
+	if batchTimeout < 120*time.Second {
+		batchTimeout = 120 * time.Second
 	}
 	batchTimer := time.AfterFunc(batchTimeout, func() {
 		log.Fatalf("executor: FATAL batch %d-%d exceeded %v timeout — killing process", from, to, batchTimeout)

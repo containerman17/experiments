@@ -1,5 +1,15 @@
 # Changelog
 
+## Batch size limited to 1000 — storage root propagation bug (2026-04-12)
+
+batch>1000 fails around block 3.3M. Root cause: `StorageTrie.Hash()` returns dummy zero for accounts with dirty storage. This dummy propagates through the overlay when the same account is touched in multiple blocks within a batch. `ComputeIncrementalStateRoot` step 2 patches storage roots, but `oldStorageRoots` (from pre-batch MDBX) doesn't account for storage changes from earlier blocks within the same batch.
+
+Failed fix attempt: preserving existing storage root in `flushStateOnly()` instead of writing dummy. This broke batch=1 because existing MDBX state already had stale roots from previous failed patches. The fix requires a clean approach: either compute storage roots per-block (expensive), or track intra-batch storage root state in the overlay.
+
+Current: batch=1000 with unconditional `deletePrefixedEntries` for all changed storage accounts. ~160 blocks/sec. DB restored to clean backup at 2,357,689.
+
+TODO: fix the dummy root propagation at the source so batch=50k works (~960 blocks/sec).
+
 ## Full JSON-RPC Server + Receipt Storage (2026-04-12)
 
 ### RPC server (`rpc/` package)

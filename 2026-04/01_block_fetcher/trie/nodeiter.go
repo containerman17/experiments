@@ -229,7 +229,7 @@ func (n *NodeIter) advanceWalker() {
 		return
 	}
 
-	key, node, hash, done := n.walker.Advance()
+	key, node, hash, childrenInTrie, done := n.walker.Advance()
 	if done {
 		n.walkerDone = true
 		n.walkerElem = nil
@@ -242,17 +242,14 @@ func (n *NodeIter) advanceWalker() {
 	}
 
 	if node != nil {
-		// Descended branch node — the walker found it and we should
-		// note it exists but the HashBuilder doesn't directly use it.
-		// The children will be yielded individually by subsequent walker advances.
-		// We still yield this as a branch element so the HashBuilder knows
-		// about this level in the trie.
 		elem.Node = node
 		elem.ChildrenInTrie = true
 	} else {
 		// Skipped branch — use the cached hash.
+		// Preserve childrenInTrie from the walker so the HashBuilder
+		// maintains correct TreeMask for stored subtrees.
 		elem.Hash = hash
-		elem.ChildrenInTrie = false
+		elem.ChildrenInTrie = childrenInTrie
 	}
 
 	n.walkerElem = elem

@@ -39,9 +39,11 @@ func ComputeIncrementalStateRoot(
 	storageRoots := make(map[[32]byte][32]byte)
 
 	for addrHash, slotHashes := range changedStorage {
-		// Delete existing StorageTrie branch nodes before recomputing.
-		if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
-			return [32]byte{}, err
+		// If old storage root was emptyRoot, delete stale StorageTrie nodes.
+		if oldRoot, ok := oldStorageRoots[addrHash]; ok && oldRoot == emptyRoot {
+			if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
+				return [32]byte{}, err
+			}
 		}
 
 		// Build PrefixSet from changed slot hashes.

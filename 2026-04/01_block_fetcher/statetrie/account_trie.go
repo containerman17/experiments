@@ -227,13 +227,25 @@ func (t *AccountTrie) flushStateOnly() error {
 		}
 
 		// Write new value to overlay.
+		// If acct.Root is the dummy zero (StorageTrie had dirty slots), preserve
+		// the existing storage root from overlay/MDBX. The real root is computed
+		// at batch end by ComputeIncrementalStateRoot.
+		// If acct.Root is non-zero, it's the real root from StorageTrie.Hash()
+		// (no dirty slots = unchanged storage), so use it as-is.
+		storageRoot := [32]byte(acct.Root)
+		if storageRoot == [32]byte{} {
+			storageRoot = store.EmptyRootHash
+			if existingAcct, _ := overlay.GetAccount(tx, t.db, addr); existingAcct != nil {
+				storageRoot = existingAcct.StorageRoot
+			}
+		}
 		balance := acct.Balance.Bytes32()
 		var codeHash [32]byte
 		copy(codeHash[:], acct.CodeHash)
 		isMultiCoin := ccustomtypes.IsAccountMultiCoin(acct)
 		storeAcct := &store.Account{
 			Nonce: acct.Nonce, Balance: balance,
-			CodeHash: codeHash, StorageRoot: [32]byte(acct.Root),
+			CodeHash: codeHash, StorageRoot: storageRoot,
 			IsMultiCoin: isMultiCoin,
 		}
 		encoded := store.EncodeAccountBytes(storeAcct)

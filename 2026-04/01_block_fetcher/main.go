@@ -1053,11 +1053,25 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		log.Printf("executor: MISMATCH block %d: computed=%x expected=%x", to, computedRoot, expectedRoot)
-		rwTx.Abort()
-		runtime.UnlockOSThread()
-		stateDB.Overlay = nil
-		return fmt.Errorf("state root mismatch at block %d: computed %x, expected %x", to, computedRoot, expectedRoot)
+		// Incremental hash failed — fall back to full state root computation.
+		fullRoot, fullErr := statetrie.ComputeFullStateRoot(rwTx, db)
+		if fullErr != nil {
+			log.Printf("executor: incremental AND full root failed at block %d: incremental=%x full_err=%v", to, computedRoot, fullErr)
+			rwTx.Abort()
+			runtime.UnlockOSThread()
+			stateDB.Overlay = nil
+			return fmt.Errorf("state root computation failed at block %d", to)
+		}
+		if common.Hash(fullRoot) != expectedRoot {
+			log.Printf("executor: MISMATCH block %d: incremental=%x full=%x expected=%x", to, computedRoot, fullRoot, expectedRoot)
+			rwTx.Abort()
+			runtime.UnlockOSThread()
+			stateDB.Overlay = nil
+			return fmt.Errorf("state root mismatch at block %d: computed %x, expected %x", to, computedRoot, expectedRoot)
+		}
+		log.Printf("executor: incremental hash wrong at block %d (incremental=%x), used full root=%x",
+			to, computedRoot, fullRoot)
+		computedRoot = fullRoot
 	}
 
 	if err := store.SetHeadBlock(rwTx, db, to); err != nil {

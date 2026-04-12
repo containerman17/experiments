@@ -21,6 +21,7 @@ import (
 	ccustomtypes "github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
+	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	proposerblock "github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/libevm/common"
@@ -62,6 +63,9 @@ func main() {
 	if err := json.Unmarshal([]byte(config.CChainGenesis), &cChainGenesis); err != nil {
 		log.Fatalf("parse C-Chain genesis: %v", err)
 	}
+	// Set Avalanche network upgrade timestamps (not in genesis JSON).
+	mainnetUpgrades := upgrade.GetConfig(constants.MainnetID)
+	setAvalancheUpgradesCV(cChainGenesis.Config, mainnetUpgrades)
 	if err := cparams.SetEthUpgrades(cChainGenesis.Config); err != nil {
 		log.Fatalf("set eth upgrades: %v", err)
 	}
@@ -328,4 +332,23 @@ func baseFeeOrZero(b *big.Int) *big.Int {
 		return new(big.Int).Set(b)
 	}
 	return new(big.Int)
+}
+
+func setAvalancheUpgradesCV(c *params.ChainConfig, cfg upgrade.Config) {
+	extra := cparams.GetExtra(c)
+	ts := func(t time.Time) *uint64 { v := uint64(t.Unix()); return &v }
+	extra.NetworkUpgrades.ApricotPhase1BlockTimestamp = ts(cfg.ApricotPhase1Time)
+	extra.NetworkUpgrades.ApricotPhase2BlockTimestamp = ts(cfg.ApricotPhase2Time)
+	extra.NetworkUpgrades.ApricotPhase3BlockTimestamp = ts(cfg.ApricotPhase3Time)
+	extra.NetworkUpgrades.ApricotPhase4BlockTimestamp = ts(cfg.ApricotPhase4Time)
+	extra.NetworkUpgrades.ApricotPhase5BlockTimestamp = ts(cfg.ApricotPhase5Time)
+	extra.NetworkUpgrades.ApricotPhasePre6BlockTimestamp = ts(cfg.ApricotPhasePre6Time)
+	extra.NetworkUpgrades.ApricotPhase6BlockTimestamp = ts(cfg.ApricotPhase6Time)
+	extra.NetworkUpgrades.ApricotPhasePost6BlockTimestamp = ts(cfg.ApricotPhasePost6Time)
+	extra.NetworkUpgrades.BanffBlockTimestamp = ts(cfg.BanffTime)
+	extra.NetworkUpgrades.CortinaBlockTimestamp = ts(cfg.CortinaTime)
+	extra.NetworkUpgrades.DurangoBlockTimestamp = ts(cfg.DurangoTime)
+	extra.NetworkUpgrades.EtnaTimestamp = ts(cfg.EtnaTime)
+	cparams.WithExtra(c, extra)
+	log.Printf("Avalanche upgrades set: AP1=%d AP2=%d", cfg.ApricotPhase1Time.Unix(), cfg.ApricotPhase2Time.Unix())
 }

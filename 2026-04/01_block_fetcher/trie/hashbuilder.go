@@ -16,19 +16,24 @@ var EmptyRootHash = crypto.Keccak256Hash([]byte{0x80})
 // arrives, the builder "closes" all nodes that are complete (their key doesn't
 // share a prefix with the new entry), RLP-encoding and hashing them as needed.
 type HashBuilder struct {
-	key   Nibbles // current key being processed
-	value []byte  // current value (leaf bytes or 32-byte hash)
-	isHash bool   // true if value is a branch hash rather than leaf data
-	stack [][]byte // stack of RLP-encoded nodes (each <= 32 bytes or raw RLP)
+	key         Nibbles // current key being processed
+	value       []byte  // current value (leaf bytes or cached child reference)
+	isReference bool    // true if value is a cached subtree reference rather than leaf data
+	stack       []stackItem
 
 	stateMasks []uint16 // bitmask of active children at each depth
-	treeMasks  []uint16 // which children have subtrees (for DB persistence)
-	hashMasks  []uint16 // which children are hashes
+	treeMasks  []uint16 // which children have a stored branch node in DB
+	hashMasks  []uint16 // cached child-reference bits (historical name kept internally)
 
-	storedInDatabase bool
+	childNodeStored bool
 
 	// Collected updates for persistence
 	updates map[string]*BranchNodeCompact
+}
+
+type stackItem struct {
+	ref          []byte
+	rootIsBranch bool
 }
 
 // NewHashBuilder creates a new hash builder.
@@ -53,23 +58,38 @@ func (h *HashBuilder) AddLeaf(key Nibbles, value []byte) {
 	h.key = key
 	h.value = make([]byte, len(value))
 	copy(h.value, value)
-	h.isHash = false
+	h.isReference = false
 }
 
-// AddBranch adds a known branch hash (from DB, for unchanged subtrees).
+// AddBranch adds a known cached branch-root hash (from DB, for unchanged subtrees).
 // key is the nibble path prefix.
-// hash is the cached hash of this subtree.
-func (h *HashBuilder) AddBranch(key Nibbles, hash [32]byte, storedInDatabase bool) {
+// childNodeStored reports whether this cached child has a stored branch node
+// in the DB that the walker can descend into on a future update.
+func (h *HashBuilder) AddBranch(key Nibbles, hash [32]byte, childNodeStored bool) {
+	h.AddBranchRef(key, wordRLP(hash), childNodeStored)
+}
+
+// AddBranchRef adds a known cached branch-root reference.
+// ref must be exactly what the parent would embed for this child:
+// either raw RLP (<32 bytes) or an RLP-encoded 32-byte hash (33 bytes).
+//
+// childNodeStored is intentionally separate from cacheability:
+// a cached child can be branch-rooted and therefore safe to replay opaquely,
+// while still having no stored branch node below it (TreeMask=0).
+func (h *HashBuilder) AddBranchRef(key Nibbles, ref []byte, childNodeStored bool) {
 	if h.key.Len() > 0 {
 		h.update(key)
 	} else if key.Len() == 0 {
 		// Special case: pushing root hash directly
-		h.stack = append(h.stack, wordRLP(hash))
+		refCopy := make([]byte, len(ref))
+		copy(refCopy, ref)
+		h.stack = append(h.stack, stackItem{ref: refCopy, rootIsBranch: true})
 	}
 	h.key = key
-	h.value = hash[:]
-	h.isHash = true
-	h.storedInDatabase = storedInDatabase
+	h.value = make([]byte, len(ref))
+	copy(h.value, ref)
+	h.isReference = true
+	h.childNodeStored = childNodeStored
 }
 
 // Root finalizes and returns the root hash.
@@ -90,9 +110,19 @@ func (h *HashBuilder) Updates() map[string]*BranchNodeCompact {
 	return h.updates
 }
 
+// StackTop returns the current root node reference bytes after Root() has been called.
+func (h *HashBuilder) StackTop() []byte {
+	if len(h.stack) == 0 {
+		return nil
+	}
+	top := make([]byte, len(h.stack[len(h.stack)-1].ref))
+	copy(top, h.stack[len(h.stack)-1].ref)
+	return top
+}
+
 func (h *HashBuilder) currentRoot() [32]byte {
 	if len(h.stack) > 0 {
-		top := h.stack[len(h.stack)-1]
+		top := h.stack[len(h.stack)-1].ref
 		if hash, ok := rlpNodeAsHash(top); ok {
 			return hash
 		}
@@ -145,20 +175,25 @@ func (h *HashBuilder) update(succeeding Nibbles) {
 
 		// Build the node to push onto the stack
 		if !buildExtensions {
-			if !h.isHash {
+			if !h.isReference {
 				// Leaf node
 				rlpData := rlpEncodeLeafNode(shortNodeKey, h.value)
-				h.stack = append(h.stack, rlpNodeFromRLP(rlpData))
+				h.stack = append(h.stack, stackItem{
+					ref:          rlpNodeFromRLP(rlpData),
+					rootIsBranch: false,
+				})
 			} else {
-				// Branch hash
-				var hash [32]byte
-				copy(hash[:], h.value)
-				h.stack = append(h.stack, wordRLP(hash))
+				// Cached branch-root reference (raw RLP or rlp(hash)).
+				refCopy := make([]byte, len(h.value))
+				copy(refCopy, h.value)
+				h.stack = append(h.stack, stackItem{
+					ref:          refCopy,
+					rootIsBranch: true,
+				})
 
-				if h.storedInDatabase {
+				if h.childNodeStored {
 					h.treeMasks[current.Len()-1] |= 1 << current.At(current.Len()-1)
 				}
-				h.hashMasks[current.Len()-1] |= 1 << current.At(current.Len()-1)
 
 				buildExtensions = true
 			}
@@ -167,10 +202,13 @@ func (h *HashBuilder) update(succeeding Nibbles) {
 		if buildExtensions && shortNodeKey.Len() > 0 {
 			h.updateMasks(current, lenFrom)
 			// Pop the last item and wrap it in an extension node
-			stackLast := h.stack[len(h.stack)-1]
+			stackLast := h.stack[len(h.stack)-1].ref
 			h.stack = h.stack[:len(h.stack)-1]
 			rlpData := rlpEncodeExtensionNode(shortNodeKey, stackLast)
-			h.stack = append(h.stack, rlpNodeFromRLP(rlpData))
+			h.stack = append(h.stack, stackItem{
+				ref:          rlpNodeFromRLP(rlpData),
+				rootIsBranch: false,
+			})
 			h.resizeMasks(lenFrom)
 		}
 
@@ -204,7 +242,7 @@ func (h *HashBuilder) update(succeeding Nibbles) {
 }
 
 // pushBranchNode builds a branch node from the stack and state mask at the given level.
-func (h *HashBuilder) pushBranchNode(current Nibbles, length int) [][32]byte {
+func (h *HashBuilder) pushBranchNode(current Nibbles, length int) [][]byte {
 	stateMask := h.stateMasks[length]
 	hashMask := h.hashMasks[length]
 
@@ -215,14 +253,16 @@ func (h *HashBuilder) pushBranchNode(current Nibbles, length int) [][32]byte {
 	// Collect child hashes if updates are enabled.
 	// Try to extract hash from ALL children (not just those with hashMask set).
 	// This ensures fresh trie computations also produce storable branch nodes.
-	var children [][32]byte
+	var children [][]byte
 	if h.updates != nil {
 		childIdx := firstChildIdx
 		for nibble := 0; nibble < 16; nibble++ {
 			if stateMask&(1<<nibble) != 0 {
-				if hash, ok := rlpNodeAsHash(h.stack[childIdx]); ok {
-					children = append(children, hash)
-					// Mark this child as having a cached hash so the branch node gets stored.
+				if h.stack[childIdx].rootIsBranch {
+					ref := make([]byte, len(h.stack[childIdx].ref))
+					copy(ref, h.stack[childIdx].ref)
+					children = append(children, ref)
+					// Only branch-root children are safe opaque replay boundaries.
 					h.hashMasks[length] |= 1 << nibble
 				}
 				childIdx++
@@ -237,13 +277,16 @@ func (h *HashBuilder) pushBranchNode(current Nibbles, length int) [][32]byte {
 
 	// Pop children from the stack
 	h.stack = h.stack[:firstChildIdx]
-	h.stack = append(h.stack, rlpNode)
+	h.stack = append(h.stack, stackItem{
+		ref:          rlpNode,
+		rootIsBranch: true,
+	})
 
 	return children
 }
 
 // storeBranchNode records updates to persist branch nodes to DB.
-func (h *HashBuilder) storeBranchNode(current Nibbles, length int, children [][32]byte) {
+func (h *HashBuilder) storeBranchNode(current Nibbles, length int, children [][]byte) {
 	if length > 0 {
 		parentIndex := length - 1
 		h.hashMasks[parentIndex] |= 1 << current.At(parentIndex)
@@ -267,8 +310,8 @@ func (h *HashBuilder) storeBranchNode(current Nibbles, length int, children [][3
 			h.updates[packed] = &BranchNodeCompact{
 				StateMask: h.stateMasks[length],
 				TreeMask:  h.treeMasks[length],
-				HashMask:  h.hashMasks[length],
-				Hashes:    children,
+				RefMask:   h.hashMasks[length],
+				Refs:      children,
 				RootHash:  rootHash,
 			}
 		}
@@ -372,13 +415,13 @@ func rlpEncodeShortNodeRaw(key, child []byte) []byte {
 // stack contains the children in order of their set bits in stateMask.
 // The branch node is: list[child0, child1, ..., child15, value]
 // where empty children are encoded as 0x80 (empty string).
-func rlpEncodeBranchNodeFromStack(children [][]byte, stateMask uint16) []byte {
+func rlpEncodeBranchNodeFromStack(children []stackItem, stateMask uint16) []byte {
 	var payload []byte
 	childIdx := 0
 	for nibble := 0; nibble < 16; nibble++ {
 		if stateMask&(1<<nibble) != 0 {
 			// This child exists; its RLP is already encoded on the stack
-			payload = append(payload, children[childIdx]...)
+			payload = append(payload, children[childIdx].ref...)
 			childIdx++
 		} else {
 			// Empty child = 0x80

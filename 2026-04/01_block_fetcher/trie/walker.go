@@ -35,7 +35,7 @@ type TrieWalker struct {
 	// Buffered next result (set by advance, consumed by caller).
 	nextKey  Nibbles
 	nextNode *BranchNodeCompact
-	nextHash [32]byte
+	nextRef  []byte
 	hasNext  bool
 }
 
@@ -61,8 +61,18 @@ func NewTrieWalker(cursor TrieCursor, prefixSet *PrefixSet) *TrieWalker {
 //   - hash: cached hash to use (non-zero if we're skipping this subtree)
 //   - done: true when iteration is complete
 func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]byte, childrenInTrie bool, done bool) {
+	key, ref, node, childrenInTrie, done := w.AdvanceRef()
+	if len(ref) == 33 && ref[0] == 0xa0 {
+		copy(hash[:], ref[1:])
+	}
+	return key, node, hash, childrenInTrie, done
+}
+
+// AdvanceRef moves to the next trie node, returning the exact cached child reference
+// bytes for skipped subtrees (raw RLP or rlp(hash)).
+func (w *TrieWalker) AdvanceRef() (key Nibbles, ref []byte, node *BranchNodeCompact, childrenInTrie bool, done bool) {
 	if w.done {
-		return Nibbles{}, nil, [32]byte{}, false, true
+		return Nibbles{}, nil, nil, false, true
 	}
 
 	if !w.started {
@@ -70,10 +80,10 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 		// Seek to the very first trie node.
 		if err := w.seekFirst(); err != nil {
 			w.done = true
-			return Nibbles{}, nil, [32]byte{}, false, true
+			return Nibbles{}, nil, nil, false, true
 		}
 		if w.done {
-			return Nibbles{}, nil, [32]byte{}, false, true
+			return Nibbles{}, nil, nil, false, true
 		}
 	}
 
@@ -116,9 +126,9 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 			}
 
 			// This subtree is unchanged — yield the cached hash.
-			if frame.node.HashMask&(1<<nibble) != 0 {
-				h := w.hashForChild(frame.node, nibble)
-				return childPath, nil, h, false, false
+			if frame.node.RefMask&(1<<nibble) != 0 {
+				ref := w.refForChild(frame.node, nibble)
+				return childPath, ref, nil, frame.node.TreeMask&(1<<nibble) != 0, false
 			}
 
 			// Child exists in state but has no hash cached — this shouldn't normally
@@ -135,7 +145,7 @@ func (w *TrieWalker) Advance() (key Nibbles, node *BranchNodeCompact, hash [32]b
 	}
 
 	w.done = true
-	return Nibbles{}, nil, [32]byte{}, false, true
+	return Nibbles{}, nil, nil, false, true
 }
 
 // seekFirst seeks to the first trie node and pushes it onto the stack.
@@ -190,16 +200,17 @@ func (w *TrieWalker) seekNode(path Nibbles) (*BranchNodeCompact, error) {
 	return node, nil
 }
 
-// hashForChild returns the cached hash for the given child nibble of a branch node.
-func (w *TrieWalker) hashForChild(node *BranchNodeCompact, childNibble int) [32]byte {
-	if node.HashMask&(1<<childNibble) == 0 {
-		return [32]byte{}
+// refForChild returns the cached child reference for the given child nibble.
+func (w *TrieWalker) refForChild(node *BranchNodeCompact, childNibble int) []byte {
+	if node.RefMask&(1<<childNibble) == 0 {
+		return nil
 	}
-	// Count how many hash bits are set before this nibble to find the index.
-	mask := node.HashMask & ((1 << childNibble) - 1)
+	mask := node.RefMask & ((1 << childNibble) - 1)
 	idx := bits.OnesCount16(mask)
-	if idx < len(node.Hashes) {
-		return node.Hashes[idx]
+	if idx < len(node.Refs) {
+		ref := make([]byte, len(node.Refs[idx]))
+		copy(ref, node.Refs[idx])
+		return ref
 	}
-	return [32]byte{}
+	return nil
 }

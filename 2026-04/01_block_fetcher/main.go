@@ -881,7 +881,7 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchS
 	// once. After this, the incremental hasher rebuilds correct branch nodes.
 	{
 		rtx, _ := db.BeginRO()
-		_, migErr := rtx.Get(db.Metadata, []byte("trie_v2"))
+		_, migErr := rtx.Get(db.Metadata, []byte("trie_v3"))
 		rtx.Abort()
 		if migErr != nil {
 			log.Printf("executor: one-time trie migration — clearing StorageTrie + AccountTrie")
@@ -901,7 +901,7 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchS
 				runtime.UnlockOSThread()
 				return fmt.Errorf("drop AccountTrie: %w", err)
 			}
-			if err := wtx.Put(db.Metadata, []byte("trie_v2"), []byte("1"), 0); err != nil {
+			if err := wtx.Put(db.Metadata, []byte("trie_v3"), []byte("1"), 0); err != nil {
 				wtx.Abort()
 				runtime.UnlockOSThread()
 				return fmt.Errorf("set trie_v2 flag: %w", err)
@@ -1087,7 +1087,7 @@ func executeBatch(
 		return fmt.Errorf("flush state at block %d: %w", to, err)
 	}
 
-	computedRoot, err := statetrie.ComputeIncrementalStateRoot(rwTx, db, overlay, oldStorageRoots)
+	computedRoot, trieStats, err := statetrie.ComputeIncrementalStateRoot(rwTx, db, overlay, oldStorageRoots)
 	if err != nil {
 		rwTx.Abort()
 		runtime.UnlockOSThread()
@@ -1097,18 +1097,12 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		// DIAGNOSTIC ONLY. ComputeFullStateRoot is O(total_state) and must NEVER be
-		// used as a fallback or workaround. The user explicitly requested this: full
-		// rehashing exists ONLY for diagnostic logging. If this fires, the incremental
-		// hash is broken and MUST be fixed. Do NOT re-enable the fallback. Ever.
-		fullRoot, fullErr := statetrie.ComputeFullStateRoot(rwTx, db)
-		statetrie.CompareLeafEncoding(rwTx, db, overlay)
 		rwTx.Abort()
 		runtime.UnlockOSThread()
 		stateDB.Overlay = nil
-		log.Fatalf("executor: STATE ROOT MISMATCH block %d — incremental=%x full=%x expected=%x fullErr=%v\n"+
-			"The incremental hash MUST be fixed. Do NOT use full root as fallback.",
-			to, computedRoot, fullRoot, expectedRoot, fullErr)
+		log.Fatalf("executor: STATE ROOT MISMATCH block %d — incremental=%x expected=%x\n"+
+			"Incremental hashing failed. Full-state rehash is disabled by policy.",
+			to, computedRoot, expectedRoot)
 	}
 
 	if err := store.SetHeadBlock(rwTx, db, to); err != nil {
@@ -1128,6 +1122,22 @@ func executeBatch(
 	runtime.UnlockOSThread()
 
 	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond))
+	if trieStats != nil {
+		log.Printf("executor: trie-stats batch %d-%d changedAccounts=%d changedStorageAccounts=%d changedStorageSlots=%d accountLeaves=%d accountBranches=%d accountStaleDeleted=%d accountTrieWrites=%d storageLeaves=%d storageBranches=%d storageStaleDeleted=%d storageTrieWrites=%d",
+			from, to,
+			trieStats.ChangedAccounts,
+			trieStats.ChangedStorageAccts,
+			trieStats.ChangedStorageSlots,
+			trieStats.AccountLeafElems,
+			trieStats.AccountBranchElems,
+			trieStats.AccountStaleDeleted,
+			trieStats.AccountTrieWrites,
+			trieStats.StorageLeafElems,
+			trieStats.StorageBranchElems,
+			trieStats.StorageStaleDeleted,
+			trieStats.StorageTrieWrites,
+		)
+	}
 
 	stateDB.Overlay = nil
 	return nil

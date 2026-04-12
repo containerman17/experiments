@@ -112,13 +112,14 @@ type TrieElement struct {
 	IsBranch bool
 
 	// For branches that are skipped (unchanged subtree):
-	Hash [32]byte
+	Ref []byte
 
 	// For branches that are descended into:
 	Node *BranchNodeCompact
 
-	// ChildrenInTrie indicates whether this branch's children are stored in the DB.
-	ChildrenInTrie bool
+	// ChildNodeStored indicates whether this cached child has a stored branch
+	// node in the DB that the walker can descend into on a future update.
+	ChildNodeStored bool
 
 	// For leaves:
 	Value []byte
@@ -229,28 +230,28 @@ func (n *NodeIter) advanceWalker() {
 		return
 	}
 
-	key, node, hash, childrenInTrie, done := n.walker.Advance()
+	key, ref, node, childrenInTrie, done := n.walker.AdvanceRef()
 	if done {
 		n.walkerDone = true
 		n.walkerElem = nil
 		return
 	}
 
-	elem := &TrieElement{
-		Key:      key,
-		IsBranch: true,
-	}
+		elem := &TrieElement{
+			Key:      key,
+			IsBranch: true,
+		}
 
-	if node != nil {
-		elem.Node = node
-		elem.ChildrenInTrie = true
-	} else {
-		// Skipped branch — use the cached hash.
-		// Preserve childrenInTrie from the walker so the HashBuilder
-		// maintains correct TreeMask for stored subtrees.
-		elem.Hash = hash
-		elem.ChildrenInTrie = childrenInTrie
-	}
+		if node != nil {
+			elem.Node = node
+			elem.ChildNodeStored = true
+		} else {
+			// Skipped branch — use the cached hash.
+			// Preserve whether the skipped child has a stored branch node so
+			// the HashBuilder can maintain TreeMask separately from cacheability.
+			elem.Ref = ref
+			elem.ChildNodeStored = childrenInTrie
+		}
 
 	n.walkerElem = elem
 }

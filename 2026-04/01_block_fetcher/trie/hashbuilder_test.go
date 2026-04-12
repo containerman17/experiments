@@ -72,6 +72,59 @@ func nibFromSlice(nibbles []byte) Nibbles {
 	return n
 }
 
+func bytesToNibbles(b []byte) []byte {
+	out := make([]byte, 0, len(b)*2)
+	for _, v := range b {
+		out = append(out, v>>4, v&0x0f)
+	}
+	return out
+}
+
+func rootFromRelativeLeaves(leaves []testKV) [32]byte {
+	sort.Slice(leaves, func(i, j int) bool {
+		return leaves[i].key.Compare(leaves[j].key) < 0
+	})
+	hb := NewHashBuilder()
+	for _, leaf := range leaves {
+		hb.AddLeaf(leaf.key, leaf.val)
+	}
+	return hb.Root()
+}
+
+func refFromRelativeLeaves(leaves []testKV) []byte {
+	sort.Slice(leaves, func(i, j int) bool {
+		return leaves[i].key.Compare(leaves[j].key) < 0
+	})
+	hb := NewHashBuilder()
+	for _, leaf := range leaves {
+		hb.AddLeaf(leaf.key, leaf.val)
+	}
+	hb.Root()
+	if len(hb.stack) == 0 {
+		return nil
+	}
+	ref := make([]byte, len(hb.stack[len(hb.stack)-1].ref))
+	copy(ref, hb.stack[len(hb.stack)-1].ref)
+	return ref
+}
+
+func nibsFromString(t *testing.T, s string) Nibbles {
+	t.Helper()
+	nibs := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+			nibs[i] = c - '0'
+		case c >= 'a' && c <= 'f':
+			nibs[i] = c - 'a' + 10
+		default:
+			t.Fatalf("invalid nibble string %q", s)
+		}
+	}
+	return nibFromSlice(nibs)
+}
+
 func TestSingleLeaf(t *testing.T) {
 	hb := NewHashBuilder()
 
@@ -241,6 +294,360 @@ func TestBranchNodeGeneration(t *testing.T) {
 	refRoot := naiveTrieRoot(pairs)
 	if root != refRoot {
 		t.Fatalf("branch generation root mismatch:\ngot  %x\nwant %x", root, refRoot)
+	}
+}
+
+func TestSingleCachedBranchMatchesAllLeaves(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	leaves := []testKV{
+		{makeKey("710"), []byte{0x01}},
+		{makeKey("7f0"), []byte{0x02}},
+	}
+
+	full20 := rootFromRelativeLeaves(leaves)
+
+	var under207 []testKV
+	for _, leaf := range leaves {
+		under207 = append(under207, testKV{
+			key: leaf.key.Slice(1, leaf.key.Len()),
+			val: leaf.val,
+		})
+	}
+	ref207 := refFromRelativeLeaves(under207)
+	explicit20 := crypto.Keccak256Hash(rlpEncodeExtensionNode(nibFromSlice([]byte{0x7}), ref207))
+
+	hb := NewHashBuilder()
+	hb.AddBranchRef(nibFromSlice([]byte{0x7}), ref207, false)
+	mixed20 := hb.Root()
+
+	if explicit20 != full20 {
+		t.Fatalf("explicit extension mismatch:\ngot  %x\nwant %x\nref=%x", explicit20, full20, ref207)
+	}
+	if mixed20 != full20 {
+		t.Fatalf("single cached branch mismatch:\ngot  %x\nwant %x\nexplicit %x\nref=%x", mixed20, full20, explicit20, ref207)
+	}
+}
+
+func TestCachedBranchesAndLeavesMatchAllLeaves(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	leaves := []testKV{
+		{makeKey("210"), []byte{0x01}},
+		{makeKey("2f0"), []byte{0x02}},
+		{makeKey("510"), []byte{0x03}},
+		{makeKey("5f0"), []byte{0x04}},
+		{makeKey("ac0"), []byte{0x05}},
+	}
+
+	full0b := rootFromRelativeLeaves(leaves)
+
+	ref0b2 := refFromRelativeLeaves([]testKV{
+		{key: makeKey("10"), val: []byte{0x01}},
+		{key: makeKey("f0"), val: []byte{0x02}},
+	})
+	ref0b5 := refFromRelativeLeaves([]testKV{
+		{key: makeKey("10"), val: []byte{0x03}},
+		{key: makeKey("f0"), val: []byte{0x04}},
+	})
+
+	hb := NewHashBuilder()
+	hb.AddBranchRef(nibFromSlice([]byte{0x2}), ref0b2, false)
+	hb.AddBranchRef(nibFromSlice([]byte{0x5}), ref0b5, false)
+	hb.AddLeaf(makeKey("ac0"), []byte{0x05})
+	mixed0b := hb.Root()
+
+	if mixed0b != full0b {
+		t.Fatalf("cached branches + leaf mismatch:\ngot  %x\nwant %x", mixed0b, full0b)
+	}
+}
+
+func TestSingleCachedHashedBranchMatchesAllLeaves(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	// Enough leaves under prefix 7 to force the cached child reference to be rlp(hash).
+	leaves := []testKV{
+		{makeKey("710"), []byte{0x01}},
+		{makeKey("720"), []byte{0x02}},
+		{makeKey("730"), []byte{0x03}},
+		{makeKey("740"), []byte{0x04}},
+		{makeKey("750"), []byte{0x05}},
+		{makeKey("760"), []byte{0x06}},
+		{makeKey("770"), []byte{0x07}},
+		{makeKey("780"), []byte{0x08}},
+		{makeKey("790"), []byte{0x09}},
+	}
+
+	full20 := rootFromRelativeLeaves(leaves)
+
+	var under7 []testKV
+	for _, leaf := range leaves {
+		under7 = append(under7, testKV{
+			key: leaf.key.Slice(1, leaf.key.Len()),
+			val: leaf.val,
+		})
+	}
+	ref7 := refFromRelativeLeaves(under7)
+	if len(ref7) != 33 || ref7[0] != 0xa0 {
+		t.Fatalf("expected hashed ref, got %x", ref7)
+	}
+
+	hb := NewHashBuilder()
+	hb.AddBranchRef(nibFromSlice([]byte{0x7}), ref7, false)
+	mixed20 := hb.Root()
+
+	if mixed20 != full20 {
+		t.Fatalf("single cached hashed branch mismatch:\ngot  %x\nwant %x\nref=%x", mixed20, full20, ref7)
+	}
+}
+
+func TestUpdatesOnlyCacheBranchRootChildren(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	hb := NewHashBuilder().WithUpdates()
+	hb.AddLeaf(makeKey("210"), []byte{0x01})
+	hb.AddLeaf(makeKey("2f0"), []byte{0x02})
+	hb.AddLeaf(makeKey("a10"), []byte{0x03})
+	hb.Root()
+
+	root := hb.Updates()[string(Nibbles{}.Pack())]
+	if root == nil {
+		t.Fatalf("missing root update")
+	}
+	if root.RefMask&(1<<2) == 0 {
+		t.Fatalf("expected branch-root child 2 to be cached, refMask=%016b", root.RefMask)
+	}
+	if root.RefMask&(1<<10) != 0 {
+		t.Fatalf("did not expect short-root child a to be cached, refMask=%016b", root.RefMask)
+	}
+}
+
+func TestUpdatesRecacheShortRawBranchRefs(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	shortRef7 := refFromRelativeLeaves([]testKV{
+		{makeKey("10"), []byte{0x07}},
+		{makeKey("20"), []byte{0x08}},
+		{makeKey("30"), []byte{0x09}},
+	})
+	if len(shortRef7) == 33 && shortRef7[0] == 0xa0 {
+		t.Fatalf("expected short ref, got hashed ref %x", shortRef7)
+	}
+
+	hb := NewHashBuilder().WithUpdates()
+	hb.AddLeaf(makeKey("210"), []byte{0x01})
+	hb.AddLeaf(makeKey("2f0"), []byte{0x02})
+	hb.AddBranchRef(nibFromSlice([]byte{0x7}), shortRef7, false)
+	hb.Root()
+
+	root := hb.Updates()[string(Nibbles{}.Pack())]
+	if root == nil {
+		t.Fatalf("missing root update")
+	}
+	if root.RefMask&(1<<2) == 0 {
+		t.Fatalf("expected branch-root child 2 to be cached, refMask=%016b", root.RefMask)
+	}
+	if root.RefMask&(1<<7) == 0 {
+		t.Fatalf("expected short raw branch ref child 7 to be re-cached, refMask=%016b", root.RefMask)
+	}
+}
+
+func TestReplayPreservesBranchRefWithoutTreeMask(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	// Batch 1: child 2 is branch-rooted, but it has only leaf children, so the
+	// root caches its ref while leaving TreeMask clear for nibble 2.
+	batch1 := NewHashBuilder().WithUpdates()
+	batch1.AddLeaf(makeKey("210"), []byte{0x01})
+	batch1.AddLeaf(makeKey("2f0"), []byte{0x02})
+	batch1.AddLeaf(makeKey("a10"), []byte{0x03})
+	batch1.Root()
+
+	root1 := batch1.Updates()[string(Nibbles{}.Pack())]
+	if root1 == nil {
+		t.Fatalf("missing root update from batch 1")
+	}
+	if root1.RefMask&(1<<2) == 0 {
+		t.Fatalf("expected batch 1 to cache child 2, refMask=%016b", root1.RefMask)
+	}
+	if root1.TreeMask&(1<<2) != 0 {
+		t.Fatalf("did not expect batch 1 to set treeMask for child 2, treeMask=%016b", root1.TreeMask)
+	}
+
+	refIdx := 0
+	ref2 := root1.Refs[refIdx]
+
+	// Batch 2: child 2 is unchanged and replayed from the cached ref, while the
+	// sibling branch under a changes. We must preserve the cached ref for child 2
+	// even though TreeMask for that child is still clear.
+	batch2 := NewHashBuilder().WithUpdates()
+	batch2.AddBranchRef(nibFromSlice([]byte{0x2}), ref2, false)
+	batch2.AddLeaf(makeKey("a10"), []byte{0x04})
+	batch2.Root()
+
+	root2 := batch2.Updates()[string(Nibbles{}.Pack())]
+	if root2 == nil {
+		t.Fatalf("missing root update from batch 2")
+	}
+	if root2.RefMask&(1<<2) == 0 {
+		t.Fatalf("expected batch 2 to preserve cached child 2, refMask=%016b", root2.RefMask)
+	}
+	if root2.TreeMask&(1<<2) != 0 {
+		t.Fatalf("did not expect batch 2 to set treeMask for child 2, treeMask=%016b", root2.TreeMask)
+	}
+	if len(root2.Refs) == 0 || !bytes.Equal(root2.Refs[0], ref2) {
+		t.Fatalf("batch 2 cached ref mismatch:\ngot  %x\nwant %x", root2.Refs[0], ref2)
+	}
+}
+
+func TestParentRefFromLeafPlusCachedGrandchild(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	// Full subtree under parent 66:
+	// - child 1 has direct leaf 2 and unchanged branch child 8
+	// - child d is a sibling leaf, forcing the parent to cache child 1
+	fullChild1Ref := refFromRelativeLeaves([]testKV{
+		{key: makeKey("2"), val: []byte{0x01}},
+		{key: makeKey("85"), val: []byte{0x02}},
+		{key: makeKey("8d"), val: []byte{0x03}},
+	})
+	cachedGrandchildRef := refFromRelativeLeaves([]testKV{
+		{key: makeKey("5"), val: []byte{0x02}},
+		{key: makeKey("d"), val: []byte{0x03}},
+	})
+
+	hb := NewHashBuilder().WithUpdates()
+	hb.AddLeaf(makeKey("12"), []byte{0x01})
+	hb.AddBranchRef(makeKey("18"), cachedGrandchildRef, false)
+	hb.AddLeaf(makeKey("d0"), []byte{0x04})
+	hb.Root()
+
+	root := hb.Updates()[string(Nibbles{}.Pack())]
+	if root == nil {
+		t.Fatalf("missing root update")
+	}
+	if root.RefMask&(1<<1) == 0 {
+		t.Fatalf("expected cached child 1 in root, refMask=%016b", root.RefMask)
+	}
+	gotRef := root.Refs[0]
+	if !bytes.Equal(gotRef, fullChild1Ref) {
+		t.Fatalf("root child 1 ref mismatch:\ngot  %x\nwant %x", gotRef, fullChild1Ref)
+	}
+}
+
+func TestParentRefFromLeafPlusHashedCachedGrandchild(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	fullChild1Ref := refFromRelativeLeaves([]testKV{
+		{key: makeKey("2"), val: []byte{0x01}},
+		{key: makeKey("80"), val: []byte{0x02}},
+		{key: makeKey("81"), val: []byte{0x03}},
+		{key: makeKey("82"), val: []byte{0x04}},
+		{key: makeKey("83"), val: []byte{0x05}},
+		{key: makeKey("84"), val: []byte{0x06}},
+		{key: makeKey("85"), val: []byte{0x07}},
+		{key: makeKey("86"), val: []byte{0x08}},
+		{key: makeKey("87"), val: []byte{0x09}},
+		{key: makeKey("88"), val: []byte{0x0a}},
+	})
+	cachedGrandchildRef := refFromRelativeLeaves([]testKV{
+		{key: makeKey("0"), val: []byte{0x02}},
+		{key: makeKey("1"), val: []byte{0x03}},
+		{key: makeKey("2"), val: []byte{0x04}},
+		{key: makeKey("3"), val: []byte{0x05}},
+		{key: makeKey("4"), val: []byte{0x06}},
+		{key: makeKey("5"), val: []byte{0x07}},
+		{key: makeKey("6"), val: []byte{0x08}},
+		{key: makeKey("7"), val: []byte{0x09}},
+		{key: makeKey("8"), val: []byte{0x0a}},
+	})
+	if len(cachedGrandchildRef) != 33 || cachedGrandchildRef[0] != 0xa0 {
+		t.Fatalf("expected hashed cached grandchild ref, got %x", cachedGrandchildRef)
+	}
+
+	hb := NewHashBuilder().WithUpdates()
+	hb.AddLeaf(makeKey("12"), []byte{0x01})
+	hb.AddBranchRef(makeKey("18"), cachedGrandchildRef, false)
+	hb.AddLeaf(makeKey("d0"), []byte{0x0b})
+	hb.Root()
+
+	root := hb.Updates()[string(Nibbles{}.Pack())]
+	if root == nil {
+		t.Fatalf("missing root update")
+	}
+	if root.RefMask&(1<<1) == 0 {
+		t.Fatalf("expected cached child 1 in root, refMask=%016b", root.RefMask)
+	}
+	gotRef := root.Refs[0]
+	if !bytes.Equal(gotRef, fullChild1Ref) {
+		t.Fatalf("root child 1 ref mismatch:\ngot  %x\nwant %x", gotRef, fullChild1Ref)
+	}
+}
+
+func TestParentRefMatchesReal661Shape(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	fullChild1Ref := refFromRelativeLeaves([]testKV{
+		{key: makeKey("2b45a654ec4d6c44aa2611abf6e58e46efbbaae89a44f2a09980d7ea51146"), val: []byte{0x01}},
+		{key: makeKey("8504290e64ebd3d3ff48d26f200d0341967609497ec87515b9e8e5aba24f7"), val: []byte{0x02}},
+		{key: makeKey("8d27be9bc828fa5aaffd3d7af375a02d8fba08e9f2103c5f88aeae06c78c2"), val: []byte{0x03}},
+	})
+	cachedGrandchildRef := refFromRelativeLeaves([]testKV{
+		{key: makeKey("504290e64ebd3d3ff48d26f200d0341967609497ec87515b9e8e5aba24f7"), val: []byte{0x02}},
+		{key: makeKey("d27be9bc828fa5aaffd3d7af375a02d8fba08e9f2103c5f88aeae06c78c2"), val: []byte{0x03}},
+	})
+	if len(cachedGrandchildRef) != 33 || cachedGrandchildRef[0] != 0xa0 {
+		t.Fatalf("expected hashed cached grandchild ref, got %x", cachedGrandchildRef)
+	}
+
+	hb := NewHashBuilder().WithUpdates()
+	hb.AddLeaf(makeKey("12b45a654ec4d6c44aa2611abf6e58e46efbbaae89a44f2a09980d7ea51146"), []byte{0x01})
+	hb.AddBranchRef(makeKey("18"), cachedGrandchildRef, false)
+	hb.AddLeaf(makeKey("d0"), []byte{0x04})
+	hb.Root()
+
+	root := hb.Updates()[string(Nibbles{}.Pack())]
+	if root == nil {
+		t.Fatalf("missing root update")
+	}
+	if root.RefMask&(1<<1) == 0 {
+		t.Fatalf("expected cached child 1 in root, refMask=%016b", root.RefMask)
+	}
+	gotRef := root.Refs[0]
+	if !bytes.Equal(gotRef, fullChild1Ref) {
+		t.Fatalf("root child 1 ref mismatch:\ngot  %x\nwant %x", gotRef, fullChild1Ref)
+	}
+}
+
+func TestUpdateParentRefForMixedLeafAndBranchChild(t *testing.T) {
+	makeKey := func(hexKey string) Nibbles { return nibsFromString(t, hexKey) }
+
+	// Subtree 913 has:
+	// - child 1 as a direct leaf
+	// - child c as a branch-root subtree
+	expectedRef913 := refFromRelativeLeaves([]testKV{
+		{key: makeKey("1"), val: []byte{0x01}},
+		{key: makeKey("ca"), val: []byte{0x02}},
+		{key: makeKey("cf"), val: []byte{0x03}},
+	})
+
+	hb := NewHashBuilder().WithUpdates()
+	hb.AddLeaf(makeKey("9131"), []byte{0x01})
+	hb.AddLeaf(makeKey("913ca"), []byte{0x02})
+	hb.AddLeaf(makeKey("913cf"), []byte{0x03})
+	hb.AddLeaf(makeKey("91a0"), []byte{0x04}) // force parent node 91 to exist
+	hb.Root()
+
+	parent91 := hb.Updates()[string(makeKey("91").Pack())]
+	if parent91 == nil {
+		t.Fatalf("missing parent 91 update")
+	}
+	if parent91.RefMask&(1<<3) == 0 {
+		t.Fatalf("expected cached child 3 in parent 91, refMask=%016b", parent91.RefMask)
+	}
+	gotRef913 := parent91.Refs[0]
+	if !bytes.Equal(gotRef913, expectedRef913) {
+		t.Fatalf("parent 91 child 3 ref mismatch:\ngot  %x\nwant %x", gotRef913, expectedRef913)
 	}
 }
 

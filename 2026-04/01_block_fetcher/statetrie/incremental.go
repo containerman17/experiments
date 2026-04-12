@@ -2,7 +2,10 @@ package statetrie
 
 import (
 	"bytes"
+	"encoding/hex"
 	"log"
+	"os"
+	"sort"
 
 	"github.com/erigontech/mdbx-go/mdbx"
 
@@ -97,6 +100,26 @@ var emptyRoot = [32]byte{
 	0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
 }
 
+type trieComputeStats struct {
+	LeafElems        int
+	BranchElems      int
+	StaleNodesDeleted int
+}
+
+type IncrementalStats struct {
+	ChangedAccounts      int
+	ChangedStorageAccts  int
+	ChangedStorageSlots  int
+	StorageLeafElems     int
+	StorageBranchElems   int
+	StorageStaleDeleted  int
+	StorageTrieWrites    int
+	AccountLeafElems     int
+	AccountBranchElems   int
+	AccountStaleDeleted  int
+	AccountTrieWrites    int
+}
+
 // ComputeIncrementalStateRoot computes the state root by incrementally hashing
 // only the portions of the trie that changed during the batch. It:
 //  1. Computes storage roots for accounts with changed storage
@@ -111,9 +134,17 @@ func ComputeIncrementalStateRoot(
 	db *store.DB,
 	overlay *BatchOverlay,
 	oldStorageRoots map[[32]byte][32]byte,
-) ([32]byte, error) {
+) ([32]byte, *IncrementalStats, error) {
 	changedStorage := overlay.ChangedStorageGrouped()
 	changedAccounts := overlay.ChangedAccountHashes()
+	traceTarget, traceEnabled := parseTraceStorageAccount()
+	stats := &IncrementalStats{
+		ChangedAccounts:     len(changedAccounts),
+		ChangedStorageAccts: len(changedStorage),
+	}
+	for _, slotHashes := range changedStorage {
+		stats.ChangedStorageSlots += len(slotHashes)
+	}
 
 	// Step 1: Compute storage roots for accounts with changed storage.
 	storageRoots := make(map[[32]byte][32]byte)
@@ -122,7 +153,7 @@ func ComputeIncrementalStateRoot(
 		// If old storage root was emptyRoot, delete stale StorageTrie nodes.
 		if oldRoot, ok := oldStorageRoots[addrHash]; ok && oldRoot == emptyRoot {
 			if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
-				return [32]byte{}, err
+				return [32]byte{}, nil, err
 			}
 		}
 
@@ -133,10 +164,22 @@ func ComputeIncrementalStateRoot(
 		}
 		prefixSet := psb.Build()
 
-		root, updates, err := computeTrieRoot(tx, db.StorageTrie, db.HashedStorageState, addrHash[:], prefixSet, true)
-		if err != nil {
-			return [32]byte{}, err
+		var trace *storageTrieTrace
+		if traceEnabled && addrHash == traceTarget {
+			var traceErr error
+			trace, traceErr = newStorageTrieTrace(tx, db.HashedStorageState, addrHash, slotHashes)
+			if traceErr != nil {
+				return [32]byte{}, nil, traceErr
+			}
 		}
+
+		root, updates, trieStats, err := computeTrieRoot(tx, db.StorageTrie, db.HashedStorageState, addrHash[:], prefixSet, true, trace)
+		if err != nil {
+			return [32]byte{}, nil, err
+		}
+		stats.StorageLeafElems += trieStats.LeafElems
+		stats.StorageBranchElems += trieStats.BranchElems
+		stats.StorageStaleDeleted += trieStats.StaleNodesDeleted
 
 		// Persist branch node updates.
 		for packedPath, node := range updates {
@@ -152,16 +195,20 @@ func ComputeIncrementalStateRoot(
 				continue
 			}
 			if err := tx.Put(db.StorageTrie, fullKey, encoded, 0); err != nil {
-				return [32]byte{}, err
+				return [32]byte{}, nil, err
 			}
+			stats.StorageTrieWrites++
 		}
 
 		// Verify against full scan.
 		fullRoot := computeFullStorageRoot(tx, db, addrHash)
+		if trace != nil {
+			trace.Report(root, fullRoot)
+		}
 		if root != fullRoot {
 			osr := oldStorageRoots[addrHash]
 			log.Printf("  STORAGE INCREMENTAL BUG acct %x: incremental=%x full=%x changedSlots=%d oldRoot=%x",
-				addrHash[:8], root[:8], fullRoot[:8], len(slotHashes), osr[:8])
+				addrHash, root[:8], fullRoot[:8], len(slotHashes), osr[:8])
 		}
 
 		storageRoots[addrHash] = root
@@ -195,7 +242,7 @@ func ComputeIncrementalStateRoot(
 			if mdbx.IsNotFound(err) {
 				continue // deleted account
 			}
-			return [32]byte{}, err
+			return [32]byte{}, nil, err
 		}
 		if len(val) < 104 {
 			continue
@@ -204,7 +251,7 @@ func ComputeIncrementalStateRoot(
 		copy(updated, val)
 		copy(updated[72:104], correctRoot[:])
 		if err := tx.Put(db.HashedAccountState, addrHash[:], updated, 0); err != nil {
-			return [32]byte{}, err
+			return [32]byte{}, nil, err
 		}
 	}
 
@@ -220,13 +267,15 @@ func ComputeIncrementalStateRoot(
 	accountPrefixSet := psb.Build()
 
 	// Step 4: Compute account trie root.
-	root, updates, err := computeTrieRoot(tx, db.AccountTrie, db.HashedAccountState, nil, accountPrefixSet, false)
+	root, updates, trieStats, err := computeTrieRoot(tx, db.AccountTrie, db.HashedAccountState, nil, accountPrefixSet, false, nil)
 	if err != nil {
-		return [32]byte{}, err
+		return [32]byte{}, nil, err
 	}
+	stats.AccountLeafElems += trieStats.LeafElems
+	stats.AccountBranchElems += trieStats.BranchElems
+	stats.AccountStaleDeleted += trieStats.StaleNodesDeleted
 
 	// Persist account trie branch node updates. Skip unchanged.
-	written := 0
 	for packedPath, node := range updates {
 		if node == nil {
 			continue
@@ -237,12 +286,12 @@ func ComputeIncrementalStateRoot(
 			continue // unchanged
 		}
 		if err := tx.Put(db.AccountTrie, []byte(packedPath), encoded, 0); err != nil {
-			return [32]byte{}, err
+			return [32]byte{}, nil, err
 		}
-		written++
+		stats.AccountTrieWrites++
 	}
 
-	return root, nil
+	return root, stats, nil
 }
 
 // computeTrieRoot runs the incremental hash (Walker → NodeIter → HashBuilder)
@@ -256,11 +305,12 @@ func computeTrieRoot(
 	prefix []byte,
 	prefixSet *intTrie.PrefixSet,
 	isStorage bool,
-) ([32]byte, map[string]*intTrie.BranchNodeCompact, error) {
+	trace *storageTrieTrace,
+) ([32]byte, map[string]*intTrie.BranchNodeCompact, trieComputeStats, error) {
 	// Open trie cursor (for stored branch nodes).
 	trieCursorRaw, err := tx.OpenCursor(trieDBI)
 	if err != nil {
-		return [32]byte{}, nil, err
+		return [32]byte{}, nil, trieComputeStats{}, err
 	}
 	defer trieCursorRaw.Close()
 
@@ -275,7 +325,7 @@ func computeTrieRoot(
 	// Open state cursor (for leaf values).
 	stateCursor, err := tx.OpenCursor(stateDBI)
 	if err != nil {
-		return [32]byte{}, nil, err
+		return [32]byte{}, nil, trieComputeStats{}, err
 	}
 	defer stateCursor.Close()
 
@@ -289,18 +339,24 @@ func computeTrieRoot(
 
 	iter := intTrie.NewNodeIter(walker, leafSource)
 	hb := intTrie.NewHashBuilder().WithUpdates()
+	stats := trieComputeStats{}
 
 	for {
 		elem, err := iter.Next()
 		if err != nil {
-			return [32]byte{}, nil, err
+			return [32]byte{}, nil, trieComputeStats{}, err
 		}
 		if elem == nil {
 			break
 		}
+		if trace != nil {
+			trace.Record(elem)
+		}
 		if elem.IsBranch {
-			hb.AddBranch(elem.Key, elem.Hash, elem.ChildrenInTrie)
+			stats.BranchElems++
+			hb.AddBranchRef(elem.Key, elem.Ref, elem.ChildNodeStored)
 		} else {
+			stats.LeafElems++
 			hb.AddLeaf(elem.Key, elem.Value)
 		}
 	}
@@ -311,12 +367,387 @@ func computeTrieRoot(
 	// the walker would have visited (under a changed prefix) but aren't in
 	// the update set. Without this, old branch nodes accumulate when the trie
 	// restructures, and the walker trusts their stale cached hashes.
-	if _, err := deleteStaleNodes(tx, trieDBI, prefix, prefixSet, updates); err != nil {
-		return [32]byte{}, nil, err
+	prefixSet.Reset()
+	deleted, err := deleteStaleNodes(tx, trieDBI, prefix, prefixSet, updates)
+	if err != nil {
+		return [32]byte{}, nil, trieComputeStats{}, err
+	}
+	stats.StaleNodesDeleted = deleted
+
+	return hb.Root(), updates, stats, nil
+}
+
+type tracedLeaf struct {
+	key   intTrie.Nibbles
+	value []byte
+}
+
+type tracedBranch struct {
+	key    intTrie.Nibbles
+	ref    []byte
+	stored bool
+}
+
+type storageTrieTrace struct {
+	addrHash       [32]byte
+	fullLeaves     []tracedLeaf
+	changedLeaves  []intTrie.Nibbles
+	emittedLeaves  []tracedLeaf
+	cachedBranches []tracedBranch
+	sequence       []string
+}
+
+func parseTraceStorageAccount() ([32]byte, bool) {
+	raw := os.Getenv("TRACE_STORAGE_ACCOUNT")
+	if raw == "" {
+		return [32]byte{}, false
+	}
+	if len(raw) >= 2 && raw[:2] == "0x" {
+		raw = raw[2:]
+	}
+	if len(raw) != 64 {
+		log.Printf("TRACE_STORAGE_ACCOUNT ignored: need 32-byte hex, got %q", raw)
+		return [32]byte{}, false
+	}
+	buf, err := hex.DecodeString(raw)
+	if err != nil {
+		log.Printf("TRACE_STORAGE_ACCOUNT ignored: %v", err)
+		return [32]byte{}, false
+	}
+	var out [32]byte
+	copy(out[:], buf)
+	return out, true
+}
+
+func newStorageTrieTrace(
+	tx *mdbx.Txn,
+	stateDBI mdbx.DBI,
+	addrHash [32]byte,
+	slotHashes [][32]byte,
+) (*storageTrieTrace, error) {
+	fullLeaves, err := loadStorageTraceLeaves(tx, stateDBI, addrHash)
+	if err != nil {
+		return nil, err
+	}
+	changedLeaves := make([]intTrie.Nibbles, 0, len(slotHashes))
+	for _, sh := range slotHashes {
+		changedLeaves = append(changedLeaves, intTrie.FromHex(sh[:]))
+	}
+	sort.Slice(changedLeaves, func(i, j int) bool {
+		return changedLeaves[i].Compare(changedLeaves[j]) < 0
+	})
+	return &storageTrieTrace{
+		addrHash:      addrHash,
+		fullLeaves:    fullLeaves,
+		changedLeaves: changedLeaves,
+	}, nil
+}
+
+func loadStorageTraceLeaves(tx *mdbx.Txn, stateDBI mdbx.DBI, addrHash [32]byte) ([]tracedLeaf, error) {
+	cursor, err := tx.OpenCursor(stateDBI)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close()
+
+	var leaves []tracedLeaf
+	k, v, err := cursor.Get(addrHash[:], nil, mdbx.SetRange)
+	for err == nil && len(k) >= 64 {
+		var currentAddr [32]byte
+		copy(currentAddr[:], k[:32])
+		if currentAddr != addrHash {
+			break
+		}
+
+		slotHash := make([]byte, 32)
+		copy(slotHash, k[32:64])
+		valCopy := make([]byte, len(v))
+		copy(valCopy, v)
+		leaves = append(leaves, tracedLeaf{
+			key:   intTrie.FromHex(slotHash),
+			value: rlpEncodeBytesForDebug(valCopy),
+		})
+		k, v, err = cursor.Get(nil, nil, mdbx.Next)
+	}
+	return leaves, nil
+}
+
+func (t *storageTrieTrace) Record(elem *intTrie.TrieElement) {
+	if elem == nil {
+		return
+	}
+	if len(t.sequence) < 128 {
+		if elem.IsBranch {
+			t.sequence = append(t.sequence, "branch:"+elem.Key.String())
+		} else {
+			t.sequence = append(t.sequence, "leaf:"+elem.Key.String())
+		}
+	}
+	if elem.IsBranch {
+		t.cachedBranches = append(t.cachedBranches, tracedBranch{
+			key:    elem.Key,
+			ref:    append([]byte(nil), elem.Ref...),
+			stored: elem.ChildNodeStored,
+		})
+		return
+	}
+	valCopy := make([]byte, len(elem.Value))
+	copy(valCopy, elem.Value)
+	t.emittedLeaves = append(t.emittedLeaves, tracedLeaf{
+		key:   elem.Key,
+		value: valCopy,
+	})
+}
+
+func (t *storageTrieTrace) Report(incrementalRoot, fullRoot [32]byte) {
+	log.Printf("  TRACE storage acct %x: incremental=%x full=%x fullLeaves=%d emittedLeaves=%d cachedBranches=%d changedLeaves=%d",
+		t.addrHash[:8], incrementalRoot[:8], fullRoot[:8], len(t.fullLeaves), len(t.emittedLeaves), len(t.cachedBranches), len(t.changedLeaves))
+
+	emitted := make(map[string]int, len(t.emittedLeaves))
+	for _, leaf := range t.emittedLeaves {
+		emitted[leaf.key.String()]++
 	}
 
-	return hb.Root(), updates, nil
+	uncovered := 0
+	overlaps := 0
+	for _, leaf := range t.fullLeaves {
+		emittedCount := emitted[leaf.key.String()]
+		cachedCount := 0
+		for _, branch := range t.cachedBranches {
+			if leaf.key.HasPrefix(branch.key) {
+				cachedCount++
+			}
+		}
+		if emittedCount == 0 && cachedCount == 0 {
+			uncovered++
+			if uncovered <= 10 {
+				log.Printf("    UNCOVERED leaf %s", leaf.key.String())
+			}
+		}
+		if emittedCount+cachedCount > 1 {
+			overlaps++
+			if overlaps <= 10 {
+				log.Printf("    OVERLAP leaf %s emitted=%d cached=%d", leaf.key.String(), emittedCount, cachedCount)
+			}
+		}
+	}
+	log.Printf("    coverage: uncovered=%d overlaps=%d", uncovered, overlaps)
+
+	if prefix, ok := t.deepestMismatchPrefix(); ok {
+		inc := hashIncrementalTraceSubtree(t.emittedLeaves, t.cachedBranches, prefix)
+		full := hashTraceSubtree(t.fullLeaves, prefix)
+		incRef := refIncrementalTraceSubtree(t.emittedLeaves, t.cachedBranches, prefix)
+		fullRef := refTraceSubtree(t.fullLeaves, prefix)
+		log.Printf("    deepest mismatch prefix=%s incremental=%x full=%x incRefLen=%d incRef=%x fullRefLen=%d fullRef=%x",
+			prefix.String(), inc[:8], full[:8], len(incRef), incRef, len(fullRef), fullRef)
+		t.logPrefixElements(prefix)
+	}
+
+	suspicious := 0
+	for _, branch := range t.cachedBranches {
+		fullCount := 0
+		for _, leaf := range t.fullLeaves {
+			if leaf.key.HasPrefix(branch.key) {
+				fullCount++
+			}
+		}
+		changedCount := 0
+		for _, leaf := range t.changedLeaves {
+			if leaf.HasPrefix(branch.key) {
+				changedCount++
+			}
+		}
+		expectedRef := refTraceSubtree(t.fullLeaves, branch.key)
+		if changedCount > 0 || !bytes.Equal(expectedRef, branch.ref) {
+			suspicious++
+			if suspicious <= 25 {
+				log.Printf("    BRANCH %s cachedLen=%d cached=%x expectedLen=%d expected=%x fullLeaves=%d changedLeaves=%d stored=%v",
+					branch.key.String(), len(branch.ref), branch.ref, len(expectedRef), expectedRef, fullCount, changedCount, branch.stored)
+			}
+		}
+	}
+
+	if len(t.sequence) > 0 {
+		limit := len(t.sequence)
+		if limit > 40 {
+			limit = 40
+		}
+		for i := 0; i < limit; i++ {
+			log.Printf("    seq[%d]=%s", i, t.sequence[i])
+		}
+	}
 }
+
+func (t *storageTrieTrace) deepestMismatchPrefix() (intTrie.Nibbles, bool) {
+	prefixes := make(map[string]intTrie.Nibbles)
+	prefixes[""] = intTrie.Nibbles{}
+	for _, leaf := range t.emittedLeaves {
+		for l := 1; l < leaf.key.Len(); l++ {
+			p := leaf.key.Prefix(l)
+			prefixes[p.String()] = p
+		}
+	}
+	for _, branch := range t.cachedBranches {
+		for l := 1; l <= branch.key.Len(); l++ {
+			p := branch.key.Prefix(l)
+			prefixes[p.String()] = p
+		}
+	}
+
+	var ordered []intTrie.Nibbles
+	for _, prefix := range prefixes {
+		ordered = append(ordered, prefix)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Len() != ordered[j].Len() {
+			return ordered[i].Len() > ordered[j].Len()
+		}
+		return ordered[i].Compare(ordered[j]) < 0
+	})
+
+	for _, prefix := range ordered {
+		coveredByBroaderBranch := false
+		for _, branch := range t.cachedBranches {
+			if branch.key.Len() >= prefix.Len() {
+				continue
+			}
+			if prefix.HasPrefix(branch.key) {
+				coveredByBroaderBranch = true
+				break
+			}
+		}
+		if coveredByBroaderBranch {
+			continue
+		}
+		inc := hashIncrementalTraceSubtree(t.emittedLeaves, t.cachedBranches, prefix)
+		full := hashTraceSubtree(t.fullLeaves, prefix)
+		if inc != full {
+			return prefix, true
+		}
+	}
+	return intTrie.Nibbles{}, false
+}
+
+func (t *storageTrieTrace) logPrefixElements(prefix intTrie.Nibbles) {
+	count := 0
+	for _, branch := range t.cachedBranches {
+		if branch.key.HasPrefix(prefix) {
+			log.Printf("      prefix branch %s -> rel=%s refLen=%d ref=%x stored=%v", branch.key.String(), branch.key.Slice(prefix.Len(), branch.key.Len()).String(), len(branch.ref), branch.ref, branch.stored)
+			count++
+			if count >= 20 {
+				return
+			}
+		}
+	}
+	for _, leaf := range t.fullLeaves {
+		if leaf.key.HasPrefix(prefix) {
+			log.Printf("      full leaf %s -> rel=%s", leaf.key.String(), leaf.key.Slice(prefix.Len(), leaf.key.Len()).String())
+			count++
+			if count >= 20 {
+				return
+			}
+		}
+	}
+	for _, leaf := range t.emittedLeaves {
+		if leaf.key.HasPrefix(prefix) {
+			log.Printf("      prefix leaf %s -> rel=%s", leaf.key.String(), leaf.key.Slice(prefix.Len(), leaf.key.Len()).String())
+			count++
+			if count >= 20 {
+				return
+			}
+		}
+	}
+}
+
+func hashTraceSubtree(leaves []tracedLeaf, prefix intTrie.Nibbles) [32]byte {
+	hb := intTrie.NewHashBuilder()
+	for _, leaf := range leaves {
+		if !leaf.key.HasPrefix(prefix) {
+			continue
+		}
+		hb.AddLeaf(leaf.key.Slice(prefix.Len(), leaf.key.Len()), leaf.value)
+	}
+	return hb.Root()
+}
+
+func hashIncrementalTraceSubtree(
+	emittedLeaves []tracedLeaf,
+	cachedBranches []tracedBranch,
+	prefix intTrie.Nibbles,
+) [32]byte {
+	return rootForIncrementalTraceSubtree(emittedLeaves, cachedBranches, prefix).Root()
+}
+
+func refIncrementalTraceSubtree(
+	emittedLeaves []tracedLeaf,
+	cachedBranches []tracedBranch,
+	prefix intTrie.Nibbles,
+) []byte {
+	hb := rootForIncrementalTraceSubtree(emittedLeaves, cachedBranches, prefix)
+	hb.Root()
+	return hb.StackTop()
+}
+
+func rootForIncrementalTraceSubtree(
+	emittedLeaves []tracedLeaf,
+	cachedBranches []tracedBranch,
+	prefix intTrie.Nibbles,
+) *intTrie.HashBuilder {
+	type elem struct {
+		key      intTrie.Nibbles
+		isBranch bool
+		ref      []byte
+		value    []byte
+	}
+
+	var elems []elem
+	for _, branch := range cachedBranches {
+		if !branch.key.HasPrefix(prefix) {
+			continue
+		}
+		elems = append(elems, elem{
+			key:      branch.key.Slice(prefix.Len(), branch.key.Len()),
+			isBranch: true,
+			ref:      branch.ref,
+		})
+	}
+	for _, leaf := range emittedLeaves {
+		if !leaf.key.HasPrefix(prefix) {
+			continue
+		}
+		elems = append(elems, elem{
+			key:   leaf.key.Slice(prefix.Len(), leaf.key.Len()),
+			value: leaf.value,
+		})
+	}
+
+	sort.Slice(elems, func(i, j int) bool {
+		return elems[i].key.Compare(elems[j].key) < 0
+	})
+
+	hb := intTrie.NewHashBuilder()
+	for _, elem := range elems {
+		if elem.isBranch {
+			hb.AddBranchRef(elem.key, elem.ref, false)
+		} else {
+			hb.AddLeaf(elem.key, elem.value)
+		}
+	}
+	return hb
+}
+
+func refTraceSubtree(leaves []tracedLeaf, prefix intTrie.Nibbles) []byte {
+	hb := intTrie.NewHashBuilder()
+	for _, leaf := range leaves {
+		if !leaf.key.HasPrefix(prefix) {
+			continue
+		}
+		hb.AddLeaf(leaf.key.Slice(prefix.Len(), leaf.key.Len()), leaf.value)
+	}
+	hb.Root()
+	return hb.StackTop()
+}
+
 
 // deleteStaleNodes scans stored branch nodes and deletes any that fall under
 // a changed prefix (walker would have visited) but aren't in the update set.
@@ -357,7 +788,7 @@ func deleteStaleNodes(
 
 		// Unpack to nibbles and check if this path is under a changed prefix.
 		nibblePath := intTrie.Unpack(packedPath)
-		if prefixSet.ContainsPrefix(nibblePath) {
+		if prefixSet.ContainsPrefixUnordered(nibblePath) {
 			// Walker would have visited this node. Is it in updates?
 			pathKey := string(packedPath)
 			if _, ok := updates[pathKey]; !ok {

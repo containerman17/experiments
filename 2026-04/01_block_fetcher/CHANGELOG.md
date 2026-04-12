@@ -1,5 +1,160 @@
 # Changelog
 
+## Stale-node cleanup fix — packed-key scan bug (2026-04-12)
+
+The clean-state storage failure at block `138000` was not a new hashing rule bug; it was stale
+branch-node cleanup missing nodes that should have been deleted when a subtree collapsed. The
+root cause was `deleteStaleNodes()` reusing a stateful `PrefixSet` cursor while scanning MDBX
+packed trie keys, even though packed-key order is not nibble-lexicographic because the length
+byte sorts first. The fix is to use an order-independent prefix lookup for stale-node deletion,
+and the clean replay now verifies batch `137001-138000` successfully instead of failing on
+account `9c7774...`.
+
+## Session Record — Controlled Format (2026-04-12)
+
+### Scope
+- Goal: fix incorrect incremental storage trie roots without any full-state fallback
+- Goal: keep the live executor running and make it stop on the first mismatch
+- Goal: document current throughput findings before the next refactor
+
+### Code changes
+- `main.go`
+  - bumped trie migration marker from `trie_v2` to `trie_v3`
+  - removed runtime `ComputeFullStateRoot` mismatch diagnostics from the live executor path
+  - mismatch path now aborts immediately with `incremental` vs `expected` only
+- `statetrie/incremental.go`
+  - `computeTrieRoot` now feeds cached refs through `HashBuilder.AddBranchRef`
+  - added env-gated storage tracing via `TRACE_STORAGE_ACCOUNT`
+  - left `ComputeFullStateRoot` available as offline diagnostic code only, not in live execution
+- `trie/branchnode.go`
+  - replaced cached child hash storage with exact cached child refs
+  - on-disk compact format now uses `RefMask` and `Refs`
+- `trie/hashbuilder.go`
+  - added `AddBranchRef`
+  - switched internal stack items to exact refs plus `rootIsBranch`
+  - only persists cached child refs for branch-root children
+  - added `StackTop()` for trace/test support
+- `trie/walker.go`
+  - added `AdvanceRef()`
+  - unchanged subtrees now return exact cached refs instead of only `[32]byte` hashes
+- `trie/nodeiter.go`
+  - `TrieElement` now carries `Ref []byte`
+  - incremental branch replay now consumes exact cached refs
+- `cmd/diagnose/main.go`
+  - updated diagnostic logic from `HashMask/Hashes` to `RefMask/Refs`
+  - compares exact embedded child refs instead of derived child hashes
+- `cmd/debug_hash/main.go`
+  - updated branch diagnostics from `Hash` to exact cached `Ref`
+- `trie/hashbuilder_test.go`
+  - added focused tests for cached branch replay correctness
+  - added focused test asserting only branch-root children are cached
+- `trie/branchnode_test.go`
+  - added encode/decode round-trip test for the new `RefMask/Refs` format
+- `trie/stateroot_test.go`
+  - deleted stale debug-only fixture tests that were not trusted and not useful
+
+### Root-cause finding
+- Storage incremental mismatch was caused by replaying unchanged cached subtrees as opaque boundaries even when the subtree root was a short node
+- Correct rule: only branch-root cached children may be replayed opaquely
+- Short-root cached children must be rebuilt from leaves so canonical path compression can occur
+
+### Runtime / operations changes
+- built and launched the main sync in `tmux` session `blockfetcher-live`
+- live command:
+  - `./block_fetcher -db-dir data/mainnet-mdbx -exec-batch-size 1`
+- live log path:
+  - `/tmp/block_fetcher_live.log`
+- policy enforced:
+  - no runtime full-state rehash on mismatch
+  - process exits immediately on the first mismatch
+
+### Validation completed
+- `go build .` passed after the trie refactor
+- `go build ./...` passed after updating stale diagnostic binaries
+- focused trie tests passed
+- `go test ./cmd/diagnose ./cmd/debug_hash` passed
+- `go test ./...` passed after deleting stale debug-only trie fixture tests
+- clean repro passed:
+  - `--clean-state --exec-batch-size 50000 --exec-stop 100000`
+  - batch `1-50000` verified
+  - batch `50001-100000` verified
+  - previous 10 storage-account mismatches disappeared
+- live DB resume passed:
+  - previously failing range `50001-100000` executed and committed on the real DB
+
+### Live-run observations
+- fetch/write side is healthy and far ahead of execution
+- execution with `-exec-batch-size 1` is slow because verification dominates per block
+- measured from log timings:
+  - `exec`: about `0.17%` of total measured time
+  - `hash`: about `94.88%` of total measured time
+  - `commit`: about `4.95%` of total measured time
+- measured recent hash cost:
+  - about `297ms` average per verified block
+  - about `339ms` p50
+  - about `403ms` p95
+- live CPU profile result:
+  - slowdown is dominated by allocation/GC and MDBX cursor traffic in the incremental trie path
+  - slowdown is not dominated by EVM execution
+
+### Current conclusion
+- correctness fix for storage incremental hashing is in place
+- live executor is running with immediate-fail semantics
+- throughput regression remains and needs a follow-up refactor to restore truly `O(changes)` account-trie hashing
+- strongest current suspicion: the account incremental path is still touching far too much unchanged hashed state per verification
+
+### Next refactor target
+- instrument and reduce account-trie incremental work so per-block verification is proportional to changed accounts, not broad `HashedAccountState` scanning
+
+### Immediate next plan
+We are going to instrument the live incremental path first, not guess. The next change is to log how many account leaves, storage leaves, cached branches, trie writes, and stale-node deletions each verification actually touches. If tiny blocks are still causing huge account-leaf counts, that proves the account trie path is still scanning far too much unchanged state and that becomes the first refactor target.
+
+## Storage incremental root bug fixed — branch-only cached replay (2026-04-12)
+
+The batch-2 storage root bug in `computeTrieRoot` was traced to the incremental
+`Walker -> NodeIter -> HashBuilder` path, not the leaf data.
+
+### Root cause
+Unchanged cached subtrees were being replayed as opaque boundaries even when the
+subtree root was a short node. That preserves structure the canonical trie should
+collapse away, so batch 2 reused a boundary that the full leaf scan would not keep.
+
+The bug was not:
+- skipped storage leaves
+- bad cached hashes/refs for the failing account
+- corrupted batch-1 branch nodes
+
+The failing account trace showed the leaf set was correct and the cached refs were
+individually correct. The mismatch came from replaying the wrong kind of cached
+boundary.
+
+### Fix
+Incremental replay now only caches children whose subtree root is a branch node.
+If the cached child subtree is short-rooted, it must be rebuilt from leaves so normal
+path compression can occur.
+
+Implementation changes:
+- `trie/hashbuilder.go`: added `AddBranchRef`, track exact cached refs, and only persist
+  cached child refs for branch-root children
+- `trie/branchnode.go`: store exact child refs via `RefMask`/`Refs` instead of fixed
+  child hashes
+- `trie/walker.go` + `trie/nodeiter.go`: return exact cached refs for skipped subtrees
+- `statetrie/incremental.go`: feed cached refs into the incremental hash path
+- `main.go`: bump trie migration marker to `trie_v3`
+
+### Verification
+- Focused trie tests added for mixed cached-branch/leaf replay and for the
+  branch-root-only caching rule
+- `go build .` passes
+- Clean repro with `--clean-state --exec-batch-size 50000 --exec-stop 100000` now passes:
+  batch `1-50000` verifies and batch `50001-100000` verifies with no storage mismatches
+
+### Notes
+- `TRACE_STORAGE_ACCOUNT=<32-byte-hex>` tracing remains available in
+  `statetrie/incremental.go` for future leaf-by-leaf comparisons
+- No full-root fallback was reintroduced
+- Diagnostic commands were updated to the new cached-ref trie encoding
+
 ## Incremental hash bug confirmed — computeTrieRoot for storage is wrong (2026-04-12)
 
 ### The bug

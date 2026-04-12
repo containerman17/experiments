@@ -3,20 +3,23 @@ package trie
 import (
 	"encoding/binary"
 	"fmt"
-	"math/bits"
 )
 
 // BranchNodeCompact represents an intermediate branch node stored in the DB.
-// It matches reth's BranchNodeCompact encoding format.
+// It stores the exact child references as embedded by the parent:
+// raw RLP (<32 bytes) or rlp(hash) (33 bytes).
 type BranchNodeCompact struct {
 	StateMask uint16     // which of 16 children exist in state
 	TreeMask  uint16     // which children have subtrees stored in DB
-	HashMask  uint16     // which children have hashes stored
-	Hashes    [][32]byte // one hash per set bit in HashMask
+	RefMask   uint16     // which children have cached subtree references stored
+	Refs      [][]byte   // one ref per set bit in RefMask
 	RootHash  *[32]byte  // optional cached hash of this node
 }
 
-const hashLen = 32
+const (
+	hashLen        = 32
+	branchFlagRoot = 1 << 0
+)
 
 // Encode serializes the branch node for DB storage.
 //
@@ -24,14 +27,17 @@ const hashLen = 32
 //
 //	state_mask: 2 bytes BE
 //	tree_mask:  2 bytes BE
-//	hash_mask:  2 bytes BE
+//	ref_mask:   2 bytes BE
+//	flags:      1 byte
 //	root_hash:  32 bytes (only if present, written before hashes)
-//	hashes:     N * 32 bytes (N = popcount(hash_mask))
+//	refs:       N * [len:1 | ref:len]
 func (b *BranchNodeCompact) Encode() []byte {
-	numHashes := len(b.Hashes)
-	size := 6 + numHashes*hashLen
+	size := 7
 	if b.RootHash != nil {
 		size += hashLen
+	}
+	for _, ref := range b.Refs {
+		size += 1 + len(ref)
 	}
 
 	buf := make([]byte, 0, size)
@@ -39,16 +45,22 @@ func (b *BranchNodeCompact) Encode() []byte {
 	// Masks in big-endian (bytes crate put_u16/get_u16 default).
 	buf = binary.BigEndian.AppendUint16(buf, b.StateMask)
 	buf = binary.BigEndian.AppendUint16(buf, b.TreeMask)
-	buf = binary.BigEndian.AppendUint16(buf, b.HashMask)
+	buf = binary.BigEndian.AppendUint16(buf, b.RefMask)
 
 	// Root hash comes before the child hashes when present.
+	var flags byte
+	if b.RootHash != nil {
+		flags |= branchFlagRoot
+	}
+	buf = append(buf, flags)
+
 	if b.RootHash != nil {
 		buf = append(buf, b.RootHash[:]...)
 	}
 
-	// Child hashes.
-	for i := range b.Hashes {
-		buf = append(buf, b.Hashes[i][:]...)
+	for _, ref := range b.Refs {
+		buf = append(buf, byte(len(ref)))
+		buf = append(buf, ref...)
 	}
 
 	return buf
@@ -56,51 +68,57 @@ func (b *BranchNodeCompact) Encode() []byte {
 
 // DecodeBranchNode deserializes a branch node from DB storage.
 func DecodeBranchNode(data []byte) (*BranchNodeCompact, error) {
-	if len(data) < 6 {
+	if len(data) < 7 {
 		return nil, fmt.Errorf("branch node too short: %d bytes", len(data))
-	}
-
-	// The payload after the 6-byte header must be a multiple of 32 bytes,
-	// because it holds only 32-byte hashes.
-	if (len(data)-6)%hashLen != 0 {
-		return nil, fmt.Errorf("branch node has invalid length: %d bytes", len(data))
 	}
 
 	stateMask := binary.BigEndian.Uint16(data[0:2])
 	treeMask := binary.BigEndian.Uint16(data[2:4])
-	hashMask := binary.BigEndian.Uint16(data[4:6])
+	refMask := binary.BigEndian.Uint16(data[4:6])
+	flags := data[6]
 
-	data = data[6:]
-	numHashes := len(data) / hashLen
-	expectedHashes := bits.OnesCount16(hashMask)
+	data = data[7:]
 
 	var rootHash *[32]byte
-
-	// If there is one extra hash beyond what HashMask accounts for,
-	// the first hash is the root hash.
-	if numHashes == expectedHashes+1 {
+	if flags&branchFlagRoot != 0 {
+		if len(data) < hashLen {
+			return nil, fmt.Errorf("branch node root hash truncated: %d bytes", len(data))
+		}
 		rh := [32]byte{}
 		copy(rh[:], data[:hashLen])
 		rootHash = &rh
 		data = data[hashLen:]
-		numHashes--
-	} else if numHashes != expectedHashes {
-		return nil, fmt.Errorf(
-			"branch node hash count mismatch: have %d hashes, hash_mask has %d bits set",
-			numHashes, expectedHashes,
-		)
 	}
 
-	hashes := make([][32]byte, numHashes)
-	for i := range hashes {
-		copy(hashes[i][:], data[i*hashLen:(i+1)*hashLen])
+	expectedRefs := 0
+	for mask := refMask; mask != 0; mask &= mask - 1 {
+		expectedRefs++
+	}
+
+	refs := make([][]byte, 0, expectedRefs)
+	for i := 0; i < expectedRefs; i++ {
+		if len(data) == 0 {
+			return nil, fmt.Errorf("branch node ref count mismatch: expected %d refs, got %d", expectedRefs, i)
+		}
+		refLen := int(data[0])
+		data = data[1:]
+		if len(data) < refLen {
+			return nil, fmt.Errorf("branch node ref truncated: need %d bytes, have %d", refLen, len(data))
+		}
+		ref := make([]byte, refLen)
+		copy(ref, data[:refLen])
+		refs = append(refs, ref)
+		data = data[refLen:]
+	}
+	if len(data) != 0 {
+		return nil, fmt.Errorf("branch node has trailing bytes: %d", len(data))
 	}
 
 	return &BranchNodeCompact{
 		StateMask: stateMask,
 		TreeMask:  treeMask,
-		HashMask:  hashMask,
-		Hashes:    hashes,
+		RefMask:   refMask,
+		Refs:      refs,
 		RootHash:  rootHash,
 	}, nil
 }

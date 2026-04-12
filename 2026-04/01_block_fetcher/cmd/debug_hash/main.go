@@ -105,8 +105,8 @@ func main() {
 					break
 				}
 				if e.isBranch {
-					fmt.Printf("    [%d] BRANCH key=%s hash=%x childrenInTrie=%v\n",
-						i, e.keyStr, e.hash, e.childrenInTrie)
+					fmt.Printf("    [%d] BRANCH key=%s ref=%x childrenInTrie=%v\n",
+						i, e.keyStr, e.ref, e.childrenInTrie)
 				} else {
 					fmt.Printf("    [%d] LEAF   key=%s value=%s\n",
 						i, e.keyStr, hex.EncodeToString(e.value))
@@ -268,7 +268,7 @@ func method2HashBuilder(tx *mdbx.Txn, db *store.DB) ([32]byte, int, []kvEntry) {
 type walkerElemDiag struct {
 	keyStr         string
 	isBranch       bool
-	hash           [32]byte
+	ref            []byte
 	childrenInTrie bool
 	value          []byte
 }
@@ -346,9 +346,12 @@ func method3WalkerNodeIter(tx *mdbx.Txn, db *store.DB) ([32]byte, int, walkerDia
 
 		if elem.IsBranch {
 			diag.branches++
-			elemDiag.hash = elem.Hash
-			elemDiag.childrenInTrie = elem.ChildrenInTrie
-			hb.AddBranch(elem.Key, elem.Hash, elem.ChildrenInTrie)
+			if elem.Ref != nil {
+				elemDiag.ref = make([]byte, len(elem.Ref))
+				copy(elemDiag.ref, elem.Ref)
+			}
+			elemDiag.childrenInTrie = elem.ChildNodeStored
+			hb.AddBranchRef(elem.Key, elem.Ref, elem.ChildNodeStored)
 		} else {
 			diag.leaves++
 			leafCount++

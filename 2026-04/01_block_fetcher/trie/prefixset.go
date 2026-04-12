@@ -44,6 +44,12 @@ type PrefixSet struct {
 	index int // cursor for sequential access
 }
 
+// Reset rewinds the sequential cursor so the prefix set can be scanned again
+// from the beginning in a new ordered pass.
+func (ps *PrefixSet) Reset() {
+	ps.index = 0
+}
+
 // ContainsPrefix returns true if any key in the set starts with the given prefix.
 // Uses sequential cursor optimization: exploits that calls come in sorted order
 // during the trie walk, so we advance the cursor forward instead of binary searching
@@ -80,4 +86,16 @@ func (ps *PrefixSet) ContainsPrefix(prefix Nibbles) bool {
 
 	// Check if the key at the current position starts with the prefix.
 	return ps.keys[ps.index].HasPrefix(prefix)
+}
+
+// ContainsPrefixUnordered returns true if any key in the set starts with the
+// given prefix, without assuming anything about call order.
+func (ps *PrefixSet) ContainsPrefixUnordered(prefix Nibbles) bool {
+	idx := sort.Search(len(ps.keys), func(i int) bool {
+		return ps.keys[i].Compare(prefix) >= 0
+	})
+	if idx >= len(ps.keys) {
+		return false
+	}
+	return ps.keys[idx].HasPrefix(prefix)
 }

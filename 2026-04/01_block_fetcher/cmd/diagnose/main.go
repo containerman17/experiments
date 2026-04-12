@@ -5,10 +5,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
+	"math/bits"
 	"runtime"
 	"sort"
 
@@ -521,8 +523,7 @@ func verifyChildHashes(tx *mdbx.Txn, db *store.DB) {
 		ak, av, ae = acctCursor.Get(nil, nil, mdbx.Next)
 	}
 
-	// For each nibble, compute the subtree hash
-	hashIdx := 0
+	// For each nibble, compute the exact child ref the root should embed.
 	mismatches := 0
 	for nibble := byte(0); nibble < 16; nibble++ {
 		group := nibbleGroups[nibble]
@@ -541,24 +542,21 @@ func verifyChildHashes(tx *mdbx.Txn, db *store.DB) {
 
 		hb := intTrie.NewHashBuilder()
 		for _, a := range group {
-			hb.AddLeaf(intTrie.FromHex(a.hashedAddr[:]), a.rlp)
+			hb.AddLeaf(intTrie.FromHex(a.hashedAddr[:]).Slice(1, 64), a.rlp)
 		}
-		computedHash := hb.Root()
+		hb.Root()
+		computedRef := hb.StackTop()
 
-		// Compare with cached hash from root node
-		var cachedHash [32]byte
-		if rootNode.HashMask&(1<<nibble) != 0 && hashIdx < len(rootNode.Hashes) {
-			cachedHash = rootNode.Hashes[hashIdx]
-			hashIdx++
-		}
+		// Compare with the exact cached ref from the root node.
+		cachedRef := childRefForNibble(rootNode, nibble)
 
-		match := computedHash == cachedHash
+		match := bytes.Equal(computedRef, cachedRef)
 		if !match {
 			mismatches++
-			log.Printf("  [%x] MISMATCH! computed=%x cached=%x (%d accounts)",
-				nibble, computedHash[:8], cachedHash[:8], len(group))
+			log.Printf("  [%x] MISMATCH! computedRef=%x cachedRef=%x (%d accounts)",
+				nibble, previewRef(computedRef), previewRef(cachedRef), len(group))
 		} else {
-			log.Printf("  [%x] OK computed=%x (%d accounts)", nibble, computedHash[:8], len(group))
+			log.Printf("  [%x] OK ref=%x (%d accounts)", nibble, previewRef(computedRef), len(group))
 		}
 	}
 	log.Printf("  Total mismatches: %d", mismatches)
@@ -648,7 +646,6 @@ func testHashBuilderMixing(tx *mdbx.Txn, db *store.DB) {
 
 	// Build the elements in sorted order (same as NodeIter would produce)
 	hbB := intTrie.NewHashBuilder()
-	hashIdx2 := 0
 	leafIdx := 0
 
 	for nibble := byte(0); nibble < 16; nibble++ {
@@ -657,14 +654,11 @@ func testHashBuilderMixing(tx *mdbx.Txn, db *store.DB) {
 		}
 
 		if !changedNibbles[nibble] {
-			// Use cached hash as branch
-			if rootNode.HashMask&(1<<nibble) != 0 && hashIdx2 < len(rootNode.Hashes) {
+			// Use the exact cached child ref as the branch boundary.
+			if cachedRef := childRefForNibble(rootNode, nibble); cachedRef != nil {
 				branchKey := intTrie.Nibbles{}.Append(nibble)
-				hbB.AddBranch(branchKey, rootNode.Hashes[hashIdx2], false)
+				hbB.AddBranchRef(branchKey, cachedRef, false)
 			}
-		}
-		if rootNode.HashMask&(1<<nibble) != 0 {
-			hashIdx2++
 		}
 
 		if changedNibbles[nibble] {
@@ -718,23 +712,21 @@ func dumpAccountTrieRoot(tx *mdbx.Txn, db *store.DB) {
 	}
 	log.Printf("  StateMask: %016b", node.StateMask)
 	log.Printf("  TreeMask:  %016b", node.TreeMask)
-	log.Printf("  HashMask:  %016b", node.HashMask)
+	log.Printf("  RefMask:   %016b", node.RefMask)
 	if node.RootHash != nil {
 		log.Printf("  RootHash:  %x", node.RootHash[:8])
 	}
-	log.Printf("  Hashes (%d):", len(node.Hashes))
-	hashIdx := 0
+	log.Printf("  Refs (%d):", len(node.Refs))
 	for nibble := 0; nibble < 16; nibble++ {
 		sm := node.StateMask&(1<<nibble) != 0
 		tm := node.TreeMask&(1<<nibble) != 0
-		hm := node.HashMask&(1<<nibble) != 0
-		if sm || tm || hm {
-			hashStr := "-"
-			if hm && hashIdx < len(node.Hashes) {
-				hashStr = fmt.Sprintf("%x", node.Hashes[hashIdx][:8])
-				hashIdx++
+		rm := node.RefMask&(1<<nibble) != 0
+		if sm || tm || rm {
+			refStr := "-"
+			if rm {
+				refStr = fmt.Sprintf("%x", previewRef(childRefForNibble(node, byte(nibble))))
 			}
-			log.Printf("    [%x] state=%v tree=%v hash=%v → %s", nibble, sm, tm, hm, hashStr)
+			log.Printf("    [%x] state=%v tree=%v ref=%v → %s", nibble, sm, tm, rm, refStr)
 		}
 	}
 
@@ -763,12 +755,32 @@ func dumpAccountTrieRoot(tx *mdbx.Txn, db *store.DB) {
 		foundPath := intTrie.Unpack(k)
 		if foundPath.Equal(path) {
 			subNode, _ := intTrie.DecodeBranchNode(v)
-			log.Printf("  Seek [%x]: FOUND! key=%x state=%016b tree=%016b hash=%016b hashes=%d",
-				nibble, k, subNode.StateMask, subNode.TreeMask, subNode.HashMask, len(subNode.Hashes))
+			log.Printf("  Seek [%x]: FOUND! key=%x state=%016b tree=%016b ref=%016b refs=%d",
+				nibble, k, subNode.StateMask, subNode.TreeMask, subNode.RefMask, len(subNode.Refs))
 		} else {
 			log.Printf("  Seek [%x]: missed (found key=%x nibbles=%s)", nibble, k, foundPath.String())
 		}
 	}
+}
+
+func childRefForNibble(node *intTrie.BranchNodeCompact, nibble byte) []byte {
+	if node == nil || node.RefMask&(1<<nibble) == 0 {
+		return nil
+	}
+	idx := bits.OnesCount16(node.RefMask & ((1 << nibble) - 1))
+	if idx >= len(node.Refs) {
+		return nil
+	}
+	ref := make([]byte, len(node.Refs[idx]))
+	copy(ref, node.Refs[idx])
+	return ref
+}
+
+func previewRef(ref []byte) []byte {
+	if len(ref) <= 8 {
+		return ref
+	}
+	return ref[:8]
 }
 
 func parseEthBlock(raw []byte) (*ethtypes.Block, error) {

@@ -50,10 +50,22 @@ We call `corethcore.ApplyMessage` (coreth's version) which SHOULD credit the ful
 But the state root still fails. Need to verify our coinbase balance matches the reference
 after executing block 3308764.
 
+### FALSE ALARM: hex conversion error
+
+Earlier reported "wrong block data" was a hex conversion mistake:
+`3308764 = 0x327CDC` (NOT `0x327E9C` which is 3309212). The block data
+in MDBX matches the reference perfectly (same baseFee, same tx count, same hash).
+
+EVM execution is also CORRECT — coinbase balance after block 3308764 matches
+reference exactly (179229450338131214705436 wei).
+
+**The MISMATCH is purely a hash computation bug** — `ComputeFullStateRoot` produces
+wrong root even though the underlying state data is correct. This is the same bug
+as the incremental hash issue, not a new execution bug.
+
 ### What to investigate next
-- Compare our coinbase balance vs reference after block 3308764
-- If coinbase is wrong: trace the fee path — maybe something intercepts the fee credit
-- If coinbase is right: the bug is in a different account (storage, not balance)
+- Why does ComputeFullStateRoot produce wrong root for correct state?
+- Focus on the hash computation, not execution — the state data is verified correct
 - Check if it's an atomic tx, a specific opcode, or a consensus rule we're missing
 - Incremental hash bug is a separate, lower-priority issue
 

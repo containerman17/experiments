@@ -40,9 +40,20 @@
 - Incremental hash fails EVERY batch but full-root covers it (separate issue)
 - `cmd/repair_storage_roots` tool available if DB gets corrupted again
 
+### Key finding: fee handling difference between coreth and libevm
+
+On-chain data proves: at AP3+ blocks, the coinbase receives the **FULL** `gasPrice * gasUsed`
+(no baseFee burn). Coreth's `state_transition.go:507` credits `gasUsed * msg.GasPrice`.
+Libevm's `state_transition.go:459` credits only `gasUsed * effectiveTip` (burns baseFee).
+
+We call `corethcore.ApplyMessage` (coreth's version) which SHOULD credit the full fee.
+But the state root still fails. Need to verify our coinbase balance matches the reference
+after executing block 3308764.
+
 ### What to investigate next
-- Find the exact block that causes the execution MISMATCH
-- Compare our execution output against an archival RPC for that block
+- Compare our coinbase balance vs reference after block 3308764
+- If coinbase is wrong: trace the fee path — maybe something intercepts the fee credit
+- If coinbase is right: the bug is in a different account (storage, not balance)
 - Check if it's an atomic tx, a specific opcode, or a consensus rule we're missing
 - Incremental hash bug is a separate, lower-priority issue
 

@@ -241,7 +241,7 @@ func main() {
 		expectedNet  = flag.Uint("expected-network-id", uint(defaultExpectedNetID), "expected Avalanche network ID")
 		subnetIDStr  = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
 		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
-		execBatchSize  = flag.Uint64("exec-batch-size", 1000, "number of blocks per executor batch (verified every batch)")
+		execBatchSize  = flag.Uint64("exec-batch-size", 10000, "number of blocks per executor batch (verified every batch)")
 		fetchWorkers   = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
 		execOnly       = flag.Bool("exec-only", false, "run executor only, no fetcher/writer/network")
 	)

@@ -31,6 +31,8 @@ The code currently has TWO architectures layered on top of each other:
 
 **Fix: skip unchanged branch nodes during persist** — `HashBuilder.Updates()` returns every branch node traversed, not just changed ones. With 544 changed accounts (uniformly distributed by keccak), the walker descends into nearly all branches at the top levels. Was writing 19,864 identical nodes per batch; now compares before writing, only 1,066 actually changed. Prevents massive MDBX commits.
 
+**Batch size 10,000**: 32% faster than batch=1000. Hash amortized from 10×690ms to ~2s, commit from 10×380ms to ~2s. ~800 blocks/sec at 1.5M blocks.
+
 **Bugfix: storage trie hash was not truly incremental** — `deletePrefixedEntries` was destroying all stored branch nodes before recomputing each account's storage root, forcing a full rebuild every batch. Removed the call; the walker + PrefixSet already handles unchanged subtrees correctly via cached hashes. Hash time dropped from ~700ms to ~100ms per 1000-block batch.
 5. ~~Remove `--verify-interval` / rename.~~ **DONE** — single `--exec-batch-size` flag.
 6. ~~Clean up `executeBatch`.~~ **DONE** — no SkipHash toggle, no mode flags.

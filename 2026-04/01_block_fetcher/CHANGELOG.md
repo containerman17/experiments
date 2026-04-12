@@ -1,5 +1,42 @@
 # Changelog
 
+## Incremental hash debugging session (2026-04-12 night)
+
+### What we tried and what happened
+
+1. **TreeMask fix (walker.go:121)** — WRONG. Setting `childrenInTrie` to true for cached
+   hashes DOES change the hash computation (contrary to analysis). `storedInDatabase` feeds
+   into `treeMasks` which propagates through `updateMasks`/`storeBranchNode` and interacts
+   with `hashMasks` in ways that affect which branch nodes get created. Reverted.
+
+2. **Broader step 2 patching** — patching `storageRoots` accounts in addition to
+   `changedAccounts`. CORRUPTED THE DB. `computeFullStorageRoot` at step 1 time returns
+   wrong results (proven by three-way comparison: `storedMatchesPoint=false,
+   scanMatchesPoint=true`). These wrong roots were written to HashedAccountState for
+   accounts that ComputeFullStateRoot couldn't fix (no storage → no patch). Created
+   `cmd/repair_storage_roots` to fix 119 corrupted accounts.
+
+3. **The core mystery** (still unsolved): `computeFullStorageRoot` called at step 1 time
+   returns a DIFFERENT root than the SAME function called later in the SAME RW transaction.
+   Nothing writes to HashedStorageState between the two calls. The function IS deterministic
+   (calling it twice at step 1 gives the same result). But calling it again after steps 2-4
+   gives a different result. MDBX cross-DBI interference? Unknown.
+
+4. **Small batches (1000 blocks) work fine** — every batch passes with full-root fallback.
+   No MISMATCH. The 50k-batch MISMATCH at block 3312988 was from DB corruption caused by #2.
+
+### Current state
+- Sync running with 1000-block batches past the corrupted range
+- Will switch to 50k batches after passing 3312988 to keep sync moving
+- Incremental hash fails EVERY batch (1000 or 50k), full-root fallback covers it
+- `cmd/repair_storage_roots` tool available if DB gets corrupted again
+
+### What to investigate next
+- Why does `computeFullStorageRoot` return different results at different times in the same tx?
+  This is the key to the incremental hash bug. The step 1 storage root computation is wrong,
+  which means step 2 patches wrong values, which means the account trie gets wrong leaf data.
+- Try: log the first differing leaf (key + value) between step 1 and later scans for ONE account
+
 ## Incremental hash bug: diagnosis and fix plan (2026-04-12)
 
 ### The bug: cascading TreeMask corruption

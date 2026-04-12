@@ -52,6 +52,10 @@ type BatchOverlay struct {
 
 	// Block hash index: blockHash → blockNum.
 	blockHashes []BlockHashEntry
+
+	// DEBUG: populated by ComputeIncrementalStateRoot step 1 for CompareLeafEncoding.
+	DebugStep1Counts map[[32]byte]int
+	DebugStep1Roots  map[[32]byte][32]byte
 }
 
 // TxHashEntry records a tx hash and its location.

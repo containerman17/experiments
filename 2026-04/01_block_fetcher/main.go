@@ -1092,7 +1092,7 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		// Incremental hash failed — fall back to full root, log the difference for debugging.
+		// Incremental hash failed — fall back to full root.
 		fullRoot, fullErr := statetrie.ComputeFullStateRoot(rwTx, db)
 		if fullErr != nil || common.Hash(fullRoot) != expectedRoot {
 			log.Printf("executor: MISMATCH block %d: incremental=%x full=%x expected=%x fullErr=%v",
@@ -1102,7 +1102,7 @@ func executeBatch(
 			stateDB.Overlay = nil
 			return fmt.Errorf("state root mismatch at block %d", to)
 		}
-		statetrie.CompareLeafEncoding(rwTx, db)
+		statetrie.CompareLeafEncoding(rwTx, db, overlay)
 		log.Printf("executor: incremental wrong at block %d, used full root (incremental=%x)",
 			to, computedRoot[:8])
 		computedRoot = fullRoot

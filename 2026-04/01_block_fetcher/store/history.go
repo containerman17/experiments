@@ -60,14 +60,27 @@ func decodeChangeset(data []byte) ([]Change, error) {
 	return changes, nil
 }
 
+// Reusable buffers for WriteChangeset to avoid per-call allocations.
+// Only safe for single-threaded use (which is the case — one RW tx at a time).
+var (
+	lz4HashTable = make([]int, 1<<16)
+	lz4CompBuf   []byte
+)
+
 func WriteChangeset(tx *mdbx.Txn, db *DB, blockNum uint64, changes []Change) error {
 	raw := encodeChangeset(changes)
-	buf := make([]byte, lz4.CompressBlockBound(len(raw)))
-	ht := make([]int, 1<<16)
-	n, _ := lz4.CompressBlock(raw, buf, ht)
+	needed := lz4.CompressBlockBound(len(raw))
+	if cap(lz4CompBuf) < needed {
+		lz4CompBuf = make([]byte, needed)
+	}
+	buf := lz4CompBuf[:needed]
+	// Clear hash table (reuse the allocation)
+	for i := range lz4HashTable {
+		lz4HashTable[i] = 0
+	}
+	n, _ := lz4.CompressBlock(raw, buf, lz4HashTable)
 	key := BlockKey(blockNum)
 	if n == 0 {
-		// Incompressible — store raw with 0 prefix
 		out := make([]byte, 1+len(raw))
 		out[0] = 0
 		copy(out[1:], raw)
@@ -111,6 +124,15 @@ func ReadChangeset(tx *mdbx.Txn, db *DB, blockNum uint64) ([]Change, error) {
 
 const maxShardSize = 2000
 
+// Reusable bitmap and buffer for UpdateHistoryIndex.
+// Single-threaded (one RW tx at a time).
+var (
+	histBitmap = roaring64.NewBitmap()
+	histBuf    bytes.Buffer
+	histKeyCopy [16]byte
+	histValBuf  []byte
+)
+
 func UpdateHistoryIndex(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) error {
 	cursor, err := tx.OpenCursor(db.HistoryIndex)
 	if err != nil {
@@ -129,67 +151,68 @@ func UpdateHistoryIndex(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) err
 	// Copy cursor-returned key and value since they point to MDBX internal
 	// memory-mapped pages which may be invalidated by subsequent tx.Put/Del calls.
 	var k []byte
-	var vCopy []byte
 	if err == nil {
-		k = make([]byte, len(kRaw))
-		copy(k, kRaw)
-		vCopy = make([]byte, len(v))
-		copy(vCopy, v)
+		copy(histKeyCopy[:], kRaw)
+		k = histKeyCopy[:len(kRaw)]
+		if cap(histValBuf) < len(v) {
+			histValBuf = make([]byte, len(v))
+		}
+		histValBuf = histValBuf[:len(v)]
+		copy(histValBuf, v)
 	}
 
 	if err == nil && bytes.HasPrefix(k, prefix[:]) {
-		// Existing shard found
-		bm := roaring64.NewBitmap()
-		if _, err := bm.ReadFrom(bytes.NewReader(vCopy)); err != nil {
+		// Existing shard found — reuse bitmap
+		histBitmap.Clear()
+		if _, err := histBitmap.ReadFrom(bytes.NewReader(histValBuf)); err != nil {
 			return fmt.Errorf("decode bitmap: %w", err)
 		}
-		bm.Add(blockNum)
+		histBitmap.Add(blockNum)
 
-		if bm.GetCardinality() > maxShardSize {
+		if histBitmap.GetCardinality() > maxShardSize {
 			// Seal current shard with actual max as key
-			maxBlock := bm.Maximum()
+			maxBlock := histBitmap.Maximum()
 			sealKey := HistoryKey(keyID, maxBlock)
-			var buf bytes.Buffer
-			if _, err := bm.WriteTo(&buf); err != nil {
+			histBuf.Reset()
+			if _, err := histBitmap.WriteTo(&histBuf); err != nil {
 				return err
 			}
-			if err := tx.Put(db.HistoryIndex, sealKey[:], buf.Bytes(), 0); err != nil {
+			if err := tx.Put(db.HistoryIndex, sealKey[:], histBuf.Bytes(), 0); err != nil {
 				return err
 			}
-			// Delete old sentinel if key differs
 			if !bytes.Equal(k, sealKey[:]) {
 				if err := tx.Del(db.HistoryIndex, k, nil); err != nil {
 					return err
 				}
 			}
 			// Create new sentinel with just blockNum
-			newBm := roaring64.NewBitmap()
-			newBm.Add(blockNum)
-			buf.Reset()
-			if _, err := newBm.WriteTo(&buf); err != nil {
+			histBitmap.Clear()
+			histBitmap.Add(blockNum)
+			histBuf.Reset()
+			if _, err := histBitmap.WriteTo(&histBuf); err != nil {
 				return err
 			}
 			sentinel := HistoryKey(keyID, 0xFFFFFFFFFFFFFFFF)
-			return tx.Put(db.HistoryIndex, sentinel[:], buf.Bytes(), 0)
+			return tx.Put(db.HistoryIndex, sentinel[:], histBuf.Bytes(), 0)
 		}
 
 		// Write updated bitmap back to same key
-		var buf bytes.Buffer
-		if _, err := bm.WriteTo(&buf); err != nil {
+		histBuf.Reset()
+		if _, err := histBitmap.WriteTo(&histBuf); err != nil {
 			return err
 		}
-		return tx.Put(db.HistoryIndex, k, buf.Bytes(), 0)
+		return tx.Put(db.HistoryIndex, k, histBuf.Bytes(), 0)
 	}
 
 	// No shard for this keyID yet — create sentinel
-	bm := roaring64.NewBitmap()
-	bm.Add(blockNum)
-	var buf bytes.Buffer
-	if _, err := bm.WriteTo(&buf); err != nil {
+	histBitmap.Clear()
+	histBitmap.Add(blockNum)
+	histBuf.Reset()
+	if _, err := histBitmap.WriteTo(&histBuf); err != nil {
 		return err
 	}
 	sentinel := HistoryKey(keyID, 0xFFFFFFFFFFFFFFFF)
-	return tx.Put(db.HistoryIndex, sentinel[:], buf.Bytes(), 0)
+	return tx.Put(db.HistoryIndex, sentinel[:], histBuf.Bytes(), 0)
 }
 
 func LookupHistoricalBlock(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) (uint64, bool, error) {

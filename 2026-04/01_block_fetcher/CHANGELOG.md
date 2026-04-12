@@ -1,5 +1,36 @@
 # Changelog
 
+## CURRENT TASK (2026-04-12) — Read this after compaction
+
+### Status
+- **1,562,988 blocks verified** with correct state roots. DB backed up at `data/mainnet-mdbx/mdbx.dat.bak`.
+- **Stuck on block 1,562,989** — state root mismatch. The exact failing block was found via batch=1 bisect.
+
+### What we know
+1. **EVM execution is CORRECT.** Confirmed by seeding coreth's real in-memory trie from our flat MDBX state at block 1,562,988, then executing block 1,562,989 through coreth's `state.StateDB` + real `triedb`. It produces the CORRECT root `50785380...`. See `/tmp/seed_and_run.go` for the test.
+2. **Our flat state values are correct.** Account nonces, balances, storage all match between coreth's execution and ours. Gas usage matches (64,828).
+3. **The bug is in our trie ROOT COMPUTATION**, not execution. After flushing the overlay to MDBX, `ComputeIncrementalStateRoot` (and `ComputeFullStateRoot`) produce a different root than coreth's trie does from the same data.
+4. **StackTrie from our flat state produces correct root at 1,562,988** (before the failing block). So the data is correct, encoding is correct at that point.
+5. **After flushing overlay for block 1,562,989**, our root diverges. The overlay writes 3 changed accounts + 2 storage slots. The values are correct but the resulting trie hash is wrong.
+
+### Most likely root cause
+The **storage root** field in HashedAccountState entries. During execution, `Hash()` on StorageTrie returns `common.Hash{}` (dummy). This dummy root is written to the overlay's account entries. `ComputeIncrementalStateRoot` patches these with computed storage roots, but the patch may be wrong for specific accounts. The `ComputeFullStateRoot` ALSO fails because it reads the HashedAccountState with wrong (dummy) storage roots and doesn't fix them.
+
+### What to investigate next
+1. Compare the **storage root** that `ComputeIncrementalStateRoot` computes for the contract `0x8d36C5c6947ADCcd25Ef49Ea1aAC2ceACFff0bD7` (2 changed slots) vs what coreth's trie computes.
+2. Check if the `oldStorageRoots` capture (for accounts with NO storage changes) correctly restores the pre-batch root from MDBX — or if it reads the already-flushed dummy zeros.
+3. The ordering of operations in `executeBatch`: flush overlay (writes dummy storage roots to HashedAccountState) → then `ComputeIncrementalStateRoot` patches them. But `ComputeFullStateRoot` doesn't patch — it reads raw. This is why both fail.
+
+### Key files
+- `statetrie/incremental.go` — `ComputeIncrementalStateRoot`, storage root computation, account patching
+- `statetrie/overlay.go` — `FlushStateToTx`, `PutAccount` (writes dummy storage root)
+- `statetrie/account_trie.go` — `flushStateOnly` (writes accounts with dummy storage root to overlay)
+- `main.go:executeBatch` — orchestration: flush → incremental hash → verify
+- `statetrie/leaf_source.go` — `AccountLeafSource` RLP encoding (reads from HashedAccountState)
+
+### DB backup
+`data/mainnet-mdbx/mdbx.dat.bak` — snapshot at head=1,562,988, all state correct. Restore with `cp mdbx.dat.bak mdbx.dat`.
+
 ## Executor Architecture (agreed 2026-04-11)
 
 The executor processes blocks in batches. This is how it SHOULD work:

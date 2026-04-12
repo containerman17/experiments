@@ -118,10 +118,45 @@ func ComputeIncrementalStateRoot(
 	// Step 1: Compute storage roots for accounts with changed storage.
 	storageRoots := make(map[[32]byte][32]byte)
 
-	for addrHash := range changedStorage {
-		// Full scan from HashedStorageState — bypasses StorageTrie branch nodes
-		// which may have been corrupted by previous incremental hash failures.
-		storageRoots[addrHash] = computeFullStorageRoot(tx, db, addrHash)
+	for addrHash, slotHashes := range changedStorage {
+		// If old storage root was emptyRoot, delete stale StorageTrie nodes.
+		if oldRoot, ok := oldStorageRoots[addrHash]; ok && oldRoot == emptyRoot {
+			if err := deletePrefixedEntries(tx, db.StorageTrie, addrHash[:]); err != nil {
+				return [32]byte{}, err
+			}
+		}
+
+		// Build PrefixSet from changed slot hashes.
+		psb := intTrie.NewPrefixSetBuilder()
+		for _, sh := range slotHashes {
+			psb.AddKey(intTrie.FromHex(sh[:]))
+		}
+		prefixSet := psb.Build()
+
+		root, updates, err := computeTrieRoot(tx, db.StorageTrie, db.HashedStorageState, addrHash[:], prefixSet, true)
+		if err != nil {
+			return [32]byte{}, err
+		}
+
+		// Persist branch node updates.
+		for packedPath, node := range updates {
+			if node == nil {
+				continue
+			}
+			fullKey := make([]byte, len(addrHash)+len(packedPath))
+			copy(fullKey, addrHash[:])
+			copy(fullKey[len(addrHash):], packedPath)
+			encoded := node.Encode()
+			existing, err := tx.Get(db.StorageTrie, fullKey)
+			if err == nil && bytes.Equal(existing, encoded) {
+				continue
+			}
+			if err := tx.Put(db.StorageTrie, fullKey, encoded, 0); err != nil {
+				return [32]byte{}, err
+			}
+		}
+
+		storageRoots[addrHash] = root
 	}
 
 	// Step 2: Fix HashedAccountState entries with correct storage roots.

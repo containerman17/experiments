@@ -1097,21 +1097,18 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		// Incremental hash failed — fall back to full root.
+		// DIAGNOSTIC ONLY. ComputeFullStateRoot is O(total_state) and must NEVER be
+		// used as a fallback or workaround. The user explicitly requested this: full
+		// rehashing exists ONLY for diagnostic logging. If this fires, the incremental
+		// hash is broken and MUST be fixed. Do NOT re-enable the fallback. Ever.
 		fullRoot, fullErr := statetrie.ComputeFullStateRoot(rwTx, db)
-		if fullErr != nil || common.Hash(fullRoot) != expectedRoot {
-			log.Printf("executor: MISMATCH block %d: incremental=%x full=%x expected=%x fullErr=%v",
-				to, computedRoot, fullRoot, expectedRoot, fullErr)
-			statetrie.CompareLeafEncoding(rwTx, db, overlay)
-			rwTx.Abort()
-			runtime.UnlockOSThread()
-			stateDB.Overlay = nil
-			return fmt.Errorf("state root mismatch at block %d", to)
-		}
 		statetrie.CompareLeafEncoding(rwTx, db, overlay)
-		log.Printf("executor: incremental wrong at block %d, used full root (incremental=%x)",
-			to, computedRoot[:8])
-		computedRoot = fullRoot
+		rwTx.Abort()
+		runtime.UnlockOSThread()
+		stateDB.Overlay = nil
+		log.Fatalf("executor: STATE ROOT MISMATCH block %d — incremental=%x full=%x expected=%x fullErr=%v\n"+
+			"The incremental hash MUST be fixed. Do NOT use full root as fallback.",
+			to, computedRoot, fullRoot, expectedRoot, fullErr)
 	}
 
 	if err := store.SetHeadBlock(rwTx, db, to); err != nil {

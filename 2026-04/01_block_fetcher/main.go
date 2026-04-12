@@ -245,6 +245,7 @@ func main() {
 		execBatchSize  = flag.Uint64("exec-batch-size", 50000, "number of blocks per executor batch (verified every batch)")
 		fetchWorkers   = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
 		execOnly       = flag.Bool("exec-only", false, "run executor only, no fetcher/writer/network")
+		execStop       = flag.Uint64("exec-stop", 0, "stop executor after reaching this block number (0 = no limit)")
 		rpcAddr        = flag.String("rpc-addr", ":9670", "JSON-RPC server listen address")
 	)
 	flag.Parse()
@@ -283,6 +284,10 @@ func main() {
 	}()
 
 	executorStopAt := make(chan uint64, 1)
+	if *execStop > 0 {
+		executorStopAt <- *execStop
+		log.Printf("executor: will stop at block %d", *execStop)
+	}
 	executorErrCh := make(chan error, 1)
 	go func() {
 		executorErrCh <- runExecutor(ctx, db, executorStopAt, *execBatchSize)

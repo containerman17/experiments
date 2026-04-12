@@ -2,8 +2,6 @@ package statetrie
 
 import (
 	"bytes"
-	"log"
-	"time"
 
 	"github.com/erigontech/mdbx-go/mdbx"
 
@@ -36,8 +34,6 @@ func ComputeIncrementalStateRoot(
 ) ([32]byte, error) {
 	changedStorage := overlay.ChangedStorageGrouped()
 	changedAccounts := overlay.ChangedAccountHashes()
-
-	t0 := time.Now()
 
 	// Step 1: Compute storage roots for accounts with changed storage.
 	storageRoots := make(map[[32]byte][32]byte)
@@ -76,9 +72,6 @@ func ComputeIncrementalStateRoot(
 		storageRoots[addrHash] = root
 	}
 
-	t1 := time.Now()
-	log.Printf("incremental: step1 storage roots took %s (accounts=%d)", t1.Sub(t0), len(changedStorage))
-
 	// Step 2: Fix HashedAccountState entries with correct storage roots.
 	for _, addrHash := range changedAccounts {
 		var correctRoot [32]byte
@@ -113,9 +106,6 @@ func ComputeIncrementalStateRoot(
 		}
 	}
 
-	t2 := time.Now()
-	log.Printf("incremental: step2 fix storage roots took %s", t2.Sub(t1))
-
 	// Step 3: Build account PrefixSet from all changed accounts.
 	psb := intTrie.NewPrefixSetBuilder()
 	for _, ha := range changedAccounts {
@@ -132,8 +122,6 @@ func ComputeIncrementalStateRoot(
 	if err != nil {
 		return [32]byte{}, err
 	}
-	t3 := time.Now()
-	log.Printf("incremental: step3+4 account trie took %s (changed=%d)", t3.Sub(t2), len(changedAccounts))
 
 	// Persist account trie branch node updates. Skip unchanged.
 	written := 0
@@ -152,7 +140,6 @@ func ComputeIncrementalStateRoot(
 		written++
 	}
 
-	log.Printf("incremental: step5 persist account branch nodes took %s (total=%d written=%d)", time.Since(t3), len(updates), written)
 	return root, nil
 }
 
@@ -222,13 +209,8 @@ func computeTrieRoot(
 	// the walker would have visited (under a changed prefix) but aren't in
 	// the update set. Without this, old branch nodes accumulate when the trie
 	// restructures, and the walker trusts their stale cached hashes.
-	cleanStart := time.Now()
-	staleDeleted, err := deleteStaleNodes(tx, trieDBI, prefix, prefixSet, updates)
-	if err != nil {
+	if _, err := deleteStaleNodes(tx, trieDBI, prefix, prefixSet, updates); err != nil {
 		return [32]byte{}, nil, err
-	}
-	if staleDeleted > 0 || time.Since(cleanStart) > 50*time.Millisecond {
-		log.Printf("incremental: cleanup took %s (scanned, deleted=%d)", time.Since(cleanStart), staleDeleted)
 	}
 
 	return hb.Root(), updates, nil

@@ -871,6 +871,45 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchS
 	genesisRoot := cChainGenesis.ToBlock().Root()
 	log.Printf("executor: genesis root=%x", genesisRoot)
 
+	// One-time migration: wipe StorageTrie + AccountTrie branch nodes built by
+	// old code with degraded TreeMask values. Gated by metadata flag so it runs
+	// once. After this, the incremental hasher rebuilds correct branch nodes.
+	{
+		rtx, _ := db.BeginRO()
+		_, migErr := rtx.Get(db.Metadata, []byte("trie_v2"))
+		rtx.Abort()
+		if migErr != nil {
+			log.Printf("executor: one-time trie migration — clearing StorageTrie + AccountTrie")
+			runtime.LockOSThread()
+			wtx, err := db.BeginRW()
+			if err != nil {
+				runtime.UnlockOSThread()
+				return fmt.Errorf("begin RW for trie migration: %w", err)
+			}
+			if err := wtx.Drop(db.StorageTrie, false); err != nil {
+				wtx.Abort()
+				runtime.UnlockOSThread()
+				return fmt.Errorf("drop StorageTrie: %w", err)
+			}
+			if err := wtx.Drop(db.AccountTrie, false); err != nil {
+				wtx.Abort()
+				runtime.UnlockOSThread()
+				return fmt.Errorf("drop AccountTrie: %w", err)
+			}
+			if err := wtx.Put(db.Metadata, []byte("trie_v2"), []byte("1"), 0); err != nil {
+				wtx.Abort()
+				runtime.UnlockOSThread()
+				return fmt.Errorf("set trie_v2 flag: %w", err)
+			}
+			if _, err := wtx.Commit(); err != nil {
+				runtime.UnlockOSThread()
+				return fmt.Errorf("commit trie migration: %w", err)
+			}
+			runtime.UnlockOSThread()
+			log.Printf("executor: trie migration complete")
+		}
+	}
+
 	// Set up snow.Context for atomic transactions.
 	avaxAssetID, err := ids.FromString(MainnetAVAXAssetID)
 	if err != nil {
@@ -1053,24 +1092,18 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		// Incremental hash failed — fall back to full state root computation.
+		// Incremental hash failed — fall back to full root, log the difference for debugging.
 		fullRoot, fullErr := statetrie.ComputeFullStateRoot(rwTx, db)
-		if fullErr != nil {
-			log.Printf("executor: incremental AND full root failed at block %d: incremental=%x full_err=%v", to, computedRoot, fullErr)
+		if fullErr != nil || common.Hash(fullRoot) != expectedRoot {
+			log.Printf("executor: MISMATCH block %d: incremental=%x full=%x expected=%x fullErr=%v",
+				to, computedRoot, fullRoot, expectedRoot, fullErr)
 			rwTx.Abort()
 			runtime.UnlockOSThread()
 			stateDB.Overlay = nil
-			return fmt.Errorf("state root computation failed at block %d", to)
+			return fmt.Errorf("state root mismatch at block %d", to)
 		}
-		if common.Hash(fullRoot) != expectedRoot {
-			log.Printf("executor: MISMATCH block %d: incremental=%x full=%x expected=%x", to, computedRoot, fullRoot, expectedRoot)
-			rwTx.Abort()
-			runtime.UnlockOSThread()
-			stateDB.Overlay = nil
-			return fmt.Errorf("state root mismatch at block %d: computed %x, expected %x", to, computedRoot, expectedRoot)
-		}
-		log.Printf("executor: incremental hash wrong at block %d (incremental=%x), used full root=%x",
-			to, computedRoot, fullRoot)
+		log.Printf("executor: incremental wrong at block %d, used full root (incremental=%x)",
+			to, computedRoot[:8])
 		computedRoot = fullRoot
 	}
 

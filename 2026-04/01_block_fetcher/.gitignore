@@ -12,3 +12,7 @@ debug_root
 debug_trie
 verify_history
 migrate_pebble
+lightnode_test
+*_test
+blockcontainerids
+debug_hash

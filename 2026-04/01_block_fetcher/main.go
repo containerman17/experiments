@@ -1143,7 +1143,20 @@ func executeBlock(
 
 	ccustomtypes.SetHeaderExtra(header, &ccustomtypes.HeaderExtra{})
 	blockCtx := executorBuildBlockContext(header, chainCfg, func(n uint64) common.Hash {
-		return common.Hash{}
+		roTx2, err := db.BeginRO()
+		if err != nil {
+			return common.Hash{}
+		}
+		defer roTx2.Abort()
+		raw, err := store.GetBlockByNumber(roTx2, db, n)
+		if err != nil {
+			return common.Hash{}
+		}
+		blk, err := executorParseEthBlock(raw)
+		if err != nil {
+			return common.Hash{}
+		}
+		return blk.Hash()
 	})
 
 	gp := new(corethcore.GasPool).AddGas(header.GasLimit)

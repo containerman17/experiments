@@ -1,5 +1,25 @@
 # Changelog
 
+## Batch-size sweep and `GOGC=400` profiling (2026-04-13)
+
+I stopped the live sync, backed up `data/mainnet-mdbx`, and ran an `exec-only` batch-size sweep on the
+same `~6.1M` block region. Smaller batches lost badly: measured averages were about `1.75 blk/s`
+for `1`, `18.5` for `100`, `43.1` for `500`, `46.7` for `1000`, `58.9` for `2000`, `69.2` for
+`5000`, and `128.3` for `10000`, so reducing batch size is not the fix.
+
+Timed CPU profiles on the long post-block phase show that the first large bucket after block
+execution is not incremental trie hashing itself. The hot stack is `BatchOverlay.FlushStateToTx`,
+roaring bitmap history/log index maintenance (`UpdateHistoryIndex`, `updateLogIndex`,
+`UpdateTopicLogIndex`, `UpdateAddressLogIndex`), MDBX `Get`/`Put` cgo calls, and GC/allocation
+overhead.
+
+I then tested `GOGC=400` on adjacent `10000`-block batches in the same region. Those batches
+verified at `168.4`, `176.4`, and `149.1 blk/s`, versus recent default-`GOGC` `10000` samples of
+`90.2`, `112.0`, and `124.3`, and the matching post-block profile showed GC pressure drop
+materially (`runtime.gcDrain` down from about `27.7%` cum to about `16.1%`, `runtime.scanobject`
+from about `26.6%` to about `15.3%`). Current conclusion: the next real code target is state flush
+and roaring index churn, while `GOGC=400` is a real operational win worth using immediately.
+
 ## Storage full-scan verification removed from default hot path (2026-04-13)
 
 `ComputeIncrementalStateRoot()` was still calling `computeFullStorageRoot()` for every changed

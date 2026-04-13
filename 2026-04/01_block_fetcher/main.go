@@ -1045,6 +1045,7 @@ func executeBatch(
 	overlay := statetrie.NewBatchOverlay()
 	stateDB.Overlay = overlay
 	chainCtx := newExecutorChainContext(db)
+	batchTxCount := 0
 
 	// Open a shared RO transaction for all reads during the batch.
 	// The overlay handles in-batch writes; MDBX stays read-only.
@@ -1104,6 +1105,7 @@ func executeBatch(
 			stateDB.Overlay = nil
 			return fmt.Errorf("block %d: %w", blockNum, err)
 		}
+		batchTxCount += stats.txCount
 		blockElapsed := time.Since(blockStart)
 		kickWatchdog()
 		if slowThreshold > 0 && blockElapsed >= slowThreshold {
@@ -1245,8 +1247,9 @@ func executeBatch(
 
 	totalElapsed := execElapsed + hashElapsed + commitElapsed
 	blocksPerSec := float64(to-from+1) / totalElapsed.Seconds()
-	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s rate=%.1f blk/s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond), blocksPerSec)
-	log.Printf("executor: batch-rate %d-%d blocks_per_sec=%.1f", from, to, blocksPerSec)
+	txsPerSec := float64(batchTxCount) / totalElapsed.Seconds()
+	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s txs=%d rate=%.1f blk/s %.1f tx/s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond), batchTxCount, blocksPerSec, txsPerSec)
+	log.Printf("executor: batch-rate %d-%d blocks_per_sec=%.1f tx_count=%d txs_per_sec=%.1f", from, to, blocksPerSec, batchTxCount, txsPerSec)
 	if os.Getenv("TRACE_EXEC_HEADER_CACHE") != "" {
 		log.Printf("executor: header-cache batch %d-%d calls=%d cacheHits=%d dbHits=%d misses=%d",
 			from, to,

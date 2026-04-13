@@ -1,5 +1,12 @@
 # Changelog
 
+## Executor batch logs now include `txs` and `tx/s` (2026-04-13)
+
+The executor batch summary was only reporting `blk/s`, which is too misleading on Avalanche once
+block fullness changes a lot across ranges. Batch logs now also include total batch transaction
+count and throughput in `tx/s`, sourced from the existing per-block `stats.txCount` accumulator in
+`executeBatch()`. This is a visibility change only; it does not affect execution or hashing logic.
+
 ## Batch-size sweep and `GOGC=400` profiling (2026-04-13)
 
 I stopped the live sync, backed up `data/mainnet-mdbx`, and ran an `exec-only` batch-size sweep on the

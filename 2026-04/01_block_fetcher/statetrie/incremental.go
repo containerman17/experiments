@@ -291,6 +291,26 @@ func ComputeIncrementalStateRoot(
 		stats.AccountTrieWrites++
 	}
 
+	if os.Getenv("TRACE_ACCOUNT_ROOT") != "" {
+		fullAccountRoot, err := computeFullAccountRoot(tx, db)
+		if err != nil {
+			return [32]byte{}, nil, err
+		}
+		if root != fullAccountRoot {
+			log.Printf("  ACCOUNT INCREMENTAL BUG: incremental=%x full=%x changedAccounts=%d storageRoots=%d",
+				root[:8], fullAccountRoot[:8], len(changedAccounts), len(storageRoots))
+			limit := len(changedAccounts)
+			if limit > 25 {
+				limit = 25
+			}
+			for i := 0; i < limit; i++ {
+				ha := changedAccounts[i]
+				_, storageChanged := storageRoots[ha]
+				log.Printf("    changedAccount[%d]=%x storageChanged=%v", i, ha, storageChanged)
+			}
+		}
+	}
+
 	return root, stats, nil
 }
 
@@ -873,6 +893,34 @@ func ComputeFullStateRoot(tx *mdbx.Txn, db *store.DB) ([32]byte, error) {
 				copy(valCopy[72:104], sr[:])
 			}
 		}
+
+		leafSource := NewAccountLeafSource(&singleLeafSource{key: k[:32], val: valCopy})
+		lk, lv, _ := leafSource.Next()
+		if lk != nil {
+			acctHB.AddLeaf(intTrie.FromHex(lk), lv)
+		}
+
+		k, v, e = acctCursor.Get(nil, nil, mdbx.Next)
+	}
+
+	return acctHB.Root(), nil
+}
+
+// computeFullAccountRoot computes the account trie root directly from the
+// current HashedAccountState contents in this transaction.
+// Any storage-root patching for changed accounts must already be applied.
+func computeFullAccountRoot(tx *mdbx.Txn, db *store.DB) ([32]byte, error) {
+	acctCursor, err := tx.OpenCursor(db.HashedAccountState)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	defer acctCursor.Close()
+
+	acctHB := intTrie.NewHashBuilder()
+	k, v, e := acctCursor.Get(nil, nil, mdbx.First)
+	for e == nil && len(k) >= 32 {
+		valCopy := make([]byte, len(v))
+		copy(valCopy, v)
 
 		leafSource := NewAccountLeafSource(&singleLeafSource{key: k[:32], val: valCopy})
 		lk, lv, _ := leafSource.Next()

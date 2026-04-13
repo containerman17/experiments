@@ -27,6 +27,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/genesis"
+	corethconsensus "github.com/ava-labs/avalanchego/graft/coreth/consensus"
+	"github.com/ava-labs/avalanchego/graft/coreth/consensus/dummy"
 	"github.com/ava-labs/avalanchego/upgrade"
 	corethcore "github.com/ava-labs/avalanchego/graft/coreth/core"
 	"github.com/ava-labs/avalanchego/graft/coreth/core/extstate"
@@ -58,6 +60,7 @@ import (
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/params"
 	"github.com/ava-labs/libevm/rlp"
+	"github.com/erigontech/mdbx-go/mdbx"
 	"github.com/holiman/uint256"
 
 	rpcpkg "block_fetcher/rpc"
@@ -1067,6 +1070,8 @@ func executeBatch(
 
 	// Capture old storage roots before flushing (overlay has dummy zeros for storage roots).
 	changedAccounts := overlay.ChangedAccountHashes()
+	changedStorage := overlay.ChangedStorageGrouped()
+	changedStoragePlain := overlay.ChangedStoragePlain()
 	oldStorageRoots := statetrie.ReadOldStorageRoots(roTx, db, changedAccounts)
 	roTx.Abort()
 
@@ -1097,12 +1102,47 @@ func executeBatch(
 	hashElapsed := time.Since(hashStart)
 
 	if common.Hash(computedRoot) != expectedRoot {
-		rwTx.Abort()
-		runtime.UnlockOSThread()
-		stateDB.Overlay = nil
-		log.Fatalf("executor: STATE ROOT MISMATCH block %d — incremental=%x expected=%x\n"+
-			"Incremental hashing failed. Full-state rehash is disabled by policy.",
-			to, computedRoot, expectedRoot)
+		allowCommitOnMismatch := os.Getenv("ALLOW_COMMIT_ON_MISMATCH") != ""
+		if os.Getenv("TRACE_FULL_STATE_ROOT") != "" {
+			fullRoot, fullErr := statetrie.ComputeFullStateRoot(rwTx, db)
+			if fullErr != nil {
+				log.Printf("executor: full-state debug root failed at block %d: %v", to, fullErr)
+			} else {
+				log.Printf("executor: full-state debug root block %d full=%x expected=%x match=%v",
+					to, fullRoot, expectedRoot, common.Hash(fullRoot) == expectedRoot)
+			}
+		}
+		if os.Getenv("TRACE_CHANGED_ACCOUNTS") != "" {
+			logChangedAccountDebug(rwTx, db, changedAccounts, changedStorage)
+		}
+		if os.Getenv("TRACE_CHANGED_STORAGE") != "" {
+			logChangedStorageDebug(changedStoragePlain)
+		}
+		if trieStats != nil {
+			log.Printf("executor: mismatch trie-stats batch %d-%d changedAccounts=%d changedStorageAccounts=%d changedStorageSlots=%d accountLeaves=%d accountBranches=%d accountStaleDeleted=%d accountTrieWrites=%d storageLeaves=%d storageBranches=%d storageStaleDeleted=%d storageTrieWrites=%d",
+				from, to,
+				trieStats.ChangedAccounts,
+				trieStats.ChangedStorageAccts,
+				trieStats.ChangedStorageSlots,
+				trieStats.AccountLeafElems,
+				trieStats.AccountBranchElems,
+				trieStats.AccountStaleDeleted,
+				trieStats.AccountTrieWrites,
+				trieStats.StorageLeafElems,
+				trieStats.StorageBranchElems,
+				trieStats.StorageStaleDeleted,
+				trieStats.StorageTrieWrites,
+			)
+		}
+		if !allowCommitOnMismatch {
+			rwTx.Abort()
+			runtime.UnlockOSThread()
+			stateDB.Overlay = nil
+			log.Fatalf("executor: STATE ROOT MISMATCH block %d — incremental=%x expected=%x\n"+
+				"Incremental hashing failed. Full-state rehash is disabled by policy.",
+				to, computedRoot, expectedRoot)
+		}
+		log.Printf("executor: DEBUG committing mismatched block %d because ALLOW_COMMIT_ON_MISMATCH is set", to)
 	}
 
 	if err := store.SetHeadBlock(rwTx, db, to); err != nil {
@@ -1143,6 +1183,118 @@ func executeBatch(
 	return nil
 }
 
+func logChangedAccountDebug(
+	tx *mdbx.Txn,
+	db *store.DB,
+	changedAccounts [][32]byte,
+	changedStorage map[[32]byte][][32]byte,
+) {
+	targets := make(map[[32]byte]bool, len(changedAccounts))
+	for _, ha := range changedAccounts {
+		targets[ha] = true
+	}
+
+	addrByHash := make(map[[32]byte][20]byte, len(changedAccounts))
+	cursor, err := tx.OpenCursor(db.AccountState)
+	if err == nil {
+		defer cursor.Close()
+		k, _, e := cursor.Get(nil, nil, mdbx.First)
+		for e == nil && len(addrByHash) < len(changedAccounts) {
+			if len(k) >= 20 {
+				var addr [20]byte
+				copy(addr[:], k[:20])
+				hash := crypto.Keccak256Hash(addr[:])
+				ha := [32]byte(hash)
+				if targets[ha] {
+					addrByHash[ha] = addr
+				}
+			}
+			k, _, e = cursor.Get(nil, nil, mdbx.Next)
+		}
+	}
+
+	for i, ha := range changedAccounts {
+		val, err := tx.Get(db.HashedAccountState, ha[:])
+		if err != nil {
+			log.Printf("executor: changed-account[%d] hash=%x missing err=%v", i, ha, err)
+			continue
+		}
+		acct := store.DecodeAccount(val)
+		addrLabel := "?"
+		if addr, ok := addrByHash[ha]; ok {
+			addrLabel = fmt.Sprintf("%x", addr)
+		}
+		slotHashes := changedStorage[ha]
+		log.Printf("executor: changed-account[%d] addr=%s hash=%x nonce=%d balance=%x codeHash=%x storageRoot=%x isMultiCoin=%v storageChanged=%v changedSlots=%d",
+			i,
+			addrLabel,
+			ha,
+			acct.Nonce,
+			acct.Balance,
+			acct.CodeHash[:8],
+			acct.StorageRoot[:8],
+			acct.IsMultiCoin,
+			len(slotHashes) > 0,
+			len(slotHashes),
+		)
+	}
+}
+
+func logChangedStorageDebug(changedStorage map[[20]byte]map[[32]byte][]byte) {
+	for addr, slots := range changedStorage {
+		log.Printf("executor: changed-storage addr=%x slots=%d", addr, len(slots))
+		count := 0
+		for slot, value := range slots {
+			if value == nil {
+				log.Printf("  slot=%x deleted=true", slot)
+			} else {
+				log.Printf("  slot=%x value=%x", slot, value)
+			}
+			count++
+			if count >= 32 {
+				break
+			}
+		}
+	}
+}
+
+type executorChainContext struct {
+	db     *store.DB
+	engine corethconsensus.Engine
+}
+
+func newExecutorChainContext(db *store.DB) *executorChainContext {
+	return &executorChainContext{
+		db:     db,
+		engine: dummy.NewCoinbaseFaker(),
+	}
+}
+
+func (c *executorChainContext) Engine() corethconsensus.Engine {
+	return c.engine
+}
+
+func (c *executorChainContext) GetHeader(hash common.Hash, number uint64) *ethtypes.Header {
+	roTx, err := c.db.BeginRO()
+	if err != nil {
+		return nil
+	}
+	defer roTx.Abort()
+
+	raw, err := store.GetBlockByNumber(roTx, c.db, number)
+	if err != nil {
+		return nil
+	}
+	block, err := executorParseEthBlock(raw)
+	if err != nil {
+		return nil
+	}
+	if block.Hash() != hash {
+		return nil
+	}
+	return block.Header()
+}
+
 // executeBlock processes a single block: EVM execution + flat state writes + changesets.
 // No trie hash computation — that's done at batch boundaries.
 func executeBlock(
@@ -1172,7 +1324,10 @@ func executeBlock(
 	header := ethBlock.Header()
 
 	// Open state from parent — we trust the previous block's header root.
-	var parentRoot common.Hash
+	var (
+		parentRoot common.Hash
+		parentTime uint64
+	)
 	if blockNum == 1 {
 		parentRoot = common.Hash(common.HexToHash("d65eb1b8604a7aa497d41cd6372663785a5f809a17bd192edb86658ef24e29cc"))
 	} else {
@@ -1191,6 +1346,7 @@ func executeBlock(
 			return fmt.Errorf("parse parent block: %w", err)
 		}
 		parentRoot = parentBlock.Header().Root
+		parentTime = parentBlock.Header().Time
 	}
 
 	sdb, err := state.New(parentRoot, stateDB, nil)
@@ -1198,80 +1354,39 @@ func executeBlock(
 		return fmt.Errorf("open state at root %x: %w", parentRoot, err)
 	}
 
-	ccustomtypes.SetHeaderExtra(header, &ccustomtypes.HeaderExtra{})
-	blockCtx := executorBuildBlockContext(header, chainCfg, func(n uint64) common.Hash {
-		roTx2, err := db.BeginRO()
-		if err != nil {
-			return common.Hash{}
-		}
-		defer roTx2.Abort()
-		raw, err := store.GetBlockByNumber(roTx2, db, n)
-		if err != nil {
-			return common.Hash{}
-		}
-		blk, err := executorParseEthBlock(raw)
-		if err != nil {
-			return common.Hash{}
-		}
-		return blk.Hash()
-	})
-
-	gp := new(corethcore.GasPool).AddGas(header.GasLimit)
-	signer := ethtypes.MakeSigner(chainCfg, header.Number, header.Time)
-	baseFee := header.BaseFee
-	if baseFee == nil {
-		baseFee = new(big.Int)
+	if err := corethcore.ApplyUpgrades(chainCfg, &parentTime, corethcore.NewBlockContext(header.Number, header.Time), sdb); err != nil {
+		return fmt.Errorf("apply upgrades: %w", err)
 	}
 
+	chainCtx := newExecutorChainContext(db)
+	blockCtx := corethcore.NewEVMBlockContext(header, chainCtx, &header.Coinbase)
+	gp := new(corethcore.GasPool).AddGas(header.GasLimit)
 	var blockReceipts []store.TxReceipt
-	cumulativeGas := uint64(0)
+	usedGas := uint64(0)
+
+	if beaconRoot := ethBlock.BeaconRoot(); beaconRoot != nil {
+		vmenv := vm.NewEVM(blockCtx, vm.TxContext{}, sdb, chainCfg, vm.Config{})
+		corethcore.ProcessBeaconBlockRoot(*beaconRoot, vmenv, sdb)
+	}
 
 	for txIndex, tx := range ethBlock.Transactions() {
-		msg, err := corethcore.TransactionToMessage(tx, signer, baseFee)
-		if err != nil {
-			return fmt.Errorf("tx %d message: %w", txIndex, err)
-		}
-
 		sdb.SetTxContext(tx.Hash(), txIndex)
-
-		rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
-		sdb.Prepare(rules, msg.From, header.Coinbase, msg.To,
-			vm.ActivePrecompiles(rules), tx.AccessList())
-
-		evm := vm.NewEVM(blockCtx, corethcore.NewEVMTxContext(msg), sdb, chainCfg, vm.Config{})
-		result, err := corethcore.ApplyMessage(evm, msg, gp)
+		receipt, err := corethcore.ApplyTransaction(chainCfg, chainCtx, blockCtx, gp, sdb, header, tx, &usedGas, vm.Config{})
 		if err != nil {
 			return fmt.Errorf("tx %d apply: %w", txIndex, err)
 		}
-		sdb.Finalise(true)
 
-		if result.Failed() {
-			log.Printf("  block %d tx %d reverted: %v", blockNum, txIndex, result.Err)
+		storeReceipt := store.TxReceipt{
+			TxHash:          [32]byte(receipt.TxHash),
+			CumulativeGas:   receipt.CumulativeGasUsed,
+			GasUsed:         receipt.GasUsed,
+			TxType:          tx.Type(),
+			ContractAddress: [20]byte(receipt.ContractAddress),
 		}
-
-		// Build receipt from execution result.
-		cumulativeGas += result.UsedGas
-		receipt := store.TxReceipt{
-			TxHash:        [32]byte(tx.Hash()),
-			CumulativeGas: cumulativeGas,
-			GasUsed:       result.UsedGas,
-			TxType:        tx.Type(),
+		if receipt.Status == ethtypes.ReceiptStatusSuccessful {
+			storeReceipt.Status = 1
 		}
-		if result.Failed() {
-			receipt.Status = 0
-		} else {
-			receipt.Status = 1
-		}
-
-		// Contract creation address.
-		if tx.To() == nil && !result.Failed() {
-			contractAddr := crypto.CreateAddress(msg.From, tx.Nonce())
-			receipt.ContractAddress = [20]byte(contractAddr)
-		}
-
-		// Capture logs.
-		txLogs := sdb.GetLogs(tx.Hash(), blockNum, common.Hash{})
-		for _, l := range txLogs {
+		for _, l := range receipt.Logs {
 			entry := store.LogEntry{
 				Address: [20]byte(l.Address),
 				Data:    l.Data,
@@ -1279,10 +1394,10 @@ func executeBlock(
 			for _, t := range l.Topics {
 				entry.Topics = append(entry.Topics, [32]byte(t))
 			}
-			receipt.Logs = append(receipt.Logs, entry)
+			storeReceipt.Logs = append(storeReceipt.Logs, entry)
 		}
 
-		blockReceipts = append(blockReceipts, receipt)
+		blockReceipts = append(blockReceipts, storeReceipt)
 
 		// Record tx hash → (blockNum, txIndex).
 		if stateDB != nil && stateDB.Overlay != nil {
@@ -1312,6 +1427,11 @@ func executeBlock(
 
 	// Finalise and commit — writes flat state to overlay.
 	sdb.Finalise(true)
+	if os.Getenv("TRACE_PRECOMMIT_ROOT") != "" {
+		preCommitRoot := sdb.IntermediateRoot(true)
+		log.Printf("executor: pre-commit root block %d root=%x expected=%x match=%v",
+			blockNum, preCommitRoot, ethBlock.Header().Root, preCommitRoot == ethBlock.Header().Root)
+	}
 	if _, err := sdb.Commit(blockNum, true); err != nil {
 		return fmt.Errorf("commit state: %w", err)
 	}
@@ -1449,40 +1569,6 @@ func executorParseEthBlock(raw []byte) (*ethtypes.Block, error) {
 	return ethBlock, nil
 }
 
-// executorBuildBlockContext constructs the vm.BlockContext needed for EVM execution.
-func executorBuildBlockContext(header *ethtypes.Header, chainCfg *params.ChainConfig, getHash func(uint64) common.Hash) vm.BlockContext {
-	rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
-
-	blockDifficulty := new(big.Int)
-	if header.Difficulty != nil {
-		blockDifficulty.Set(header.Difficulty)
-	}
-	blockRandom := header.MixDigest
-	if rules.IsShanghai {
-		blockRandom.SetBytes(blockDifficulty.Bytes())
-		blockDifficulty = new(big.Int)
-	}
-
-	return vm.BlockContext{
-		CanTransfer: func(db vm.StateDB, addr common.Address, amount *uint256.Int) bool {
-			return db.GetBalance(addr).Cmp(amount) >= 0
-		},
-		Transfer: func(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
-			db.SubBalance(sender, amount)
-			db.AddBalance(recipient, amount)
-		},
-		GetHash:     getHash,
-		Coinbase:    header.Coinbase,
-		BlockNumber: new(big.Int).Set(header.Number),
-		Time:        header.Time,
-		Difficulty:  blockDifficulty,
-		Random:      &blockRandom,
-		GasLimit:    header.GasLimit,
-		BaseFee:     executorBaseFeeOrZero(header.BaseFee),
-		Header:      header,
-	}
-}
-
 // setAvalancheUpgrades sets the Avalanche network upgrade timestamps on the
 // chain config extras. The genesis JSON only has standard Ethereum forks;
 // Avalanche-specific upgrades must be set from the known upgrade schedule.
@@ -1506,13 +1592,6 @@ func setAvalancheUpgrades(c *params.ChainConfig, cfg upgrade.Config) {
 		cfg.ApricotPhase1Time.Unix(), cfg.ApricotPhase2Time.Unix(), cfg.ApricotPhase3Time.Unix(),
 		cfg.ApricotPhase5Time.Unix(), cfg.BanffTime.Unix(), cfg.CortinaTime.Unix(),
 		cfg.DurangoTime.Unix(), cfg.EtnaTime.Unix())
-}
-
-func executorBaseFeeOrZero(b *big.Int) *big.Int {
-	if b != nil {
-		return new(big.Int).Set(b)
-	}
-	return new(big.Int)
 }
 
 func verifyLatestBlocks(ctx context.Context, db *store.DB, nodeURI string, samples int) error {

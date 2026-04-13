@@ -1,5 +1,20 @@
 # Changelog
 
+## Block 3308764 fixed — handwritten execution drift (2026-04-13)
+
+The `3308764` clean-state failure was not a storage-trie write bug after all. The
+post-block flat state was wrong because our handwritten normal-tx execution loop in
+`executeBlock()` had drifted from coreth semantics: the same tx on `0xf70576...`
+was minting token `0x1132` locally instead of the archival result `0x1e45`, even
+though the simple supply counters matched.
+
+The fix is to stop hand-rolling `Prepare -> NewEVM -> ApplyMessage` and route normal
+transactions through coreth's own `ApplyTransaction` path on top of our
+`statetrie.Database`, plus run `ApplyUpgrades` before tx execution. Exact repro now
+passes on the same `3308763` snapshot: block `3308764` verifies the expected root
+`1e95f15e...`, and the local receipt/logs now match archival RPC for tx
+`0xe8e67b0a...` on `AVAX PUNKS`.
+
 ## Stale-node cleanup fix — packed-key scan bug (2026-04-12)
 
 The clean-state storage failure at block `138000` was not a new hashing rule bug; it was stale

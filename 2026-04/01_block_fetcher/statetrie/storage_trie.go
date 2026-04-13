@@ -3,6 +3,9 @@ package statetrie
 import (
 	"bytes"
 	"errors"
+	"log"
+	"os"
+	"strconv"
 
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -13,6 +16,23 @@ import (
 
 	"block_fetcher/store"
 )
+
+func shouldTraceStorageIO(addr common.Address, db *Database) bool {
+	traceAddr := os.Getenv("TRACE_STORAGE_IO_ADDR")
+	if traceAddr == "" || common.HexToAddress(traceAddr) != addr {
+		return false
+	}
+	if traceBlock := os.Getenv("TRACE_STORAGE_IO_BLOCK"); traceBlock != "" {
+		if db == nil {
+			return false
+		}
+		blockNum, err := strconv.ParseUint(traceBlock, 10, 64)
+		if err != nil || db.CurrentBlock != blockNum {
+			return false
+		}
+	}
+	return true
+}
 
 // StorageTrie implements state.Trie for per-account storage tries,
 // backed by flat MDBX storage.
@@ -100,6 +120,9 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 
 	// Check deleted.
 	if t.deletedSlots[slot] {
+		if shouldTraceStorageIO(t.address, t.stateDB) {
+			log.Printf("storage-io: read addr=%s slot=%x source=deleted-overlay value=%064x", t.address.Hex(), slot[:], [32]byte{})
+		}
 		return nil, nil
 	}
 
@@ -108,6 +131,11 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 	// because the caller (StateDB) expects the same format that was passed to
 	// UpdateStorage.
 	if val, ok := t.dirtySlots[slot]; ok {
+		if shouldTraceStorageIO(t.address, t.stateDB) {
+			var full [32]byte
+			copy(full[32-len(val):], val)
+			log.Printf("storage-io: read addr=%s slot=%x source=dirty-overlay value=%064x", t.address.Hex(), slot[:], full)
+		}
 		return val, nil
 	}
 
@@ -135,7 +163,13 @@ func (t *StorageTrie) GetStorage(addr common.Address, key []byte) ([]byte, error
 		return nil, err
 	}
 	if val == [32]byte{} {
+		if shouldTraceStorageIO(t.address, t.stateDB) {
+			log.Printf("storage-io: read addr=%s slot=%x source=flat value=%064x", t.address.Hex(), slot[:], val)
+		}
 		return nil, nil
+	}
+	if shouldTraceStorageIO(t.address, t.stateDB) {
+		log.Printf("storage-io: read addr=%s slot=%x source=flat value=%064x", t.address.Hex(), slot[:], val)
 	}
 
 	// Trim leading zeros to match what StateTrie.GetStorage returns.
@@ -159,12 +193,20 @@ func (t *StorageTrie) UpdateStorage(addr common.Address, key, value []byte) erro
 		// Treat empty value as deletion.
 		t.deletedSlots[slot] = true
 		delete(t.dirtySlots, slot)
+		if shouldTraceStorageIO(t.address, t.stateDB) {
+			log.Printf("storage-io: write addr=%s slot=%x op=delete value=%064x", t.address.Hex(), slot[:], [32]byte{})
+		}
 		return nil
 	}
 
 	v := make([]byte, len(value))
 	copy(v, value)
 	t.dirtySlots[slot] = v
+	if shouldTraceStorageIO(t.address, t.stateDB) {
+		var full [32]byte
+		copy(full[32-len(v):], v)
+		log.Printf("storage-io: write addr=%s slot=%x op=update value=%064x", t.address.Hex(), slot[:], full)
+	}
 	return nil
 }
 
@@ -175,6 +217,9 @@ func (t *StorageTrie) DeleteStorage(addr common.Address, key []byte) error {
 
 	delete(t.dirtySlots, slot)
 	t.deletedSlots[slot] = true
+	if shouldTraceStorageIO(t.address, t.stateDB) {
+		log.Printf("storage-io: write addr=%s slot=%x op=delete value=%064x", t.address.Hex(), slot[:], [32]byte{})
+	}
 	return nil
 }
 

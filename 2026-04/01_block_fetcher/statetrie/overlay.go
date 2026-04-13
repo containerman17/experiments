@@ -324,6 +324,38 @@ func (o *BatchOverlay) ChangedStorageGrouped() map[[32]byte][][32]byte {
 	return result
 }
 
+// ChangedStoragePlain returns changed raw storage slots grouped by plain address.
+// Written values are 32-byte full words; deleted slots return nil.
+func (o *BatchOverlay) ChangedStoragePlain() map[[20]byte]map[[32]byte][]byte {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	result := make(map[[20]byte]map[[32]byte][]byte)
+	for sk, data := range o.storage {
+		var addr [20]byte
+		var slot [32]byte
+		copy(addr[:], sk[:20])
+		copy(slot[:], sk[20:])
+		if result[addr] == nil {
+			result[addr] = make(map[[32]byte][]byte)
+		}
+		val := make([]byte, len(data))
+		copy(val, data)
+		result[addr][slot] = val
+	}
+	for sk := range o.storageDeleted {
+		var addr [20]byte
+		var slot [32]byte
+		copy(addr[:], sk[:20])
+		copy(slot[:], sk[20:])
+		if result[addr] == nil {
+			result[addr] = make(map[[32]byte][]byte)
+		}
+		result[addr][slot] = nil
+	}
+	return result
+}
+
 // FlushStateToTx writes all state (accounts, storage, hashed state, code, changesets)
 // to the given RW transaction. Does NOT set head block or commit.
 func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {

@@ -4,13 +4,13 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"net/http"
-	_ "net/http/pprof"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"math/big"
+	"net/http"
+	_ "net/http/pprof"
 	"net/netip"
 	"os"
 	"os/signal"
@@ -29,7 +29,6 @@ import (
 	"github.com/ava-labs/avalanchego/genesis"
 	corethconsensus "github.com/ava-labs/avalanchego/graft/coreth/consensus"
 	"github.com/ava-labs/avalanchego/graft/coreth/consensus/dummy"
-	"github.com/ava-labs/avalanchego/upgrade"
 	corethcore "github.com/ava-labs/avalanchego/graft/coreth/core"
 	"github.com/ava-labs/avalanchego/graft/coreth/core/extstate"
 	corethethclient "github.com/ava-labs/avalanchego/graft/coreth/ethclient"
@@ -46,6 +45,7 @@ import (
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
+	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/compression"
 	avaconstants "github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -223,33 +223,27 @@ type writerStats struct {
 }
 
 func main() {
-	// pprof server for profiling
-	go func() {
-		log.Println("pprof listening on :6060")
-		log.Println(http.ListenAndServe(":6060", nil))
-	}()
-
 	corethcore.RegisterExtras()
 	ccustomtypes.Register()
 	extstate.RegisterExtras()
 	cparams.RegisterExtras()
 
 	var (
-		nodeURI      = flag.String("node-uri", defaultNodeURI, "base AvalancheGo URI for local RPC discovery")
-		dbDir        = flag.String("db-dir", defaultDBDir, "MDBX database directory")
-		connectWait  = flag.Duration("connect-timeout", defaultConnectWait, "time to wait for a validator peer connection")
-		peerWarmup   = flag.Duration("peer-warmup", defaultPeerWarmup, "extra time to gather more connected peers before fetching")
-		requestWait  = flag.Duration("request-timeout", defaultRequestWait, "time to wait for each P2P response")
-		writerBuffer = flag.Int("writer-buffer", defaultWriterBuffer, "number of fetched containers to buffer before blocking")
-		batchSize    = flag.Int("batch-size", defaultBatchSize, "number of containers per MDBX batch")
-		expectedNet  = flag.Uint("expected-network-id", uint(defaultExpectedNetID), "expected Avalanche network ID")
-		subnetIDStr  = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
-		cleanState     = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
-		execBatchSize  = flag.Uint64("exec-batch-size", 50000, "number of blocks per executor batch (verified every batch)")
-		fetchWorkers   = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
-		execOnly       = flag.Bool("exec-only", false, "run executor only, no fetcher/writer/network")
-		execStop       = flag.Uint64("exec-stop", 0, "stop executor after reaching this block number (0 = no limit)")
-		rpcAddr        = flag.String("rpc-addr", ":9670", "JSON-RPC server listen address")
+		nodeURI       = flag.String("node-uri", defaultNodeURI, "base AvalancheGo URI for local RPC discovery")
+		dbDir         = flag.String("db-dir", defaultDBDir, "MDBX database directory")
+		connectWait   = flag.Duration("connect-timeout", defaultConnectWait, "time to wait for a validator peer connection")
+		peerWarmup    = flag.Duration("peer-warmup", defaultPeerWarmup, "extra time to gather more connected peers before fetching")
+		requestWait   = flag.Duration("request-timeout", defaultRequestWait, "time to wait for each P2P response")
+		writerBuffer  = flag.Int("writer-buffer", defaultWriterBuffer, "number of fetched containers to buffer before blocking")
+		batchSize     = flag.Int("batch-size", defaultBatchSize, "number of containers per MDBX batch")
+		expectedNet   = flag.Uint("expected-network-id", uint(defaultExpectedNetID), "expected Avalanche network ID")
+		subnetIDStr   = flag.String("subnet-id", defaultPrimarySubnet, "subnet ID for platform.getCurrentValidators")
+		cleanState    = flag.Bool("clean-state", false, "clear all state tables (keep blocks) and re-execute from genesis")
+		execBatchSize = flag.Uint64("exec-batch-size", 50000, "number of blocks per executor batch (verified every batch)")
+		fetchWorkers  = flag.Int("fetch-workers", 32, "number of parallel fetch workers")
+		execOnly      = flag.Bool("exec-only", false, "run executor only, no fetcher/writer/network")
+		execStop      = flag.Uint64("exec-stop", 0, "stop executor after reaching this block number (0 = no limit)")
+		rpcAddr       = flag.String("rpc-addr", ":9670", "JSON-RPC server listen address")
 	)
 	flag.Parse()
 
@@ -268,6 +262,12 @@ func main() {
 		log.Fatalf("open MDBX: %v", err)
 	}
 	defer db.Close()
+
+	// Only expose pprof after the DB lock is held.
+	go func() {
+		log.Println("pprof listening on :6060")
+		log.Println(http.ListenAndServe(":6060", nil))
+	}()
 
 	if *cleanState {
 		log.Printf("clearing state tables (keeping blocks)...")
@@ -780,7 +780,6 @@ func runWriter(
 	defer ticker.Stop()
 
 	var pending []containerRecord
-	stored := uint64(0)
 
 	flush := func() error {
 		if len(pending) == 0 {
@@ -810,10 +809,6 @@ func runWriter(
 		}
 		if _, err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit writer txn: %w", err)
-		}
-		stored += uint64(len(pending))
-		if stored%1000 < uint64(len(pending)) {
-			log.Printf("writer stored=%d", stored)
 		}
 		pending = pending[:0]
 		return nil
@@ -1251,6 +1246,7 @@ func executeBatch(
 	totalElapsed := execElapsed + hashElapsed + commitElapsed
 	blocksPerSec := float64(to-from+1) / totalElapsed.Seconds()
 	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s rate=%.1f blk/s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond), blocksPerSec)
+	log.Printf("executor: batch-rate %d-%d blocks_per_sec=%.1f", from, to, blocksPerSec)
 	if os.Getenv("TRACE_EXEC_HEADER_CACHE") != "" {
 		log.Printf("executor: header-cache batch %d-%d calls=%d cacheHits=%d dbHits=%d misses=%d",
 			from, to,

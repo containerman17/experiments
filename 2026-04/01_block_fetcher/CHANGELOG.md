@@ -1,5 +1,24 @@
 # Changelog
 
+## MDBX `SafeNoSync` enabled for live sync timing (2026-04-13)
+
+The executor and writer now open MDBX with `mdbx.SafeNoSync` in addition to `WriteMap`.
+This keeps batch commits atomic but relaxes crash durability: on a crash or power loss we may
+lose the most recent committed work, which is acceptable for this sync node, but we are not
+accepting partial visible writes. This change is being timed live on `data/mainnet-mdbx`
+after a controlled restart to see how much of the current `~20s` batch commit cost it removes.
+
+The measured effect on live `10k` batches is large on commit time and modest on throughput. Before
+the restart, representative batches were spending about `20-23s` in `commit`; after the restart,
+the next verified batches dropped to `2-3ms` commit time, with overall rate improving from roughly
+`137-162 blk/s` to roughly `158-180 blk/s` on similarly heavy ranges because `exec+hash` now
+dominates total time.
+
+This session also added an explicit process lock at `data/mainnet-mdbx/block_fetcher.lock` so a
+second `block_fetcher` fails before opening the DB, moved `pprof` startup until after that lock is
+held, removed the noisy `writer stored=...` line, and added `cmd/dbstats` for read-only per-table
+MDBX size/item inspection on a live database.
+
 ## Timeout follow-up — false watchdog kill, live rebuild resumed cleanly (2026-04-13)
 
 The `4060001-4070000` stop was a bad batch-timeout policy, not a new state-root divergence. A fixed `120s`

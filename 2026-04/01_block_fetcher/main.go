@@ -992,6 +992,49 @@ func runExecutor(ctx context.Context, db *store.DB, stopAt <-chan uint64, batchS
 	}
 }
 
+type executorBlockStats struct {
+	txCount        int
+	gasUsed        uint64
+	atomicExtBytes int
+}
+
+func getenvPositiveInt(name string) (int, bool) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return 0, false
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		log.Printf("executor: ignoring invalid %s=%q", name, raw)
+		return 0, false
+	}
+	return v, true
+}
+
+func batchWatchdogTimeout(blocks uint64) time.Duration {
+	perBlockMs := 30
+	if v, ok := getenvPositiveInt("EXEC_BATCH_TIMEOUT_MS_PER_BLOCK"); ok {
+		perBlockMs = v
+	}
+	minSec := 300
+	if v, ok := getenvPositiveInt("EXEC_BATCH_TIMEOUT_MIN_SEC"); ok {
+		minSec = v
+	}
+	timeout := time.Duration(blocks) * time.Duration(perBlockMs) * time.Millisecond
+	minTimeout := time.Duration(minSec) * time.Second
+	if timeout < minTimeout {
+		timeout = minTimeout
+	}
+	return timeout
+}
+
+func slowBlockThreshold() time.Duration {
+	if ms, ok := getenvPositiveInt("TRACE_SLOW_BLOCK_MS"); ok {
+		return time.Duration(ms) * time.Millisecond
+	}
+	return 0
+}
+
 // executeBatch processes blocks [from, to] inclusive.
 // All blocks execute with flat state writes only (no trie hashing).
 // Reads go through overlay→MDBX, writes go to overlay only.
@@ -1006,6 +1049,7 @@ func executeBatch(
 ) error {
 	overlay := statetrie.NewBatchOverlay()
 	stateDB.Overlay = overlay
+	chainCtx := newExecutorChainContext(db)
 
 	// Open a shared RO transaction for all reads during the batch.
 	// The overlay handles in-batch writes; MDBX stays read-only.
@@ -1021,22 +1065,60 @@ func executeBatch(
 		}
 	}()
 
-	// Hard timeout: scale with batch size (roughly 1s per 500 blocks, minimum 60s).
-	batchTimeout := time.Duration(to-from+1) * 5 * time.Millisecond
-	if batchTimeout < 120*time.Second {
-		batchTimeout = 120 * time.Second
+	// Progress watchdog: only kill the process if the batch stops making forward
+	// progress for an unusually long time.
+	batchTimeout := batchWatchdogTimeout(to - from + 1)
+	progressCh := make(chan struct{}, 1)
+	watchdogDone := make(chan struct{})
+	go func() {
+		timer := time.NewTimer(batchTimeout)
+		defer timer.Stop()
+		for {
+			select {
+			case <-progressCh:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(batchTimeout)
+			case <-watchdogDone:
+				return
+			case <-timer.C:
+				log.Fatalf("executor: FATAL batch %d-%d stalled for %v without progress — killing process", from, to, batchTimeout)
+			}
+		}
+	}()
+	defer close(watchdogDone)
+	kickWatchdog := func() {
+		select {
+		case progressCh <- struct{}{}:
+		default:
+		}
 	}
-	batchTimer := time.AfterFunc(batchTimeout, func() {
-		log.Fatalf("executor: FATAL batch %d-%d exceeded %v timeout — killing process", from, to, batchTimeout)
-	})
-	defer batchTimer.Stop()
+	kickWatchdog()
+	slowThreshold := slowBlockThreshold()
 
 	execStart := time.Now()
 	for blockNum := from; blockNum <= to; blockNum++ {
 		stateDB.CurrentBlock = blockNum
-		if err := executeBlock(db, stateDB, chainCfg, snowCtx, blockNum); err != nil {
+		blockStart := time.Now()
+		stats, err := executeBlock(db, stateDB, chainCfg, snowCtx, chainCtx, blockNum)
+		if err != nil {
 			stateDB.Overlay = nil
 			return fmt.Errorf("block %d: %w", blockNum, err)
+		}
+		blockElapsed := time.Since(blockStart)
+		kickWatchdog()
+		if slowThreshold > 0 && blockElapsed >= slowThreshold {
+			log.Printf("executor: slow block %d elapsed=%s txs=%d gasUsed=%d atomicExtBytes=%d",
+				blockNum,
+				blockElapsed.Truncate(time.Millisecond),
+				stats.txCount,
+				stats.gasUsed,
+				stats.atomicExtBytes,
+			)
 		}
 		if blockNum%1000 == 0 || blockNum == to {
 			log.Printf("executor: processed block %d", blockNum)
@@ -1074,6 +1156,7 @@ func executeBatch(
 	changedStoragePlain := overlay.ChangedStoragePlain()
 	oldStorageRoots := statetrie.ReadOldStorageRoots(roTx, db, changedAccounts)
 	roTx.Abort()
+	kickWatchdog()
 
 	// Flush + incremental hash + verify in one RW transaction.
 	hashStart := time.Now()
@@ -1091,6 +1174,7 @@ func executeBatch(
 		stateDB.Overlay = nil
 		return fmt.Errorf("flush state at block %d: %w", to, err)
 	}
+	kickWatchdog()
 
 	computedRoot, trieStats, err := statetrie.ComputeIncrementalStateRoot(rwTx, db, overlay, oldStorageRoots)
 	if err != nil {
@@ -1100,6 +1184,7 @@ func executeBatch(
 		return fmt.Errorf("incremental state root at block %d: %w", to, err)
 	}
 	hashElapsed := time.Since(hashStart)
+	kickWatchdog()
 
 	if common.Hash(computedRoot) != expectedRoot {
 		allowCommitOnMismatch := os.Getenv("ALLOW_COMMIT_ON_MISMATCH") != ""
@@ -1151,6 +1236,7 @@ func executeBatch(
 		stateDB.Overlay = nil
 		return fmt.Errorf("set head block %d: %w", to, err)
 	}
+	kickWatchdog()
 
 	commitStart := time.Now()
 	if _, err := rwTx.Commit(); err != nil {
@@ -1160,8 +1246,20 @@ func executeBatch(
 	}
 	commitElapsed := time.Since(commitStart)
 	runtime.UnlockOSThread()
+	kickWatchdog()
 
-	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond))
+	totalElapsed := execElapsed + hashElapsed + commitElapsed
+	blocksPerSec := float64(to-from+1) / totalElapsed.Seconds()
+	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s rate=%.1f blk/s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond), blocksPerSec)
+	if os.Getenv("TRACE_EXEC_HEADER_CACHE") != "" {
+		log.Printf("executor: header-cache batch %d-%d calls=%d cacheHits=%d dbHits=%d misses=%d",
+			from, to,
+			chainCtx.getHeaderCalls,
+			chainCtx.getHeaderCacheHits,
+			chainCtx.getHeaderDBHits,
+			chainCtx.getHeaderMisses,
+		)
+	}
 	if trieStats != nil {
 		log.Printf("executor: trie-stats batch %d-%d changedAccounts=%d changedStorageAccounts=%d changedStorageSlots=%d accountLeaves=%d accountBranches=%d accountStaleDeleted=%d accountTrieWrites=%d storageLeaves=%d storageBranches=%d storageStaleDeleted=%d storageTrieWrites=%d",
 			from, to,
@@ -1259,14 +1357,20 @@ func logChangedStorageDebug(changedStorage map[[20]byte]map[[32]byte][]byte) {
 }
 
 type executorChainContext struct {
-	db     *store.DB
-	engine corethconsensus.Engine
+	db                 *store.DB
+	engine             corethconsensus.Engine
+	headers            map[uint64]*ethtypes.Header
+	getHeaderCalls     uint64
+	getHeaderCacheHits uint64
+	getHeaderDBHits    uint64
+	getHeaderMisses    uint64
 }
 
 func newExecutorChainContext(db *store.DB) *executorChainContext {
 	return &executorChainContext{
-		db:     db,
-		engine: dummy.NewCoinbaseFaker(),
+		db:      db,
+		engine:  dummy.NewCoinbaseFaker(),
+		headers: make(map[uint64]*ethtypes.Header),
 	}
 }
 
@@ -1274,25 +1378,47 @@ func (c *executorChainContext) Engine() corethconsensus.Engine {
 	return c.engine
 }
 
+func (c *executorChainContext) rememberHeader(header *ethtypes.Header) {
+	if header == nil || header.Number == nil {
+		return
+	}
+	c.headers[header.Number.Uint64()] = header
+}
+
 func (c *executorChainContext) GetHeader(hash common.Hash, number uint64) *ethtypes.Header {
+	c.getHeaderCalls++
+	if header, ok := c.headers[number]; ok {
+		if header.Hash() == hash {
+			c.getHeaderCacheHits++
+			return header
+		}
+	}
+
 	roTx, err := c.db.BeginRO()
 	if err != nil {
+		c.getHeaderMisses++
 		return nil
 	}
 	defer roTx.Abort()
 
 	raw, err := store.GetBlockByNumber(roTx, c.db, number)
 	if err != nil {
+		c.getHeaderMisses++
 		return nil
 	}
 	block, err := executorParseEthBlock(raw)
 	if err != nil {
+		c.getHeaderMisses++
 		return nil
 	}
 	if block.Hash() != hash {
+		c.getHeaderMisses++
 		return nil
 	}
-	return block.Header()
+	header := block.Header()
+	c.rememberHeader(header)
+	c.getHeaderDBHits++
+	return header
 }
 
 // executeBlock processes a single block: EVM execution + flat state writes + changesets.
@@ -1302,26 +1428,32 @@ func executeBlock(
 	stateDB *statetrie.Database,
 	chainCfg *params.ChainConfig,
 	snowCtx *snow.Context,
+	chainCtx *executorChainContext,
 	blockNum uint64,
-) error {
+) (executorBlockStats, error) {
+	stats := executorBlockStats{}
+
 	roTx, err := db.BeginRO()
 	if err != nil {
-		return err
+		return stats, err
 	}
 	raw, err := store.GetBlockByNumber(roTx, db, blockNum)
 	if err != nil {
 		roTx.Abort()
-		return fmt.Errorf("get block: %w", err)
+		return stats, fmt.Errorf("get block: %w", err)
 	}
 	raw = append([]byte(nil), raw...)
 	roTx.Abort()
 
 	ethBlock, err := executorParseEthBlock(raw)
 	if err != nil {
-		return fmt.Errorf("parse block: %w", err)
+		return stats, fmt.Errorf("parse block: %w", err)
 	}
 
 	header := ethBlock.Header()
+	stats.txCount = len(ethBlock.Transactions())
+	stats.gasUsed = header.GasUsed
+	chainCtx.rememberHeader(header)
 
 	// Open state from parent — we trust the previous block's header root.
 	var (
@@ -1334,31 +1466,32 @@ func executeBlock(
 		// Read parent block's root.
 		proTx, err := db.BeginRO()
 		if err != nil {
-			return err
+			return stats, err
 		}
 		parentRaw, err := store.GetBlockByNumber(proTx, db, blockNum-1)
 		proTx.Abort()
 		if err != nil {
-			return fmt.Errorf("get parent block: %w", err)
+			return stats, fmt.Errorf("get parent block: %w", err)
 		}
 		parentBlock, err := executorParseEthBlock(parentRaw)
 		if err != nil {
-			return fmt.Errorf("parse parent block: %w", err)
+			return stats, fmt.Errorf("parse parent block: %w", err)
 		}
-		parentRoot = parentBlock.Header().Root
-		parentTime = parentBlock.Header().Time
+		parentHeader := parentBlock.Header()
+		chainCtx.rememberHeader(parentHeader)
+		parentRoot = parentHeader.Root
+		parentTime = parentHeader.Time
 	}
 
 	sdb, err := state.New(parentRoot, stateDB, nil)
 	if err != nil {
-		return fmt.Errorf("open state at root %x: %w", parentRoot, err)
+		return stats, fmt.Errorf("open state at root %x: %w", parentRoot, err)
 	}
 
 	if err := corethcore.ApplyUpgrades(chainCfg, &parentTime, corethcore.NewBlockContext(header.Number, header.Time), sdb); err != nil {
-		return fmt.Errorf("apply upgrades: %w", err)
+		return stats, fmt.Errorf("apply upgrades: %w", err)
 	}
 
-	chainCtx := newExecutorChainContext(db)
 	blockCtx := corethcore.NewEVMBlockContext(header, chainCtx, &header.Coinbase)
 	gp := new(corethcore.GasPool).AddGas(header.GasLimit)
 	var blockReceipts []store.TxReceipt
@@ -1373,7 +1506,7 @@ func executeBlock(
 		sdb.SetTxContext(tx.Hash(), txIndex)
 		receipt, err := corethcore.ApplyTransaction(chainCfg, chainCtx, blockCtx, gp, sdb, header, tx, &usedGas, vm.Config{})
 		if err != nil {
-			return fmt.Errorf("tx %d apply: %w", txIndex, err)
+			return stats, fmt.Errorf("tx %d apply: %w", txIndex, err)
 		}
 
 		storeReceipt := store.TxReceipt{
@@ -1407,6 +1540,7 @@ func executeBlock(
 
 	// Atomic transactions.
 	extData := ccustomtypes.BlockExtData(ethBlock)
+	stats.atomicExtBytes = len(extData)
 	if len(extData) > 0 {
 		rules := chainCfg.Rules(header.Number, cparams.IsMergeTODO, header.Time)
 		isAP5 := false
@@ -1415,12 +1549,12 @@ func executeBlock(
 		}
 		atomicTxs, err := atomic.ExtractAtomicTxs(extData, isAP5, atomic.Codec)
 		if err != nil {
-			return fmt.Errorf("extract atomic txs: %w", err)
+			return stats, fmt.Errorf("extract atomic txs: %w", err)
 		}
 		wrappedStateDB := extstate.New(sdb)
 		for i, tx := range atomicTxs {
 			if err := tx.UnsignedAtomicTx.EVMStateTransfer(snowCtx, wrappedStateDB); err != nil {
-				return fmt.Errorf("atomic tx %d state transfer: %w", i, err)
+				return stats, fmt.Errorf("atomic tx %d state transfer: %w", i, err)
 			}
 		}
 	}
@@ -1433,7 +1567,7 @@ func executeBlock(
 			blockNum, preCommitRoot, ethBlock.Header().Root, preCommitRoot == ethBlock.Header().Root)
 	}
 	if _, err := sdb.Commit(blockNum, true); err != nil {
-		return fmt.Errorf("commit state: %w", err)
+		return stats, fmt.Errorf("commit state: %w", err)
 	}
 
 	// Store receipts and block hash in overlay.
@@ -1446,10 +1580,10 @@ func executeBlock(
 
 	// Flush changeset.
 	if err := stateDB.FlushChangeset(blockNum); err != nil {
-		return fmt.Errorf("flush changeset: %w", err)
+		return stats, fmt.Errorf("flush changeset: %w", err)
 	}
 
-	return nil
+	return stats, nil
 }
 
 // loadGenesisFlat writes genesis alloc to flat MDBX state tables (plain + hashed).

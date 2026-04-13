@@ -1,5 +1,20 @@
 # Changelog
 
+## Timeout follow-up — false watchdog kill, live rebuild resumed cleanly (2026-04-13)
+
+The `4060001-4070000` stop was a bad batch-timeout policy, not a new state-root divergence. A fixed `120s`
+wall-clock timeout killed a healthy `10k` batch even though it was still making progress, so the executor now
+uses a progress watchdog instead, logs batch `blk/s`, and can emit slow-block diagnostics via env flags.
+
+After restarting from the committed head at `4060000`, the main DB immediately verified `4060001-4070000`,
+`4070001-4080000`, `4080001-4090000`, and `4090001-4100000` cleanly. On these batches the real bottleneck was
+hash time, not execution collapse: `4060001-4070000` spent `13.76s` in exec and `55.60s` in hash, while later
+batches were back in the `~18-27s` total range.
+
+I also instrumented `executorChainContext.GetHeader` because `BLOCKHASH`-driven MDBX lookups were a plausible
+cause of the earlier slowdown, but the next verified batches showed `calls=0`, so that was not the active
+problem in this range.
+
 ## Block 3308764 fix added — handwritten execution drift, broader replay still testing (2026-04-13)
 
 The `3308764` clean-state failure was not a storage-trie write bug after all. The

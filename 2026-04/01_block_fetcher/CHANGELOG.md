@@ -1,5 +1,19 @@
 # Changelog
 
+## Storage full-scan verification removed from default hot path (2026-04-13)
+
+`ComputeIncrementalStateRoot()` was still calling `computeFullStorageRoot()` for every changed
+storage account inside the live incremental path, which meant we were paying for a second
+storage-trie scan even after disabling the old full-state fallback. That verification is now
+debug-only behind `VERIFY_STORAGE_INCREMENTAL=1`; targeted tracing via `TRACE_STORAGE_ACCOUNT`
+still computes the full root for the traced account only.
+
+Follow-up timing on the same `~6.1M` region showed that this was not the main throughput killer:
+the next adjacent `10000`-block sample verified at `90.2 blk/s`, down from the previous
+`128.3 blk/s`, so the removed duplicate scan is still the right default behavior but not the
+optimization that explains the current slowdown by itself. A live CPU profile during the retest
+confirmed the code path is gone from the hot stack.
+
 ## MDBX `SafeNoSync` enabled for live sync timing (2026-04-13)
 
 The executor and writer now open MDBX with `mdbx.SafeNoSync` in addition to `WriteMap`.

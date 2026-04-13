@@ -101,23 +101,23 @@ var emptyRoot = [32]byte{
 }
 
 type trieComputeStats struct {
-	LeafElems        int
-	BranchElems      int
+	LeafElems         int
+	BranchElems       int
 	StaleNodesDeleted int
 }
 
 type IncrementalStats struct {
-	ChangedAccounts      int
-	ChangedStorageAccts  int
-	ChangedStorageSlots  int
-	StorageLeafElems     int
-	StorageBranchElems   int
-	StorageStaleDeleted  int
-	StorageTrieWrites    int
-	AccountLeafElems     int
-	AccountBranchElems   int
-	AccountStaleDeleted  int
-	AccountTrieWrites    int
+	ChangedAccounts     int
+	ChangedStorageAccts int
+	ChangedStorageSlots int
+	StorageLeafElems    int
+	StorageBranchElems  int
+	StorageStaleDeleted int
+	StorageTrieWrites   int
+	AccountLeafElems    int
+	AccountBranchElems  int
+	AccountStaleDeleted int
+	AccountTrieWrites   int
 }
 
 // ComputeIncrementalStateRoot computes the state root by incrementally hashing
@@ -138,6 +138,7 @@ func ComputeIncrementalStateRoot(
 	changedStorage := overlay.ChangedStorageGrouped()
 	changedAccounts := overlay.ChangedAccountHashes()
 	traceTarget, traceEnabled := parseTraceStorageAccount()
+	verifyStorageIncremental := os.Getenv("VERIFY_STORAGE_INCREMENTAL") != ""
 	stats := &IncrementalStats{
 		ChangedAccounts:     len(changedAccounts),
 		ChangedStorageAccts: len(changedStorage),
@@ -200,15 +201,16 @@ func ComputeIncrementalStateRoot(
 			stats.StorageTrieWrites++
 		}
 
-		// Verify against full scan.
-		fullRoot := computeFullStorageRoot(tx, db, addrHash)
-		if trace != nil {
-			trace.Report(root, fullRoot)
-		}
-		if root != fullRoot {
-			osr := oldStorageRoots[addrHash]
-			log.Printf("  STORAGE INCREMENTAL BUG acct %x: incremental=%x full=%x changedSlots=%d oldRoot=%x",
-				addrHash, root[:8], fullRoot[:8], len(slotHashes), osr[:8])
+		if trace != nil || verifyStorageIncremental {
+			fullRoot := computeFullStorageRoot(tx, db, addrHash)
+			if trace != nil {
+				trace.Report(root, fullRoot)
+			}
+			if verifyStorageIncremental && root != fullRoot {
+				osr := oldStorageRoots[addrHash]
+				log.Printf("  STORAGE INCREMENTAL BUG acct %x: incremental=%x full=%x changedSlots=%d oldRoot=%x",
+					addrHash, root[:8], fullRoot[:8], len(slotHashes), osr[:8])
+			}
 		}
 
 		storageRoots[addrHash] = root
@@ -767,7 +769,6 @@ func refTraceSubtree(leaves []tracedLeaf, prefix intTrie.Nibbles) []byte {
 	hb.Root()
 	return hb.StackTop()
 }
-
 
 // deleteStaleNodes scans stored branch nodes and deletes any that fall under
 // a changed prefix (walker would have visited) but aren't in the update set.

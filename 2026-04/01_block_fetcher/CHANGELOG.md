@@ -1,6 +1,6 @@
 # Changelog
 
-## Block 3308764 fixed — handwritten execution drift (2026-04-13)
+## Block 3308764 fix added — handwritten execution drift, broader replay still testing (2026-04-13)
 
 The `3308764` clean-state failure was not a storage-trie write bug after all. The
 post-block flat state was wrong because our handwritten normal-tx execution loop in
@@ -14,6 +14,13 @@ transactions through coreth's own `ApplyTransaction` path on top of our
 passes on the same `3308763` snapshot: block `3308764` verifies the expected root
 `1e95f15e...`, and the local receipt/logs now match archival RPC for tx
 `0xe8e67b0a...` on `AVAX PUNKS`.
+
+This was initially still under test at chain scale. The first meaningful live confirmation
+is now in: on `2026-04-13 02:01:22 UTC`, the clean-state replay on `data/mainnet-mdbx`
+verified batch `3300001-3310000` successfully and continued past `3311000`, which means
+it cleanly passed the old `3308764` failure zone on the main DB. That is strong evidence
+that switching normal tx execution back to coreth semantics helped and fixed the known
+execution divergence, even though broader end-to-end chain validation is still ongoing.
 
 ## Stale-node cleanup fix — packed-key scan bug (2026-04-12)
 

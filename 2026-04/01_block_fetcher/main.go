@@ -1156,7 +1156,7 @@ func executeBatch(
 	kickWatchdog()
 
 	// Flush + incremental hash + verify in one RW transaction.
-	hashStart := time.Now()
+	phaseStart := time.Now()
 	runtime.LockOSThread()
 	rwTx, err := db.BeginRW()
 	if err != nil {
@@ -1171,8 +1171,10 @@ func executeBatch(
 		stateDB.Overlay = nil
 		return fmt.Errorf("flush state at block %d: %w", to, err)
 	}
+	flushElapsed := time.Since(phaseStart)
 	kickWatchdog()
 
+	trieStart := time.Now()
 	computedRoot, trieStats, err := statetrie.ComputeIncrementalStateRoot(rwTx, db, overlay, oldStorageRoots)
 	if err != nil {
 		rwTx.Abort()
@@ -1180,7 +1182,8 @@ func executeBatch(
 		stateDB.Overlay = nil
 		return fmt.Errorf("incremental state root at block %d: %w", to, err)
 	}
-	hashElapsed := time.Since(hashStart)
+	trieElapsed := time.Since(trieStart)
+	hashElapsed := flushElapsed + trieElapsed
 	kickWatchdog()
 
 	if common.Hash(computedRoot) != expectedRoot {
@@ -1248,7 +1251,7 @@ func executeBatch(
 	totalElapsed := execElapsed + hashElapsed + commitElapsed
 	blocksPerSec := float64(to-from+1) / totalElapsed.Seconds()
 	txsPerSec := float64(batchTxCount) / totalElapsed.Seconds()
-	log.Printf("executor: verified batch %d-%d root=%x (exec=%s hash=%s commit=%s txs=%d rate=%.1f blk/s %.1f tx/s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), hashElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond), batchTxCount, blocksPerSec, txsPerSec)
+	log.Printf("executor: verified batch %d-%d root=%x (exec=%s flush=%s trie=%s commit=%s txs=%d rate=%.1f blk/s %.1f tx/s)", from, to, common.Hash(computedRoot), execElapsed.Truncate(time.Millisecond), flushElapsed.Truncate(time.Millisecond), trieElapsed.Truncate(time.Millisecond), commitElapsed.Truncate(time.Millisecond), batchTxCount, blocksPerSec, txsPerSec)
 	log.Printf("executor: batch-rate %d-%d blocks_per_sec=%.1f tx_count=%d txs_per_sec=%.1f", from, to, blocksPerSec, batchTxCount, txsPerSec)
 	if os.Getenv("TRACE_EXEC_HEADER_CACHE") != "" {
 		log.Printf("executor: header-cache batch %d-%d calls=%d cacheHits=%d dbHits=%d misses=%d",

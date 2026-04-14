@@ -86,6 +86,10 @@ func (s *AccountLeafSource) Next() ([]byte, []byte, error) {
 	return key, out, nil
 }
 
+func (s *AccountLeafSource) SeekTo(key []byte) error {
+	return s.inner.SeekTo(key)
+}
+
 // rlpPutUint64 encodes a uint64 as RLP into dst, returns bytes written.
 func rlpPutUint64(dst []byte, v uint64) int {
 	if v == 0 {
@@ -164,6 +168,10 @@ func (s *StorageLeafSource) Next() ([]byte, []byte, error) {
 		return key, val, err
 	}
 	return key, rlpEncodeBytesAlloc(val), nil
+}
+
+func (s *StorageLeafSource) SeekTo(key []byte) error {
+	return s.inner.SeekTo(key)
 }
 
 // rlpEncodeBytesAlloc encodes a byte string to RLP. Allocates minimally.

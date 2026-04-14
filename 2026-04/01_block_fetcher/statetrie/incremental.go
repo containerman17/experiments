@@ -950,6 +950,10 @@ func (s *singleLeafSource) Next() ([]byte, []byte, error) {
 	return s.key, s.val, nil
 }
 
+func (s *singleLeafSource) SeekTo(key []byte) error {
+	return nil
+}
+
 // computeFullStorageRoot scans ALL storage for an account and hashes from scratch.
 func computeFullStorageRoot(tx *mdbx.Txn, db *store.DB, addrHash [32]byte) [32]byte {
 	cursor, err := tx.OpenCursor(db.HashedStorageState)

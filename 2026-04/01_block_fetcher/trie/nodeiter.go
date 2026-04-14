@@ -15,16 +15,23 @@ type LeafSource interface {
 	// key is the raw bytes from the DB (e.g., 32-byte keccak hash for accounts,
 	// or the suffix after a prefix for storage).
 	Next() (key []byte, value []byte, err error)
+
+	// SeekTo positions the cursor at the first entry >= the given key.
+	// The next call to Next() will return that entry.
+	// key is raw bytes (not nibbles). If key is nil, this is a no-op.
+	SeekTo(key []byte) error
 }
 
 // MDBXLeafSource wraps an MDBX cursor as a LeafSource.
 // It iterates entries starting from prefix, stopping when entries
 // no longer match the prefix.
 type MDBXLeafSource struct {
-	cursor  *mdbx.Cursor
-	prefix  []byte
-	started bool
-	done    bool
+	cursor      *mdbx.Cursor
+	prefix      []byte
+	started     bool
+	done        bool
+	seekTarget  []byte
+	seekPending bool
 	// Pre-allocated key buffer — callers copy via FromHex before next call.
 	keyBuf [32]byte
 }
@@ -50,7 +57,10 @@ func (s *MDBXLeafSource) Next() ([]byte, []byte, error) {
 	var k, v []byte
 	var err error
 
-	if !s.started {
+	if s.seekPending {
+		s.seekPending = false
+		k, v, err = s.cursor.Get(s.seekTarget, nil, mdbx.SetRange)
+	} else if !s.started {
 		s.started = true
 		if s.prefix != nil {
 			k, v, err = s.cursor.Get(s.prefix, nil, mdbx.SetRange)
@@ -101,6 +111,27 @@ func (s *MDBXLeafSource) Next() ([]byte, []byte, error) {
 	copy(valCopy, v)
 
 	return keyCopy, valCopy, nil
+}
+
+// SeekTo positions the cursor so the next Next() returns the first entry >= key.
+// key is raw bytes (without the prefix — prefix is prepended internally).
+func (s *MDBXLeafSource) SeekTo(key []byte) error {
+	if s.done || key == nil {
+		return nil
+	}
+	if s.prefix != nil {
+		sk := make([]byte, len(s.prefix)+len(key))
+		copy(sk, s.prefix)
+		copy(sk[len(s.prefix):], key)
+		s.seekTarget = sk
+	} else {
+		sk := make([]byte, len(key))
+		copy(sk, key)
+		s.seekTarget = sk
+	}
+	s.seekPending = true
+	s.started = true
+	return nil
 }
 
 // TrieElement represents either a branch node or a leaf in the merged iteration.
@@ -199,9 +230,7 @@ func (n *NodeIter) Next() (*TrieElement, error) {
 			// skip all state leaves that fall under this subtree.
 			// They're covered by the branch's cached hash.
 			if elem.IsBranch && elem.Node == nil {
-				for n.stateElem != nil && n.stateElem.Key.HasPrefix(elem.Key) {
-					n.advanceState()
-				}
+				n.seekStatePast(elem.Key)
 			}
 
 			return elem, nil
@@ -254,6 +283,31 @@ func (n *NodeIter) advanceWalker() {
 		}
 
 	n.walkerElem = elem
+}
+
+// seekStatePast seeks the state cursor past all entries under the given nibble prefix.
+// This converts O(subtree_size) sequential Next() calls into one cursor seek.
+func (n *NodeIter) seekStatePast(prefix Nibbles) {
+	if n.stateDone {
+		return
+	}
+	// Compute the first raw key that is NOT under this prefix.
+	// Nibble prefix "03a5" → raw bytes [0x03, 0xa5]. The successor is found
+	// by incrementing the last nibble. For odd-length prefixes, we increment
+	// the high nibble of the last byte.
+	afterKey := prefix.SuccessorRawKey()
+	if afterKey == nil {
+		// Prefix covers entire keyspace — exhaust the source.
+		n.stateDone = true
+		n.stateElem = nil
+		return
+	}
+	if err := n.leafSource.SeekTo(afterKey); err != nil {
+		n.stateDone = true
+		n.stateElem = nil
+		return
+	}
+	n.advanceState()
 }
 
 // advanceState fetches the next leaf element from the leaf source.

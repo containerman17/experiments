@@ -1,5 +1,75 @@
 # Changelog
 
+## Compact client architecture designed (2026-04-14)
+
+Profiled the live executor at block ~8.8M. Key findings:
+- With fetcher running: 41% CPU spent on GC (fetcher's PutContainer allocated 1.1TB of garbage)
+- With `--exec-only`: GC dropped to 12%, but 80% of time is idle waiting on MDBX I/O
+- Bottleneck is 197GB DB on 64GB RAM — 77% page cache miss rate on random B-tree walks
+- Containers table alone is 125GB (64% of DB)
+
+Designed new `02_compact_client` architecture targeting < 2TB local disk (vs 14TB reference):
+- Block packs (ZSTD per-block, local during sync → S3 after)
+- Group 1: single MDBX env for execution + historical eth_call (~930GB)
+- Group 2: Bolt (pure Go) for parallel indexes (~330GB)
+- Separate processes for fetching, execution, and indexing
+
+See `../02_compact_client/ARCHITECTURE.md` for full design.
+
+## State root mismatch investigation and fix (2026-04-14)
+
+STATE ROOT MISMATCH at block 8675024. Investigation:
+
+1. Reproduced with original code (`d0a92fd`) — **not** caused by today's optimizations.
+2. Both incremental AND full-state-scan (`ComputeFullStateRoot`) produce the same wrong
+   root, meaning the trie code is correct but the flat state data was corrupted.
+3. `TRACE_PRECOMMIT_ROOT` returns zero — expected, our trie is dummy during execution.
+4. **Binary search**: batch=100 → fails at 8674625-8674724. Batch=10 → fails at 8674715-8674724.
+   **Batch=1 → ALL blocks pass**, including 8674724.
+5. Root cause: stale DB corruption from a previous run (possibly an earlier mismatch that
+   was committed with `ALLOW_COMMIT_ON_MISMATCH`, or MDBX page cache inconsistency).
+   Running batch=1 through the affected range repaired the state.
+6. After repair: batch=1000 stable past 8680K at 25-30 blk/s. No further mismatches.
+
+All speed optimizations (sorted cursor writes, batched bitmaps, seek-based leaf skip)
+confirmed clean.
+
+## Rollback to batch-size 1000, multi-db design notes (2026-04-14)
+
+10K batches hit a STATE ROOT MISMATCH at block 8681024 — incremental trie hashing bug
+at scale. Rolled back to `--exec-batch-size 1000` (resuming from 8671025). Saved multi-DB
+architecture and speed optimization discussion to `multi_db.md` for future implementation.
+
+## Flush optimization: sorted cursor writes, batched indexes, seek-based leaf skip (2026-04-14)
+
+At block ~8.6M with `--exec-batch-size 1000`, the old combined "hash" phase was 46-78s per batch
+at 14.5 blk/s. Instrumented the flush to identify sub-phase costs, then optimized each one.
+
+**Timing split**: Batch log now reports `exec=`, `flush=`, `trie=`, `commit=` separately. Added
+`flush-breakdown:` log line showing per-phase costs inside the flush (state, changesets, histIdx,
+receipts, logIdx, txIdx). This immediately revealed the trie was only 3-5s; the flush was 22-31s.
+
+**Batched bitmap indexes**: `UpdateHistoryIndex`/`UpdateAddressLogIndex`/`UpdateTopicLogIndex`
+opened a cursor per call — ~130K cursor-open-seek-deserialize-add-serialize-write-close cycles per
+batch. New `FlushHistoryIndexBatch` and `FlushLogIndexBatch` accumulate updates per key, then open
+one cursor per table and do one read-modify-write per unique key.
+
+**Sorted key iteration**: All batched bitmap flushes (history, address log, topic log) now sort
+keys before writing. This gives sequential B-tree access instead of random seeks. Reduced log
+index time from **15.9s to 1-2s** (8-16x).
+
+**Sorted cursor state writes**: Account, hashed account, storage, and hashed storage writes now
+sort keys and use a single cursor per table instead of random `tx.Put` calls. Reduces MDBX page
+cache thrashing on the 100K+ puts per batch.
+
+**Cursor-based tx hash writes**: `FlushTxHashBatch` sorts tx hashes and writes via a single cursor
+with `cursor.Put` instead of 17K individual `tx.Put` calls. Block hash index uses a single cursor
+too.
+
+**Seek-based leaf skipping**: `NodeIter` now seeks past cached branches via `LeafSource.SeekTo()`
+instead of iterating `cursor.Next()` one-by-one. Added `Nibbles.SuccessorRawKey()` and
+`MDBXLeafSource.SeekTo()`. Trie phase dropped from the old combined 46-78s to 3-5s.
+
 ## Executor batch logs now include `txs` and `tx/s` (2026-04-13)
 
 The executor batch summary was only reporting `blk/s`, which is too misleading on Avalanche once

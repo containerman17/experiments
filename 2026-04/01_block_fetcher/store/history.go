@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"sort"
 
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 	"github.com/erigontech/mdbx-go/mdbx"
@@ -213,6 +214,113 @@ func UpdateHistoryIndex(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) err
 	}
 	sentinel := HistoryKey(keyID, 0xFFFFFFFFFFFFFFFF)
 	return tx.Put(db.HistoryIndex, sentinel[:], histBuf.Bytes(), 0)
+}
+
+// FlushHistoryIndexBatch writes all accumulated history index updates in one pass.
+// pending maps keyID → sorted slice of blockNums to add.
+func FlushHistoryIndexBatch(tx *mdbx.Txn, db *DB, pending map[uint64][]uint64) error {
+	if len(pending) == 0 {
+		return nil
+	}
+	cursor, err := tx.OpenCursor(db.HistoryIndex)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+
+	// Sort keyIDs for sequential cursor access.
+	sortedKeys := make([]uint64, 0, len(pending))
+	for k := range pending {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })
+
+	bm := roaring64.NewBitmap()
+	var buf bytes.Buffer
+	var keyCopy [16]byte
+	var valBuf []byte
+
+	for _, keyID := range sortedKeys {
+		blocks := pending[keyID]
+		seekKey := HistoryKey(keyID, blocks[0])
+		prefix := KeyIDBytes(keyID)
+
+		kRaw, v, err := cursor.Get(seekKey[:], nil, mdbx.SetRange)
+		if err != nil && !mdbx.IsNotFound(err) {
+			return err
+		}
+
+		var k []byte
+		if err == nil {
+			copy(keyCopy[:], kRaw)
+			k = keyCopy[:len(kRaw)]
+			if cap(valBuf) < len(v) {
+				valBuf = make([]byte, len(v))
+			}
+			valBuf = valBuf[:len(v)]
+			copy(valBuf, v)
+		}
+
+		if err == nil && bytes.HasPrefix(k, prefix[:]) {
+			bm.Clear()
+			if _, err := bm.ReadFrom(bytes.NewReader(valBuf)); err != nil {
+				return fmt.Errorf("decode bitmap for keyID %d: %w", keyID, err)
+			}
+			for _, bn := range blocks {
+				bm.Add(bn)
+			}
+
+			if bm.GetCardinality() > maxShardSize {
+				maxBlock := bm.Maximum()
+				sealKey := HistoryKey(keyID, maxBlock)
+				buf.Reset()
+				if _, err := bm.WriteTo(&buf); err != nil {
+					return err
+				}
+				if err := tx.Put(db.HistoryIndex, sealKey[:], buf.Bytes(), 0); err != nil {
+					return err
+				}
+				if !bytes.Equal(k, sealKey[:]) {
+					if err := tx.Del(db.HistoryIndex, k, nil); err != nil {
+						return err
+					}
+				}
+				bm.Clear()
+				bm.Add(maxBlock)
+				buf.Reset()
+				if _, err := bm.WriteTo(&buf); err != nil {
+					return err
+				}
+				sentinel := HistoryKey(keyID, 0xFFFFFFFFFFFFFFFF)
+				if err := tx.Put(db.HistoryIndex, sentinel[:], buf.Bytes(), 0); err != nil {
+					return err
+				}
+				continue
+			}
+
+			buf.Reset()
+			if _, err := bm.WriteTo(&buf); err != nil {
+				return err
+			}
+			if err := tx.Put(db.HistoryIndex, k, buf.Bytes(), 0); err != nil {
+				return err
+			}
+		} else {
+			bm.Clear()
+			for _, bn := range blocks {
+				bm.Add(bn)
+			}
+			buf.Reset()
+			if _, err := bm.WriteTo(&buf); err != nil {
+				return err
+			}
+			sentinel := HistoryKey(keyID, 0xFFFFFFFFFFFFFFFF)
+			if err := tx.Put(db.HistoryIndex, sentinel[:], buf.Bytes(), 0); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func LookupHistoricalBlock(tx *mdbx.Txn, db *DB, keyID uint64, blockNum uint64) (uint64, bool, error) {

@@ -176,6 +176,46 @@ func (n Nibbles) Bytes() []byte {
 	return n.data
 }
 
+// SuccessorRawKey returns the first raw byte key that is NOT under this nibble
+// prefix. For example, nibbles "03a" → raw key [0x03, 0xb0] (increment nibble
+// 'a' to 'b', pad with 0). Returns nil if the prefix covers the entire keyspace
+// (e.g., all nibbles are 0xf).
+func (n Nibbles) SuccessorRawKey() []byte {
+	if n.len == 0 {
+		return nil
+	}
+	// Find the rightmost nibble that can be incremented (< 0xf).
+	nibs := make([]byte, n.len)
+	for i := 0; i < n.len; i++ {
+		nibs[i] = n.At(i)
+	}
+	carry := true
+	for i := n.len - 1; i >= 0 && carry; i-- {
+		nibs[i]++
+		if nibs[i] <= 0x0f {
+			carry = false
+		} else {
+			nibs[i] = 0
+		}
+	}
+	if carry {
+		return nil
+	}
+	// Convert nibbles back to raw bytes. Truncate at the prefix boundary:
+	// for even-length prefix, straightforward packing;
+	// for odd-length, the last nibble fills the high bits of the last byte.
+	numBytes := (n.len + 1) / 2
+	raw := make([]byte, numBytes)
+	for i := 0; i < n.len; i++ {
+		if i%2 == 0 {
+			raw[i/2] = nibs[i] << 4
+		} else {
+			raw[i/2] |= nibs[i]
+		}
+	}
+	return raw
+}
+
 // String returns hex string representation.
 func (n Nibbles) String() string {
 	if n.len == 0 {

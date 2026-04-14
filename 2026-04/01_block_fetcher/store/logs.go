@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"sort"
 
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 	"github.com/erigontech/mdbx-go/mdbx"
@@ -220,6 +221,60 @@ func PutTxHash(tx *mdbx.Txn, db *DB, txHash [32]byte, blockNum uint64, txIndex u
 	return tx.Put(db.TxHashIndex, txHash[:], val[:], 0)
 }
 
+// TxHashEntry holds one pending tx hash index write.
+type TxHashEntry struct {
+	TxHash   [32]byte
+	BlockNum uint64
+	TxIndex  uint16
+}
+
+// FlushTxHashBatch writes all tx hash entries using a single cursor.
+func FlushTxHashBatch(tx *mdbx.Txn, db *DB, entries []TxHashEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	cursor, err := tx.OpenCursor(db.TxHashIndex)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i].TxHash[:], entries[j].TxHash[:]) < 0
+	})
+
+	var val [10]byte
+	for i := range entries {
+		binary.BigEndian.PutUint64(val[0:8], entries[i].BlockNum)
+		binary.BigEndian.PutUint16(val[8:10], entries[i].TxIndex)
+		if err := cursor.Put(entries[i].TxHash[:], val[:], 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// FlushBlockHashBatch writes all block hash entries using a single cursor.
+func FlushBlockHashBatch(tx *mdbx.Txn, db *DB, entries [][2]uint64, hashes [][32]byte) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+	cursor, err := tx.OpenCursor(db.BlockHashIndex)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+
+	var val [8]byte
+	for i, h := range hashes {
+		binary.BigEndian.PutUint64(val[:], entries[i][0])
+		if err := cursor.Put(h[:], val[:], 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // GetTxLocation looks up a transaction's block number and index by hash.
 func GetTxLocation(tx *mdbx.Txn, db *DB, txHash [32]byte) (blockNum uint64, txIndex uint16, err error) {
 	val, err := tx.Get(db.TxHashIndex, txHash[:])
@@ -250,6 +305,125 @@ func UpdateAddressLogIndex(tx *mdbx.Txn, db *DB, address [20]byte, blockNum uint
 // UpdateTopicLogIndex adds a blockNum to the topic's log bitmap.
 func UpdateTopicLogIndex(tx *mdbx.Txn, db *DB, topic [32]byte, blockNum uint64) error {
 	return updateLogIndex(tx, db.TopicLogIndex, topic[:], blockNum)
+}
+
+// FlushLogIndexBatch writes all accumulated log index updates for one DBI in one cursor pass.
+// pending maps raw prefix bytes (address or topic) → sorted slice of block numbers.
+func FlushLogIndexBatch(tx *mdbx.Txn, dbi mdbx.DBI, pending map[string][]uint64) error {
+	if len(pending) == 0 {
+		return nil
+	}
+	cursor, err := tx.OpenCursor(dbi)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+
+	// Sort keys for sequential cursor access in the B-tree.
+	sortedKeys := make([]string, 0, len(pending))
+	for k := range pending {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+
+	bm := roaring64.NewBitmap()
+	var buf bytes.Buffer
+	var keyCopy [60]byte
+	var valBuf []byte
+
+	for _, prefixStr := range sortedKeys {
+		blocks := pending[prefixStr]
+		prefix := []byte(prefixStr)
+		seekKey := make([]byte, len(prefix)+8)
+		copy(seekKey, prefix)
+		binary.BigEndian.PutUint64(seekKey[len(prefix):], blocks[0])
+
+		kRaw, v, err := cursor.Get(seekKey, nil, mdbx.SetRange)
+		if err != nil && !mdbx.IsNotFound(err) {
+			return err
+		}
+
+		var k []byte
+		if err == nil {
+			if len(kRaw) > len(keyCopy) {
+				k = make([]byte, len(kRaw))
+			} else {
+				k = keyCopy[:len(kRaw)]
+			}
+			copy(k, kRaw)
+			if cap(valBuf) < len(v) {
+				valBuf = make([]byte, len(v))
+			}
+			valBuf = valBuf[:len(v)]
+			copy(valBuf, v)
+		}
+
+		if err == nil && len(k) >= len(prefix)+8 && bytes.HasPrefix(k, prefix) {
+			bm.Clear()
+			if _, err := bm.ReadFrom(bytes.NewReader(valBuf)); err != nil {
+				return fmt.Errorf("decode log bitmap: %w", err)
+			}
+			for _, bn := range blocks {
+				bm.Add(bn)
+			}
+
+			if bm.GetCardinality() > maxLogShardSize {
+				maxBlock := bm.Maximum()
+				sealKey := make([]byte, len(prefix)+8)
+				copy(sealKey, prefix)
+				binary.BigEndian.PutUint64(sealKey[len(prefix):], maxBlock)
+				buf.Reset()
+				if _, err := bm.WriteTo(&buf); err != nil {
+					return err
+				}
+				if err := tx.Put(dbi, sealKey, buf.Bytes(), 0); err != nil {
+					return err
+				}
+				if !bytes.Equal(k, sealKey) {
+					if err := tx.Del(dbi, k, nil); err != nil {
+						return err
+					}
+				}
+				bm.Clear()
+				bm.Add(maxBlock)
+				buf.Reset()
+				if _, err := bm.WriteTo(&buf); err != nil {
+					return err
+				}
+				sentinel := make([]byte, len(prefix)+8)
+				copy(sentinel, prefix)
+				binary.BigEndian.PutUint64(sentinel[len(prefix):], 0xFFFFFFFFFFFFFFFF)
+				if err := tx.Put(dbi, sentinel, buf.Bytes(), 0); err != nil {
+					return err
+				}
+				continue
+			}
+
+			buf.Reset()
+			if _, err := bm.WriteTo(&buf); err != nil {
+				return err
+			}
+			if err := tx.Put(dbi, k, buf.Bytes(), 0); err != nil {
+				return err
+			}
+		} else {
+			bm.Clear()
+			for _, bn := range blocks {
+				bm.Add(bn)
+			}
+			buf.Reset()
+			if _, err := bm.WriteTo(&buf); err != nil {
+				return err
+			}
+			sentinel := make([]byte, len(prefix)+8)
+			copy(sentinel, prefix)
+			binary.BigEndian.PutUint64(sentinel[len(prefix):], 0xFFFFFFFFFFFFFFFF)
+			if err := tx.Put(dbi, sentinel, buf.Bytes(), 0); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // updateLogIndex is the generic bitmap-sharded index update.

@@ -1,10 +1,14 @@
 package statetrie
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"runtime"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/erigontech/mdbx-go/mdbx"
@@ -359,11 +363,11 @@ func (o *BatchOverlay) ChangedStoragePlain() map[[20]byte]map[[32]byte][]byte {
 // FlushStateToTx writes all state (accounts, storage, hashed state, code, changesets)
 // to the given RW transaction. Does NOT set head block or commit.
 func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
-	// Write accounts.
-	for addr, data := range o.accounts {
-		if err := tx.Put(db.AccountState, addr[:], data, 0); err != nil {
-			return err
-		}
+	t0 := time.Now()
+
+	// Write accounts — sorted cursor for page locality.
+	if err := flushMapSorted20(tx, db.AccountState, o.accounts); err != nil {
+		return err
 	}
 	for addr := range o.accountDeleted {
 		if err := tx.Del(db.AccountState, addr[:], nil); err != nil && !mdbx.IsNotFound(err) {
@@ -371,11 +375,9 @@ func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
 		}
 	}
 
-	// Write hashed accounts.
-	for ha, data := range o.hashedAccounts {
-		if err := tx.Put(db.HashedAccountState, ha[:], data, 0); err != nil {
-			return err
-		}
+	// Write hashed accounts — sorted cursor.
+	if err := flushMapSorted32(tx, db.HashedAccountState, o.hashedAccounts); err != nil {
+		return err
 	}
 	for ha := range o.hashedAccountDeleted {
 		if err := tx.Del(db.HashedAccountState, ha[:], nil); err != nil && !mdbx.IsNotFound(err) {
@@ -383,34 +385,14 @@ func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
 		}
 	}
 
-	// Write storage.
-	for sk, data := range o.storage {
-		var addr [20]byte
-		var slot [32]byte
-		copy(addr[:], sk[:20])
-		copy(slot[:], sk[20:])
-		var val32 [32]byte
-		copy(val32[:], data)
-		if err := store.PutStorage(tx, db, addr, slot, val32); err != nil {
-			return err
-		}
-	}
-	for sk := range o.storageDeleted {
-		var addr [20]byte
-		var slot [32]byte
-		copy(addr[:], sk[:20])
-		copy(slot[:], sk[20:])
-		var zeroVal [32]byte
-		if err := store.PutStorage(tx, db, addr, slot, zeroVal); err != nil {
-			return err
-		}
+	// Write storage — sorted cursor via StorageKey order.
+	if err := flushStorageSorted(tx, db, o.storage, o.storageDeleted); err != nil {
+		return err
 	}
 
-	// Write hashed storage.
-	for hk, data := range o.hashedStorage {
-		if err := tx.Put(db.HashedStorageState, hk[:], data, 0); err != nil {
-			return err
-		}
+	// Write hashed storage — sorted cursor.
+	if err := flushMapSorted64(tx, db.HashedStorageState, o.hashedStorage); err != nil {
+		return err
 	}
 	for hk := range o.hashedStorageDeleted {
 		if err := tx.Del(db.HashedStorageState, hk[:], nil); err != nil && !mdbx.IsNotFound(err) {
@@ -425,7 +407,10 @@ func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
 		}
 	}
 
+	t1 := time.Now()
 	// Convert raw changesets to store.Change (with keyID assignment) and write.
+	// Accumulate history index updates per keyID for batched flush.
+	historyPending := make(map[uint64][]uint64, 4096)
 	for blockNum, rawChanges := range o.rawChangesets {
 		if len(rawChanges) == 0 {
 			continue
@@ -442,13 +427,18 @@ func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
 			return err
 		}
 		for _, c := range changes {
-			if err := store.UpdateHistoryIndex(tx, db, c.KeyID, blockNum); err != nil {
-				return err
-			}
+			historyPending[c.KeyID] = append(historyPending[c.KeyID], blockNum)
 		}
 	}
+	t2 := time.Now()
+	if err := store.FlushHistoryIndexBatch(tx, db, historyPending); err != nil {
+		return fmt.Errorf("flush history index batch: %w", err)
+	}
+	t3 := time.Now()
 
-	// Write block receipts (with embedded logs) and update bitmap indexes.
+	// Write block receipts and accumulate log index updates for batched flush.
+	addrLogPending := make(map[string][]uint64, 4096)
+	topicLogPending := make(map[string][]uint64, 4096)
 	for blockNum, receipts := range o.blockReceipts {
 		if len(receipts) == 0 {
 			continue
@@ -456,44 +446,67 @@ func (o *BatchOverlay) FlushStateToTx(tx *mdbx.Txn, db *store.DB) error {
 		if err := store.WriteBlockReceipts(tx, db, blockNum, receipts); err != nil {
 			return fmt.Errorf("write block receipts at block %d: %w", blockNum, err)
 		}
-		// Update address and topic bitmap indexes from logs within receipts.
 		seen := make(map[[20]byte]bool)
 		seenTopics := make(map[[32]byte]bool)
 		for _, r := range receipts {
 			for _, l := range r.Logs {
 				if !seen[l.Address] {
 					seen[l.Address] = true
-					if err := store.UpdateAddressLogIndex(tx, db, l.Address, blockNum); err != nil {
-						return fmt.Errorf("update address log index: %w", err)
-					}
+					addrLogPending[string(l.Address[:])] = append(addrLogPending[string(l.Address[:])], blockNum)
 				}
 				for _, t := range l.Topics {
 					if !seenTopics[t] {
 						seenTopics[t] = true
-						if err := store.UpdateTopicLogIndex(tx, db, t, blockNum); err != nil {
-							return fmt.Errorf("update topic log index: %w", err)
-						}
+						topicLogPending[string(t[:])] = append(topicLogPending[string(t[:])], blockNum)
 					}
 				}
 			}
 		}
 	}
+	t4 := time.Now()
+	if err := store.FlushLogIndexBatch(tx, db.AddressLogIndex, addrLogPending); err != nil {
+		return fmt.Errorf("flush address log index batch: %w", err)
+	}
+	if err := store.FlushLogIndexBatch(tx, db.TopicLogIndex, topicLogPending); err != nil {
+		return fmt.Errorf("flush topic log index batch: %w", err)
+	}
+	t5 := time.Now()
 
-	// Write tx hash index.
-	for _, entry := range o.txHashes {
-		if err := store.PutTxHash(tx, db, entry.TxHash, entry.BlockNum, entry.TxIndex); err != nil {
-			return fmt.Errorf("write tx hash index: %w", err)
-		}
+	// Write tx hash index — single cursor, sorted by hash.
+	storeEntries := make([]store.TxHashEntry, len(o.txHashes))
+	for i, e := range o.txHashes {
+		storeEntries[i] = store.TxHashEntry{TxHash: e.TxHash, BlockNum: e.BlockNum, TxIndex: e.TxIndex}
+	}
+	if err := store.FlushTxHashBatch(tx, db, storeEntries); err != nil {
+		return fmt.Errorf("flush tx hash batch: %w", err)
 	}
 
-	// Write block hash → block number index.
-	for _, entry := range o.blockHashes {
+	// Write block hash → block number index — single cursor.
+	{
+		cursor, err := tx.OpenCursor(db.BlockHashIndex)
+		if err != nil {
+			return fmt.Errorf("open block hash cursor: %w", err)
+		}
 		var val [8]byte
-		binary.BigEndian.PutUint64(val[:], entry.BlockNum)
-		if err := tx.Put(db.BlockHashIndex, entry.BlockHash[:], val[:], 0); err != nil {
-			return fmt.Errorf("write block hash index: %w", err)
+		for _, entry := range o.blockHashes {
+			binary.BigEndian.PutUint64(val[:], entry.BlockNum)
+			if err := cursor.Put(entry.BlockHash[:], val[:], 0); err != nil {
+				cursor.Close()
+				return fmt.Errorf("write block hash index: %w", err)
+			}
 		}
+		cursor.Close()
 	}
+
+	t6 := time.Now()
+	log.Printf("flush-breakdown: state=%s changesets=%s histIdx=%s receipts=%s logIdx=%s txIdx=%s histKeys=%d addrKeys=%d topicKeys=%d",
+		t1.Sub(t0).Truncate(time.Millisecond),
+		t2.Sub(t1).Truncate(time.Millisecond),
+		t3.Sub(t2).Truncate(time.Millisecond),
+		t4.Sub(t3).Truncate(time.Millisecond),
+		t5.Sub(t4).Truncate(time.Millisecond),
+		t6.Sub(t5).Truncate(time.Millisecond),
+		len(historyPending), len(addrLogPending), len(topicLogPending))
 
 	return nil
 }
@@ -617,4 +630,138 @@ func (o *BatchOverlay) Flush(db *store.DB, headBlock uint64) error {
 
 	_, err = tx.Commit()
 	return err
+}
+
+// flushMapSorted20 writes a map[[20]byte][]byte to dbi using a sorted cursor.
+func flushMapSorted20(tx *mdbx.Txn, dbi mdbx.DBI, m map[[20]byte][]byte) error {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([][20]byte, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return bytes.Compare(keys[i][:], keys[j][:]) < 0
+	})
+	cursor, err := tx.OpenCursor(dbi)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+	for _, k := range keys {
+		if err := cursor.Put(k[:], m[k], 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// flushMapSorted32 writes a map[[32]byte][]byte to dbi using a sorted cursor.
+func flushMapSorted32(tx *mdbx.Txn, dbi mdbx.DBI, m map[[32]byte][]byte) error {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([][32]byte, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return bytes.Compare(keys[i][:], keys[j][:]) < 0
+	})
+	cursor, err := tx.OpenCursor(dbi)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+	for _, k := range keys {
+		if err := cursor.Put(k[:], m[k], 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// flushMapSorted64 writes a map[[64]byte][]byte to dbi using a sorted cursor.
+func flushMapSorted64(tx *mdbx.Txn, dbi mdbx.DBI, m map[[64]byte][]byte) error {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([][64]byte, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return bytes.Compare(keys[i][:], keys[j][:]) < 0
+	})
+	cursor, err := tx.OpenCursor(dbi)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+	for _, k := range keys {
+		if err := cursor.Put(k[:], m[k], 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// flushStorageSorted writes storage entries and deletes in sorted key order.
+func flushStorageSorted(tx *mdbx.Txn, db *store.DB, storage map[[52]byte][]byte, deleted map[[52]byte]bool) error {
+	if len(storage) == 0 && len(deleted) == 0 {
+		return nil
+	}
+	cursor, err := tx.OpenCursor(db.StorageState)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+
+	// Merge puts and deletes into sorted order.
+	type entry struct {
+		key    [52]byte
+		value  []byte
+		delete bool
+	}
+	entries := make([]entry, 0, len(storage)+len(deleted))
+	for sk, data := range storage {
+		entries = append(entries, entry{key: sk, value: data})
+	}
+	for sk := range deleted {
+		entries = append(entries, entry{key: sk, delete: true})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i].key[:], entries[j].key[:]) < 0
+	})
+
+	for _, e := range entries {
+		storageKey := store.StorageKey(
+			*(*[20]byte)(e.key[:20]),
+			*(*[32]byte)(e.key[20:]),
+		)
+		if e.delete {
+			// For deletes, use tx.Del (cursor.Del requires positioning first).
+			if err := tx.Del(db.StorageState, storageKey[:], nil); err != nil && !mdbx.IsNotFound(err) {
+				return err
+			}
+			continue
+		}
+		var val32 [32]byte
+		copy(val32[:], e.value)
+		if val32 == [32]byte{} {
+			if err := tx.Del(db.StorageState, storageKey[:], nil); err != nil && !mdbx.IsNotFound(err) {
+				return err
+			}
+			continue
+		}
+		v := val32[:]
+		for len(v) > 1 && v[0] == 0 {
+			v = v[1:]
+		}
+		if err := cursor.Put(storageKey[:], v, 0); err != nil {
+			return err
+		}
+	}
+	return nil
 }

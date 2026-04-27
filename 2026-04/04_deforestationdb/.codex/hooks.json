@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/ubuntu/experiments/2026-04/04_deforestationdb/.claude/session-start.sh",
+            "statusMessage": "Loading project notes"
+          }
+        ]
+      }
+    ]
+  }
+}

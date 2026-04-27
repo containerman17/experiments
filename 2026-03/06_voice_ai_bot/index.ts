@@ -12,7 +12,7 @@ const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || "")
   .split(",")
   .map((id) => parseInt(id.trim(), 10))
   .filter((id) => !isNaN(id));
-const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+const INACTIVITY_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours
 const MAX_HISTORY = 10;
 const TELEGRAM_MAX_LENGTH = 4096;
 
@@ -60,7 +60,7 @@ let lastMessageTime = Date.now();
 // --- Inactivity timer ---
 const inactivityCheck = setInterval(() => {
   if (Date.now() - lastMessageTime > INACTIVITY_TIMEOUT_MS) {
-    console.log("No messages for 1 hour. Exiting.");
+    console.log("No messages for 3 hours. Exiting.");
     clearInterval(inactivityCheck);
     process.exit(0);
   }

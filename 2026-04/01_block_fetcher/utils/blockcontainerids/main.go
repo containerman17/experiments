@@ -177,7 +177,7 @@ func parseHexUint64(s string) (uint64, error) {
 }
 
 func milestoneBlocks(tip uint64) []uint64 {
-	blocks := make([]uint64, 0, tip/100_000+1)
+	blocks := []uint64{1_000, 10_000}
 	for block := uint64(100_000); block <= tip; block += 100_000 {
 		blocks = append(blocks, block)
 	}

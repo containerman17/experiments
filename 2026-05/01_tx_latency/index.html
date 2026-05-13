@@ -114,7 +114,7 @@ async function refresh() {
 
   const submitted   = findVal(samples, 'txlat_transactions_total', l => l.status === 'submitted');
   const sendFailed  = findVal(samples, 'txlat_transactions_total', l => l.status === 'send_failed');
-  const success     = findVal(samples, 'txlat_receipts_total',    l => l.status === 'success');
+  const included    = total;
   const balanceSamp = samples.find(s => s.name === 'txlat_wallet_balance_avax');
   const balance     = balanceSamp?.value ?? 0;
   const address     = balanceSamp?.labels.address ?? '';
@@ -130,7 +130,7 @@ async function refresh() {
     { label: 'p95',           value: (p95 * 1000).toFixed(0), unit: 'ms' },
     { label: 'p99',           value: (p99 * 1000).toFixed(0), unit: 'ms' },
     { label: 'submitted',     value: submitted.toFixed(0) },
-    { label: 'success',       value: success.toFixed(0) },
+    { label: 'included',      value: included.toFixed(0) },
     { label: 'send failed',   value: sendFailed.toFixed(0) },
     { label: 'pending',       value: pending.toFixed(0) },
     { label: 'balance',       value: balance.toFixed(6), unit: 'AVAX', sub: shortAddr, href: snowtraceUrl },

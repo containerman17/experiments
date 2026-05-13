@@ -167,11 +167,24 @@ type rawBlock struct {
 	Transactions         json.RawMessage `json:"transactions"`
 }
 
+// GetBlockByNumber returns (nil, nil) when the block is not yet available
+// (JSON `null` response, or Avalanche's "cannot query unfinalized data" error).
+// All other RPC failures return an error.
 func (c *RPCClient) GetBlockByNumber(ctx context.Context, endpoint string, num uint64) (*Block, error) {
 	tag := fmt.Sprintf("0x%x", num)
-	var rb rawBlock
-	if err := c.Call(ctx, endpoint, "eth_getBlockByNumber", []interface{}{tag, false}, &rb); err != nil {
+	var raw json.RawMessage
+	if err := c.Call(ctx, endpoint, "eth_getBlockByNumber", []interface{}{tag, false}, &raw); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unfinalized") {
+			return nil, nil
+		}
 		return nil, err
+	}
+	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, nil
+	}
+	var rb rawBlock
+	if err := json.Unmarshal(raw, &rb); err != nil {
+		return nil, fmt.Errorf("decode block: %w", err)
 	}
 	return parseBlock(&rb)
 }
@@ -209,61 +222,6 @@ func parseBlock(rb *rawBlock) (*Block, error) {
 	}, nil
 }
 
-type Receipt struct {
-	Status            uint64
-	BlockNumber       uint64
-	BlockHash         string
-	GasUsed           uint64
-	EffectiveGasPrice *big.Int
-}
-
-type rawReceipt struct {
-	Status            string `json:"status"`
-	BlockNumber       string `json:"blockNumber"`
-	BlockHash         string `json:"blockHash"`
-	GasUsed           string `json:"gasUsed"`
-	EffectiveGasPrice string `json:"effectiveGasPrice"`
-}
-
-func (c *RPCClient) GetTransactionReceipt(ctx context.Context, endpoint, txHash string) (*Receipt, error) {
-	var rr rawReceipt
-	var raw json.RawMessage
-	if err := c.Call(ctx, endpoint, "eth_getTransactionReceipt", []interface{}{txHash}, &raw); err != nil {
-		return nil, err
-	}
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
-	}
-	if err := json.Unmarshal(raw, &rr); err != nil {
-		return nil, fmt.Errorf("decode receipt: %w", err)
-	}
-	status, err := parseHexUint(rr.Status)
-	if err != nil {
-		return nil, fmt.Errorf("receipt status: %w", err)
-	}
-	blockNum, err := parseHexUint(rr.BlockNumber)
-	if err != nil {
-		return nil, fmt.Errorf("receipt blockNumber: %w", err)
-	}
-	gasUsed, err := parseHexUint(rr.GasUsed)
-	if err != nil {
-		return nil, fmt.Errorf("receipt gasUsed: %w", err)
-	}
-	var egp *big.Int
-	if rr.EffectiveGasPrice != "" {
-		egp, err = parseHexBigInt(rr.EffectiveGasPrice)
-		if err != nil {
-			return nil, fmt.Errorf("receipt effectiveGasPrice: %w", err)
-		}
-	}
-	return &Receipt{
-		Status:            status,
-		BlockNumber:       blockNum,
-		BlockHash:         rr.BlockHash,
-		GasUsed:           gasUsed,
-		EffectiveGasPrice: egp,
-	}, nil
-}
 
 func parseHexUint(s string) (uint64, error) {
 	s = strings.TrimPrefix(s, "0x")

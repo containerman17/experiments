@@ -12,7 +12,6 @@ type Metrics struct {
 
 	InclusionLatency *prometheus.HistogramVec
 	TxsTotal         *prometheus.CounterVec
-	ReceiptsTotal    *prometheus.CounterVec
 	PendingTxs       *prometheus.GaugeVec
 	WalletBalance    *prometheus.GaugeVec
 	TxsRemaining     *prometheus.GaugeVec
@@ -41,10 +40,6 @@ func NewMetrics(reg prometheus.Registerer, region string, chainID uint64) *Metri
 			Name: "txlat_transactions_total",
 			Help: "Submitted transactions partitioned by send result status.",
 		}, []string{"region", "chain_id", "status"}),
-		ReceiptsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "txlat_receipts_total",
-			Help: "Observed receipts partitioned by on-chain status.",
-		}, []string{"region", "chain_id", "status"}),
 		PendingTxs: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "txlat_pending_transactions",
 			Help: "Number of tracked transactions not yet observed in a block.",
@@ -70,7 +65,6 @@ func NewMetrics(reg prometheus.Registerer, region string, chainID uint64) *Metri
 	reg.MustRegister(
 		m.InclusionLatency,
 		m.TxsTotal,
-		m.ReceiptsTotal,
 		m.PendingTxs,
 		m.WalletBalance,
 		m.TxsRemaining,
@@ -87,10 +81,6 @@ func (m *Metrics) ObserveInclusionLatency(seconds float64) {
 
 func (m *Metrics) IncTxSend(status string) {
 	m.TxsTotal.WithLabelValues(m.region, m.chainIDLabel, status).Inc()
-}
-
-func (m *Metrics) IncReceipt(status string) {
-	m.ReceiptsTotal.WithLabelValues(m.region, m.chainIDLabel, status).Inc()
 }
 
 func (m *Metrics) SetPending(n int) {

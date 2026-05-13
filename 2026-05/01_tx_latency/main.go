@@ -347,60 +347,51 @@ func runScanner(
 	tr *tracker,
 	metrics *Metrics,
 ) {
+	endpoint := cfg.SendEndpoints[0]
+
 	bnCtx, bnCancel := context.WithTimeout(ctx, 10*time.Second)
-	startBN, err := rpc.BlockNumber(bnCtx, cfg.SendEndpoints[0])
+	startBN, err := rpc.BlockNumber(bnCtx, endpoint)
 	bnCancel()
 	if err != nil {
 		log.Fatalf("scanner: initial block number: %v", err)
 	}
-	lastScanned := startBN
 	metrics.SetLatestBlock(startBN)
 	log.Printf("scanner: starting at block %d", startBN+1)
 
-	ticker := time.NewTicker(blockScanInterval)
-	defer ticker.Stop()
+	n := startBN + 1
 	for {
-		head, err := func() (uint64, error) {
-			c, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
-			return rpc.BlockNumber(c, cfg.SendEndpoints[0])
-		}()
-		if err != nil {
-			log.Printf("scanner: block number: %v", err)
-		} else {
-			metrics.SetLatestBlock(head)
-			for n := lastScanned + 1; n <= head; n++ {
-				if err := scanBlock(ctx, cfg, rpc, tr, metrics, n); err != nil {
-					log.Printf("scanner: block %d: %v", n, err)
-					break
-				}
-				lastScanned = n
-			}
-		}
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case <-ticker.C:
 		}
+		bctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		block, err := rpc.GetBlockByNumber(bctx, endpoint, n)
+		cancel()
+		if err != nil {
+			log.Printf("scanner: block %d: %v", n, err)
+			sleepCtx(ctx, 1*time.Second)
+			continue
+		}
+		if block == nil {
+			// Caught up to head — wait and retry the same block.
+			sleepCtx(ctx, 3*time.Second)
+			continue
+		}
+		processBlock(cfg, tr, metrics, block)
+		metrics.SetLatestBlock(block.Number)
+		n++
 	}
 }
 
-func scanBlock(
-	ctx context.Context,
-	cfg *Config,
-	rpc *RPCClient,
-	tr *tracker,
-	metrics *Metrics,
-	num uint64,
-) error {
-	blkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	block, err := rpc.GetBlockByNumber(blkCtx, cfg.SendEndpoints[0], num)
-	if err != nil {
-		return err
+func sleepCtx(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
 	}
+}
+
+func processBlock(cfg *Config, tr *tracker, metrics *Metrics, block *Block) {
 	if tr.len() == 0 {
-		return nil
+		return
 	}
 	for _, hashHex := range block.TxHashes {
 		h := common.HexToHash(hashHex)
@@ -408,75 +399,18 @@ func scanBlock(
 		if !ok {
 			continue
 		}
-		if err := handleInclusion(ctx, cfg, rpc, tr, metrics, p, block); err != nil {
-			log.Printf("scanner: receipt %s: %v", h.Hex(), err)
+		latencyMs := block.TimestampMilliseconds - p.signTsMs
+		if latencyMs < 0 {
+			latencyMs = 0
 		}
+		metrics.ObserveInclusionLatency(float64(latencyMs) / 1000.0)
+		tr.remove(p.hash)
+		fmt.Printf(
+			"included region=%s tx_hash=%s nonce=%d tx_sign_ts=%d block_number=%d block_timestamp_ms=%d inclusion_latency_ms=%d\n",
+			cfg.Region, p.hash.Hex(), p.nonce, p.signTsMs, block.Number, block.TimestampMilliseconds, latencyMs,
+		)
 	}
-	return nil
-}
-
-func handleInclusion(
-	ctx context.Context,
-	cfg *Config,
-	rpc *RPCClient,
-	tr *tracker,
-	metrics *Metrics,
-	p pendingTx,
-	block *Block,
-) error {
-	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	receipt, err := rpc.GetTransactionReceipt(rctx, cfg.SendEndpoints[0], p.hash.Hex())
-	if err != nil {
-		return err
-	}
-	if receipt == nil {
-		return fmt.Errorf("nil receipt despite inclusion in block %d", block.Number)
-	}
-
-	latencyMs := block.TimestampMilliseconds - p.signTsMs
-	if latencyMs < 0 {
-		latencyMs = 0
-	}
-	latencySeconds := float64(latencyMs) / 1000.0
-	metrics.ObserveInclusionLatency(latencySeconds)
-
-	receiptStatus := "failure"
-	if receipt.Status == 1 {
-		receiptStatus = "success"
-	}
-	metrics.IncReceipt(receiptStatus)
-
-	feeWei := new(big.Int)
-	if receipt.EffectiveGasPrice != nil {
-		feeWei.Mul(receipt.EffectiveGasPrice, new(big.Int).SetUint64(receipt.GasUsed))
-	}
-	feeAvax := weiToAvax(feeWei)
-
-	egp := "<nil>"
-	if receipt.EffectiveGasPrice != nil {
-		egp = receipt.EffectiveGasPrice.String()
-	}
-
-	fmt.Printf(
-		"included region=%s tx_hash=%s nonce=%d tx_sign_ts=%d block_number=%d block_timestamp_ms=%d inclusion_latency_ms=%d receipt_status=%s gas_used=%d effective_gas_price=%s fee_wei=%s fee_avax=%.18f\n",
-		cfg.Region,
-		p.hash.Hex(),
-		p.nonce,
-		p.signTsMs,
-		block.Number,
-		block.TimestampMilliseconds,
-		latencyMs,
-		receiptStatus,
-		receipt.GasUsed,
-		egp,
-		feeWei.String(),
-		feeAvax,
-	)
-
-	tr.remove(p.hash)
 	metrics.SetPending(tr.len())
-	return nil
 }
 
 func runBalance(

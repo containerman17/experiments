@@ -1,0 +1,6 @@
+.env
+*.log
+txlat
+discoveries.md
+WIP.md
+endpoints.md

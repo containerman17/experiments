@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>txlat dashboard</title>
+<style>
+  :root { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; }
+  body { margin: 0; padding: 16px; background: #f7f7f8; color: #222; }
+  h1 { margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 16px; }
+  .card { background: white; padding: 10px 12px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .card .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #777; }
+  .card .value { font-size: 20px; font-weight: 600; margin-top: 2px; line-height: 1.15; word-break: break-word; }
+  .card .unit { font-size: 11px; color: #999; margin-left: 3px; font-weight: normal; }
+  .card .sub { font-size: 11px; color: #4f46e5; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a.card-link { text-decoration: none; color: inherit; display: block; }
+  a.card-link:hover { box-shadow: 0 1px 4px rgba(79,70,229,.25); }
+  .chart-wrap { background: white; padding: 12px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  canvas { max-height: 320px; width: 100% !important; }
+  .meta { font-size: 11px; color: #999; margin-top: 12px; }
+  .err { color: #c00; font-size: 12px; margin-top: 8px; }
+  @media (max-width: 480px) {
+    body { padding: 10px; }
+    h1 { font-size: 15px; }
+    .cards { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .card { padding: 8px 10px; }
+    .card .value { font-size: 17px; }
+    canvas { max-height: 260px; }
+  }
+</style>
+</head>
+<body>
+<h1>txlat — Avalanche C-Chain inclusion latency</h1>
+<div class="cards" id="cards"></div>
+<div class="chart-wrap"><canvas id="histogram"></canvas></div>
+<div class="meta" id="meta"></div>
+<div class="err" id="err"></div>
+
+<script type="module">
+import Chart from 'https://esm.sh/chart.js@4/auto';
+
+function parsePromText(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^([a-zA-Z0-9_:]+)(\{([^}]*)\})?\s+(\S+)$/);
+    if (!m) continue;
+    const labels = {};
+    if (m[3]) {
+      for (const part of m[3].split(',')) {
+        const eq = part.indexOf('=');
+        if (eq < 0) continue;
+        labels[part.slice(0, eq)] = part.slice(eq + 2, -1); // strip quotes
+      }
+    }
+    out.push({ name: m[1], labels, value: parseFloat(m[4]) });
+  }
+  return out;
+}
+
+const findVal = (samples, name, match = () => true) =>
+  samples.find(s => s.name === name && match(s.labels))?.value ?? 0;
+
+function quantile(buckets, total, q) {
+  if (total <= 0) return 0;
+  const target = q * total;
+  let prevLe = 0, prevCount = 0;
+  for (const b of buckets) {
+    if (b.count >= target) {
+      const span = b.le - prevLe;
+      const frac = (target - prevCount) / Math.max(b.count - prevCount, 1);
+      return prevLe + span * frac;
+    }
+    prevLe = b.le;
+    prevCount = b.count;
+  }
+  return buckets.at(-1)?.le ?? 0;
+}
+
+let chart = null;
+const errEl = document.getElementById('err');
+
+async function refresh() {
+  let text;
+  try {
+    const r = await fetch('/metrics', { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    text = await r.text();
+    errEl.textContent = '';
+  } catch (e) {
+    errEl.textContent = `fetch /metrics failed: ${e.message}`;
+    return;
+  }
+
+  const samples = parsePromText(text);
+
+  const buckets = samples
+    .filter(s => s.name === 'txlat_inclusion_latency_seconds_bucket' && s.labels.le !== '+Inf')
+    .map(s => ({ le: parseFloat(s.labels.le), count: s.value }))
+    .sort((a, b) => a.le - b.le);
+  const total = findVal(samples, 'txlat_inclusion_latency_seconds_count');
+
+  const bars = [];
+  let prev = 0;
+  for (const b of buckets) {
+    bars.push({ le: b.le, count: b.count - prev });
+    prev = b.count;
+  }
+
+  const p50 = quantile(buckets, total, 0.5);
+  const p90 = quantile(buckets, total, 0.9);
+  const p99 = quantile(buckets, total, 0.99);
+
+  const submitted   = findVal(samples, 'txlat_transactions_total', l => l.status === 'submitted');
+  const sendFailed  = findVal(samples, 'txlat_transactions_total', l => l.status === 'send_failed');
+  const success     = findVal(samples, 'txlat_receipts_total',    l => l.status === 'success');
+  const balanceSamp = samples.find(s => s.name === 'txlat_wallet_balance_avax');
+  const balance     = balanceSamp?.value ?? 0;
+  const address     = balanceSamp?.labels.address ?? '';
+  const pending     = findVal(samples, 'txlat_pending_transactions');
+  const latestBlk   = findVal(samples, 'txlat_latest_block_number');
+  const region      = samples.find(s => s.name === 'txlat_up')?.labels.region ?? '?';
+
+  const shortAddr = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '—';
+  const snowtraceUrl = address ? `https://43114.snowtrace.io/address/${address}` : '#';
+
+  const cards = [
+    { label: 'p50',           value: (p50 * 1000).toFixed(0), unit: 'ms' },
+    { label: 'p90',           value: (p90 * 1000).toFixed(0), unit: 'ms' },
+    { label: 'p99',           value: (p99 * 1000).toFixed(0), unit: 'ms' },
+    { label: 'submitted',     value: submitted.toFixed(0) },
+    { label: 'success',       value: success.toFixed(0) },
+    { label: 'send failed',   value: sendFailed.toFixed(0) },
+    { label: 'pending',       value: pending.toFixed(0) },
+    { label: 'balance',       value: balance.toFixed(6), unit: 'AVAX', sub: shortAddr, href: snowtraceUrl },
+    { label: 'latest block',  value: latestBlk.toFixed(0) },
+  ];
+  document.getElementById('cards').innerHTML = cards.map(c => {
+    const inner =
+      `<div class="label">${c.label}</div>` +
+      `<div class="value">${c.value}${c.unit ? `<span class="unit">${c.unit}</span>` : ''}</div>` +
+      (c.sub ? `<div class="sub">${c.sub} ↗</div>` : '');
+    return c.href
+      ? `<a class="card card-link" href="${c.href}" target="_blank" rel="noopener">${inner}</a>`
+      : `<div class="card">${inner}</div>`;
+  }).join('');
+
+  const labels = bars.map(b => (b.le * 1000) + 'ms');
+  const data = bars.map(b => b.count);
+
+  if (chart) {
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = data;
+    chart.update('none');
+  } else {
+    const ctx = document.getElementById('histogram').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'count', data, backgroundColor: '#4f46e5' }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: 'inclusion latency upper bound (le)' } },
+          y: { title: { display: true, text: 'count in bucket' }, beginAtZero: true, ticks: { precision: 0 } },
+        },
+      },
+    });
+  }
+
+  document.getElementById('meta').textContent =
+    `region: ${region} · total observations: ${total} · refreshed ${new Date().toLocaleTimeString()}`;
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

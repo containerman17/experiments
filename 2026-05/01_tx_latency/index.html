@@ -109,7 +109,7 @@ async function refresh() {
   }
 
   const p50 = quantile(buckets, total, 0.5);
-  const p90 = quantile(buckets, total, 0.9);
+  const p95 = quantile(buckets, total, 0.95);
   const p99 = quantile(buckets, total, 0.99);
 
   const submitted   = findVal(samples, 'txlat_transactions_total', l => l.status === 'submitted');
@@ -127,7 +127,7 @@ async function refresh() {
 
   const cards = [
     { label: 'p50',           value: (p50 * 1000).toFixed(0), unit: 'ms' },
-    { label: 'p90',           value: (p90 * 1000).toFixed(0), unit: 'ms' },
+    { label: 'p95',           value: (p95 * 1000).toFixed(0), unit: 'ms' },
     { label: 'p99',           value: (p99 * 1000).toFixed(0), unit: 'ms' },
     { label: 'submitted',     value: submitted.toFixed(0) },
     { label: 'success',       value: success.toFixed(0) },
